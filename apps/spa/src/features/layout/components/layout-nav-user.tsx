@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router";
 import { authClient } from "@acme/spa/lib/auth";
+import { useSession } from "@acme/spa/hooks/use-session";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,7 +42,7 @@ function getInitials(user: { email?: string; name?: string }): string {
 export function LayoutNavUser() {
   const { isMobile } = useSidebar();
   const navigate = useNavigate();
-  const { data: session } = authClient.useSession();
+  const { data: session } = useSession();
 
   const user = session?.user;
   const initials = user ? getInitials(user) : "??";

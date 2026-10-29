@@ -9,7 +9,7 @@ import {
   ScrollRestoration,
 } from "react-router";
 import { QueryProvider } from "./providers/query-provider";
-import { authClient } from "@acme/spa/lib/auth";
+import { useSession } from "@acme/spa/hooks/use-session";
 import { AppLoader } from "./components/app-loader";
 import { useAuthRedirect } from "./hooks/use-auth-redirect";
 import { useInitTheme } from "./hooks/use-init-theme";
@@ -47,7 +47,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 function AppContent() {
-  const { isPending } = authClient.useSession();
+  const { isPending } = useSession();
   const { contentOpacity, shouldShowLoader } = useLoadApp(isPending);
 
   useAuthRedirect();
