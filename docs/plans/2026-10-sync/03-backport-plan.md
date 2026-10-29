@@ -191,14 +191,14 @@ Two leftovers found in passing, neither in scope: `VITE_MARKETING_URL` in
 pre-existing `exactOptionalPropertyTypes` errors in `media.routes.ts` — the same class as the
 ones item 1 fixed, so they belong with item 1's follow-up.
 
-### 5. `bun test --isolate` for the API suite → **L** + **M** (`api` module)
+### 5. ~~`bun test --isolate` for the API suite~~ → **done 2026-10-29, uncommitted**
 
 keeper runs `bun test --isolate` in `apps/api`. One flag; catches cross-test state leakage in a
 suite that shares an in-memory database per test. Add to `apps/api/package.json` now (it is the
 080 source) so the `api` module template carries it at extraction. Not **T**: `templates/base`
 ships no apps, so there is no `apps/api/package.json` there to put it in.
 
-### 6. ~~`lib/logger.ts`~~ — already here; take the six `lib/` fixes instead → **L**
+### 6. ~~`lib/logger.ts` → the six `lib/` fixes~~ → **done 2026-10-29, uncommitted**
 
 Correction after checking: `apps/api/src/lib/logger.ts` and `logger.test.ts` already exist here
 and are byte-identical to keeper's (`ebe1577`). batch and treashunt are the ones lagging, on
@@ -232,7 +232,7 @@ the `api` module id:
 Not in the 080 MVP (step 5). Record the pair now so the category lands with two variants rather
 than one — a one-variant category is how `adapter` and `variant` got confused in the first place.
 
-### 8. `portless` dev URLs → **registry `tooling` item**, not a module
+### 8. ~~`portless` dev URLs~~ → **done 2026-10-29 as a registry item, uncommitted**
 
 treashunt's `dev:portless` / `dev:lan:portless` give real local HTTPS hostnames and phone testing
 without an IP. Zero coupling, one devDependency, two scripts.
@@ -243,7 +243,7 @@ tooling module is a conflict by construction. Two correct homes — an `options`
 item: it carries no peers and no variants, and `registry/tooling/registry.json` already exists.
 ([01](./01-consumers.md) says "item"; that is the one to follow.)
 
-### 8b. The nine keeper findings that still exist here → **L**, justified
+### 8b. The nine keeper findings → **7 of 9 done 2026-10-29, uncommitted**
 
 [01](./01-consumers.md) §C checks keeper's 54 fixed findings against this tree. Nine land on
 paths that still exist, each already verified and gated next door. All are on the 080 extraction
@@ -287,7 +287,7 @@ release, and spec 090 requires human changelog entries beside the intentions. ke
 anything is built. Take the gate, adapt the payload: we publish npm + a git tag, not a Docker
 image. Compare against lonestone's release-please setup — [05](./05-lonestone.md).
 
-### 10. `PRODUCT.md` and `CONTEXT.md` skeletons → **T**
+### 10. ~~`PRODUCT.md` and `CONTEXT.md` skeletons~~ → **done 2026-10-29, uncommitted**
 
 batch and keeper both carry `PRODUCT.md`; batch carries `CONTEXT.md` as its domain glossary. A
 generated project needs both as empty skeletons — the platform's own product file is
@@ -332,6 +332,59 @@ one shipped from `templates/base`.
 | Item 8c (manifest version) | a decision, then under an hour either way                                                                        |
 | Items 9–11                 | one PR, gated on the release-tooling choice in [05](./05-lonestone.md)                                           |
 | Next (7 items)             | each rides an 080 extraction step                                                                                |
+
+## Applied on 2026-10-29 — what landed, and what it turned up
+
+Items 5, 6, 8, 10 and seven of 8b's nine rows were applied by three parallel agents.
+`bun run verify` exits **0**. The API suite went 47 → **78 pass across 10 files** (30 at the start
+of the audit); the whole repo is now **110 tests** reachable from `bun run test`, against 57 when
+this folder was written.
+
+**Two premises in this plan were wrong, and the work proved it:**
+
+- **8b#7 (`trustedOrigin` derived at boot) does not apply here.** keeper's SF034 was about
+  `new URL(config.APP_URL).origin` parsed per request in four macros. This repo has no `APP_URL`
+  and no per-request origin parsing — `grep "new URL(config" apps/api/src` returns nothing outside
+  the new `origins.test.ts`. Skipped, correctly. The nearest analogue, `originAllowed` in
+  `lib/origins.ts`, re-normalises its two allow-list entries per call **on purpose**: a test
+  mutates `config.SPA_URL` at runtime and expects the change to take.
+- **8b#6 (`use-session`) was not doing real typing work.** `authClient.useSession()` already
+  infers `session.activeOrganizationId` through `inferAdditionalFields<Auth>()` and
+  `organizationClient`. The cast, the conditional type and the `?? null` were all redundant. The
+  hook is now a three-line pass-through — the thing keeper deleted. Keep or delete is an open call.
+
+**New findings the work surfaced, none of them planned:**
+
+| Finding                                                                                                                                                                                                                                                                                                                                                                                                                      | Why it matters                                                         |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| **`auth:generate` is still destructive.** Moving `medias` out of the generated `db.auth-schema.ts` fixed one case, but `organization.deletedAt` and `organization.settings` are hand-written in that same generated file, and our `organization()` call declares no `schema` or `additionalFields`. A regeneration drops both columns, and `auth.config.ts` and `auth.macro.ts` depend on them. treashunt has the same hole. | The command is documented in `AGENTS.md` as routine                    |
+| `docs/TESTING.md:32` and `:59` still cite `modules/test/db.test.ts` and its old import path                                                                                                                                                                                                                                                                                                                                  | The file moved to `tests/helpers/db.helpers.ts`                        |
+| Uploading with an empty folder, or one containing `..`, now returns **400** where it used to produce keys like `medias//…`                                                                                                                                                                                                                                                                                                   | A behaviour change, not a pure refactor — intended, but it is a change |
+| The POST `INVALID_KEY` → 400 mapping has no test (the route needs auth); the GET one is covered                                                                                                                                                                                                                                                                                                                              | A gap in otherwise mutation-checked work                               |
+| The deduped password compare is still a non-constant-time `===`                                                                                                                                                                                                                                                                                                                                                              | Carried over deliberately; `timingSafeEqual` is a follow-up            |
+| `defaultCookieAttributes` uses `sameSite: "lax"`, which fits the `spa.` / `ssr.` / `api.my-app.com` production hosts but **would break on `*.pages.dev`** (batch's case, which needs `"none"`)                                                                                                                                                                                                                               | A constraint the wrangler hosts now carry                              |
+| The portless registry item's test is run by **nothing** — spec 070 forbids `bun test` from sweeping `registry/`, and the golden projects that should cover it do not exist                                                                                                                                                                                                                                                   | Exactly gap 3 of [06](./06-platform-gaps.md)                           |
+| portless's `ssr` wiring is probably incomplete: `API_URL` is a wrangler var there, which a process env value likely does not override under `@cloudflare/vite-plugin`                                                                                                                                                                                                                                                        | Unverified; the item ships anyway                                      |
+
+**Two things I reverted from the agents' work**, both in [04](./04-deps-plan.md)'s territory:
+
+1. The `portless` devDependency and the two `dev:portless` root scripts. They broke
+   `bun install --frozen-lockfile`, which is what CI runs, and fixing that by running
+   `bun install` would have forced the 94-line lockfile pruning as a side effect of a dev
+   convenience. The registry item — the actual deliverable — stays.
+2. The root scripts pointed at `registry/tooling/portless/dev-portless.ts`. Spec 070 states that
+   `registry/` and `templates/` are **source material, not workspaces**, so the platform repo must
+   not depend on its own registry at runtime.
+
+**One gap I closed myself:** `apps/cli/src/create.ts` substituted `{{DISPLAY_NAME}}` only in
+`package.json`, `README.md` and `AGENTS.md`, so the new `CONTEXT.md` would have shipped the
+literal token into every generated project. It now loops over a list including `PRODUCT.md` and
+`CONTEXT.md`, and tolerates a file an older template lacks.
+
+**Still open in this plan:** item 7 (record the storage r2/s3 variant pair in spec 035),
+item 8b#9 (run keeper's Coverage scan list), item 8c and item 9 (both your decisions), item 11
+(`.claude/settings.json` — I pulled it from the swarm rather than have an agent write a
+permission allowlist), and the `bun.lock` workspace name.
 
 ## Interaction with the Boilerstone harvest
 
