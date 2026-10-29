@@ -123,11 +123,16 @@ Total CLI surface: ~1030 lines across `packages/cli/src` and `packages/{registry
 
 ### Why `doctor` before anything else
 
-`bg add` writes files and records them in `bg.json` with a sha256 per file and a region per patch
-([060](../../specs/060-patches-and-regions.md)). Every guarantee that design buys — revert,
-provider swap, telling a user edit from an upstream change, `remove` at all — depends on being
-able to answer "does the tree still match the record". `doctor` _is_ that answer. Without it,
-`add` is a one-way write and the checksums are decoration.
+Spec 020 v2 gives `bg.json` a `files` map (owner + sha256 per written file) and a `regions` map
+(owner per patched region), and spec 060 builds revert, provider swap, telling a user edit from an
+upstream change, and `remove` on top of them. `doctor` is the command that reads them back.
+
+**Corrected 2026-10-29:** an earlier draft of this file said `add` writes those records and only
+`doctor` was missing. It does not. `git grep -n "sha256\|regions\|createHash" -- packages`
+returns nothing: `apply-plan.ts` writes `installed[name] = { source, version, installedAt }` and
+that is all. So the gap is two commands wide, not one — `add` has to start recording before
+`doctor` has anything to check, and that recording only has a place to go once the manifest is
+v2.
 
 `record` is the smaller half: it closes the intention lifecycle that `intentions lint` already
 validates and that [065](../../specs/065-intentions.md) requires.
@@ -220,19 +225,20 @@ and knip ignore lists, because `vp check` otherwise lints the skills themselves
 
 ## Order and cost
 
-|     | What                                                         | Cost                                                          |
-| --- | ------------------------------------------------------------ | ------------------------------------------------------------- |
-| 1   | `provider` category in spec 035, and the three leaking Notes | one table row and three cells                                 |
-| 2   | Lift the env seam out of `apps/api/src/lib/app.config.ts`    | small, but application code — and the only hard blocker       |
-| 3   | `cloudflare` and `dockerfile` provider modules               | the bulk of it; four categories × two variants                |
-| 4   | `bg.json` v2, to spec 020                                    | schema, plus the migration path 020 already describes         |
-| 5   | `bg doctor`, offline, to spec 050                            | the largest single piece of CLI work left                     |
-| 6   | `bg record`                                                  | small; manifest write                                         |
-| 7   | One golden project fixture                                   | small; `scripts/gen-playground.ts` is most of the scaffolding |
-| 8   | Front layout as a normative line in spec 035                 | one paragraph                                                 |
-| 9   | `docs/RULES.md` §5 Front — Composition First                 | one section, adapted from three repos                         |
-| 10  | `packages/ui` structure                                      | rides 080 step 2                                              |
-| 11  | impeccable                                                   | after the first real screens                                  |
+|     | What                                                          | Cost                                                          |
+| --- | ------------------------------------------------------------- | ------------------------------------------------------------- |
+| 1   | `provider` category in spec 035, and the three leaking Notes  | one table row and three cells                                 |
+| 2   | Lift the env seam out of `apps/api/src/lib/app.config.ts`     | small, but application code — and the only hard blocker       |
+| 3   | `cloudflare` and `dockerfile` provider modules                | the bulk of it; four categories × two variants                |
+| 4   | `bg.json` v2, to spec 020                                     | schema, plus the migration path 020 already describes         |
+| 5   | `add` records `files`, `regions` and `modules` (the v2 shape) | the prerequisite nobody had noticed; see §2                   |
+| 6   | `bg doctor`, offline, to spec 050                             | the largest single piece of CLI work left                     |
+| 7   | `bg record`                                                   | small; manifest write                                         |
+| 8   | One golden project fixture                                    | small; `scripts/gen-playground.ts` is most of the scaffolding |
+| 9   | Front layout as a normative line in spec 035                  | one paragraph                                                 |
+| 10  | `docs/RULES.md` §5 Front — Composition First                  | one section, adapted from three repos                         |
+| 11  | `packages/ui` structure                                       | rides 080 step 2                                              |
+| 12  | impeccable                                                    | after the first real screens                                  |
 
 ## Not doing
 

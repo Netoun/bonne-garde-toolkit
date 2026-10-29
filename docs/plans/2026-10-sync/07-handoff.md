@@ -42,24 +42,44 @@ builds.
 | `bcf680e` | Lifted the runtime env read out of `app.config.ts`                                                           |
 | _this_    | `parseModuleManifest`, the module contract test, and the two provider modules                                |
 
-## Not done, in the order 06 puts them
+## What is left, and in what shape
 
-1. **`packageManager` → 1.4.2.** Above.
-2. **Make `provider/dockerfile` actually run.** Its `Dockerfile` ends in
-   `CMD ["bun", "apps/api/src/index.ts"]`, and that file is `export default { fetch }` behind
-   `CloudflareAdapter` — it never listens. Needs an `api` module whose `dockerfile` variant ships a
-   listening entrypoint. That entrypoint lives in `apps/api/src`, which spec 035 forbids a module
-   to write, so the real first step is a package for the API entrypoint and
-   `lib/runtime-env.ts`.
-3. **`bg.json` v2.** Spec 020 says `version` MUST be `2` and describes the migration (`installed`
-   splits into `items` and `modules`, `capabilities` dropped, `files` and `regions` start empty).
-   `packages/schema/src/project-manifest.ts` writes `version: 1` and the type is literally
-   `version: 1`. Spec and code disagree; `git tag` is empty and there are no consumers, so doing it
-   now costs nothing and after the first tag it needs 020's migration path.
-4. **`bg doctor`**, offline, to spec 050. Until it exists, every sha256 and region `bg add` writes
-   is decoration.
-5. Then `bg record`, one golden project, the front-layout line in 035, `docs/RULES.md` §5,
-   `packages/ui` structure, impeccable.
+**The ordered, per-step plan with acceptance criteria is [08-plan.md](./08-plan.md).** Read it
+before starting anything. What follows is only the shape of it, so this file stands alone.
+
+The remainder is not one line. Two shared prerequisites, then two independent tracks:
+
+|             |                                                                                                                          |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **P1**      | Align the Bun pin to 1.4.2 (four sites). Proven necessary by a failed `docker build`.                                    |
+| **P2**      | Bring `templates/base` up to spec 010, which it breaks in three places.                                                  |
+| **Track A** | Finish the providers: a package for the API entry, then make `provider/dockerfile` run, then verify it before saying so. |
+| **Track B** | `bg.json` v2 → `add` records `files`/`regions`/`modules` → `bg doctor` → `bg record`.                                    |
+| **Then**    | One golden project, which needs both tracks and would have caught most of this session's findings.                       |
+
+Tracks A and B touch different files and can be done in either order, or at the same time.
+
+### Three findings that reshaped the plan on 2026-10-29
+
+**`add` records nothing for `doctor` to read.** Earlier drafts of 06 and of this file said `bg add`
+writes a sha256 per file and a region per patch, and that only `doctor` was missing. That was
+wrong. `git grep -n "sha256\|regions\|createHash" -- packages` returns **nothing**;
+`apply-plan.ts` writes `installed[name] = { source, version, installedAt }` and stops there. Spec
+050's `add` algorithm step 12 is unimplemented, so the gap is two commands wide. That is step B2,
+and it did not exist in the plan before.
+
+**Spec 035 forbids the thing the `api` category needs.** The seam rule says a module MUST NOT write
+module source into `apps/*/src`. Read literally, the app-homed `api` and `web` categories can ship
+nothing at all. The rule's own reason — a module owning files in an app's `src` cannot be swapped —
+points at the fix: amend 035 so an app-homed module MAY write a thin entry under `apps/<id>/src`
+whose only content is an import from its package, and nothing else. One sentence, and it unblocks
+Track A. The recommendation is in 08 step A1.
+
+**`templates/base` breaks three MUSTs of spec 010.** Its `bg.json` is `version: 1` with `installed`
+and `capabilities` where 010 requires `version: 2` with empty `modules`/`items`/`files`/`regions`;
+its `_gitignore` ignores `bg.upgrade/`, a name no spec uses any more (`.bg/` is the scratch root in
+010, 050, 065 and 090); and its `check` script is `echo "no check configured yet"` with no `fmt` or
+`lint` beside it. The golden project is built from this template, so each gap would surface there.
 
 ## Decisions waiting on the user
 
