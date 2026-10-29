@@ -45,8 +45,14 @@ async function assertEmptyTarget(dir: string): Promise<void> {
   }
 }
 
+/** Files an older template may not carry are skipped rather than failing the whole create. */
 async function replaceInFile(path: string, replacements: Record<string, string>): Promise<void> {
-  let content = await readFile(path, "utf8");
+  let content: string;
+  try {
+    content = await readFile(path, "utf8");
+  } catch {
+    return;
+  }
   for (const [from, to] of Object.entries(replacements)) {
     content = content.split(from).join(to);
   }
@@ -83,9 +89,9 @@ export async function createProject(options: CreateOptions): Promise<string> {
     "@acme": scope,
   };
 
-  await replaceInFile(join(target, "package.json"), replacements);
-  await replaceInFile(join(target, "README.md"), replacements);
-  await replaceInFile(join(target, "AGENTS.md"), replacements);
+  for (const file of ["package.json", "README.md", "AGENTS.md", "PRODUCT.md", "CONTEXT.md"]) {
+    await replaceInFile(join(target, file), replacements);
+  }
 
   const platformVersion = platformPackageVersion();
   const manifest = createEmptyProjectManifest({

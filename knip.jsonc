@@ -28,6 +28,7 @@
     },
   },
 
+  "ignore": [".claude/worktrees/**"],
   "ignoreDependencies": ["@types/qrcode", "miniflare", "tsx", "module-alias"],
   "bun": true,
 }
