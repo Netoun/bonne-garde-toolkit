@@ -1,0 +1,25 @@
+{
+  "name": "@bonne-garde/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Workspace package for the Bonne Garde CLI (publish via bun run pack:cli → create-bonne-garde)",
+  "bin": {
+    "bg": "./src/bin.ts",
+    "create-bonne-garde": "./src/create-bin.ts"
+  },
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/bin.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "pack": "bun ../../scripts/pack-cli.ts"
+  },
+  "dependencies": {
+    "@bonne-garde/registry": "workspace:*",
+    "@bonne-garde/schema": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.14",
+    "typescript": "^7.0.2"
+  }
+}

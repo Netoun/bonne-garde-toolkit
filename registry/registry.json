@@ -1,0 +1,12 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "bonne-garde",
+  "homepage": "https://github.com/bonne-garde/boilerplate",
+  "include": [
+    "ui/registry.json",
+    "apps/registry.json",
+    "lib/registry.json",
+    "features/registry.json",
+    "tooling/registry.json"
+  ]
+}

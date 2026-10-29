@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bonne-garde.dev/schema/project.json",
+  "title": "Bonne Garde project manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "scope", "platform", "registries", "installed"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "scope": {
+      "type": "string",
+      "pattern": "^@[a-z0-9-]+$"
+    },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "remote", "intentions"],
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$",
+          "description": "Lockstep platform semver without leading v"
+        },
+        "remote": { "type": "string", "minLength": 1 },
+        "intentions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["applied", "skipped"],
+          "properties": {
+            "applied": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+/[a-z0-9]+(?:-[a-z0-9]+)*$"
+              }
+            },
+            "skipped": {
+              "type": "object",
+              "additionalProperties": { "type": "string", "minLength": 1 },
+              "propertyNames": {
+                "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+/[a-z0-9]+(?:-[a-z0-9]+)*$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "registries": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "installed": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source", "version", "installedAt"],
+        "properties": {
+          "source": { "type": "string", "minLength": 1 },
+          "version": { "type": "string", "minLength": 1 },
+          "installedAt": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

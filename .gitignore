@@ -6,6 +6,12 @@ dist/
 .react-router/
 build/
 .cache/
+
+# Generated consumer smoke project
+/playground/
+
+# npm pack output
+/dist/npm/
 /public/build
 /public/uploads
 

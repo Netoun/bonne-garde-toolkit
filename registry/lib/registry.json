@@ -1,0 +1,54 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "items": [
+    {
+      "name": "config",
+      "type": "registry:lib",
+      "title": "Config / branding",
+      "description": "Shared branding types and generated constants package.",
+      "files": [
+        {
+          "path": "config/package.json",
+          "type": "registry:file",
+          "target": "packages/config/package.json"
+        },
+        {
+          "path": "config/tsconfig.json",
+          "type": "registry:file",
+          "target": "packages/config/tsconfig.json"
+        },
+        {
+          "path": "config/branding.json",
+          "type": "registry:file",
+          "target": "branding.json"
+        },
+        {
+          "path": "config/src/branding.types.ts",
+          "type": "registry:lib",
+          "target": "packages/config/src/branding.types.ts"
+        },
+        {
+          "path": "config/src/gen-branding.ts",
+          "type": "registry:lib",
+          "target": "packages/config/src/gen-branding.ts"
+        },
+        {
+          "path": "config/src/branding.generated.ts",
+          "type": "registry:lib",
+          "target": "packages/config/src/branding.generated.ts"
+        },
+        {
+          "path": "config/src/index.ts",
+          "type": "registry:lib",
+          "target": "packages/config/src/index.ts"
+        }
+      ],
+      "meta": {
+        "bg": {
+          "provides": ["config"],
+          "transforms": ["workspace:packages/config"]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "scope": "@acme",
+  "platform": {
+    "version": "0.0.0",
+    "remote": "github:Netoun/bonne-garde-boilerplate",
+    "intentions": {
+      "applied": [],
+      "skipped": {}
+    }
+  },
+  "registries": {
+    "@bg": "local:./registry"
+  },
+  "installed": {},
+  "capabilities": []
+}

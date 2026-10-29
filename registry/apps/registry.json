@@ -1,0 +1,80 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "items": [
+    {
+      "name": "api-elysia",
+      "type": "registry:block",
+      "title": "Elysia API",
+      "description": "Minimal Cloudflare Workers API shell with Elysia health route.",
+      "dependencies": ["elysia@1.4.29"],
+      "devDependencies": ["wrangler@4.76.0", "@cloudflare/workers-types@4.20260317.1"],
+      "files": [
+        {
+          "path": "api-elysia/package.json",
+          "type": "registry:file",
+          "target": "apps/api/package.json"
+        },
+        {
+          "path": "api-elysia/tsconfig.json",
+          "type": "registry:file",
+          "target": "apps/api/tsconfig.json"
+        },
+        {
+          "path": "api-elysia/wrangler.jsonc",
+          "type": "registry:file",
+          "target": "apps/api/wrangler.jsonc"
+        },
+        {
+          "path": "api-elysia/src/app.ts",
+          "type": "registry:file",
+          "target": "apps/api/src/app.ts"
+        },
+        {
+          "path": "api-elysia/src/index.ts",
+          "type": "registry:file",
+          "target": "apps/api/src/index.ts"
+        },
+        {
+          "path": "api-elysia/src/app.test.ts",
+          "type": "registry:file",
+          "target": "apps/api/src/app.test.ts"
+        }
+      ],
+      "meta": {
+        "bg": {
+          "provides": ["api"],
+          "transforms": ["workspace:apps/api"]
+        }
+      }
+    },
+    {
+      "name": "spa-react-router",
+      "type": "registry:block",
+      "title": "SPA shell",
+      "description": "Minimal SPA workspace placeholder for React Router backoffice.",
+      "files": [
+        {
+          "path": "spa-react-router/package.json",
+          "type": "registry:file",
+          "target": "apps/spa/package.json"
+        },
+        {
+          "path": "spa-react-router/tsconfig.json",
+          "type": "registry:file",
+          "target": "apps/spa/tsconfig.json"
+        },
+        {
+          "path": "spa-react-router/src/placeholder.ts",
+          "type": "registry:file",
+          "target": "apps/spa/src/placeholder.ts"
+        }
+      ],
+      "meta": {
+        "bg": {
+          "provides": ["spa"],
+          "transforms": ["workspace:apps/spa"]
+        }
+      }
+    }
+  ]
+}

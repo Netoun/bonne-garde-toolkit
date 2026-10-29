@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "strict": true,
+    "jsx": "react-jsx",
+    "skipLibCheck": true,
+    "noEmit": true,
+    "paths": {
+      "@acme/spa/*": ["./src/*"],
+      "@acme/config": ["../../packages/config/src/index.ts"]
+    },
+    "rootDirs": [".", "./.react-router/types"]
+  },
+  "include": ["src/**/*", ".react-router/types/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

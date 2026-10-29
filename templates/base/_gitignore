@@ -1,0 +1,11 @@
+node_modules
+dist
+build
+.wrangler
+.dev.vars
+.env
+.DS_Store
+*.log
+.turbo
+.acme-init.json
+bg.upgrade/

@@ -1,0 +1,98 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "items": [
+    {
+      "name": "utils",
+      "type": "registry:lib",
+      "title": "Utils",
+      "description": "cn() helper for className merging.",
+      "dependencies": ["clsx", "tailwind-merge"],
+      "files": [
+        {
+          "path": "package.json",
+          "type": "registry:file",
+          "target": "packages/ui/package.json"
+        },
+        {
+          "path": "tsconfig.json",
+          "type": "registry:file",
+          "target": "packages/ui/tsconfig.json"
+        },
+        {
+          "path": "utils.ts",
+          "type": "registry:lib",
+          "target": "packages/ui/src/lib/utils.ts"
+        }
+      ],
+      "meta": {
+        "bg": {
+          "provides": ["ui-utils"],
+          "transforms": ["workspace:packages/ui"]
+        }
+      }
+    },
+    {
+      "name": "button",
+      "type": "registry:ui",
+      "title": "Button",
+      "description": "Primary button component.",
+      "dependencies": ["class-variance-authority", "react"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "button.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/button.tsx"
+        }
+      ],
+      "meta": {
+        "bg": {
+          "provides": ["ui"],
+          "requires": ["ui-utils"]
+        }
+      }
+    },
+    {
+      "name": "badge",
+      "type": "registry:ui",
+      "title": "Badge",
+      "description": "Status badge component.",
+      "dependencies": ["class-variance-authority", "react"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "badge.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/badge.tsx"
+        }
+      ],
+      "meta": {
+        "bg": {
+          "provides": ["ui"],
+          "requires": ["ui-utils"]
+        }
+      }
+    },
+    {
+      "name": "card",
+      "type": "registry:ui",
+      "title": "Card",
+      "description": "Card layout primitives.",
+      "dependencies": ["react"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "card.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/card.tsx"
+        }
+      ],
+      "meta": {
+        "bg": {
+          "provides": ["ui"],
+          "requires": ["ui-utils"]
+        }
+      }
+    }
+  ]
+}
