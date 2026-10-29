@@ -1,8 +1,7 @@
 import { Elysia } from "elysia";
 import { config } from "@acme/api/lib/app.config";
-import { authService } from "./auth.service";
+import { authInstance, authService } from "./auth.service";
 import { AuthMacro } from "./auth.macro";
-import { createAuth } from "./auth.config";
 import { dbService } from "@acme/api/modules/db/db.service";
 
 function withCors(req: Request, response: Response): Response {
@@ -26,5 +25,5 @@ export const authModule = new Elysia({ name: "auth.module" })
     if (req.method === "OPTIONS") {
       return withCors(req, new Response(null, { status: 204 }));
     }
-    return withCors(req, await createAuth().handler(req));
+    return withCors(req, await authInstance.handler(req));
   });
