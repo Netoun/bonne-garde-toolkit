@@ -9,10 +9,12 @@ let workersEnv: Record<string, unknown> = {};
 try {
   // Try to import from cloudflare:workers (only available in Workers runtime)
   const cloudflare = await import("cloudflare:workers");
-  workersEnv = cloudflare.env as Record<string, unknown>;
+  workersEnv = { ...cloudflare.env };
 } catch {
-  // In test environment, use process.env or globalThis
-  workersEnv = (process.env as Record<string, unknown>) || {};
+  // In test environment, use process.env or globalThis.
+  // Both branches copy: `Default()` and the test defaults below write into this
+  // object, and writing into `process.env` would coerce values back to strings.
+  workersEnv = { ...process.env };
 }
 
 const isTest = process.env.NODE_ENV === "test";

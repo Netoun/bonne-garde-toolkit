@@ -1,5 +1,4 @@
 import { betterAuth } from "better-auth";
-import { scrypt, randomBytes } from "node:crypto";
 import { organization } from "better-auth/plugins";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { eq, and, isNull } from "drizzle-orm";
@@ -14,6 +13,7 @@ import { VerifyEmailEmail, ResetPasswordEmail } from "@acme/emails";
 import { config } from "@acme/api/lib/app.config";
 import { allowedOrigins } from "@acme/api/lib/origins";
 import { logger } from "@acme/api/lib/logger";
+import { hashPassword, verifyPassword } from "@acme/api/lib/crypto/password";
 
 function generateSlug(name: string): string {
   const base = name
@@ -24,29 +24,11 @@ function generateSlug(name: string): string {
   return `${base}-${suffix}`;
 }
 
-function hashPassword(password: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const salt = randomBytes(16).toString("hex");
-    scrypt(password, salt, 64, (err, derived) => {
-      if (err) reject(err);
-      else resolve(`${salt}:${derived.toString("hex")}`);
-    });
-  });
-}
-
-function verifyPassword(password: string, hash: string): Promise<boolean> {
-  return new Promise((resolve, reject) => {
-    const [salt, key] = hash.split(":");
-    scrypt(password, salt, 64, (err, derived) => {
-      if (err) reject(err);
-      else resolve(derived.toString("hex") === key);
-    });
-  });
-}
-
 export function createAuth() {
   const db = createDB(config.DB);
   const resend = createResendClient(config.RESEND_API_KEY);
+  // `https` in production, plain `http` on localhost, where a Secure cookie would be dropped.
+  const secureCookies = config.API_URL.startsWith("https://");
 
   return betterAuth({
     database: drizzleAdapter(db, {
@@ -57,6 +39,23 @@ export function createAuth() {
     baseURL: config.API_URL,
     basePath: "/auth",
     trustedOrigins: allowedOrigins(),
+    // Explicit on purpose: every value below equals Better Auth's production default for this
+    // baseURL, written out so that a default change upstream cannot weaken auth silently.
+    advanced: {
+      useSecureCookies: secureCookies,
+      disableCSRFCheck: false,
+      // Better Auth turns the origin check off under NODE_ENV=test when this is unset.
+      // Setting it keeps the tests running with the same protection as production.
+      disableOriginCheck: false,
+      // `sameSite: "lax"` holds while the fronts and the API share a registrable domain
+      // (`spa.`, `ssr.`, `api.` on one apex, or localhost). Fronts on another site
+      // (e.g. `*.pages.dev` against the API) need `sameSite: "none"` with `secure: true`.
+      defaultCookieAttributes: {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: secureCookies,
+      },
+    },
     session: {
       expiresIn: 60 * 60 * 24 * 7, // 7 days
     },

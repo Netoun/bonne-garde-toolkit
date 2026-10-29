@@ -148,27 +148,6 @@ export const invitation = sqliteTable(
   ],
 );
 
-const createdAtMs = () =>
-  integer("created_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-    .notNull();
-
-export const medias = sqliteTable("medias", {
-  id: text("id")
-    .$defaultFn(() => crypto.randomUUID())
-    .primaryKey(),
-  name: text("name").notNull(),
-  url: text("url").notNull(),
-  key: text("key").notNull(),
-  size: integer("size").notNull(),
-  mimeType: text("mime_type").notNull(),
-  authorId: text("author_id").references(() => user.id),
-  organizationId: text("organization_id").references(() => organization.id, {
-    onDelete: "cascade",
-  }),
-  createdAt: createdAtMs(),
-});
-
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
@@ -217,14 +196,6 @@ export const invitationRelations = relations(invitation, ({ one }) => ({
   }),
 }));
 
-export const mediasRelations = relations(medias, ({ one }) => ({
-  author: one(user, { fields: [medias.authorId], references: [user.id] }),
-  organization: one(organization, {
-    fields: [medias.organizationId],
-    references: [organization.id],
-  }),
-}));
-
 export const authSchema = {
   user,
   session,
@@ -239,6 +210,4 @@ export const authSchema = {
   organizationRelations,
   memberRelations,
   invitationRelations,
-  medias,
-  mediasRelations,
 };

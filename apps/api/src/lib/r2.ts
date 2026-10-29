@@ -29,6 +29,7 @@ export class R2Error extends Error {
     message: string,
     public readonly code:
       | "INVALID_FILE_TYPE"
+      | "INVALID_KEY"
       | "FILE_TOO_LARGE"
       | "R2_UPLOAD_FAILED"
       | "R2_DELETE_FAILED"
@@ -58,6 +59,21 @@ export function validateFile(file: File): void {
   }
 }
 
+/**
+ * Rejects keys that a public URL could not address safely: empty, `.` / `..` or empty
+ * segments, backslashes and control characters. R2 keys are flat, but a `..` segment
+ * is collapsed by any URL parser, so such an object could never be fetched back.
+ */
+export function validateKey(key: string): void {
+  if (
+    !key ||
+    /[\\\0-\x1F\x7F]/.test(key) || // eslint-disable-line no-control-regex
+    key.split("/").some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    throw new R2Error("Invalid media key", "INVALID_KEY");
+  }
+}
+
 export function generateKey(folder: string, filename: string): string {
   const sanitizedFolder = folder.replace(/^\/+|\/+$/g, "");
   const uuid = crypto.randomUUID();
@@ -69,16 +85,31 @@ export function generateKey(folder: string, filename: string): string {
     .replace(/\.{2,}/g, "_") // Directory traversal attempts
     .replace(/[\0-\x1F\x7F]/g, ""); // eslint-disable-line no-control-regex
 
-  return `medias/${sanitizedFolder}/${uuid}-${sanitizedFilename}`;
+  const key = `medias/${sanitizedFolder}/${uuid}-${sanitizedFilename}`;
+  // The filename is sanitized above; only the caller-supplied folder can still be invalid.
+  validateKey(key);
+  return key;
 }
 
+/** Public URL of an object. Each path segment is encoded so `#`, `?`, `%` and spaces in a filename stay in the path. */
+export function publicUrlFor(publicUrl: string, key: string): string {
+  const encodedKey = key.split("/").map(encodeURIComponent).join("/");
+  return `${publicUrl}/${encodedKey}`;
+}
+
+/** Inverse of `publicUrlFor`: the decoded key, or `null` for a foreign url or a malformed percent escape. */
 export function extractKeyFromUrl(url: string, publicUrl: string): string | null {
   const normalizedPublicUrl = publicUrl.replace(/\/+$/, "");
   if (!url.startsWith(normalizedPublicUrl)) {
     return null;
   }
   const path = url.slice(normalizedPublicUrl.length);
-  return path.startsWith("/") ? path.slice(1) : path;
+  const encodedKey = path.startsWith("/") ? path.slice(1) : path;
+  try {
+    return encodedKey.split("/").map(decodeURIComponent).join("/");
+  } catch {
+    return null;
+  }
 }
 
 export async function uploadToR2(
@@ -105,7 +136,7 @@ export async function uploadToR2(
     );
   }
 
-  const url = `${publicUrl}/${key}`;
+  const url = publicUrlFor(publicUrl, key);
 
   return { key, url };
 }

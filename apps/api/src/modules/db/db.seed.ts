@@ -1,14 +1,4 @@
-import { scrypt, randomBytes } from "node:crypto";
-
-function hashPassword(password: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const salt = randomBytes(16).toString("hex");
-    scrypt(password, salt, 64, (err, derived) => {
-      if (err) reject(err);
-      else resolve(`${salt}:${derived.toString("hex")}`);
-    });
-  });
-}
+import { hashPassword } from "@acme/api/lib/crypto/password";
 
 const ADMIN_EMAIL = "admin@example.local";
 const ADMIN_PASSWORD = "password123";
