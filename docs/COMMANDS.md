@@ -13,12 +13,12 @@
 
 | Script               | Command                                                                                                                    |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `bg`                 | `bun apps/cli/src/bin.ts`                                                                                                  |
+| `bg`                 | `bun packages/cli/src/bin.ts`                                                                                              |
 | `brand`              | `bun scripts/brand.ts`                                                                                                     |
 | `build`              | `bun run --parallel --filter '*' build`                                                                                    |
 | `check`              | `vp check`                                                                                                                 |
 | `check:legacy`       | `vp check apps/api apps/spa apps/ssr apps/static packages/config packages/emails packages/ui`                              |
-| `check:platform`     | `vp check apps/cli packages/registry packages/schema scripts`                                                              |
+| `check:platform`     | `vp check packages/cli packages/registry packages/schema scripts`                                                          |
 | `dev`                | `bun run --parallel --filter '*' dev`                                                                                      |
 | `fmt`                | `vp fmt --write`                                                                                                           |
 | `fmt:check`          | `vp fmt --check`                                                                                                           |
@@ -27,7 +27,7 @@
 | `gen:commands`       | `bun scripts/gen-commands.ts`                                                                                              |
 | `gen:playground`     | `bun scripts/gen-playground.ts`                                                                                            |
 | `init`               | `bun scripts/init.ts`                                                                                                      |
-| `intentions:lint`    | `bun apps/cli/src/bin.ts intentions lint`                                                                                  |
+| `intentions:lint`    | `bun packages/cli/src/bin.ts intentions lint`                                                                              |
 | `knip`               | `knip`                                                                                                                     |
 | `knip:fix`           | `knip --fix --allow-remove-files`                                                                                          |
 | `lint`               | `vp lint`                                                                                                                  |
@@ -76,19 +76,6 @@
 
 ---
 
-### apps/cli
-
-`@bonne-garde/cli` · From root: `bun run --filter @bonne-garde/cli <script>` · or from `apps/cli/`: `bun run <script>`
-
-| Script      | Command                         |
-| ----------- | ------------------------------- |
-| `pack`      | `bun ../../scripts/pack-cli.ts` |
-| `start`     | `bun run src/bin.ts`            |
-| `test`      | `bun test`                      |
-| `typecheck` | `tsc --noEmit`                  |
-
----
-
 ### apps/spa
 
 `@acme/spa` · From root: `bun run --filter @acme/spa <script>` · or from `apps/spa/`: `bun run <script>`
@@ -134,6 +121,19 @@
 | `test`         | `vp test`                            |
 | `test:watch`   | `vp test watch`                      |
 | `typecheck`    | `tsc --noEmit`                       |
+
+---
+
+### packages/cli
+
+`@bonne-garde/cli` · From root: `bun run --filter @bonne-garde/cli <script>` · or from `packages/cli/`: `bun run <script>`
+
+| Script      | Command                         |
+| ----------- | ------------------------------- |
+| `pack`      | `bun ../../scripts/pack-cli.ts` |
+| `start`     | `bun run src/bin.ts`            |
+| `test`      | `bun test`                      |
+| `typecheck` | `tsc --noEmit`                  |
 
 ---
 

@@ -51,7 +51,7 @@ async function rewriteFileImports(filePath: string): Promise<void> {
 await rm(OUT, { recursive: true, force: true });
 await mkdir(OUT, { recursive: true });
 
-await cp(join(ROOT, "apps/cli/src"), join(OUT, "src"), { recursive: true });
+await cp(join(ROOT, "packages/cli/src"), join(OUT, "src"), { recursive: true });
 await cp(join(ROOT, "packages/schema/src"), join(OUT, "lib/schema"), {
   recursive: true,
 });
@@ -101,7 +101,7 @@ const pkg = {
   repository: {
     type: "git",
     url: "git+https://github.com/Netoun/bonne-garde-toolkit.git",
-    directory: "apps/cli",
+    directory: "packages/cli",
   },
   bugs: {
     url: "https://github.com/Netoun/bonne-garde-toolkit/issues",

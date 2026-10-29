@@ -16,7 +16,7 @@
 
 ## Project overview
 
-**Platform direction:** Bonne Garde is becoming a shadcn-inspired toolkit — empty base template (`templates/base`) + CLI (`apps/cli`, bin `bg`) + open registry (`registry/`) for UI and full-stack modules. Normative specs live in [`docs/specs/`](./docs/specs/README.md).
+**Platform direction:** Bonne Garde is becoming a shadcn-inspired toolkit — empty base template (`templates/base`) + CLI (`packages/cli`, bin `bg`) + open registry (`registry/`) for UI and full-stack modules. Normative specs live in [`docs/specs/`](./docs/specs/README.md).
 
 **Legacy app (still in-tree during migration):** Bun monorepo for Cloudflare — Elysia API (Workers) + Drizzle/D1 + Better-auth + React Router v8 (SPA / SSR / static) + shadcn/ui + R2 + Resend. Toolchain: Vite+.
 

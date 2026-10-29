@@ -4,9 +4,9 @@
  */
 import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { addItems } from "../apps/cli/src/add";
-import { createProject } from "../apps/cli/src/create";
-import { findRepoRoot } from "../apps/cli/src/paths";
+import { addItems } from "../packages/cli/src/add";
+import { createProject } from "../packages/cli/src/create";
+import { findRepoRoot } from "../packages/cli/src/paths";
 
 const ROOT = findRepoRoot();
 if (!ROOT) {

@@ -36,7 +36,7 @@ Bins: `create-bonne-garde`, `bg`. Templates are embedded; default registry when 
 ## Structure plateforme
 
 ```
-apps/cli/              # @bonne-garde/cli (bins: bg, create-bonne-garde)
+packages/cli/          # @bonne-garde/cli (bins: bg, create-bonne-garde)
 packages/schema/       # bg.json validation
 packages/registry/     # load / plan / apply
 templates/base/        # empty monorepo template

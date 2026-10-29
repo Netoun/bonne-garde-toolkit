@@ -25,11 +25,11 @@ Every test file MUST be reachable from `bun run test`. Two failure modes are for
 
 While the legacy monorepo remains in-tree ([080](./080-existing-code-migration.md)), verification MUST be split so platform work is not held hostage:
 
-| Script                                                    | Scope                                                |
-| --------------------------------------------------------- | ---------------------------------------------------- |
-| `typecheck:platform` / `test:platform` / `check:platform` | `apps/cli`, `packages/*` of the platform, `scripts/` |
-| `typecheck:legacy` / `test:legacy` / `check:legacy`       | Legacy apps and packages pending extraction          |
-| `typecheck` / `test` / `check`                            | Both, for local use                                  |
+| Script                                                    | Scope                                        |
+| --------------------------------------------------------- | -------------------------------------------- |
+| `typecheck:platform` / `test:platform` / `check:platform` | `packages/{cli,registry,schema}`, `scripts/` |
+| `typecheck:legacy` / `test:legacy` / `check:legacy`       | Legacy apps and packages pending extraction  |
+| `typecheck` / `test` / `check`                            | Both, for local use                          |
 
 CI MUST run them as independent jobs. A legacy failure MUST NOT block a platform change, and vice versa.
 

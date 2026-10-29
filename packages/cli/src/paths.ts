@@ -16,7 +16,7 @@ function readPackageName(dir: string): string | null {
   }
 }
 
-/** Directory that contains this CLI package.json (apps/cli or packed tarball root). */
+/** Directory that contains this CLI package.json (packages/cli or packed tarball root). */
 export function packageRoot(from = HERE): string {
   let current = from;
   for (;;) {
