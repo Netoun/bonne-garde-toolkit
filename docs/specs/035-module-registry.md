@@ -10,27 +10,33 @@ The shadcn schema stays for UI items ([030](./030-ui-registry.md)). It cannot ex
 
 A module fills exactly one category. The category carries **cardinality** and **home**; nothing else declares conflicts.
 
-| id         | cardinality | home                        | Notes                         |
-| ---------- | ----------- | --------------------------- | ----------------------------- |
-| `tooling`  | one         | repo                        | fmt / lint / check / hooks    |
-| `api`      | one         | app `apps/api`              | Elysia Worker shell           |
-| `db`       | one         | package `packages/db`       | D1 binding + client           |
-| `orm`      | one         | package `packages/db`       | Shares the `db` directory     |
-| `auth`     | one         | package `packages/auth`     |                               |
-| `ui`       | one         | package `packages/ui`       | Host package for shadcn items |
-| `email`    | one         | package `packages/email`    |                               |
-| `queue`    | one         | package `packages/queue`    |                               |
-| `storage`  | one         | package `packages/storage`  |                               |
-| `payments` | one         | package `packages/payments` |                               |
-| `web`      | many        | app `apps/<id>`             | SPA / SSR / static shells     |
-| `testing`  | many        | app                         |                               |
-| `deploy`   | many        | repo                        | wrangler / CI                 |
+| id         | cardinality | home                        | Notes                                                                          |
+| ---------- | ----------- | --------------------------- | ------------------------------------------------------------------------------ |
+| `provider` | one         | repo                        | Runtime and deploy target; the peer every runtime-touching category matches on |
+| `tooling`  | one         | repo                        | fmt / lint / check / hooks                                                     |
+| `api`      | one         | app `apps/api`              | Elysia app shell                                                               |
+| `db`       | one         | package `packages/db`       | Binding + client; provider-matched                                             |
+| `orm`      | one         | package `packages/db`       | Shares the `db` directory                                                      |
+| `auth`     | one         | package `packages/auth`     |                                                                                |
+| `ui`       | one         | package `packages/ui`       | Host package for shadcn items                                                  |
+| `email`    | one         | package `packages/email`    |                                                                                |
+| `queue`    | one         | package `packages/queue`    |                                                                                |
+| `storage`  | one         | package `packages/storage`  |                                                                                |
+| `payments` | one         | package `packages/payments` |                                                                                |
+| `web`      | many        | app `apps/<id>`             | SPA / SSR / static shells                                                      |
+| `testing`  | many        | app                         |                                                                                |
+| `deploy`   | many        | repo                        | CI / deploy pipeline                                                           |
 
 **Rules:**
 
 - Order is topological: a category appears after every category it may peer on; `many` categories come last.
+- `provider` is first: it peers on nothing, and `api`, `db`, `storage` and `deploy` MUST declare
+  `peers.provider` and ship one variant per provider they support. A category's `home` and
+  cardinality are provider-independent; only variant payloads differ.
+- A category Note MUST NOT name a provider's technology. `D1`, `R2`, `wrangler` and `Worker`
+  belong to a provider module, not to the category that a provider fills.
 - `cardinality: one` means at most one installed module per category (per app for app-homed categories). A second one is a **conflict by construction** — no `conflicts` field exists.
-- `home` fixes where the module's code lands. Swapping a provider replaces the contents of that package; application code is never touched.
+- `home` fixes where the module's code lands. Swapping a provider replaces the contents of that package; application code is never touched. This holds for a project composed of modules. Code that predates its module — a runtime-provided import such as `cloudflare:workers` sitting in application code — breaks the swap at build time and MUST be lifted into a package before the provider modules ship ([080](./080-existing-code-migration.md)).
 
 ## Package-dedicated seam (normative)
 
