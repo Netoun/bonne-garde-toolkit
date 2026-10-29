@@ -1,0 +1,22 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "dockerfile",
+  "category": "provider",
+  "version": "0.1.0",
+  "title": "Dockerfile",
+  "description": "One Bun container serving the API and the built SPA from a single origin, with a data volume.",
+  "peers": {},
+  "variants": [
+    {
+      "key": "default",
+      "match": {},
+      "copy": ["Dockerfile", ".dockerignore", "compose.yaml"],
+      "env": [
+        { "name": "PORT", "required": false, "example": "5172" },
+        { "name": "DATA_DIR", "required": false, "example": "/data" },
+        { "name": "APP_URL", "required": true, "example": "http://localhost:5172" },
+        { "name": "BETTER_AUTH_SECRET", "required": false, "example": "" }
+      ]
+    }
+  ]
+}

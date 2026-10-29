@@ -13,6 +13,7 @@ committed, the rest uncommitted. `bun run verify` exits 0; the repo went from 57
 | [03-backport-plan.md](./03-backport-plan.md)       | The backport plan, each item routed to a tier (root / template / module / patch / intention)                                                         |
 | [04-deps-plan.md](./04-deps-plan.md)               | Dependency plan in five PRs, Elysia 2 verdict included                                                                                               |
 | [05-lonestone.md](./05-lonestone.md)               | Boilerstone harvest — the field lessons, not the design                                                                                              |
+| [07-handoff.md](./07-handoff.md)                   | Where to pick up: branch state, the ordered remainder, what is already settled                                                                       |
 | [06-platform-gaps.md](./06-platform-gaps.md)       | What the backport framing missed: white-label providers (`cloudflare` / `dockerfile`), the CLI, the front layout decision, `packages/ui`, impeccable |
 
 ## Verdicts up front

@@ -1,0 +1,55 @@
+{
+  "name": "my-app-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "my-app-db",
+      "database_id": "287cafb2-f6e7-4f57-a06f-38005390a06f",
+      "migrations_dir": "./src/modules/db/migrations",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "my-app-media",
+    },
+  ],
+  "vars": {
+    "API_URL": "http://localhost:5172",
+    "R2_PUBLIC_URL": "http://localhost:5172/v1/media/file",
+    "SPA_URL": "http://localhost:5173",
+    "SSR_URL": "http://localhost:5174",
+  },
+  "env": {
+    "production": {
+      "name": "my-app-api",
+      "routes": [{ "pattern": "api.my-app.com", "custom_domain": true }],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "my-app-db",
+          "database_id": "287cafb2-f6e7-4f57-a06f-38005390a06f",
+          "migrations_dir": "./src/modules/db/migrations",
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "BUCKET",
+          "bucket_name": "my-app-media",
+        },
+      ],
+      "vars": {
+        "API_URL": "https://api.my-app.com",
+        "R2_PUBLIC_URL": "https://api.my-app.com/v1/media/file",
+        "SPA_URL": "https://spa.my-app.com",
+        "SSR_URL": "https://ssr.my-app.com",
+      },
+      // Secrets to configure via `wrangler secret put`:
+      // - BETTER_AUTH_SECRET
+      // - RESEND_API_KEY
+    },
+  },
+}
