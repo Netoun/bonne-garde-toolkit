@@ -1,12 +1,7 @@
 import { cp, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { createEmptyProjectManifest } from "@bonne-garde/schema";
-import {
-  DEFAULT_PLATFORM_REMOTE,
-  defaultRegistrySource,
-  platformPackageVersion,
-  templateBaseDir,
-} from "./paths";
+import { createEmptyProjectManifest, DEFAULT_PLATFORM_REMOTE } from "@bonne-garde/schema";
+import { defaultRegistrySource, platformPackageVersion, templateBaseDir } from "./paths";
 
 export type CreateOptions = {
   name: string;

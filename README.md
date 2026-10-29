@@ -1,6 +1,6 @@
 # Bonne Garde
 
-Plateforme **shadcn-like** pour boilerplate Cloudflare/Bun : socle vide + CLI `bg` + registry (UI + features).
+Boîte à outils **shadcn-like** pour applications Cloudflare/Bun : socle vide + CLI `bg` + registry (UI + features). Pas un boilerplate à cloner — tout passe par le CLI.
 
 Ce dépôt contient encore le monorepo applicatif historique (`apps/api`, `apps/spa`, …) pendant la migration vers des items de registry. La cible produit est :
 
@@ -31,7 +31,7 @@ bun run pack:cli
 bun publish --cwd dist/npm/create-bonne-garde
 ```
 
-Bins: `create-bonne-garde`, `bg`. Templates are embedded; default registry when not in this monorepo is `github:Netoun/bonne-garde-boilerplate`.
+Bins: `create-bonne-garde`, `bg`. Templates are embedded; default registry when not in this monorepo is `github:Netoun/bonne-garde-toolkit`.
 
 ## Structure plateforme
 

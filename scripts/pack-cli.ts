@@ -100,13 +100,13 @@ const pkg = {
   license: "MIT",
   repository: {
     type: "git",
-    url: "git+https://github.com/Netoun/bonne-garde-boilerplate.git",
+    url: "git+https://github.com/Netoun/bonne-garde-toolkit.git",
     directory: "apps/cli",
   },
   bugs: {
-    url: "https://github.com/Netoun/bonne-garde-boilerplate/issues",
+    url: "https://github.com/Netoun/bonne-garde-toolkit/issues",
   },
-  homepage: "https://github.com/Netoun/bonne-garde-boilerplate#readme",
+  homepage: "https://github.com/Netoun/bonne-garde-toolkit#readme",
   keywords: [
     "bonne-garde",
     "boilerplate",
@@ -152,7 +152,7 @@ bunx create-bonne-garde my-app --yes
 
 \`\`\`bash
 cd my-app
-bunx bg add api-elysia button --source github:Netoun/bonne-garde-boilerplate
+bunx bg add api-elysia button --source github:Netoun/bonne-garde-toolkit
 \`\`\`
 
 Requires [Bun](https://bun.sh).

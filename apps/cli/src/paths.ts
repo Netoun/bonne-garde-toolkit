@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_PLATFORM_REMOTE } from "@bonne-garde/schema";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -65,8 +66,6 @@ export function templateBaseDir(): string {
   }
   throw new Error("templates/base not found — reinstall create-bonne-garde");
 }
-
-export const DEFAULT_PLATFORM_REMOTE = "github:Netoun/bonne-garde-boilerplate";
 
 /** Lockstep platform version from the CLI package (no leading `v`). */
 export function platformPackageVersion(from = HERE): string {

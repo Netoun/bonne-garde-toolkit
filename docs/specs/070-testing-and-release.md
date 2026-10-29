@@ -75,7 +75,7 @@ Pipeline shape:
 - CLI published to npm as **`create-bonne-garde`** via `bun run pack:cli` then `bun publish --cwd dist/npm/create-bonne-garde`.
 - `bun create bonne-garde@latest` resolves that package; bins include `create-bonne-garde` and `bg`.
 - The published tarball MUST embed `templates/base` and vendor schema/registry (no `workspace:` deps).
-- Registry items pinable by git tag/commit for remote installs (`github:Netoun/bonne-garde-boilerplate`).
+- Registry items pinable by git tag/commit for remote installs (`github:Netoun/bonne-garde-toolkit`).
 - Dry-run: `bun run publish:cli:dry`.
 
 ## Acceptance

@@ -23,7 +23,7 @@ Extend the manifest ([020](./020-project-manifest.md)) with platform upgrade fie
   "version": 1,
   "platform": {
     "version": "0.2.0",
-    "remote": "github:Netoun/bonne-garde-boilerplate",
+    "remote": "github:Netoun/bonne-garde-toolkit",
     "intentions": {
       "applied": ["v0.2.0/align-bun-pin"],
       "skipped": {

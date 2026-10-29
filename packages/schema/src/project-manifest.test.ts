@@ -11,11 +11,11 @@ describe("parseProjectManifest", () => {
       scope: "@acme",
       registries: { "@bg": "local:./registry" },
       platformVersion: "0.1.0",
-      platformRemote: "github:Netoun/bonne-garde-boilerplate",
+      platformRemote: "github:Netoun/bonne-garde-toolkit",
     });
     expect(manifest.platform).toEqual({
       version: "0.1.0",
-      remote: "github:Netoun/bonne-garde-boilerplate",
+      remote: "github:Netoun/bonne-garde-toolkit",
       intentions: { applied: [], skipped: {} },
     });
     expect(parseProjectManifest(manifest)).toEqual(manifest);

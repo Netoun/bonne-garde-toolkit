@@ -2,7 +2,7 @@
 
 ## Objective
 
-Bonne Garde is a single-repo platform that vendors a full-stack Cloudflare/Bun boilerplate as composable pieces:
+Bonne Garde is a single-repo platform that vendors a full-stack Cloudflare/Bun application stack as composable pieces:
 
 1. an empty base monorepo;
 2. a CLI that creates projects and composes modules later;

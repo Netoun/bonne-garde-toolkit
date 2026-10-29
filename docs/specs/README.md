@@ -1,6 +1,6 @@
 # Specs — Bonne Garde platform
 
-Normative specs for the composable full-stack boilerplate platform.
+Normative specs for the composable full-stack application platform.
 
 | Spec                                                               | Topic                                                                    |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------ |

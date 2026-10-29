@@ -13,10 +13,10 @@ Define the consumer-project state file written by `create`, updated by `add` / `
   "scope": "@acme",
   "platform": {
     "version": "0.2.0",
-    "remote": "github:Netoun/bonne-garde-boilerplate",
+    "remote": "github:Netoun/bonne-garde-toolkit",
     "intentions": { "applied": ["v0.2.0/align-bun-pin"], "skipped": {} }
   },
-  "registries": { "@bg": "github:Netoun/bonne-garde-boilerplate@v0.2.0" },
+  "registries": { "@bg": "github:Netoun/bonne-garde-toolkit@v0.2.0" },
   "apps": [{ "id": "api", "dir": "apps/api", "kind": "worker" }],
   "modules": {
     "auth": [

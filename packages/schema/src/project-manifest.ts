@@ -1,3 +1,6 @@
+/** This repo's slug — written to a new project's `platform.remote`, and the registry source once published. */
+export const DEFAULT_PLATFORM_REMOTE = "github:Netoun/bonne-garde-toolkit";
+
 export type InstallRecord = {
   source: string;
   version: string;
@@ -183,7 +186,7 @@ export function createEmptyProjectManifest(options: {
     scope: options.scope,
     platform: {
       version: options.platformVersion ?? "0.0.0",
-      remote: options.platformRemote ?? "github:Netoun/bonne-garde-boilerplate",
+      remote: options.platformRemote ?? DEFAULT_PLATFORM_REMOTE,
       intentions: { applied: [], skipped: {} },
     },
     registries: options.registries,
