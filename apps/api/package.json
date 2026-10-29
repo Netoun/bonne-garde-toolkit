@@ -13,6 +13,7 @@
     "./lib/crypto/password": "./src/lib/crypto/password.ts",
     "./lib/r2": "./src/lib/r2.ts",
     "./lib/slug": "./src/lib/slug.ts",
+    "./lib/*": "./src/lib/*",
     "./modules/db/db.client": "./src/modules/db/db.client.ts",
     "./modules/db/db.service": "./src/modules/db/db.service.ts",
     "./modules/db/db.config": "./src/modules/db/db.config.ts",
