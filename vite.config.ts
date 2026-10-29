@@ -12,6 +12,10 @@ export default defineConfig({
       "dist/",
       "build/",
       ".wrangler/",
+      ".react-router/",
+      "coverage/",
+      ".agents/skills/",
+      ".claude/skills/",
       ".claude/worktrees/",
       "*.min.js",
       "*.lock",
@@ -25,7 +29,7 @@ export default defineConfig({
     },
     rules: {
       "@typescript-eslint/no-unused-vars": "error",
-      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-explicit-any": "error",
       "no-console": "warn",
       "no-debugger": "error",
       "unicorn/prefer-string-slice": "warn",
@@ -63,12 +67,6 @@ export default defineConfig({
           "no-console": "off",
         },
       },
-      {
-        files: ["**/*.test.ts", "**/*.spec.ts", "**/*.test.tsx", "**/*.spec.tsx"],
-        rules: {
-          "@typescript-eslint/no-explicit-any": "off",
-        },
-      },
     ],
   },
   fmt: {
@@ -77,6 +75,10 @@ export default defineConfig({
       "dist/",
       "build/",
       ".wrangler/",
+      ".react-router/",
+      "coverage/",
+      ".agents/skills/",
+      ".claude/skills/",
       ".claude/worktrees/",
       "*.lock",
       "bun.lock",

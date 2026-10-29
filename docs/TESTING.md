@@ -6,13 +6,15 @@
 
 ## Stack
 
-| App        | Runner              | Env                    | HTTP Mock      | Command        |
-| ---------- | ------------------- | ---------------------- | -------------- | -------------- |
-| `apps/api` | `bun:test` (native) | `bun:sqlite` in-memory | None (real DB) | `bun test`     |
-| `apps/spa` | Vitest + RTL        | `jsdom`                | MSW            | `bun run test` |
-| `apps/ssr` | Vitest + RTL        | `jsdom`                | MSW            | `bun run test` |
+| App           | Runner               | Env                    | HTTP Mock      | Command                |
+| ------------- | -------------------- | ---------------------- | -------------- | ---------------------- |
+| `apps/api`    | `bun:test` (native)  | `bun:sqlite` in-memory | None (real DB) | `bun test`             |
+| `apps/spa`    | Vite+ (Vitest) + RTL | `jsdom`                | MSW            | `bun run test`         |
+| `apps/ssr`    | Vite+ (Vitest) + RTL | `jsdom`                | MSW            | `bun run test`         |
+| `apps/static` | Vite+ (Vitest) + RTL | `jsdom`                | MSW            | `bun run test`         |
+| `scripts`     | `bun:test`           | Temporary directories  | None           | `bun run test:scripts` |
 
-From root: `bun run test` (parallel, all apps).
+From root: `bun run test` runs scripts first, then all workspace test scripts in parallel. `bun run verify` is the full CI gate (check, typecheck, test, build).
 
 ---
 
@@ -97,24 +99,23 @@ describe("Organizations API (E2E)", () => {
 
 ### tsconfig
 
-`apps/api/tsconfig.test.json` is **separate** from `tsconfig.json` because `@cloudflare/workers-types` and `bun-types` don't coexist.
+`apps/api/tsconfig.test.json` inherits the production paths and strictness but selects Bun types. Cloudflare types needed by binding fixtures are referenced explicitly. `bun run typecheck` checks both projects; tests are not excluded from verification.
 
 ---
 
 ## Front — Vitest + RTL + MSW
 
-**Runner**: Vitest. **Env**: `jsdom`. **Mock**: MSW (`onUnhandledRequest: 'error'`).
+**Runner**: Vitest provided by Vite+ (`vp test`). **Env**: `jsdom`. **Mock**: MSW (`onUnhandledRequest: 'error'`). Keep Vite+; do not add a separate Vitest or oxlint/oxfmt toolchain.
 
-Applies to `apps/spa` (SPA) and `apps/ssr` (SSR).
+Applies to all three fronts. Each app's `vite.config.ts` contains the test block; React Router and Cloudflare build plugins are disabled in test mode so component tests do not start Workers or require generated route manifests.
 
 ### Setup
 
-`tests/setup.ts`:
+Shared setup: `testing/frontend.setup.ts`. It extends matchers, cleans up React renders, resets MSW handlers after each test and stops the server at the end. Import lifecycle/assertion APIs from `vite-plus/test`.
 
 ```typescript
-import "@testing-library/jest-dom";
-import { beforeAll, afterEach, afterAll } from "vitest";
-import { server } from "./mocks/server";
+import { beforeAll, afterEach, afterAll } from "vite-plus/test";
+import { server } from "./server";
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => server.resetHandlers());
@@ -123,7 +124,7 @@ afterAll(() => server.close());
 
 ### MSW Handler
 
-File: `tests/mocks/handlers.ts`
+Register endpoint handlers in a test via `server.use(...)` (`testing/server.ts`). No default catch-all handler: unexpected HTTP calls fail.
 
 ```typescript
 import { http, HttpResponse } from "msw";
@@ -142,7 +143,7 @@ export const handlers = [
 ```typescript
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 
 describe('LoginForm', () => {
   it('submits credentials and shows success', async () => {
@@ -163,29 +164,35 @@ describe('LoginForm', () => {
 ### Loader Pattern (SSR only)
 
 ```typescript
-import { describe, it, expect } from "vitest";
-import { loader } from "~/routes/games.$slug";
+import { describe, it, expect } from "vite-plus/test";
+import { RouterContextProvider } from "react-router";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../../testing/server";
+import { loader } from "./resource-page";
+import type { Route } from "./+types/resource-page";
 
-describe("loader — /games/:slug", () => {
-  it("returns game data on success", async () => {
-    const response = await loader({
-      params: { slug: "foo" },
-      request: new Request("http://t/games/foo"),
-      context: {},
-    } as any);
+describe("loader — /resources/:slug", () => {
+  const args: Route.LoaderArgs = {
+    params: { slug: "foo" },
+    request: new Request("http://localhost/resources/foo"),
+    context: new RouterContextProvider(),
+  };
+
+  it("returns resource data on success", async () => {
+    const response = await loader(args);
     expect(response).toMatchObject({ slug: "foo" });
   });
 
   it("throws 404 when not found", async () => {
-    server.use(http.get("*/v1/games/foo", () => new HttpResponse(null, { status: 404 })));
-    await expect(
-      loader({ params: { slug: "foo" }, request: new Request("http://t/"), context: {} } as any),
-    ).rejects.toThrow();
+    server.use(http.get("*/v1/resources/foo", () => new HttpResponse(null, { status: 404 })));
+    await expect(loader(args)).rejects.toThrow();
   });
 });
 ```
 
 Cover: **nominal case + all error cases** (404, 401, 500…).
+
+Set `cloudflareContext` on the provider when the loader needs Worker bindings. The runnable example in `apps/ssr/src/lib/api.server.test.ts` verifies URL resolution and cookie forwarding through the real Eden client and MSW. The snippet above illustrates a future resource route; no such domain route is shipped.
 
 ### Front Checklist
 
@@ -199,7 +206,7 @@ Cover: **nominal case + all error cases** (404, 401, 500…).
 
 ## Package
 
-Packages (`packages/ui`, `packages/emails`) don't have a dedicated test runner. If tests are added later:
+`packages/config` and `packages/emails` have Bun unit tests. `packages/ui` has no dedicated suite yet; its components can be covered through frontend behavior tests. For additional packages:
 
 - Use `bun:test` for unit/utility packages
 - Use Vitest + RTL for UI components
@@ -217,6 +224,8 @@ bun run test
 bun run --filter @acme/api test
 bun run --filter @acme/spa test
 bun run --filter @acme/ssr test
+bun run --filter @acme/static test
+bun run test:scripts
 
 # Watch mode (from the app)
 cd apps/api && bun run test:watch

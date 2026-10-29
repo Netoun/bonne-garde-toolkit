@@ -2,7 +2,7 @@
 
 <!-- GEN:START -->
 
-> Auto-generated from `package.json` files. Regenerate: `bun run gen:architecture`. Last: 2026-08-06.
+> Auto-generated from `package.json` files. Regenerate: `bun run gen:architecture`. Last: 2026-10-02.
 
 ## Overview
 
@@ -13,17 +13,17 @@ My App is a Bun monorepo with 4 apps and 3 packages, deployed on Cloudflare.
 | App           | Framework       | Mode      | Platform |
 | ------------- | --------------- | --------- | -------- |
 | `apps/api`    | Elysia          | CF Worker | Workers  |
-| `apps/spa`    | React Router v7 | SPA       | Pages    |
-| `apps/ssr`    | React Router v7 | SSR       | Pages    |
-| `apps/static` | React Router v7 | SPA       | Pages    |
+| `apps/spa`    | React Router v8 | SPA       | Pages    |
+| `apps/ssr`    | React Router v8 | SSR       | Workers  |
+| `apps/static` | React Router v8 | SPA       | Pages    |
 
 ### Packages
 
-| Package           | Role                   |
-| ----------------- | ---------------------- |
-| `packages/config` | —                      |
-| `packages/emails` | React-Email templates  |
-| `packages/ui`     | shadcn/ui + global CSS |
+| Package           | Role                                 |
+| ----------------- | ------------------------------------ |
+| `packages/config` | Shared branding / white-label config |
+| `packages/emails` | React-Email templates                |
+| `packages/ui`     | shadcn/ui + global CSS               |
 
 <!-- GEN:END -->
 

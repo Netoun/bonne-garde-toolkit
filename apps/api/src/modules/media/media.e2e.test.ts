@@ -1,11 +1,12 @@
 /// <reference types="@cloudflare/workers-types" />
 import { describe, it, expect, beforeEach } from "bun:test";
-import { Elysia } from "elysia";
+import { Elysia, status } from "elysia";
 import { treaty } from "@elysiajs/eden";
 import { createTestDb, type TestDb } from "../../../tests/helpers/db.helpers";
 import { user, session, organization, member } from "../db/schemas/db.auth-schema";
 import { medias } from "../db/schemas/db.core-schema";
 import { MediaService } from "./media.service";
+import { deleteMediaBody, uploadMediaBody } from "./contracts/media.contract";
 import {
   uploadToR2,
   deleteFromR2,
@@ -17,7 +18,7 @@ import {
 import { eq } from "drizzle-orm";
 
 // Mock R2 bucket - implementation for testing
-class MockR2Bucket {
+class MockR2Bucket implements R2Bucket {
   private objects = new Map<string, { value: Uint8Array; contentType?: string }>();
 
   async put(
@@ -55,10 +56,12 @@ class MockR2Bucket {
       uint8Value = value;
     }
 
-    const contentType =
-      options && "httpMetadata" in options && options.httpMetadata
-        ? (options.httpMetadata as R2HTTPMetadata).contentType
-        : undefined;
+    const metadata = options?.httpMetadata;
+    const httpMetadata: R2HTTPMetadata =
+      metadata instanceof Headers
+        ? { contentType: metadata.get("content-type") ?? "application/octet-stream" }
+        : (metadata ?? {});
+    const contentType = httpMetadata.contentType;
 
     this.objects.set(key, {
       value: uint8Value,
@@ -70,9 +73,8 @@ class MockR2Bucket {
       size: uint8Value.length,
       etag: `"${key}-etag"`,
       httpEtag: `"${key}-etag"`,
-      httpMetadata: options?.httpMetadata || {},
+      httpMetadata,
       customMetadata: options?.customMetadata || {},
-      range: () => undefined,
       checksums: { toJSON: () => ({}) },
       uploaded: new Date(),
       version: "1",
@@ -97,7 +99,6 @@ class MockR2Bucket {
       httpEtag: `"${key}-etag"`,
       httpMetadata: obj.contentType ? { contentType: obj.contentType } : {},
       customMetadata: {},
-      range: () => undefined,
       checksums: { toJSON: () => ({}) },
       uploaded: new Date(),
       version: "1",
@@ -106,10 +107,13 @@ class MockR2Bucket {
     };
   }
 
-  async get(key: string): Promise<(R2Object & { body: ReadableStream<Uint8Array> }) | null> {
+  async get(key: string): Promise<R2ObjectBody | null> {
     const obj = this.objects.get(key);
     if (!obj) return null;
 
+    const response = new Response(new Uint8Array(obj.value));
+    if (!response.body) throw new Error("Expected a response body");
+    const body = response.body;
     return {
       key,
       size: obj.value.length,
@@ -117,17 +121,21 @@ class MockR2Bucket {
       httpEtag: `"${key}-etag"`,
       httpMetadata: obj.contentType ? { contentType: obj.contentType } : {},
       customMetadata: {},
-      range: () => undefined,
       checksums: { toJSON: () => ({}) },
       uploaded: new Date(),
       version: "1",
       storageClass: "standard",
-      body: new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(obj.value);
-          controller.close();
-        },
-      }),
+      body,
+      get bodyUsed() {
+        return response.bodyUsed;
+      },
+      arrayBuffer: () => response.arrayBuffer(),
+      bytes: () => response.bytes(),
+      text: () => response.text(),
+      json: async <T>(): Promise<T> => {
+        throw new Error("JSON objects are not supported by this image bucket fixture");
+      },
+      blob: () => response.blob(),
       writeHttpMetadata: async (headers: Headers) => {
         if (obj.contentType) {
           headers.set("content-type", obj.contentType);
@@ -149,7 +157,6 @@ class MockR2Bucket {
           httpEtag: `"${key}-etag"`,
           httpMetadata: obj.contentType ? { contentType: obj.contentType } : {},
           customMetadata: {},
-          range: () => undefined,
           checksums: { toJSON: () => ({}) },
           uploaded: new Date(),
           version: "1",
@@ -166,7 +173,10 @@ class MockR2Bucket {
     };
   }
 
-  createMultipartUpload(_key: string, _options?: R2MultipartOptions): R2MultipartUpload {
+  async createMultipartUpload(
+    _key: string,
+    _options?: R2MultipartOptions,
+  ): Promise<R2MultipartUpload> {
     throw new Error("Not implemented");
   }
 
@@ -176,6 +186,13 @@ class MockR2Bucket {
 }
 
 // Test helpers
+function createImageFile(content: string, name: string) {
+  // JPEG magic bytes: Elysia validates file content, not just the declared MIME type.
+  return new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0]), content], name, {
+    type: "image/jpeg",
+  });
+}
+
 async function createTestUserAndOrg(
   db: TestDb,
   userId: string,
@@ -367,7 +384,7 @@ describe("MediaService", () => {
   let api: ReturnType<typeof treaty<ReturnType<typeof createTestApp>>>;
   const publicUrl = "https://media.example.com";
   let userId: string;
-  let orgId: string | undefined;
+  let orgId: string;
 
   function createTestApp() {
     return new Elysia()
@@ -375,39 +392,50 @@ describe("MediaService", () => {
       .decorate("env", { BUCKET: bucket, R2_PUBLIC_URL: publicUrl })
       .use(MediaService)
       .decorate("user", { id: userId })
-      .post("/media/upload", async ({ body, mediaService, user }) => {
-        return mediaService.uploadMedia({
-          file: body.file,
-          folder: body.folder || "uploads",
-          userId: user.id,
-          organizationId: body.organizationId,
-        });
-      })
-      .delete("/media/:id", async ({ params, mediaService, user, body, set }) => {
-        try {
-          return await mediaService.deleteMedia({
-            id: params.id,
+      .post(
+        "/media/upload",
+        async ({ body, mediaService, user }) => {
+          return mediaService.uploadMedia({
+            file: body.file,
+            folder: body.folder || "uploads",
             userId: user.id,
-            organizationId: body?.organizationId,
+            organizationId: body.organizationId,
           });
-        } catch (error) {
-          if (error instanceof R2Error) {
-            const statusMap: Record<string, number> = {
-              MEDIA_NOT_FOUND: 404,
-              UNAUTHORIZED: 403,
-              MEDIA_IN_USE: 409,
-            };
-            set.status = statusMap[error.code] || 500;
-            return { error: error.message, code: error.code };
+        },
+        { body: uploadMediaBody },
+      )
+      .delete(
+        "/media/:id",
+        async ({ params, mediaService, user, body }) => {
+          try {
+            return await mediaService.deleteMedia({
+              id: params.id,
+              userId: user.id,
+              organizationId: body?.organizationId,
+            });
+          } catch (error) {
+            if (error instanceof R2Error) {
+              const body = { error: error.message, code: error.code };
+              switch (error.code) {
+                case "MEDIA_NOT_FOUND":
+                  return status(404, body);
+                case "UNAUTHORIZED":
+                  return status(403, body);
+                case "MEDIA_IN_USE":
+                  return status(409, body);
+                default:
+                  return status(500, body);
+              }
+            }
+            throw error;
           }
-          throw error;
-        }
-      })
-      .get("/media/:id", async ({ params, mediaService, set }) => {
+        },
+        { body: deleteMediaBody },
+      )
+      .get("/media/:id", async ({ params, mediaService }) => {
         const media = await mediaService.getMediaById(params.id);
         if (!media) {
-          set.status = 404;
-          return { error: "Media not found" };
+          return status(404, { error: "Media not found" });
         }
         return media;
       });
@@ -419,6 +447,7 @@ describe("MediaService", () => {
 
     const result = await createTestUserAndOrg(db, "user-1", "org-1");
     userId = result.userId;
+    if (!result.orgId) throw new Error("Expected test organization");
     orgId = result.orgId;
 
     const app = createTestApp();
@@ -427,9 +456,7 @@ describe("MediaService", () => {
 
   describe("uploadMedia", () => {
     it("should upload image and save to database with all metadata", async () => {
-      const file = new File(["test-image-content"], "test-image.jpg", {
-        type: "image/jpeg",
-      });
+      const file = createImageFile("test-image-content", "test-image.jpg");
 
       const { data, error } = await api.media.upload.post({
         file,
@@ -438,6 +465,7 @@ describe("MediaService", () => {
       });
 
       expect(error).toBeNull();
+      if (!data) throw new Error("Expected uploaded media");
       expect(data?.id).toBeDefined();
       expect(data?.name).toBe("test-image.jpg");
       expect(data?.url).toMatch(
@@ -464,9 +492,7 @@ describe("MediaService", () => {
     });
 
     it("should use default folder if not provided", async () => {
-      const file = new File(["test-content"], "test.jpg", {
-        type: "image/jpeg",
-      });
+      const file = createImageFile("test-content", "test.jpg");
 
       const { data, error } = await api.media.upload.post({ file });
 
@@ -475,7 +501,7 @@ describe("MediaService", () => {
     });
 
     it("should percent-encode the public url and keep the stored key as is", async () => {
-      const file = new File(["test-content"], "é #1 100%?.jpg", { type: "image/jpeg" });
+      const file = createImageFile("test-content", "é #1 100%?.jpg");
 
       const { data, error } = await api.media.upload.post({ file, folder: "test-folder" });
 
@@ -488,7 +514,7 @@ describe("MediaService", () => {
     });
 
     it("should reject a folder that is not a valid key path and store nothing", async () => {
-      const file = new File(["test-content"], "test.jpg", { type: "image/jpeg" });
+      const file = createImageFile("test-content", "test.jpg");
 
       const { error } = await api.media.upload.post({ file, folder: "../outside" });
 
@@ -499,31 +525,39 @@ describe("MediaService", () => {
 
     it("should throw error when bucket is not configured", async () => {
       const appWithoutBucket = new Elysia()
+        .onError(({ error }) => {
+          if (error instanceof R2Error)
+            return status(500, { error: error.message, code: error.code });
+        })
         .decorate("db", db)
-        .decorate("env", { BUCKET: undefined as unknown as R2Bucket, R2_PUBLIC_URL: publicUrl })
+        .decorate("env", { BUCKET: undefined, R2_PUBLIC_URL: publicUrl })
         .use(MediaService)
         .decorate("user", { id: userId })
-        .post("/media/upload", async ({ body, mediaService, user }) => {
-          return mediaService.uploadMedia({
-            file: body.file,
-            folder: body.folder || "uploads",
-            userId: user.id,
-          });
-        });
+        .post(
+          "/media/upload",
+          async ({ body, mediaService, user }) => {
+            return mediaService.uploadMedia({
+              file: body.file,
+              folder: body.folder || "uploads",
+              userId: user.id,
+            });
+          },
+          { body: uploadMediaBody },
+        );
 
       const apiWithoutBucket = treaty(appWithoutBucket);
-      const file = new File(["test"], "test.jpg", { type: "image/jpeg" });
+      const file = createImageFile("test", "test.jpg");
 
-      const { error } = await apiWithoutBucket.api.media.upload.post({ file });
+      const { error } = await apiWithoutBucket.media.upload.post({ file });
 
-      expect(error).toBeDefined();
+      expect(error?.status).toEqual(500);
     });
   });
 
   describe("deleteMedia", () => {
     it("should delete media and remove from R2 when owner deletes", async () => {
       // First upload a file
-      const file = new File(["test-content"], "test.jpg", { type: "image/jpeg" });
+      const file = createImageFile("test-content", "test.jpg");
 
       const { data: uploadData } = await api.media.upload.post({
         file,
@@ -538,7 +572,8 @@ describe("MediaService", () => {
       expect(await bucket.head(mediaKey || "")).not.toBeNull();
 
       // Delete it
-      const { data, error } = await api.media[mediaId!].delete({
+      if (!mediaId) throw new Error("Expected uploaded media");
+      const { data, error } = await api.media({ id: mediaId }).delete({
         organizationId: orgId,
       });
 
@@ -558,7 +593,7 @@ describe("MediaService", () => {
     });
 
     it("should return 404 for non-existent media", async () => {
-      const { error } = await api.media["non-existent-id"].delete();
+      const { error } = await api.media({ id: "non-existent-id" }).delete();
 
       expect(error).toBeDefined();
       expect(error?.status).toBe(404);
@@ -566,7 +601,7 @@ describe("MediaService", () => {
 
     it("should return 403 when unauthorized user tries to delete", async () => {
       // Upload as user-1 with organization
-      const file = new File(["test-content"], "test.jpg", { type: "image/jpeg" });
+      const file = createImageFile("test-content", "test.jpg");
       const { data: uploadData } = await api.media.upload.post({
         file,
         organizationId: orgId,
@@ -581,31 +616,34 @@ describe("MediaService", () => {
         .decorate("env", { BUCKET: bucket, R2_PUBLIC_URL: publicUrl })
         .use(MediaService)
         .decorate("user", { id: "user-2" })
-        .delete("/media/:id", async ({ params, mediaService, user, set, body }) => {
-          try {
-            return await mediaService.deleteMedia({
-              id: params.id,
-              userId: user.id,
-              organizationId: body?.organizationId,
-            });
-          } catch (error) {
-            if (error instanceof R2Error) {
-              if (error.code === "UNAUTHORIZED") {
-                set.status = 403;
-                return { error: error.message };
+        .delete(
+          "/media/:id",
+          async ({ params, mediaService, user, body }) => {
+            try {
+              return await mediaService.deleteMedia({
+                id: params.id,
+                userId: user.id,
+                organizationId: body?.organizationId,
+              });
+            } catch (error) {
+              if (error instanceof R2Error) {
+                if (error.code === "UNAUTHORIZED") {
+                  return status(403, { error: error.message });
+                }
+                if (error.code === "MEDIA_NOT_FOUND") {
+                  return status(404, { error: error.message });
+                }
               }
-              if (error.code === "MEDIA_NOT_FOUND") {
-                set.status = 404;
-                return { error: error.message };
-              }
+              throw error;
             }
-            throw error;
-          }
-        });
+          },
+          { body: deleteMediaBody },
+        );
 
       const apiAsUser2 = treaty(appAsUser2);
       // user-2 tries to delete with their own org (org-2), but media belongs to org-1
-      const { error } = await apiAsUser2.media[uploadData!.id].delete({
+      if (!uploadData) throw new Error("Expected uploaded media");
+      const { error } = await apiAsUser2.media({ id: uploadData.id }).delete({
         organizationId: "org-2",
       });
 
@@ -616,13 +654,14 @@ describe("MediaService", () => {
 
   describe("getMediaById", () => {
     it("should return media with author and organization", async () => {
-      const file = new File(["test"], "test.jpg", { type: "image/jpeg" });
+      const file = createImageFile("test", "test.jpg");
       const { data: uploadData } = await api.media.upload.post({
         file,
         organizationId: orgId,
       });
 
-      const { data, error } = await api.media[uploadData!.id].get();
+      if (!uploadData) throw new Error("Expected uploaded media");
+      const { data, error } = await api.media({ id: uploadData.id }).get();
 
       expect(error).toBeNull();
       expect(data?.id).toBe(uploadData?.id);
@@ -716,15 +755,19 @@ describe("Media Routes - Validation", () => {
       .decorate("env", { BUCKET: bucket, R2_PUBLIC_URL: publicUrl })
       .use(MediaService)
       .decorate("user", { id: "user-1" })
-      .post("/media/upload", async ({ body, mediaService, user }) => {
-        return mediaService.uploadMedia({
-          file: body.file,
-          folder: body.folder || "uploads",
-          userId: user.id,
-        });
-      });
+      .post(
+        "/media/upload",
+        async ({ body, mediaService, user }) => {
+          return mediaService.uploadMedia({
+            file: body.file,
+            folder: body.folder || "uploads",
+            userId: user.id,
+          });
+        },
+        { body: uploadMediaBody },
+      );
 
-    const api = treaty(app).v1;
+    const api = treaty(app);
     const file = new File(["test-content"], "test.txt", { type: "text/plain" });
 
     const { error } = await api.media.upload.post({ file });
@@ -739,15 +782,19 @@ describe("Media Routes - Validation", () => {
       .decorate("env", { BUCKET: bucket, R2_PUBLIC_URL: publicUrl })
       .use(MediaService)
       .decorate("user", { id: "user-1" })
-      .post("/media/upload", async ({ body, mediaService, user }) => {
-        return mediaService.uploadMedia({
-          file: body.file,
-          folder: body.folder || "uploads",
-          userId: user.id,
-        });
-      });
+      .post(
+        "/media/upload",
+        async ({ body, mediaService, user }) => {
+          return mediaService.uploadMedia({
+            file: body.file,
+            folder: body.folder || "uploads",
+            userId: user.id,
+          });
+        },
+        { body: uploadMediaBody },
+      );
 
-    const api = treaty(app).v1;
+    const api = treaty(app);
     const largeContent = new Uint8Array(11 * 1024 * 1024);
     const file = new File([largeContent], "large.jpg", { type: "image/jpeg" });
 

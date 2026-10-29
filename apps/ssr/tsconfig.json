@@ -25,6 +25,12 @@
       "@acme/api": ["../../apps/api/src/index.ts"]
     }
   },
-  "include": [".react-router/types/**/*", "src/**/*"],
+  "include": [
+    ".react-router/types/**/*",
+    "src/**/*",
+    "workers/**/*",
+    "../../testing/**/*",
+    "vite.config.ts"
+  ],
   "exclude": ["node_modules", "build"]
 }

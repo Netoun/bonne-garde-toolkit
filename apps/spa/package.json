@@ -8,10 +8,13 @@
     "build": "react-router build",
     "pretypecheck": "react-router typegen",
     "typecheck": "tsc --noEmit",
-    "deploy": "wrangler pages deploy dist"
+    "deploy": "wrangler pages deploy build/client",
+    "test": "vp test",
+    "test:watch": "vp test watch"
   },
   "dependencies": {
     "@acme/config": "workspace:*",
+    "@acme/ui": "workspace:*",
     "@cloudflare/workers-types": "5.20260804.1",
     "@elysiajs/eden": "1.4.9",
     "@fontsource-variable/faustina": "5.3.0",
@@ -39,6 +42,7 @@
     "zustand": "5.0.14"
   },
   "devDependencies": {
+    "@acme/api": "workspace:*",
     "@react-router/dev": "8.3.0",
     "@tailwindcss/vite": "4.3.3",
     "@types/node": "26.1.2",

@@ -11,6 +11,10 @@ Source of truth: `apps/*/.env.example` and `apps/api/.dev.vars.example`. This fi
 | Client-exposed | `VITE_` prefix mandatory for SPA                               |
 | Prod secrets   | `wrangler secret put <NAME>` from the app directory            |
 
+CI uses public localhost URLs explicitly; it never runs the interactive init wizard, creates production secrets or seeds the demo admin. Local `bun run build` requires the front `.env` files created by init (or equivalent exported variables).
+
+Deployment is manual by default (`.github/workflows/deploy.yml`). Before deploying, provision your own D1/R2 resources, replace example resource IDs/domains in Wrangler config, and configure the GitHub `cloudflare` environment. Production migrations must target `--env production`; never run the local demo seed against production.
+
 ## Secret generation
 
 ```bash

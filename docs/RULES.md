@@ -44,7 +44,7 @@ For each feature:
 ### Hard Rules
 
 - Real SQLite DB in API tests (`bun:sqlite` in-memory) — **never** mock Drizzle
-- Elysia routes tested via `app.handle(new Request(...))` — no HTTP server
+- Elysia routes tested via `treaty(app)` (or `app.handle` for raw transport assertions) — no HTTP server
 - Components tested by user interactions (RTL) — not internal implementation
 - **No snapshot tests**
 - **No module mocking** — MSW only for intercepting HTTP
@@ -86,17 +86,24 @@ Prefer extending existing API route types rather than re-declaring contracts.
 | ------------ | ---------------------------------------------------------------- |
 | API Types    | Always via **Eden Treaty**, never manual fetch                   |
 | Auth         | Better-auth on API side only — fronts use better-auth client     |
-| Routing      | File-based React Router v7 (bo + player)                         |
+| Routing      | File-based React Router v8 (SPA / SSR / static)                  |
 | Components   | **shadcn via CLI** (`bunx shadcn add ...`), never copied by hand |
-| Styles       | Tailwind utility + `packages/ui/global.css` for tokens           |
-| Server state | Loaders/actions (player SSR) or Eden (bo SPA)                    |
+| Styles       | Tailwind utilities + `packages/ui/src/styles/globals.css` tokens |
+| Server state | Loaders/actions (SSR) or Eden + TanStack Query (SPA)             |
 | Client state | **Zustand** only (UI/client non-server)                          |
 | Validation   | **Zod** client-side + **TypeBox** API-side (Elysia input)        |
 | Emails       | React-Email for templates, Resend as provider                    |
 | Media        | R2, signed URLs for private access                               |
-| Rich editor  | TipTap in Notion-like block mode                                 |
-| Maps         | React-Leaflet                                                    |
-| QR codes     | `qrcode` lib                                                     |
+
+### Composition first
+
+Shared primitives belong in `packages/ui`; feature behavior belongs in the app. Prefer `ReactNode` slots (`actions`, `leading`, `description`) and compound components over growing sets of flags such as `showIcon` or `showActions`. Configuration props are appropriate for leaf primitives, not whole pages.
+
+Component files use kebab-case, and named component exports use PascalCase. Declare workspace dependencies in `package.json`, even when TypeScript aliases already resolve them.
+
+SSR loaders receive `RouterContextProvider`. Read Worker bindings from `cloudflareContext` and use `createApi(context, request)` to forward authentication cookies. Do not reintroduce the v7 `AppLoadContext` object.
+
+Editors, maps and QR generation are optional product capabilities, not requirements for every project created from this starter.
 
 ---
 
@@ -125,7 +132,8 @@ Complete list of scripts → [`COMMANDS.md`](./COMMANDS.md) (generated).
 
 - [ ] `bun run typecheck` passes
 - [ ] `bun run test` passes (API + concerned fronts)
-- [ ] `bun run lint && bun run fmt:check` pass
+- [ ] `bun run check` passes (Vite+ formatting + lint)
+- [ ] `bun run build` passes for affected apps
 - [ ] No `any`, no `as` Eden
 - [ ] Eden types up to date if API changed
 - [ ] New env vars → corresponding `.example` file(s)

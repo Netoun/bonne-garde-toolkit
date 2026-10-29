@@ -1,5 +1,13 @@
 import { describe, expect, it } from "bun:test";
-import { collectBranding, rewriteScopeInText, shouldScanFile } from "./brand";
+import { collectBranding, rewriteScopeInText, shouldScanFile, writeProductReadme } from "./brand";
+import { branding } from "../packages/config/src/branding.generated";
+
+it("keeps generated product documentation aligned with the verification workflow", () => {
+  const readme = writeProductReadme(branding);
+  expect(readme).toContain("React Router v8");
+  expect(readme).toContain("bun run verify");
+  expect(readme).toContain("local development only");
+});
 
 describe("collectBranding", () => {
   it("fills from defaults and validates", () => {

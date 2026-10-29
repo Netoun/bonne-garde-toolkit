@@ -75,11 +75,17 @@ function detectApp(name: string): AppInfo | null {
   if (isReactRouter) {
     const config = readRouterConfig(name);
     const ssr = config?.ssr ?? false;
+    const dependencies = pkg.dependencies;
+    const version =
+      dependencies && typeof dependencies === "object" && "react-router" in dependencies
+        ? String(dependencies["react-router"])
+        : "";
+    const major = version.match(/\d+/)?.[0] ?? "?";
     return {
       name,
-      framework: "React Router v7",
+      framework: `React Router v${major}`,
       mode: ssr ? "SSR" : "SPA",
-      platform: "Pages",
+      platform: ssr ? "Workers" : "Pages",
     };
   }
 
@@ -88,6 +94,7 @@ function detectApp(name: string): AppInfo | null {
 
 function detectPackage(name: string): PackageInfo {
   const roles: Record<string, string> = {
+    config: "Shared branding / white-label config",
     ui: "shadcn/ui + global CSS",
     emails: "React-Email templates",
   };

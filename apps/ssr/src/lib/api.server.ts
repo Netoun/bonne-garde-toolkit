@@ -1,16 +1,12 @@
 import { treaty } from "@elysiajs/eden";
 import type { App } from "@acme/api/app";
-
-interface CloudflareContext {
-  cloudflare?: {
-    env: { API_URL?: string };
-  };
-}
+import type { RouterContextProvider } from "react-router";
+import { cloudflareContext } from "./cloudflare-context";
 
 export type { ApiRoute, EdenResponse, EdenBody, EdenQuery } from "@acme/api/lib/eden";
 
-function resolveApiUrl(context: CloudflareContext): string {
-  const apiUrl = context.cloudflare?.env.API_URL;
+function resolveApiUrl(context: Readonly<RouterContextProvider>): string {
+  const apiUrl = context.get(cloudflareContext)?.env.API_URL;
   if (apiUrl) {
     new URL(apiUrl);
     return apiUrl;
@@ -31,7 +27,7 @@ function resolveApiUrl(context: CloudflareContext): string {
  *   const api = createApi(context, request);
  *   const { data: game } = await api.games({ slug: "my-game" }).get();
  */
-export function createApi(context: CloudflareContext, request?: Request) {
+export function createApi(context: Readonly<RouterContextProvider>, request?: Request) {
   const apiUrl = resolveApiUrl(context);
   const cookieHeader = request?.headers.get("cookie") ?? "";
   return treaty<App>(apiUrl, {

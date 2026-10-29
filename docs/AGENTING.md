@@ -34,6 +34,38 @@ Optional OpenCode config: [`opencode.json`](../opencode.json). Prefer lazy links
 4. After changing commands/scripts → run `bun run gen:commands` (and architecture gen if needed).
 5. Do **not** symlink `CLAUDE.md` → `AGENTS.md` on this repo: Claude needs `@` import; OpenCode already prefers `AGENTS.md`.
 
+## Project skills for Claude Code
+
+Skills are installed locally in `.claude/skills/`, with their upstream sources and content hashes recorded in [`skills-lock.json`](../skills-lock.json). They travel with the boilerplate; no global installation is required.
+
+| Skill                         | Source                     | Use                                                                    |
+| ----------------------------- | -------------------------- | ---------------------------------------------------------------------- |
+| `elysiajs`                    | `elysiajs/skills`          | Routes, validation, Eden and auth integration                          |
+| `impeccable`                  | `pbakaus/impeccable`       | UI design, UX audits, accessibility and polish                         |
+| `frontend-design`             | `anthropics/skills`        | Visual direction for new interfaces                                    |
+| `vercel-react-best-practices` | `vercel-labs/agent-skills` | React rendering and performance                                        |
+| `vercel-composition-patterns` | `vercel-labs/agent-skills` | Compound components and reusable React APIs                            |
+| `cloudflare`                  | `cloudflare/skills`        | Cloudflare product selection and documentation                         |
+| `workers-best-practices`      | `cloudflare/skills`        | Worker runtime and configuration review                                |
+| `wrangler`                    | `cloudflare/skills`        | Project-local CLI commands and resource management                     |
+| `web-perf`                    | `cloudflare/skills`        | Browser performance audits (available tooling determines measurements) |
+
+Load skills only for matching tasks. Repo conventions in `AGENTS.md` take precedence over generic examples: use Bun, Vite+, React Router, Eden and shared shadcn primitives. Apply React guidance that fits this stack; Next.js-specific examples do not imply a framework migration. Keep the starter's non-AOT Elysia configuration and existing platform boundaries.
+
+Impeccable's launcher is `.claude/skills/impeccable/scripts/impeccable`. Its first invocation may download a version-pinned engine into the user's cache and verify its checksum. Installing the skill does not enable its optional hooks or create product/design artifacts; those are separate, explicit actions.
+
+Inspect project installations:
+
+```bash
+bunx skills list --agent claude-code --json
+```
+
+To update a selected project skill (review the resulting diff):
+
+```bash
+bunx skills update elysiajs --project --yes
+```
+
 ## Related docs
 
 | Audience                   | File                                    |

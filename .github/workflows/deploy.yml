@@ -13,30 +13,58 @@ permissions:
   actions: read
   contents: read
 
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 jobs:
+  validate:
+    name: Verify before deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: cloudflare
+    env:
+      VITE_API_URL: ${{ vars.VITE_API_URL }}
+      VITE_PLAYER_URL: ${{ vars.VITE_PLAYER_URL }}
+      VITE_MARKETING_URL: ${{ vars.VITE_MARKETING_URL }}
+      VITE_APP_URL: ${{ vars.VITE_APP_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun run verify
+
   deploy-api:
     name: Deploy API
     runs-on: ubuntu-latest
+    needs: validate
+    timeout-minutes: 15
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     environment: cloudflare
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
 
       - run: bun install --frozen-lockfile
 
       - name: Run DB migrations
-        run: bunx wrangler d1 migrations apply my-app-db --remote
+        run: bun run db:migrate:remote --env production
         working-directory: apps/api
 
       - name: Deploy API to Workers
-        run: bunx wrangler deploy --env production
+        run: bun run deploy --env production
         env:
           CLOUDFLARE_ENV: production
         working-directory: apps/api
@@ -44,17 +72,21 @@ jobs:
   deploy-spa:
     name: Deploy SPA
     runs-on: ubuntu-latest
+    needs: validate
+    timeout-minutes: 15
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     environment: cloudflare
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
 
       - run: bun install --frozen-lockfile
 
@@ -64,7 +96,7 @@ jobs:
           CLOUDFLARE_ENV: production
 
       - name: Deploy SPA to Pages
-        run: bunx wrangler pages deploy build/client --project-name my-app-spa --branch main
+        run: bun run deploy --project-name my-app-spa --branch main
         env:
           CLOUDFLARE_ENV: production
         working-directory: apps/spa
@@ -72,17 +104,21 @@ jobs:
   deploy-ssr:
     name: Deploy SSR
     runs-on: ubuntu-latest
+    needs: validate
+    timeout-minutes: 15
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     environment: cloudflare
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
 
       - run: bun install --frozen-lockfile
 
@@ -91,7 +127,7 @@ jobs:
           CLOUDFLARE_ENV: production
 
       - name: Deploy SSR to Workers
-        run: bunx wrangler deploy --env production
+        run: bun run deploy --env production
         working-directory: apps/ssr
         env:
           CLOUDFLARE_ENV: production
@@ -99,17 +135,21 @@ jobs:
   deploy-static:
     name: Deploy Static
     runs-on: ubuntu-latest
+    needs: validate
+    timeout-minutes: 15
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     environment: cloudflare
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
 
       - run: bun install --frozen-lockfile
 
@@ -120,5 +160,5 @@ jobs:
           CLOUDFLARE_ENV: production
 
       - name: Deploy Static to Pages
-        run: bunx wrangler pages deploy build/client --project-name my-app-static --branch main
+        run: bun run deploy --project-name my-app-static --branch main
         working-directory: apps/static

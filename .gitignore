@@ -6,6 +6,7 @@ dist/
 .react-router/
 build/
 .cache/
+coverage/
 
 # Generated consumer smoke project
 /playground/
@@ -21,7 +22,11 @@ build/
 # Env & secrets
 .env
 .env.local
+.env.*
+!.env*.example
 .dev.vars
+.dev.vars.*
+!.dev.vars*.example
 
 # Init state (local)
 .acme-init.json

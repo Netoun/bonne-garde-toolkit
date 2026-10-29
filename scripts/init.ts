@@ -33,7 +33,7 @@ const ALL_PACKAGES = ["ui", "emails", "config"] as const;
 const APP_DESCRIPTIONS: Record<string, string> = {
   api: "Elysia API (D1 + R2 + Better-auth)",
   spa: "React Router SPA — backoffice",
-  ssr: "React Router SSR — player PWA",
+  ssr: "React Router SSR — application server",
   static: "React Router — site marketing",
 };
 
@@ -181,8 +181,53 @@ function safeExec(cmd: string, cwd: string, label: string): void {
   try {
     execSync(cmd, { cwd, stdio: "inherit" });
   } catch {
-    fail(`${label} failed — continuing anyway`);
+    throw new Error(`${label} failed — setup stopped. Fix the error and run bun run init again.`);
   }
+}
+
+function keepWorkspaceDependencies(
+  available: { apps: string[]; packages: string[] },
+  selected: { apps: string[]; packages: string[] },
+): { apps: string[]; packages: string[] } {
+  const paths = [
+    ".",
+    ...available.apps.map((name) => `apps/${name}`),
+    ...available.packages.map((name) => `packages/${name}`),
+  ];
+  const manifests = paths.map((path) => {
+    const file = join(ROOT, path, "package.json");
+    const pkg: unknown = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
+    if (!pkg || typeof pkg !== "object") throw new Error(`Invalid package manifest: ${file}`);
+    const name = "name" in pkg && typeof pkg.name === "string" ? pkg.name : "";
+    const dependencies = [
+      "dependencies" in pkg ? pkg.dependencies : undefined,
+      "devDependencies" in pkg ? pkg.devDependencies : undefined,
+    ].flatMap((value) => (value && typeof value === "object" ? Object.keys(value) : []));
+    return { path, name, dependencies };
+  });
+  const kept = new Set([
+    ".",
+    ...selected.apps.map((name) => `apps/${name}`),
+    ...selected.packages.map((name) => `packages/${name}`),
+  ]);
+  // Set iteration also visits newly added dependencies, including transitive ones.
+  for (const path of kept) {
+    const manifest = manifests.find((entry) => entry.path === path);
+    for (const dependency of manifest?.dependencies ?? []) {
+      const target = manifests.find((entry) => entry.name === dependency);
+      if (!target || kept.has(target.path)) continue;
+      const name = target.path.split("/").pop() ?? "";
+      if (flags.remove?.includes(name)) {
+        throw new Error(`Cannot remove ${name}: ${path} depends on ${target.path}.`);
+      }
+      kept.add(target.path);
+      done(`Keeping dependency ${target.path} (required by ${path})`);
+    }
+  }
+  return {
+    apps: available.apps.filter((name) => kept.has(`apps/${name}`)),
+    packages: available.packages.filter((name) => kept.has(`packages/${name}`)),
+  };
 }
 
 // ─── Phase 1: Selection ─────────────────────────────────────────────────────
@@ -654,6 +699,15 @@ function main() {
   } else {
     const available = detectAvailable();
 
+    if (flags.keep && flags.remove) throw new Error("Use either --keep or --remove, not both.");
+    for (const name of [...(flags.keep ?? []), ...(flags.remove ?? [])]) {
+      if (![...available.apps, ...available.packages].includes(name)) {
+        throw new Error(
+          `Unknown module: ${name}. Available: ${[...available.apps, ...available.packages].join(", ")}`,
+        );
+      }
+    }
+
     if (flags.keep) {
       keptApps = available.apps.filter((a) => flags.keep!.includes(a));
       keptPackages = available.packages.filter((p) => flags.keep!.includes(p));
@@ -668,6 +722,13 @@ function main() {
       keptApps = chosen.apps;
       keptPackages = chosen.packages;
     }
+
+    const selection = keepWorkspaceDependencies(available, {
+      apps: keptApps,
+      packages: keptPackages,
+    });
+    keptApps = selection.apps;
+    keptPackages = selection.packages;
 
     const toRemoveApps = available.apps.filter((a) => !keptApps.includes(a));
     const toRemovePackages = available.packages.filter((p) => !keptPackages.includes(p));
