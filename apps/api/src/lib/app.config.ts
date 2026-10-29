@@ -20,8 +20,8 @@ const isTest = process.env.NODE_ENV === "test";
 // Only validate string vars/secrets — CF bindings (DB, BUCKET) are injected at
 // request time by the Workers runtime and must NOT be checked at module load.
 const appEnvSchema = Type.Object({
-  BO_URL: Type.String({ default: "http://localhost:5173" }),
-  PLAYER_URL: Type.String({ default: "http://localhost:5174" }),
+  SPA_URL: Type.String({ default: "http://localhost:5173" }),
+  SSR_URL: Type.String({ default: "http://localhost:5174" }),
   API_URL: Type.String({ default: "http://localhost:5172" }),
   R2_PUBLIC_URL: Type.String(),
   BETTER_AUTH_SECRET: Type.String(),

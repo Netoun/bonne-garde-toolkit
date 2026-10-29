@@ -61,7 +61,6 @@ jobs:
       - run: bun run --filter @acme/spa build
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
-          VITE_PLAYER_URL: ${{ vars.VITE_PLAYER_URL }}
           CLOUDFLARE_ENV: production
 
       - name: Deploy SPA to Pages

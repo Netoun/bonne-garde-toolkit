@@ -12,6 +12,7 @@ import {
 import { createResendClient, sendEmail } from "@acme/api/lib/email";
 import { VerifyEmailEmail, ResetPasswordEmail } from "@acme/emails";
 import { config } from "@acme/api/lib/app.config";
+import { allowedOrigins } from "@acme/api/lib/origins";
 import { logger } from "@acme/api/lib/logger";
 
 function generateSlug(name: string): string {
@@ -55,7 +56,7 @@ export function createAuth() {
     secret: config.BETTER_AUTH_SECRET,
     baseURL: config.API_URL,
     basePath: "/auth",
-    trustedOrigins: [config.BO_URL, config.PLAYER_URL].filter(Boolean) as string[],
+    trustedOrigins: allowedOrigins(),
     session: {
       expiresIn: 60 * 60 * 24 * 7, // 7 days
     },
@@ -68,8 +69,8 @@ export function createAuth() {
       },
       sendResetPassword: async ({ user, token }) => {
         try {
-          // Build BO URL with token as query param (matches /auth/reset-password route)
-          const resetUrl = new URL("/auth/reset-password", config.BO_URL);
+          // Build SPA URL with token as query param (matches /auth/reset-password route)
+          const resetUrl = new URL("/auth/reset-password", config.SPA_URL);
           resetUrl.searchParams.set("token", token);
 
           await sendEmail({
@@ -95,8 +96,8 @@ export function createAuth() {
       sendOnSignUp: true,
       sendVerificationEmail: async ({ user, token }) => {
         try {
-          // Build BO URL with token as query param (matches /auth/verify-email route)
-          const verificationUrl = new URL("/auth/verify-email", config.BO_URL);
+          // Build SPA URL with token as query param (matches /auth/verify-email route)
+          const verificationUrl = new URL("/auth/verify-email", config.SPA_URL);
           verificationUrl.searchParams.set("token", token);
 
           await sendEmail({

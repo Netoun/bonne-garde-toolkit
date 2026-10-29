@@ -7,6 +7,6 @@ export interface Env {
 
   API_URL: string;
   R2_PUBLIC_URL: string;
-  PLAYER_URL: string;
-  BO_URL: string;
+  SPA_URL: string;
+  SSR_URL: string;
 }

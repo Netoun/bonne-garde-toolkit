@@ -13,8 +13,8 @@ export function createTestApp() {
       BETTER_AUTH_SECRET: "test-secret-32-chars-long-for-testing",
       RESEND_API_KEY: "test",
       R2_PUBLIC_URL: "http://localhost/media",
-      PLAYER_URL: "http://localhost:5174",
-      BO_URL: "http://localhost:5173",
+      SPA_URL: "http://localhost:5173",
+      SSR_URL: "http://localhost:5174",
     })
     .get("/health", () => ({ status: "ok", timestamp: Date.now() }));
 
