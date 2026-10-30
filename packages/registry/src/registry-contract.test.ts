@@ -178,5 +178,38 @@ describe("registry contract", () => {
   });
 });
 
-/** The UI items at this commit, by name. */
-const UI_ITEMS = ["animations", "badge", "button", "card", "utils"];
+/** The UI items: the 29 components of the legacy `packages/ui`, its lib and its hook. */
+const UI_ITEMS = [
+  "alert",
+  "alert-dialog",
+  "animations",
+  "avatar",
+  "badge",
+  "breadcrumb",
+  "button",
+  "card",
+  "checkbox",
+  "context-menu",
+  "dialog",
+  "drawer",
+  "dropdown-menu",
+  "empty-state",
+  "entity-card",
+  "input",
+  "label",
+  "popover",
+  "progress",
+  "select",
+  "separator",
+  "sheet",
+  "sidebar",
+  "skeleton",
+  "switch",
+  "table",
+  "tabs",
+  "textarea",
+  "toggle",
+  "tooltip",
+  "use-mobile",
+  "utils",
+];
