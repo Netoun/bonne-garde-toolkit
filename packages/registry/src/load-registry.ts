@@ -121,6 +121,17 @@ export async function fetchGithubRegistryIndex(
   };
 }
 
+/** The directory of a `local:` registry source, or `null` for a source that needs the network. */
+export function localRegistryRoot(source: string, cwd: string): string | null {
+  const parsed = parseRegistrySource(source);
+  if (parsed.kind !== "local") {
+    return null;
+  }
+  return parsed.value.endsWith("registry.json")
+    ? dirname(resolve(cwd, parsed.value))
+    : resolve(cwd, parsed.value);
+}
+
 export async function loadRegistryFromSource(
   source: string,
   cwd: string,

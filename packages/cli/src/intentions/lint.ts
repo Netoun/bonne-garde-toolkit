@@ -35,7 +35,7 @@ const RELEASE_DIR_RE = /^v(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)$/;
 const FILE_RE = /^(\d{2})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/;
 const CLASSIFICATIONS = new Set(["informational", "migration", "breaking-manual"]);
 
-function parseFrontmatter(source: string): Record<string, unknown> {
+export function parseFrontmatter(source: string): Record<string, unknown> {
   if (!source.startsWith("---\n") && !source.startsWith("---\r\n")) {
     throw new Error("missing frontmatter");
   }

@@ -1,26 +1,11 @@
-import { readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import {
   applyInstallPlan,
   loadRegistryFromSource,
   resolveInstallPlan,
   searchCatalog,
 } from "@bonne-garde/registry";
-import {
-  readProjectManifest,
-  type ProjectManifest,
-  type ProjectManifestRead,
-} from "@bonne-garde/schema";
-
-/** Reads any supported `bg.json` version as v2; the file on disk is not touched here. */
-async function loadManifest(projectRoot: string): Promise<ProjectManifestRead> {
-  const raw = JSON.parse(await readFile(join(projectRoot, "bg.json"), "utf8")) as unknown;
-  return readProjectManifest(raw);
-}
-
-function defaultSource(manifest: ProjectManifest): string {
-  return manifest.registries["@bg"] ?? Object.values(manifest.registries)[0] ?? "";
-}
+import { defaultSource, loadManifest } from "./manifest-file";
 
 async function resolveSource(projectRoot: string, source?: string): Promise<string> {
   if (source) {

@@ -1,5 +1,6 @@
 import { addItems, listItems, searchItems, viewItem } from "./add";
 import { createProject } from "./create";
+import { doctorExitCode, formatDoctor, runDoctor } from "./doctor";
 import { lintIntentions } from "./intentions/lint";
 import { migrationsDir } from "./paths";
 
@@ -12,6 +13,7 @@ Usage:
   bg search <query> [--source <source>]
   bg view <item> [--source <source>]
   bg add <item...> [--dry-run] [--force] [--no-install] [--yes] [--source <source>]
+  bg doctor [--json] [--strict]
   bg intentions lint [--dir <migrations-dir>]
 `;
 }
@@ -151,6 +153,19 @@ export async function runCli(argv: string[]): Promise<number> {
       ),
     );
     return 0;
+  }
+
+  if (command === "doctor") {
+    const args = [...rest];
+    const json = takeFlag(args, "--json");
+    const strict = takeFlag(args, "--strict");
+    // A flag it did not recognise must fail: `doctor --strcit` passing in CI is a gate that is off.
+    if (args.length > 0) {
+      throw new Error(`doctor: unexpected argument: ${args.join(" ")}\n${usage()}`);
+    }
+    const doctor = await runDoctor(process.cwd());
+    console.log(json ? JSON.stringify(doctor, null, 2) : formatDoctor(doctor));
+    return doctorExitCode(doctor, strict);
   }
 
   if (command === "intentions") {

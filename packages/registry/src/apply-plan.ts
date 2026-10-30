@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parseProjectManifest, type ProjectManifest } from "@bonne-garde/schema";
 import type { InstallPlan } from "./resolve-plan";
+import { sha256Hex } from "./sha256";
 
 export type ApplyOptions = {
   projectRoot: string;
@@ -36,10 +36,6 @@ function defaultTarget(itemType: string, filePath: string): string {
     return join("packages/ui/src/lib", base);
   }
   return base;
-}
-
-function sha256Hex(content: string): string {
-  return createHash("sha256").update(content).digest("hex");
 }
 
 async function pathExists(path: string): Promise<boolean> {
