@@ -351,6 +351,23 @@ function sortedMap(map: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(map).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
 
+/**
+ * A dependency on a sibling package of the project is named `{{SCOPE}}/<name>` in the variant, and
+ * `workspace:*` is its version. Rendered here, since the key lands in a `package.json` and in what
+ * `add` prints; the placeholder is only ever replaced in a name, never in a version.
+ */
+function renderedMap(
+  map: Record<string, string> | undefined,
+  scope: string,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(map ?? {}).map(([name, version]) => [
+      name.replaceAll("{{SCOPE}}", scope),
+      version,
+    ]),
+  );
+}
+
 /** The vendored `package.json`, parsed: it must be a JSON object with no dependency map (035). */
 function parseVendoredPackageJson(
   key: string,
@@ -393,8 +410,8 @@ function workspacePackageJson(
   vendored: PlannedFile[],
 ): PlannedFile | null {
   const key = keyOf(manifest);
-  const dependencies = variant.dependencies ?? {};
-  const devDependencies = variant.devDependencies ?? {};
+  const dependencies = renderedMap(variant.dependencies, scope);
+  const devDependencies = renderedMap(variant.devDependencies, scope);
   const declared = Object.keys(dependencies).length + Object.keys(devDependencies).length;
   if (!variant.workspace) {
     if (declared === 0) {
@@ -465,8 +482,8 @@ async function planModule(
       required: entry.required ?? false,
       example: entry.example ?? "",
     })),
-    dependencies: variant.dependencies ?? {},
-    devDependencies: variant.devDependencies ?? {},
+    dependencies: renderedMap(variant.dependencies, project.scope),
+    devDependencies: renderedMap(variant.devDependencies, project.scope),
     workspace: variant.workspace?.path ?? null,
     checks: manifest.checks ?? [],
   };

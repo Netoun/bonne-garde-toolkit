@@ -588,6 +588,46 @@ describe("resolveModulePlans: the plan (050 step 8)", () => {
     });
   });
 
+  test("a dependency on a sibling package is named with {{SCOPE}}, rendered in the plan and in the package.json", async () => {
+    const catalog = await registry([
+      {
+        category: "api",
+        id: "elysia",
+        json: {
+          variants: [
+            {
+              key: "default",
+              match: {},
+              workspace: { name: "{{SCOPE}}/api", path: "apps/api" },
+              dependencies: { "{{SCOPE}}/api-runtime": "workspace:*", elysia: "1.4.29" },
+              devDependencies: { "{{SCOPE}}/config": "workspace:*" },
+              copy: ["apps/api/package.json"],
+            },
+          ],
+        },
+        template: {
+          "apps/api/package.json": `${JSON.stringify({ name: "{{SCOPE}}/api", scripts: {} })}\n`,
+        },
+      },
+    ]);
+
+    const [plan] = await resolveModulePlans(
+      catalog,
+      [{ category: "api", id: "elysia" }],
+      project({}, "@shop"),
+    );
+
+    expect(plan?.dependencies).toEqual({ "@shop/api-runtime": "workspace:*", elysia: "1.4.29" });
+    expect(plan?.devDependencies).toEqual({ "@shop/config": "workspace:*" });
+    const written = plan?.files.find((f) => f.target === "apps/api/package.json");
+    expect(JSON.parse(written?.content ?? "null")).toMatchObject({
+      name: "@shop/api",
+      dependencies: { "@shop/api-runtime": "workspace:*", elysia: "1.4.29" },
+      devDependencies: { "@shop/config": "workspace:*" },
+    });
+    expect(written?.content).not.toContain("{{SCOPE}}");
+  });
+
   test("dependencies with no workspace to hold them fail instead of landing nowhere", async () => {
     const catalog = await registry([
       {
