@@ -43,6 +43,7 @@ A module fills exactly one category. The category carries **cardinality** and **
 - A module with a `package` home MUST write only inside its own package, plus tier-2 patches on known seams.
 - Application code MUST consume a module through its package export, never through paths internal to it.
 - MUST NOT write module source directly into `apps/*/src` — that is what makes swap and revert impossible.
+- The one exception: an app-homed module MAY write a thin entry under `apps/<id>/src` whose only content is imports and one call into the module's package; anything else belongs in the package.
 
 ## Module document
 
