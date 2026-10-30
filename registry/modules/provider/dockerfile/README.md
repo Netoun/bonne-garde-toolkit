@@ -25,8 +25,12 @@ The caveat on origins is in the list of what does not work: the URLs agree, the 
 
 ## What the module writes
 
-`template/packages/api-runtime/src/index.ts` replaces the Workers variant of `@acme/api-runtime`
-and exports the same three names `apps/api` imports, so `app.ts` and `index.ts` stay as they are:
+The module owns the `packages/api-runtime` workspace whole: `package.json` (the `@scope/api-runtime`
+name, an `exports` map and the `typecheck` and `test` scripts; `elysia` is merged in from the
+variant), `tsconfig.json`, `src/index.ts` and `src/index.test.ts`. It is what `provider/cloudflare`
+writes at the same paths, so swapping providers swaps this package and leaves `apps/api` alone.
+`src/index.ts` exports the same three names `apps/api` imports, so `app.ts` and the entry stay as
+they are:
 
 - `runtimeOptions`: `{ aot: true }`. Elysia picks its Bun adapter itself.
 - `readRuntimeEnv(source = process.env)`: fills `SPA_URL`, `SSR_URL` and `API_URL` from `APP_URL`,
@@ -38,8 +42,9 @@ and exports the same three names `apps/api` imports, so `app.ts` and `index.ts` 
   as is, anything else goes to the app, and a `GET` the app answers 404 gets `index.html` when the
   client accepts `text/html`. It also exits on SIGINT and SIGTERM, see below.
 
-Its tests (`index.test.ts`, 29) travel with it and run from this repo's root through
-`bun run test:scripts`, since `registry/` is not a workspace.
+Its tests (`index.test.ts`, 29) travel with it. In a project, `packages/api-runtime` is a workspace
+and `bun run test` runs them; in this repo `registry/` is not one, so they run through
+`bun run test:scripts`.
 
 ## Two decisions taken from keeper rather than invented
 

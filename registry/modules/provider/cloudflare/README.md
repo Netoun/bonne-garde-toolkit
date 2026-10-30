@@ -22,18 +22,26 @@ Nothing here is new work — it names what `apps/api` already does, so that the 
 None. `provider` is first in spec 035's topological order: it peers on nothing, and `api`, `db`,
 `storage` and `deploy` peer on it.
 
-## Installing it
+## What the module writes
 
-`bg add provider/cloudflare` writes `apps/api/wrangler.jsonc` and merges `BETTER_AUTH_SECRET` and
-`RESEND_API_KEY` into `.env.example`. The `api-elysia` item also vendors an `apps/api/wrangler.jsonc`
-(a minimal one), so after `bg add api-elysia` the install stops on that path, naming `api-elysia`
-as its owner; `--force` replaces it and records this module as the owner. In one call the two
-conflict whatever the flags. The file carries the legacy app's names (`my-app-*`) and its D1 id, to
-be replaced by hand.
+`bg add provider/cloudflare` writes the `packages/api-runtime` workspace, the package `apps/api`
+imports for everything that depends on where it runs, and merges `BETTER_AUTH_SECRET` and
+`RESEND_API_KEY` into `.env.example`:
 
-## Known gap
+- `runtimeOptions`: `{ adapter: CloudflareAdapter, aot: false }`.
+- `readRuntimeEnv()`: the `cloudflare:workers` environment, `process.env` where that specifier does
+  not resolve (Bun and Node).
+- `serve(app)`: a `{ fetch }` object, which is what Workers want a module to default-export.
 
-The template carries `apps/api/wrangler.jsonc` and nothing else. The runtime-specific code it
-would need to own — the adapter choice, the environment read and the entry — now lives in
-`packages/api-runtime` in this repo, but the module does not ship that package yet, so it cannot
-claim to install a whole provider.
+Its tests (`index.test.ts`, 6) travel with it and run from the project's root through `bun run test`.
+They import `elysia`, which this repo's root does not install, so `test:scripts` skips them and golden
+is where they run.
+It declares `elysia`, `@cloudflare/workers-types` and `@types/node`, pinned, in the workspace
+`package.json`.
+
+## What it does not write
+
+A provider module writes nothing under `apps/*`. The Worker's
+`apps/api/wrangler.jsonc`, and the `dev` and `deploy` scripts that call `wrangler`, belong to the
+`cloudflare` variant of the `api` module, which knows its own app. A project with this provider and
+no `api` module has no Worker to deploy.

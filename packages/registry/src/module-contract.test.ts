@@ -78,6 +78,81 @@ describe("module contract", () => {
     expect(ids).toEqual(new Set(["cloudflare", "dockerfile"]));
   });
 
+  describe("a provider owns packages/api-runtime whole and writes nothing under apps/ (035 provider note, seam rule)", () => {
+    const providers = async () => {
+      const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+      return catalog.modules.filter(({ manifest }) => manifest.category === "provider");
+    };
+
+    test("no variant of a provider copies a path under apps/", async () => {
+      const found = await providers();
+      expect(found.length).toBeGreaterThan(0);
+      const under: string[] = [];
+      for (const { manifest } of found) {
+        for (const variant of manifest.variants) {
+          for (const path of variant.copy ?? []) {
+            if (path.startsWith("apps/")) {
+              under.push(`provider/${manifest.id} ${variant.key}: ${path}`);
+            }
+          }
+        }
+      }
+      expect(under).toEqual([]);
+    });
+
+    test("each one writes the package from explicit paths, as the workspace `{{SCOPE}}/api-runtime`", async () => {
+      for (const { manifest } of await providers()) {
+        const [variant, ...others] = manifest.variants;
+        expect(others).toEqual([]);
+        expect(variant?.workspace).toEqual({
+          name: "{{SCOPE}}/api-runtime",
+          path: "packages/api-runtime",
+        });
+        expect(variant?.copy?.filter((path) => /[*?[\]{}]/.test(path))).toEqual([]);
+        for (const path of [
+          "packages/api-runtime/package.json",
+          "packages/api-runtime/tsconfig.json",
+          "packages/api-runtime/src/index.ts",
+          "packages/api-runtime/src/index.test.ts",
+        ]) {
+          expect(variant?.copy).toContain(path);
+        }
+        // Spec 035 declares a dependency once: `elysia` is the variant's, pinned the same everywhere.
+        expect(variant?.dependencies).toEqual({ elysia: "1.4.29" });
+      }
+    });
+
+    test("each package.json carries exports and the typecheck and test scripts, and no dependency map", async () => {
+      for (const { manifest, dir } of await providers()) {
+        const body: unknown = JSON.parse(
+          await readFile(join(dir, "template/packages/api-runtime/package.json"), "utf8"),
+        );
+        expect(body).toMatchObject({
+          name: "{{SCOPE}}/api-runtime",
+          exports: { ".": "./src/index.ts" },
+          scripts: { typecheck: expect.any(String), test: "bun test" },
+        });
+        for (const map of ["dependencies", "devDependencies", "peerDependencies"]) {
+          expect(isRecord(body) && map in body ? `${manifest.id}: ${map}` : null).toBeNull();
+        }
+      }
+    });
+
+    test("each index.ts exports the three names `api` imports, whatever the provider", async () => {
+      for (const { manifest, dir } of await providers()) {
+        const source = await readFile(
+          join(dir, "template/packages/api-runtime/src/index.ts"),
+          "utf8",
+        );
+        for (const name of ["runtimeOptions", "readRuntimeEnv", "serve"]) {
+          expect(`${manifest.id}: ${source}`).toMatch(
+            new RegExp(`export (?:const|async function|function) ${name}\\b`),
+          );
+        }
+      }
+    });
+  });
+
   test("tooling/vite-plus is the quality gate: the Vite+ config and the pre-commit hook, no dependencies", async () => {
     const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
     const found = catalog.modules.find(

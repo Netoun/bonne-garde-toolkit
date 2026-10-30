@@ -6,14 +6,19 @@
   "title": "Dockerfile",
   "description": "One Bun container serving the API and the built SPA from a single origin, with a data volume.",
   "peers": {},
+  "checks": ["cd packages/api-runtime && bun run typecheck && bun run test"],
   "variants": [
     {
       "key": "default",
       "match": {},
+      "workspace": { "name": "{{SCOPE}}/api-runtime", "path": "packages/api-runtime" },
+      "dependencies": { "elysia": "1.4.29" },
       "copy": [
         "Dockerfile",
         ".dockerignore",
         "compose.yaml",
+        "packages/api-runtime/package.json",
+        "packages/api-runtime/tsconfig.json",
         "packages/api-runtime/src/index.ts",
         "packages/api-runtime/src/index.test.ts"
       ],

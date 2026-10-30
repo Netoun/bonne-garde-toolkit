@@ -19,7 +19,8 @@ ARG VITE_API_URL=http://localhost:5172
 ENV VITE_API_URL=$VITE_API_URL
 COPY . .
 RUN bun install --frozen-lockfile
-RUN bun run --filter '{{SCOPE}}/spa' build
+# The root build script: it builds whichever apps the project has, so a project with no SPA still builds.
+RUN bun run build
 
 FROM oven/bun:1.4.2-slim
 WORKDIR /app

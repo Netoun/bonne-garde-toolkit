@@ -148,10 +148,12 @@ describe("bg add from a github source", () => {
       });
 
       expect(modulePlans.map((module) => module.key)).toEqual(["provider/cloudflare"]);
-      expect(await readFile(join(root, "apps/api/wrangler.jsonc"), "utf8")).toContain("name");
+      expect(await readFile(join(root, "packages/api-runtime/package.json"), "utf8")).toContain(
+        '"name": "@gh/api-runtime"',
+      );
       const bg = await readBg(root);
       expect(bg.modules.provider?.map((record) => record.id)).toEqual(["cloudflare"]);
-      expect(bg.files["apps/api/wrangler.jsonc"]?.owner).toBe("provider/cloudflare");
+      expect(bg.files["packages/api-runtime/src/index.ts"]?.owner).toBe("provider/cloudflare");
       expect(await readFile(join(root, ".env.example"), "utf8")).toContain("BETTER_AUTH_SECRET=");
     }
   });
@@ -204,7 +206,7 @@ describe("bg add from a github source", () => {
   test("a file the registry lacks fails the whole install and leaves the tree and bg.json as they were", async () => {
     const cases = [
       "ui/button.tsx",
-      "modules/provider/cloudflare/template/apps/api/wrangler.jsonc",
+      "modules/provider/cloudflare/template/packages/api-runtime/src/index.ts",
       "modules/ui/shadcn/template/packages/ui/package.json",
     ];
     for (const missing of cases) {
@@ -242,11 +244,13 @@ describe("bg add from a github source", () => {
     });
 
     expect(result.written).toContain("packages/ui/src/components/button.tsx");
-    expect(result.written).toContain("apps/api/wrangler.jsonc");
+    expect(result.written).toContain("packages/api-runtime/src/index.ts");
     expect(await snapshot(root)).toEqual(before);
     expect(raw.requested).toContain("ui/button.tsx");
     expect(raw.requested).toContain("ui/utils.ts");
-    expect(raw.requested).toContain("modules/provider/cloudflare/template/apps/api/wrangler.jsonc");
+    expect(raw.requested).toContain(
+      "modules/provider/cloudflare/template/packages/api-runtime/src/index.ts",
+    );
     expect(raw.requested).toContain("modules/ui/shadcn/template/packages/ui/package.json");
     expect(raw.requested).not.toContain("ui/card.tsx");
     expect(raw.requested).not.toContain("apps/api-elysia/src/app.ts");

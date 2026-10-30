@@ -199,17 +199,26 @@ describe("a module planned from github", () => {
       PROJECT,
     );
     expect(plan).toEqual(expected);
-    expect(raw.requested).toEqual(["modules/provider/cloudflare/template/apps/api/wrangler.jsonc"]);
+    const template = "modules/provider/cloudflare/template/packages/api-runtime";
+    expect([...raw.requested].sort()).toEqual([
+      `${template}/package.json`,
+      `${template}/src/index.test.ts`,
+      `${template}/src/index.ts`,
+      `${template}/tsconfig.json`,
+      `${template}/tsconfig.test.json`,
+    ]);
   });
 
   test("a template file the registry does not have fails the plan, naming the module and the file", async () => {
     const raw = serve();
     const catalog = await loadNamedModules(await remote(raw), ["provider/cloudflare"]);
-    raw.missing.add("modules/provider/cloudflare/template/apps/api/wrangler.jsonc");
+    raw.missing.add("modules/provider/cloudflare/template/packages/api-runtime/src/index.ts");
 
     await expect(
       resolveModulePlans(catalog, [{ category: "provider", id: "cloudflare" }], PROJECT),
-    ).rejects.toThrow(/provider\/cloudflare.*apps\/api\/wrangler\.jsonc.*github:acme\/bg@v1/);
+    ).rejects.toThrow(
+      /provider\/cloudflare.*packages\/api-runtime\/src\/index\.ts.*github:acme\/bg@v1/,
+    );
   });
 
   test("a glob in `copy` is refused: raw has no directory listing to expand it against", async () => {

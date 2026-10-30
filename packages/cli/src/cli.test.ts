@@ -379,6 +379,15 @@ type PatchOutput = {
   regions: { region: string; status: string; replaced?: string | null }[];
 };
 
+/** What `provider/cloudflare` writes, in the order `bg add` prints it. */
+const CLOUDFLARE_FILES = [
+  "packages/api-runtime/package.json",
+  "packages/api-runtime/src/index.test.ts",
+  "packages/api-runtime/src/index.ts",
+  "packages/api-runtime/tsconfig.json",
+  "packages/api-runtime/tsconfig.test.json",
+];
+
 describe("bg add <module>", () => {
   test("installs the cloudflare provider by its bare id: files, env, records, and doctor is green", async () => {
     const target = await freshProject("bg-cli-mod-cf-");
@@ -391,15 +400,19 @@ describe("bg add <module>", () => {
       "--no-install",
     );
 
-    expect(stderr).toBe("");
+    // `add` prints the checks the module declares and does not run them (050 step 15).
+    expect(stderr).toContain("checks were not run");
+    expect(stderr).toContain("cd packages/api-runtime && bun run typecheck && bun run test");
     expect(code).toBe(0);
     const out = JSON.parse(stdout) as ModuleOutput;
-    expect(out.written).toEqual(["apps/api/wrangler.jsonc"]);
+    expect(out.written).toEqual(CLOUDFLARE_FILES);
     expect(out.modules).toEqual([
       expect.objectContaining({
         module: "provider/cloudflare",
         variant: "default",
-        files: ["apps/api/wrangler.jsonc"],
+        files: CLOUDFLARE_FILES,
+        workspace: "packages/api-runtime",
+        dependencies: { elysia: "1.4.29" },
         env: [
           { name: "BETTER_AUTH_SECRET", required: true, status: "added" },
           { name: "RESEND_API_KEY", required: true, status: "added" },
@@ -408,10 +421,27 @@ describe("bg add <module>", () => {
     ]);
 
     const template = await readFile(
-      join(repoRoot(), "registry/modules/provider/cloudflare/template/apps/api/wrangler.jsonc"),
+      join(
+        repoRoot(),
+        "registry/modules/provider/cloudflare/template/packages/api-runtime/src/index.ts",
+      ),
       "utf8",
     );
-    expect(await readFile(join(target, "apps/api/wrangler.jsonc"), "utf8")).toBe(template);
+    expect(await readFile(join(target, "packages/api-runtime/src/index.ts"), "utf8")).toBe(
+      template,
+    );
+    // 035: the vendored package.json carries exports and scripts, and the variant's maps are merged in.
+    expect(
+      JSON.parse(await readFile(join(target, "packages/api-runtime/package.json"), "utf8")),
+    ).toMatchObject({
+      name: "@cli-app/api-runtime",
+      exports: { ".": "./src/index.ts" },
+      scripts: { test: "bun test" },
+      dependencies: { elysia: "1.4.29" },
+      devDependencies: { "@cloudflare/workers-types": "5.20260804.1", "@types/node": "26.1.2" },
+    });
+    // 035 (d): a provider writes nothing under apps/*; the Worker's wrangler.jsonc is the api module's.
+    expect(out.written.filter((path) => path.startsWith("apps/"))).toEqual([]);
     expect(await readFile(join(target, ".env.example"), "utf8")).toBe(
       "BETTER_AUTH_SECRET=\nRESEND_API_KEY=\n",
     );
@@ -431,7 +461,7 @@ describe("bg add <module>", () => {
         intentions: { applied: [], skipped: {} },
       }),
     ]);
-    expect(bg.files["apps/api/wrangler.jsonc"]?.owner).toBe("provider/cloudflare");
+    expect(bg.files["packages/api-runtime/src/index.ts"]?.owner).toBe("provider/cloudflare");
     expect(bg.regions[".env.example"]).toEqual({
       BETTER_AUTH_SECRET: "provider/cloudflare",
       RESEND_API_KEY: "provider/cloudflare",
@@ -458,7 +488,7 @@ describe("bg add <module>", () => {
     expect(code).toBe(0);
     const out = JSON.parse(stdout) as ModuleOutput;
     expect(out.written).toEqual([]);
-    expect(out.skippedIdentical).toEqual(["apps/api/wrangler.jsonc"]);
+    expect(out.skippedIdentical).toEqual(CLOUDFLARE_FILES);
     expect(out.modules[0]?.env.map((key) => key.status)).toEqual(["present", "present"]);
     const after = await snapshot(target);
     const withoutInstalledAt = (tree: Record<string, string>) =>
@@ -506,8 +536,10 @@ describe("bg add <module>", () => {
       ".dockerignore",
       "Dockerfile",
       "compose.yaml",
+      "packages/api-runtime/package.json",
       "packages/api-runtime/src/index.test.ts",
       "packages/api-runtime/src/index.ts",
+      "packages/api-runtime/tsconfig.json",
     ]);
     expect(out.modules[0]?.env.map((key) => key.name)).toEqual([
       "PORT",
@@ -519,13 +551,20 @@ describe("bg add <module>", () => {
     expect(await snapshot(target)).toEqual(before);
   });
 
-  test("renders the project's scope into the dockerfile module", async () => {
+  test("renders the project's scope into the dockerfile module, and its Dockerfile builds with the root script", async () => {
     const target = await freshProject("bg-cli-mod-scope-");
 
     await runBg(target, "add", "dockerfile", "--yes", "--no-install");
 
+    const runtime = JSON.parse(
+      await readFile(join(target, "packages/api-runtime/package.json"), "utf8"),
+    ) as { name: string; dependencies: Record<string, string> };
+    expect(runtime.name).toBe("@cli-app/api-runtime");
+    expect(runtime.dependencies).toEqual({ elysia: "1.4.29" });
+    // 09 (c): a project with no SPA workspace has to build, so no `--filter '<scope>/spa'`.
     const dockerfile = await readFile(join(target, "Dockerfile"), "utf8");
-    expect(dockerfile).toContain("--filter '@cli-app/spa'");
+    expect(dockerfile).toContain("RUN bun run build\n");
+    expect(dockerfile).not.toContain("--filter");
     expect(dockerfile).not.toContain("{{SCOPE}}");
   });
 
@@ -545,49 +584,6 @@ describe("bg add <module>", () => {
     const out = JSON.parse(stdout) as ModuleOutput & { items: string[] };
     expect(out.items).toEqual(["api-elysia"]);
     expect(out.modules.map((m) => m.module)).toEqual(["provider/dockerfile"]);
-  });
-
-  test("api-elysia and provider/cloudflare both own apps/api/wrangler.jsonc: refused, naming both, nothing written", async () => {
-    const target = await freshProject("bg-cli-mod-trap-");
-    await runBg(target, "add", "api-elysia", "--yes", "--no-install");
-    const before = await snapshot(target);
-
-    const { stderr, code } = await runBg(target, "add", "cloudflare", "--yes", "--no-install");
-
-    expect(code).toBe(1);
-    expect(stderr).toContain(
-      "apps/api/wrangler.jsonc is owned by api-elysia, and provider/cloudflare would replace it",
-    );
-    expect(await snapshot(target)).toEqual(before);
-
-    const sameCall = await freshProject("bg-cli-mod-trap2-");
-    const both = await runBg(
-      sameCall,
-      "add",
-      "api-elysia",
-      "cloudflare",
-      "--force",
-      "--no-install",
-    );
-    expect(both.code).toBe(1);
-    expect(both.stderr).toContain("named by both api-elysia and provider/cloudflare");
-  });
-
-  test("--force takes the file over, says so, and records the module as its owner", async () => {
-    const target = await freshProject("bg-cli-mod-force-");
-    await runBg(target, "add", "api-elysia", "--yes", "--no-install");
-
-    const { stdout, code } = await runBg(target, "add", "cloudflare", "--force", "--no-install");
-
-    expect(code).toBe(0);
-    expect((JSON.parse(stdout) as ModuleOutput).tookOver).toEqual([
-      { path: "apps/api/wrangler.jsonc", from: "api-elysia", by: "provider/cloudflare" },
-    ]);
-    const bg = JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as {
-      files: Record<string, { owner: string }>;
-    };
-    expect(bg.files["apps/api/wrangler.jsonc"]?.owner).toBe("provider/cloudflare");
-    expect((await runBg(target, "doctor", "--strict")).code).toBe(0);
   });
 
   test("an unknown name fails with suggestions from both catalogs", async () => {

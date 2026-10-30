@@ -82,7 +82,7 @@ const FULL_LISTING = [
 
 describe("selectModules", () => {
   const exclusions = {
-    "provider/cloudflare": "collides with api-elysia",
+    "provider/cloudflare": "one provider per project",
     "provider/dockerfile": "one provider per project",
   };
 
@@ -90,7 +90,7 @@ describe("selectModules", () => {
     expect(selectModules(FULL_LISTING, ["tooling/vite-plus"], exclusions)).toEqual({
       modules: ["tooling/vite-plus"],
       excluded: [
-        { name: "provider/cloudflare", reason: "collides with api-elysia" },
+        { name: "provider/cloudflare", reason: "one provider per project" },
         { name: "provider/dockerfile", reason: "one provider per project" },
       ],
     });
@@ -174,15 +174,17 @@ describe("the golden project and modules", () => {
 
     const { modules } = selectModules(listing, MODULES, EXCLUDED_MODULES);
 
-    expect(modules).toEqual(["tooling/vite-plus", "config/branding", "ui/shadcn"]);
+    expect(modules).toEqual([
+      "provider/cloudflare",
+      "tooling/vite-plus",
+      "config/branding",
+      "ui/shadcn",
+    ]);
   });
 
-  test("leaves every provider out until stage 3: cloudflare collides with api-elysia's wrangler.jsonc", () => {
-    expect(Object.keys(EXCLUDED_MODULES).sort()).toEqual([
-      "provider/cloudflare",
-      "provider/dockerfile",
-    ]);
-    expect(MODULES.some((name) => name.startsWith("provider/"))).toBe(false);
+  test("installs one provider, cloudflare: a project has one, and the other is left out with a reason", () => {
+    expect(MODULES.filter((name) => name.startsWith("provider/"))).toEqual(["provider/cloudflare"]);
+    expect(Object.keys(EXCLUDED_MODULES)).toEqual(["provider/dockerfile"]);
   });
 });
 
