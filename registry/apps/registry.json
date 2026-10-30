@@ -51,7 +51,17 @@
       "name": "spa-react-router",
       "type": "registry:block",
       "title": "SPA shell",
-      "description": "Minimal SPA workspace placeholder for React Router backoffice.",
+      "description": "React Router SPA shell (Vite+, Tailwind, Cloudflare Pages) with a root route and an index route, rendering the button item.",
+      "dependencies": ["isbot@5.2.1", "react@19.2.8", "react-dom@19.2.8", "react-router@8.3.0"],
+      "devDependencies": [
+        "@react-router/dev@8.3.0",
+        "@tailwindcss/vite@4.3.3",
+        "@types/react@19.2.18",
+        "@types/react-dom@19.2.4",
+        "tailwindcss@4.3.3",
+        "wrangler@4.119.0"
+      ],
+      "registryDependencies": ["config", "button"],
       "files": [
         {
           "path": "spa-react-router/package.json",
@@ -64,14 +74,45 @@
           "target": "apps/spa/tsconfig.json"
         },
         {
-          "path": "spa-react-router/src/placeholder.ts",
+          "path": "spa-react-router/react-router.config.ts",
           "type": "registry:file",
-          "target": "apps/spa/src/placeholder.ts"
+          "target": "apps/spa/react-router.config.ts"
+        },
+        {
+          "path": "spa-react-router/vite.config.ts",
+          "type": "registry:file",
+          "target": "apps/spa/vite.config.ts"
+        },
+        {
+          "path": "spa-react-router/wrangler.jsonc",
+          "type": "registry:file",
+          "target": "apps/spa/wrangler.jsonc"
+        },
+        {
+          "path": "spa-react-router/src/app.css",
+          "type": "registry:file",
+          "target": "apps/spa/src/app.css"
+        },
+        {
+          "path": "spa-react-router/src/root.tsx",
+          "type": "registry:file",
+          "target": "apps/spa/src/root.tsx"
+        },
+        {
+          "path": "spa-react-router/src/routes.ts",
+          "type": "registry:file",
+          "target": "apps/spa/src/routes.ts"
+        },
+        {
+          "path": "spa-react-router/src/routes/home.tsx",
+          "type": "registry:file",
+          "target": "apps/spa/src/routes/home.tsx"
         }
       ],
       "meta": {
         "bg": {
           "provides": ["spa"],
+          "requires": ["config", "ui"],
           "transforms": ["workspace:apps/spa"]
         }
       }

@@ -9,10 +9,11 @@
     "pretypecheck": "react-router typegen",
     "typecheck": "tsc --noEmit",
     "test": "bun test --pass-with-no-tests",
-    "deploy": "wrangler pages deploy dist"
+    "deploy": "wrangler pages deploy build/client"
   },
   "dependencies": {
     "@acme/config": "workspace:*",
+    "@acme/ui": "workspace:*",
     "isbot": "5.2.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",

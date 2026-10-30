@@ -7,11 +7,11 @@
     "resolveJsonModule": true,
     "strict": true,
     "jsx": "react-jsx",
+    "types": ["vite/client"],
     "skipLibCheck": true,
     "noEmit": true,
     "paths": {
-      "@acme/spa/*": ["./src/*"],
-      "@acme/config": ["../../packages/config/src/index.ts"]
+      "@acme/spa/*": ["./src/*"]
     },
     "rootDirs": [".", "./.react-router/types"]
   },
