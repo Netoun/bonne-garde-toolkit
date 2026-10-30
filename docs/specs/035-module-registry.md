@@ -44,8 +44,8 @@ A module fills exactly one category. The category carries **cardinality** and **
 
 - A module with a `package` home MUST write only inside its own package, plus tier-2 patches on known seams.
 - Application code MUST consume a module through its package export, never through paths internal to it.
-- MUST NOT write module source directly into `apps/*/src` — that is what makes swap and revert impossible.
-- The one exception for a module: an app-homed module MAY write a thin entry under `apps/<id>/src` whose only content is imports and one call into the module's package; anything else belongs in the package.
+- A module that is not app-homed MUST NOT write source into `apps/*/src` — that is what makes swap and revert impossible. It reaches an app only through tier-2 patches on known seams.
+- An app-homed module (`api`, `web`) is the app: it writes its shell under `apps/<id>/`, and swapping it replaces that app whole.
 - Feature _items_ ([030](./030-ui-registry.md)) are the exception for items: they copy into `apps/<web>/src/features/**`. The rule above protects swap and revert of module source. A feature item is a tier-1 copy the consumer owns, not swappable module source, so that reason does not apply to it.
 
 ## Module document
@@ -121,16 +121,16 @@ registry/modules/auth/better-auth/
 
 The combinatorial explosion is data, not branching code. A module ships one variant per peer combination it supports.
 
-| Field                              | Rules                                                                                          |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `key`                              | Stable identifier for the combination; recorded in `bg.json`                                   |
-| `match`                            | `Partial<Record<Category, ModuleId>>`. `{}` is the default variant                             |
-| `workspace`                        | Workspace package to create (name + path). Derived from `home` unless overridden               |
-| `dependencies` / `devDependencies` | Exact version maps written into the **workspace package.json** — never duplicated elsewhere    |
-| `env`                              | Env vars merged into `.dev.vars.example` / `.env.example`; existing keys are never overwritten |
-| `copy`                             | Tier 1 — globs relative to `template/`, mirroring the target tree                              |
-| `patch`                            | Tier 2 — typed patches, see [060](./060-patches-and-regions.md)                                |
-| `intent`                           | Tier 3 — intention filenames under `intent/`, see [065](./065-intentions.md)                   |
+| Field                              | Rules                                                                                                                                                                                                                                       |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `key`                              | Stable identifier for the combination; recorded in `bg.json`                                                                                                                                                                                |
+| `match`                            | `Partial<Record<Category, ModuleId>>`. `{}` is the default variant                                                                                                                                                                          |
+| `workspace`                        | Workspace package to create (name + path). Derived from `home` unless overridden                                                                                                                                                            |
+| `dependencies` / `devDependencies` | Exact version maps written into the **workspace package.json** — never duplicated elsewhere                                                                                                                                                 |
+| `env`                              | Env vars merged into `.dev.vars.example` / `.env.example`. A key belongs to the module whose code reads it; a second module declaring it is a region conflict ([060](./060-patches-and-regions.md)). An existing value is never overwritten |
+| `copy`                             | Tier 1 — globs relative to `template/`, mirroring the target tree                                                                                                                                                                           |
+| `patch`                            | Tier 2 — typed patches, see [060](./060-patches-and-regions.md)                                                                                                                                                                             |
+| `intent`                           | Tier 3 — intention filenames under `intent/`, see [065](./065-intentions.md)                                                                                                                                                                |
 
 **Selection:** the most specific `match` satisfied by the installed peers wins. Ties are a registry authoring error and MUST fail the contract test, not be resolved at runtime.
 

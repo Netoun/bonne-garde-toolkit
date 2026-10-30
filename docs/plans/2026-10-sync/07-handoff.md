@@ -234,6 +234,9 @@ None.
   was confirmed on 2026-10-29. This reverses an earlier "no front test" instruction.
 - **Lonestone's "legacy checkpoints" were never built.** Zero occurrences in `.boilerstone`. Our
   090's `0.0.0` default plus a baseline release is already the answer.
+- **A patched file is classified by region in `add` too** (user, 2026-10-30). An edit outside every region is not a conflict; the re-add of the file's tier-1 owner keeps the file and reports it. 060 already said so; `add` did not do it. Built in stage 4a.
+- **An env key belongs to the module that reads it** (user, 2026-10-30; 035's `env` row). A second module declaring it is a region conflict. The providers drop `BETTER_AUTH_SECRET` and `RESEND_API_KEY` when `auth` and `email` land (4c, 5). The dockerfile runtime's first-start secret generation is container behaviour, not a CLI step, and stays.
+- **An app-homed module is the app** (user, 2026-10-30; 035's seam rule). `api` and `web` write their shell under `apps/<id>/`; every other module reaches an app only through tier-2 patches. The thin-entry exception (`aad1c96`) is gone.
 
 ## Loose ends worth one line each
 
