@@ -14,7 +14,7 @@ Nothing here is new work — it names what `apps/api` already does, so that the 
 | Environment     | `cloudflare:workers`, read once at module load                          |
 | Database        | D1 binding `DB`, through `drizzle-orm/d1`                               |
 | Object storage  | R2 binding `BUCKET`                                                     |
-| Deploy          | `wrangler deploy`, config in `apps/api/wrangler.jsonc`                  |
+| Deploy          | `wrangler deploy`, config in the Worker's `wrangler.jsonc`              |
 | Dev secrets     | `.dev.vars`                                                             |
 
 ## Peers
@@ -41,7 +41,7 @@ It declares `elysia`, `@cloudflare/workers-types` and `@types/node`, pinned, in 
 
 ## What it does not write
 
-A provider module writes nothing under `apps/*`. The Worker's
-`apps/api/wrangler.jsonc`, and the `dev` and `deploy` scripts that call `wrangler`, belong to the
-`cloudflare` variant of the `api` module, which knows its own app. A project with this provider and
-no `api` module has no Worker to deploy.
+A provider module writes nothing under an app's directory. The Worker's `wrangler.jsonc`, and the
+`dev` and `deploy` scripts that call `wrangler`, belong to the `cloudflare` variant of the `api`
+module, which knows its own app. A project with this provider and no `api` module has no Worker to
+deploy.
