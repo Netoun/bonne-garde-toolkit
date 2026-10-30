@@ -26,6 +26,7 @@
 | `gen:branding`       | `bun scripts/gen-branding.ts`                                                                                              |
 | `gen:commands`       | `bun scripts/gen-commands.ts`                                                                                              |
 | `gen:playground`     | `bun scripts/gen-playground.ts`                                                                                            |
+| `golden`             | `bun scripts/golden-project.ts`                                                                                            |
 | `init`               | `bun scripts/init.ts`                                                                                                      |
 | `intentions:lint`    | `bun packages/cli/src/bin.ts intentions lint`                                                                              |
 | `knip`               | `knip`                                                                                                                     |
