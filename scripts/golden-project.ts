@@ -24,7 +24,7 @@ import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
 const PACKED_CLI = join(ROOT, "dist/npm/create-bonne-garde");
-const BUN = process.execPath;
+const BUN = "bun";
 
 /**
  * Items `bg list` shows that stay out of the golden project, each with its reason. An entry for an
