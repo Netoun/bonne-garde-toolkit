@@ -33,19 +33,22 @@ Everything under `apps/api`, which is its home (035):
 - `src/app.ts`: `export const app = new Elysia(runtimeOptions)` with `cors`, `openapi` and
   `GET /health`, and `export type App`.
 - `src/lib/{app.config,env,origins,logger,eden,slug}.ts`, with the tests of the first three.
-- `src/modules/test/{health,openapi}.test.ts`, `src/app.test.ts`, `src/test-setup.ts` and
-  `bunfig.toml`, which preloads it so `NODE_ENV` is `test`.
+- `src/modules/test/{health,openapi}.test.ts`, `src/app.test.ts`, `src/exports.test.ts`,
+  `src/test-setup.ts` and `bunfig.toml`, which preloads it so `NODE_ENV` is `test`.
 - `package.json`, `tsconfig.json`, `tsconfig.test.json`.
 
-`bun test` in `apps/api` runs six test files, 31 tests. They import `{{SCOPE}}/…` packages that exist
+`bun test` in `apps/api` runs seven test files, 33 tests: the six of the legacy shell, and
+`exports.test.ts`, which is new. They import `{{SCOPE}}/…` packages that exist
 only in a project, so `test:scripts` skips this directory and golden is where they run.
 
 ## What the fronts import
 
 `package.json` `exports` is `.`, `./app` and `./lib/*` (`./src/lib/*.ts`). A front reaches the API
 through `type App` from `{{SCOPE}}/api/app` and the helpers of `{{SCOPE}}/api/lib/eden`. The module
-imports itself the same way (`{{SCOPE}}/api/lib/origins`), so a subpath missing from `exports` breaks
-the API's own typecheck as well as the fronts'. The contract test and golden pin both.
+imports itself the same way (`{{SCOPE}}/api/lib/origins`), so a `./lib/*` entry missing from `exports`
+breaks the API's own typecheck and tests, which golden runs. `exports.test.ts` imports `./app` and
+`./lib/eden` by the package name, so golden catches a subpath missing from `exports` before the `web`
+modules import them, and the contract test pins the same two.
 
 ## Where a module plugs in
 
@@ -53,6 +56,12 @@ the API's own typecheck as well as the fronts'. The contract test and golden pin
 patch (spec 060) will add `.use(<module>)` for `db`, `auth` and `storage` without reformatting the
 chain. That patch type is not built yet; the contract test pins the name `app`, the
 `new Elysia(runtimeOptions)` start and the place of the comment.
+
+## Placeholders to replace
+
+The cloudflare variant's `wrangler.jsonc` keeps the legacy app's names (`my-app-api`,
+`api.my-app.com`, the `*.my-app.com` fronts). `bg add` renders `{{SCOPE}}` and nothing else, so they
+are replaced by hand.
 
 ## Typechecking
 
