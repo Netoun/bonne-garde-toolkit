@@ -26,7 +26,7 @@ describe("githubRegistry.read", () => {
     const raw = serve();
     const registry = githubRegistry("acme/bg", "v1.2.3", { baseUrl: raw.baseUrl });
     const text = await registry.read("registry/ui/button.tsx");
-    expect(text).toContain("export function Button");
+    expect(text).toContain("function Button(");
     expect(raw.requested).toEqual(["ui/button.tsx"]);
   });
 

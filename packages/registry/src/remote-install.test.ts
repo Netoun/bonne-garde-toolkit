@@ -152,9 +152,9 @@ describe("readPlanFiles", () => {
 
     const read = await readPlanFiles(catalog, plan);
 
-    expect(read.items.map((item) => item.name)).toEqual(["utils", "button"]);
+    expect(read.items.map((item) => item.name)).toEqual(["utils", "animations", "button"]);
     const button = read.items.find((item) => item.name === "button")?.files?.[0];
-    expect(button?.content).toContain("export function Button");
+    expect(button?.content).toContain("function Button(");
     expect(raw.requested.sort()).toEqual(
       read.items
         .flatMap((item) => item.files ?? [])

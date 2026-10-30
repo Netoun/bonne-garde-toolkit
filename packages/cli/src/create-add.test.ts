@@ -71,7 +71,7 @@ describe("bg create + add", () => {
       dryRun: true,
       install: false,
     });
-    expect(dry.plan.items.map((i) => i.name)).toEqual(["utils", "button"]);
+    expect(dry.plan.items.map((i) => i.name)).toEqual(["utils", "animations", "button"]);
     expect(dry.modulePlans.map((m) => m.key)).toEqual(["ui/shadcn"]);
     expect(dry.result.written.length).toBeGreaterThan(0);
 
@@ -82,7 +82,7 @@ describe("bg create + add", () => {
     });
 
     const button = await readFile(join(target, "packages/ui/src/components/button.tsx"), "utf8");
-    expect(button).toContain("export function Button");
+    expect(button).toContain("function Button(");
 
     const after = JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as {
       version: number;
@@ -244,6 +244,7 @@ describe("bg create + add", () => {
     expect(plan.items.map((i) => i.name)).toEqual([
       "config",
       "utils",
+      "animations",
       "button",
       "spa-react-router",
     ]);
@@ -354,9 +355,9 @@ describe("bg create + add", () => {
       });
 
       expect(again.result.written).toEqual([]);
-      // `utils` is installed, so it is not planned again: a transitive dependency is skipped.
+      // `utils` and `animations` are installed, so they are not planned again: a transitive dependency is skipped.
       expect(again.result.skippedIdentical.sort()).toEqual(
-        first.result.written.filter((path) => path !== "packages/ui/src/lib/utils.ts").sort(),
+        first.result.written.filter((path) => !path.startsWith("packages/ui/src/lib/")).sort(),
       );
     });
 
@@ -429,7 +430,7 @@ describe("bg create + add", () => {
       };
       expect(after.version).toBe(2);
       // the v1 record survives under `items`, beside what this add wrote
-      expect(Object.keys(after.items).sort()).toEqual(["button", "card", "utils"]);
+      expect(Object.keys(after.items).sort()).toEqual(["animations", "button", "card", "utils"]);
       // pre-v2 files are user-owned: only what this add wrote is claimed, never what card wrote
       expect(Object.values(after.files).map((f) => f.owner)).toEqual(
         expect.arrayContaining(["button", "utils"]),

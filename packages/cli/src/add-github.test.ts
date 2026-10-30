@@ -91,9 +91,9 @@ describe("bg add from a github source", () => {
       github: { baseUrl: raw.baseUrl },
     });
 
-    expect(plan.items.map((item) => item.name)).toEqual(["utils", "button"]);
+    expect(plan.items.map((item) => item.name)).toEqual(["utils", "animations", "button"]);
     expect(await readFile(join(root, "packages/ui/src/components/button.tsx"), "utf8")).toContain(
-      "export function Button",
+      "function Button(",
     );
     expect(result.written).toContain("packages/ui/src/components/button.tsx");
     const bg = await readBg(root);

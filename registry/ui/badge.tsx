@@ -1,16 +1,20 @@
 import { cva, type VariantProps } from "class-variance-authority";
-import type * as React from "react";
+import { motion } from "motion/react";
 
 import { cn } from "@acme/ui/lib/utils";
+import { transitions } from "@acme/ui/lib/animations";
 
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors",
+  "group/badge inline-flex h-6 w-fit shrink-0 items-center justify-center gap-1.5 overflow-hidden rounded-full border border-transparent px-3 py-0.5 text-xs font-semibold whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 aria-invalid:border-destructive aria-invalid:ring-destructive/20 [&>svg]:pointer-events-none [&>svg]:size-3",
   {
     variants: {
       variant: {
-        default: "border-transparent bg-primary text-primary-foreground",
-        secondary: "border-transparent bg-secondary text-secondary-foreground",
-        outline: "text-foreground",
+        default: "bg-primary text-primary-foreground",
+        secondary: "bg-secondary text-secondary-foreground",
+        tertiary: "bg-tertiary text-tertiary-foreground",
+        outline: "border-border bg-background text-foreground",
+        ghost: "bg-muted text-muted-foreground",
+        destructive: "bg-destructive text-destructive-foreground",
       },
     },
     defaultVariants: {
@@ -19,10 +23,24 @@ const badgeVariants = cva(
   },
 );
 
-export type BadgeProps = React.HTMLAttributes<HTMLDivElement> & VariantProps<typeof badgeVariants>;
-
-export function Badge({ className, variant, ...props }: BadgeProps) {
-  return <div className={cn(badgeVariants({ variant }), className)} {...props} />;
+interface BadgeProps extends VariantProps<typeof badgeVariants> {
+  className?: string;
+  children?: React.ReactNode;
 }
 
-export { badgeVariants };
+function Badge({ className, variant = "default", children }: BadgeProps) {
+  return (
+    <motion.span
+      className={cn(badgeVariants({ variant }), className)}
+      initial={{ scale: 1 }}
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      transition={transitions.springSoft}
+    >
+      {children}
+    </motion.span>
+  );
+}
+
+export type { BadgeProps };
+export { Badge, badgeVariants };

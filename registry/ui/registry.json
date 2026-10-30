@@ -16,17 +16,16 @@
       ]
     },
     {
-      "name": "button",
-      "type": "registry:ui",
-      "title": "Button",
-      "description": "Primary button component.",
-      "dependencies": ["class-variance-authority", "react"],
-      "registryDependencies": ["utils"],
+      "name": "animations",
+      "type": "registry:lib",
+      "title": "Animations",
+      "description": "Shared motion transitions, variants and interaction hooks.",
+      "dependencies": ["motion", "react"],
       "files": [
         {
-          "path": "button.tsx",
-          "type": "registry:ui",
-          "target": "packages/ui/src/components/button.tsx"
+          "path": "animations.ts",
+          "type": "registry:lib",
+          "target": "packages/ui/src/lib/animations.ts"
         }
       ]
     },
@@ -35,8 +34,8 @@
       "type": "registry:ui",
       "title": "Badge",
       "description": "Status badge component.",
-      "dependencies": ["class-variance-authority", "react"],
-      "registryDependencies": ["utils"],
+      "dependencies": ["class-variance-authority", "motion"],
+      "registryDependencies": ["utils", "animations"],
       "files": [
         {
           "path": "badge.tsx",
@@ -46,11 +45,26 @@
       ]
     },
     {
+      "name": "button",
+      "type": "registry:ui",
+      "title": "Button",
+      "description": "Primary button component.",
+      "dependencies": ["@base-ui/react", "class-variance-authority", "motion", "react"],
+      "registryDependencies": ["utils", "animations"],
+      "files": [
+        {
+          "path": "button.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/button.tsx"
+        }
+      ]
+    },
+    {
       "name": "card",
       "type": "registry:ui",
       "title": "Card",
       "description": "Card layout primitives.",
-      "dependencies": ["react"],
+      "dependencies": ["motion", "react"],
       "registryDependencies": ["utils"],
       "files": [
         {

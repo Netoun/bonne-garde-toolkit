@@ -61,7 +61,7 @@ describe("bg add --yes", () => {
     expect(stderr).not.toContain("unknown registry item");
     expect(code).toBe(0);
     const added = JSON.parse(stdout);
-    expect(added).toMatchObject({ dryRun: false, items: ["utils", "button"] });
+    expect(added).toMatchObject({ dryRun: false, items: ["utils", "animations", "button"] });
     // meta.bg is gone, and its `capabilities` list with it.
     expect(added).not.toHaveProperty("capabilities");
   });

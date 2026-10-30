@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { loadLocalRegistry } from "./load-registry";
+import type { RegistryItem } from "./types";
 
 const ROOT = join(import.meta.dir, "../../..");
 
@@ -63,4 +65,118 @@ describe("registry contract", () => {
 
     expect(offenders).toEqual([]);
   });
+
+  describe("the UI items (030, 080)", () => {
+    const uiItems = async (): Promise<RegistryItem[]> => {
+      const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+      return catalog.items.filter((item) =>
+        (item.files ?? []).some((file) => file.target?.startsWith("packages/ui/")),
+      );
+    };
+
+    /** The items a file imports: `@acme/ui/{components,lib,hooks}/<x>` and `./<x>`, by item name. */
+    const siblingsOf = (source: string): string[] => {
+      const names = new Set<string>();
+      for (const [, subpath] of source.matchAll(
+        /from\s+"@acme\/ui\/(?:components|lib|hooks)\/([^"]+)"/g,
+      )) {
+        names.add(subpath ?? "");
+      }
+      for (const [, sibling] of source.matchAll(/from\s+"\.\/([^"]+)"/g)) {
+        names.add(sibling ?? "");
+      }
+      return [...names].sort();
+    };
+
+    test("the catalog is the legacy packages/ui: 29 components, lib/animations, lib/utils, hooks/use-mobile", async () => {
+      expect((await uiItems()).map((item) => item.name).sort()).toEqual(UI_ITEMS);
+    });
+
+    test("every item's files exist, and each lands under packages/ui/src with the type its folder says", async () => {
+      const wrong: string[] = [];
+      for (const item of await uiItems()) {
+        for (const file of item.files ?? []) {
+          const folder = /^packages\/ui\/src\/([^/]+)\//.exec(file.target ?? "")?.[1];
+          const expected =
+            { components: "registry:ui", lib: "registry:lib", hooks: "registry:hook" }[
+              folder ?? ""
+            ] ?? "?";
+          if (!existsSync(file.path) || file.type !== expected || item.type !== expected) {
+            wrong.push(`${item.name}: ${file.path} as ${file.type} -> ${file.target}`);
+          }
+        }
+      }
+      expect(wrong).toEqual([]);
+    });
+
+    test("an item declares exactly the items its file imports, so `bg add <item>` brings what it needs and no more", async () => {
+      const wrong: string[] = [];
+      for (const item of await uiItems()) {
+        const imported = new Set<string>();
+        for (const file of item.files ?? []) {
+          for (const sibling of siblingsOf(await readFile(file.path, "utf8"))) {
+            imported.add(sibling);
+          }
+        }
+        const declared = [...(item.registryDependencies ?? [])].sort();
+        if (JSON.stringify(declared) !== JSON.stringify([...imported].sort())) {
+          wrong.push(`${item.name}: declares [${declared}], imports [${[...imported].sort()}]`);
+        }
+      }
+      expect(wrong).toEqual([]);
+    });
+
+    test("an item lists the npm packages its file imports, `react` included", async () => {
+      const wrong: string[] = [];
+      for (const item of await uiItems()) {
+        const imported = new Set<string>();
+        for (const file of item.files ?? []) {
+          if (!/\.tsx?$/.test(file.path)) {
+            continue;
+          }
+          for (const name of packagesOf(await readFile(file.path, "utf8"))) {
+            imported.add(name);
+          }
+        }
+        const declared = [...(item.dependencies ?? [])].sort();
+        if (JSON.stringify(declared) !== JSON.stringify([...imported].sort())) {
+          wrong.push(`${item.name}: lists [${declared}], imports [${[...imported].sort()}]`);
+        }
+      }
+      expect(wrong).toEqual([]);
+    });
+
+    /** The npm packages a file imports from: `@scope/name` or `name`, subpaths folded, `@acme/ui` not one. */
+    const packagesOf = (source: string): string[] => [
+      ...new Set(
+        [...source.matchAll(/from\s+"([^".][^"]*)"/g)].flatMap(([, specifier = ""]) => {
+          const [first = "", second = ""] = specifier.split("/");
+          const name = first.startsWith("@") ? `${first}/${second}` : first;
+          return name === "@acme/ui" ? [] : [name];
+        }),
+      ),
+    ];
+
+    const LEGACY = join(ROOT, "packages/ui/src");
+    test.skipIf(!existsSync(LEGACY))(
+      "while the legacy package is in the tree, each item is its file byte for byte (080: no rewrites)",
+      async () => {
+        const different: string[] = [];
+        for (const item of await uiItems()) {
+          for (const file of item.files ?? []) {
+            const legacy = join(LEGACY, (file.target ?? "").slice("packages/ui/src/".length));
+            if (!existsSync(legacy)) {
+              different.push(`${item.name}: no ${legacy}`);
+            } else if ((await readFile(legacy, "utf8")) !== (await readFile(file.path, "utf8"))) {
+              different.push(`${item.name}: differs from ${legacy}`);
+            }
+          }
+        }
+        expect(different).toEqual([]);
+      },
+    );
+  });
 });
+
+/** The UI items at this commit, by name. */
+const UI_ITEMS = ["animations", "badge", "button", "card", "utils"];
