@@ -1,0 +1,24 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "items": [
+    {
+      "name": "portless",
+      "type": "registry:lib",
+      "title": "Portless dev URLs",
+      "description": "Named local HTTPS URLs for the api, spa, ssr and static apps, with a .local LAN mode for phones. Starting the proxy needs sudo (it binds 443 and trusts a local CA). Root scripts: dev:portless = bun scripts/dev-portless.ts, dev:lan:portless = bun scripts/dev-portless.ts --lan.",
+      "devDependencies": ["portless@0.15.6"],
+      "files": [
+        {
+          "path": "portless/dev-portless.ts",
+          "type": "registry:file",
+          "target": "scripts/dev-portless.ts"
+        },
+        {
+          "path": "portless/dev-portless.test.ts",
+          "type": "registry:file",
+          "target": "scripts/dev-portless.test.ts"
+        }
+      ]
+    }
+  ]
+}

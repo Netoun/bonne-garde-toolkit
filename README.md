@@ -1,8 +1,56 @@
-# My App
+# Bonne Garde
 
-Monorepo Cloudflare : Bun + Elysia (Workers) + Drizzle (D1/SQLite) + Better-auth + React Router v8 (SPA + SSR + Static) + shadcn/ui. Toolchain: **Vite+** (Vite, Vitest, Oxlint, Oxfmt).
+Boîte à outils **shadcn-like** pour applications Cloudflare/Bun : socle vide + CLI `bg` + registry (UI + features). Pas un boilerplate à cloner — tout passe par le CLI.
 
-## Stack
+Ce dépôt contient encore le monorepo applicatif historique (`apps/api`, `apps/spa`, …) pendant la migration vers des items de registry. La cible produit est :
+
+```bash
+bun run bg -- create my-app --yes --no-git --registry local:./registry
+cd my-app
+bun run --filter @bonne-garde/cli start -- add ui/shadcn button config/branding provider/cloudflare api/elysia
+```
+
+Dans ce monorepo (développement local) :
+
+```bash
+bun install --frozen-lockfile
+bun run bg -- list --source local:./registry
+bun run registry:build
+bun run pack:cli         # → dist/npm/create-bonne-garde
+bun run publish:cli:dry  # tarball dry-run
+bun run publish:cli      # bun publish (needs npm auth)
+bun run gen:playground   # → ./playground (gitignored)
+```
+
+### Publish CLI (npm)
+
+The consumer package is **`create-bonne-garde`** (supports `bun create bonne-garde@latest`).
+
+```bash
+bun run pack:cli
+bun publish --cwd dist/npm/create-bonne-garde
+```
+
+Bins: `create-bonne-garde`, `bg`. Templates are embedded; default registry when not in this monorepo is `github:Netoun/bonne-garde-toolkit`.
+
+## Structure plateforme
+
+```
+packages/cli/          # @bonne-garde/cli (bins: bg, create-bonne-garde)
+packages/schema/       # bg.json validation
+packages/registry/     # load / plan / apply
+templates/base/        # empty monorepo template
+registry/              # source registry (ui, apps, lib, features, tooling)
+docs/specs/            # normative specs
+```
+
+## Specs
+
+Voir [docs/specs/README.md](./docs/specs/README.md).
+
+## Stack applicative (items / legacy apps)
+
+Toolchain: **Vite+** (Vite, Vitest, Oxlint, Oxfmt).
 
 | Layer    | Tech                                                |
 | -------- | --------------------------------------------------- |
@@ -16,23 +64,7 @@ Monorepo Cloudflare : Bun + Elysia (Workers) + Drizzle (D1/SQLite) + Better-auth
 | Storage  | Cloudflare R2                                       |
 | Email    | Resend + React-Email                                |
 
-## Structure
-
-```
-acme/
-├── apps/
-│   ├── api/
-│   ├── spa/
-│   ├── ssr/
-│   └── static/
-├── packages/
-│   ├── config/
-│   ├── ui/
-│   └── emails/
-└── docs/
-```
-
-## Getting Started
+## Legacy app (encore présente)
 
 ```bash
 bun install --frozen-lockfile
@@ -45,9 +77,9 @@ Use the Bun version declared in `package.json#packageManager`. The init wizard k
 
 ## Verification
 
-`bun run verify` runs formatting/lint checks, typechecking (including scripts and API tests), all tests, and all builds.
+`bun run verify` runs formatting/lint checks, typechecking (including scripts and API tests), all tests, the migration-intentions lint, the registry build, and all app builds.
 
-`bun run test` includes script tests, real SQLite API tests, package tests, and frontend tests through Vite+ (Vitest + RTL + MSW).
+`bun run test` includes script tests, platform package tests, real SQLite API tests, package tests, and frontend tests through Vite+ (Vitest + RTL + MSW).
 
 ## Default Admin — local development only
 
@@ -60,6 +92,7 @@ Never seed these demo credentials in production. Configure Cloudflare resources 
 
 ## Docs
 
+- [Specs](./docs/specs/README.md)
 - [Architecture](./docs/ARCHITECTURE.md)
 - [Commands](./docs/COMMANDS.md)
 - [Design](./docs/DESIGN.md)

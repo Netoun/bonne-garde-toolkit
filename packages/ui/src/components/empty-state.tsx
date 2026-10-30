@@ -1,6 +1,8 @@
 import { cn } from "@acme/ui/lib/utils";
 import { motion } from "motion/react";
 import type { LucideIcon } from "lucide-react";
+// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// oxfmt-ignore
 import {
   transitions,
   staggerContainerVariants,

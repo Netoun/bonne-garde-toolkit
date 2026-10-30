@@ -1,0 +1,16 @@
+{
+  "name": "{{SCOPE}}/api-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The API's provider seam: Elysia runtime options, environment read, entry",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && bun run typecheck:test",
+    "typecheck:test": "tsc --project tsconfig.test.json --noEmit",
+    "test": "bun test"
+  }
+}

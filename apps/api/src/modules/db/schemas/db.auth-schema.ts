@@ -94,13 +94,9 @@ export const organization = sqliteTable(
     slug: text("slug").notNull(),
     logo: text("logo"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
     metadata: text("metadata"),
-    settings: text("settings", { mode: "json" }).$type<{
-      description?: string;
-      primaryColor?: string;
-      secondaryColor?: string;
-    }>(),
+    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+    settings: text("settings", { mode: "json" }),
   },
   (table) => [uniqueIndex("organization_slug_uidx").on(table.slug)],
 );
@@ -147,27 +143,6 @@ export const invitation = sqliteTable(
     index("invitation_email_idx").on(table.email),
   ],
 );
-
-const createdAtMs = () =>
-  integer("created_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-    .notNull();
-
-export const medias = sqliteTable("medias", {
-  id: text("id")
-    .$defaultFn(() => crypto.randomUUID())
-    .primaryKey(),
-  name: text("name").notNull(),
-  url: text("url").notNull(),
-  key: text("key").notNull(),
-  size: integer("size").notNull(),
-  mimeType: text("mime_type").notNull(),
-  authorId: text("author_id").references(() => user.id),
-  organizationId: text("organization_id").references(() => organization.id, {
-    onDelete: "cascade",
-  }),
-  createdAt: createdAtMs(),
-});
 
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
@@ -216,29 +191,3 @@ export const invitationRelations = relations(invitation, ({ one }) => ({
     references: [user.id],
   }),
 }));
-
-export const mediasRelations = relations(medias, ({ one }) => ({
-  author: one(user, { fields: [medias.authorId], references: [user.id] }),
-  organization: one(organization, {
-    fields: [medias.organizationId],
-    references: [organization.id],
-  }),
-}));
-
-export const authSchema = {
-  user,
-  session,
-  account,
-  verification,
-  organization,
-  member,
-  invitation,
-  userRelations,
-  sessionRelations,
-  accountRelations,
-  organizationRelations,
-  memberRelations,
-  invitationRelations,
-  medias,
-  mediasRelations,
-};

@@ -1,0 +1,490 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "items": [
+    {
+      "name": "utils",
+      "type": "registry:lib",
+      "title": "Utils",
+      "description": "cn() helper for className merging.",
+      "dependencies": ["clsx", "tailwind-merge"],
+      "files": [
+        {
+          "path": "utils.ts",
+          "type": "registry:lib",
+          "target": "packages/ui/src/lib/utils.ts"
+        }
+      ]
+    },
+    {
+      "name": "animations",
+      "type": "registry:lib",
+      "title": "Animations",
+      "description": "Shared motion transitions, variants and interaction hooks.",
+      "dependencies": ["motion", "react"],
+      "files": [
+        {
+          "path": "animations.ts",
+          "type": "registry:lib",
+          "target": "packages/ui/src/lib/animations.ts"
+        }
+      ]
+    },
+    {
+      "name": "use-mobile",
+      "type": "registry:hook",
+      "title": "useIsMobile",
+      "description": "useIsMobile: whether the viewport is under the mobile breakpoint.",
+      "dependencies": ["react"],
+      "files": [
+        {
+          "path": "use-mobile.ts",
+          "type": "registry:hook",
+          "target": "packages/ui/src/hooks/use-mobile.ts"
+        }
+      ]
+    },
+    {
+      "name": "alert",
+      "type": "registry:ui",
+      "title": "Alert",
+      "description": "Callout with a title, a description and an optional action.",
+      "dependencies": ["class-variance-authority", "react"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "alert.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/alert.tsx"
+        }
+      ]
+    },
+    {
+      "name": "alert-dialog",
+      "type": "registry:ui",
+      "title": "Alert dialog",
+      "description": "Modal dialog that asks for a decision, on the Base UI alert dialog.",
+      "dependencies": ["@base-ui/react", "react"],
+      "registryDependencies": ["utils", "button"],
+      "files": [
+        {
+          "path": "alert-dialog.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/alert-dialog.tsx"
+        }
+      ]
+    },
+    {
+      "name": "avatar",
+      "type": "registry:ui",
+      "title": "Avatar",
+      "description": "Image with a fallback, with a group, a count and a badge.",
+      "dependencies": ["@base-ui/react", "react"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "avatar.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/avatar.tsx"
+        }
+      ]
+    },
+    {
+      "name": "badge",
+      "type": "registry:ui",
+      "title": "Badge",
+      "description": "Status badge component.",
+      "dependencies": ["class-variance-authority", "motion"],
+      "registryDependencies": ["utils", "animations"],
+      "files": [
+        {
+          "path": "badge.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/badge.tsx"
+        }
+      ]
+    },
+    {
+      "name": "breadcrumb",
+      "type": "registry:ui",
+      "title": "Breadcrumb",
+      "description": "Breadcrumb trail with separators and an ellipsis.",
+      "dependencies": ["@base-ui/react", "lucide-react", "react"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "breadcrumb.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/breadcrumb.tsx"
+        }
+      ]
+    },
+    {
+      "name": "button",
+      "type": "registry:ui",
+      "title": "Button",
+      "description": "Primary button component.",
+      "dependencies": ["@base-ui/react", "class-variance-authority", "motion", "react"],
+      "registryDependencies": ["utils", "animations"],
+      "files": [
+        {
+          "path": "button.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/button.tsx"
+        }
+      ]
+    },
+    {
+      "name": "card",
+      "type": "registry:ui",
+      "title": "Card",
+      "description": "Card layout primitives.",
+      "dependencies": ["motion", "react"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "card.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/card.tsx"
+        }
+      ]
+    },
+    {
+      "name": "checkbox",
+      "type": "registry:ui",
+      "title": "Checkbox",
+      "description": "Animated checkbox, on the Base UI checkbox.",
+      "dependencies": ["@base-ui/react", "lucide-react", "motion"],
+      "registryDependencies": ["utils", "animations"],
+      "files": [
+        {
+          "path": "checkbox.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/checkbox.tsx"
+        }
+      ]
+    },
+    {
+      "name": "context-menu",
+      "type": "registry:ui",
+      "title": "Context menu",
+      "description": "Right-click menu, on the Base UI context menu.",
+      "dependencies": ["@base-ui/react", "lucide-react", "react"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "context-menu.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/context-menu.tsx"
+        }
+      ]
+    },
+    {
+      "name": "dialog",
+      "type": "registry:ui",
+      "title": "Dialog",
+      "description": "Modal dialog, on the Base UI dialog.",
+      "dependencies": ["@base-ui/react", "lucide-react", "react"],
+      "registryDependencies": ["utils", "button"],
+      "files": [
+        {
+          "path": "dialog.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/dialog.tsx"
+        }
+      ]
+    },
+    {
+      "name": "drawer",
+      "type": "registry:ui",
+      "title": "Drawer",
+      "description": "Drawer that slides in from an edge, on vaul.",
+      "dependencies": ["react", "vaul"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "drawer.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/drawer.tsx"
+        }
+      ]
+    },
+    {
+      "name": "dropdown-menu",
+      "type": "registry:ui",
+      "title": "Dropdown menu",
+      "description": "Dropdown menu, on the Base UI menu.",
+      "dependencies": ["@base-ui/react", "lucide-react", "react"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "dropdown-menu.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/dropdown-menu.tsx"
+        }
+      ]
+    },
+    {
+      "name": "empty-state",
+      "type": "registry:ui",
+      "title": "Empty state",
+      "description": "Empty state with an icon, a message and an optional action.",
+      "dependencies": ["lucide-react", "motion"],
+      "registryDependencies": ["utils", "animations", "button"],
+      "files": [
+        {
+          "path": "empty-state.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/empty-state.tsx"
+        }
+      ]
+    },
+    {
+      "name": "entity-card",
+      "type": "registry:ui",
+      "title": "Entity card",
+      "description": "Card for an entity: a title, badges and content.",
+      "dependencies": ["lucide-react"],
+      "registryDependencies": ["utils", "card", "badge"],
+      "files": [
+        {
+          "path": "entity-card.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/entity-card.tsx"
+        }
+      ]
+    },
+    {
+      "name": "input",
+      "type": "registry:ui",
+      "title": "Input",
+      "description": "Text input, on the Base UI input.",
+      "dependencies": ["@base-ui/react", "react"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "input.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/input.tsx"
+        }
+      ]
+    },
+    {
+      "name": "label",
+      "type": "registry:ui",
+      "title": "Label",
+      "description": "Form label.",
+      "dependencies": ["react"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "label.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/label.tsx"
+        }
+      ]
+    },
+    {
+      "name": "popover",
+      "type": "registry:ui",
+      "title": "Popover",
+      "description": "Popover, on the Base UI popover.",
+      "dependencies": ["@base-ui/react", "react"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "popover.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/popover.tsx"
+        }
+      ]
+    },
+    {
+      "name": "progress",
+      "type": "registry:ui",
+      "title": "Progress",
+      "description": "Progress bar.",
+      "dependencies": ["react"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "progress.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/progress.tsx"
+        }
+      ]
+    },
+    {
+      "name": "select",
+      "type": "registry:ui",
+      "title": "Select",
+      "description": "Select, on the Base UI select.",
+      "dependencies": ["@base-ui/react", "lucide-react", "react"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "select.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/select.tsx"
+        }
+      ]
+    },
+    {
+      "name": "separator",
+      "type": "registry:ui",
+      "title": "Separator",
+      "description": "Horizontal or vertical separator.",
+      "dependencies": ["@base-ui/react"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "separator.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/separator.tsx"
+        }
+      ]
+    },
+    {
+      "name": "sheet",
+      "type": "registry:ui",
+      "title": "Sheet",
+      "description": "Side sheet, on the Base UI dialog.",
+      "dependencies": ["@base-ui/react", "lucide-react", "react"],
+      "registryDependencies": ["utils", "button"],
+      "files": [
+        {
+          "path": "sheet.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/sheet.tsx"
+        }
+      ]
+    },
+    {
+      "name": "sidebar",
+      "type": "registry:ui",
+      "title": "Sidebar",
+      "description": "Collapsible app sidebar, a sheet on mobile.",
+      "dependencies": ["@base-ui/react", "class-variance-authority", "lucide-react", "react"],
+      "registryDependencies": [
+        "use-mobile",
+        "utils",
+        "button",
+        "input",
+        "separator",
+        "sheet",
+        "skeleton",
+        "tooltip"
+      ],
+      "files": [
+        {
+          "path": "sidebar.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/sidebar.tsx"
+        }
+      ]
+    },
+    {
+      "name": "skeleton",
+      "type": "registry:ui",
+      "title": "Skeleton",
+      "description": "Loading placeholder.",
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "skeleton.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/skeleton.tsx"
+        }
+      ]
+    },
+    {
+      "name": "switch",
+      "type": "registry:ui",
+      "title": "Switch",
+      "description": "On/off switch, on the Base UI switch.",
+      "dependencies": ["@base-ui/react"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "switch.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/switch.tsx"
+        }
+      ]
+    },
+    {
+      "name": "table",
+      "type": "registry:ui",
+      "title": "Table",
+      "description": "Table primitives.",
+      "dependencies": ["react"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "table.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/table.tsx"
+        }
+      ]
+    },
+    {
+      "name": "tabs",
+      "type": "registry:ui",
+      "title": "Tabs",
+      "description": "Tabs, on the Base UI tabs.",
+      "dependencies": ["@base-ui/react", "class-variance-authority"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "tabs.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/tabs.tsx"
+        }
+      ]
+    },
+    {
+      "name": "textarea",
+      "type": "registry:ui",
+      "title": "Textarea",
+      "description": "Multi-line text input.",
+      "dependencies": ["react"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "textarea.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/textarea.tsx"
+        }
+      ]
+    },
+    {
+      "name": "toggle",
+      "type": "registry:ui",
+      "title": "Toggle",
+      "description": "Toggle button, on the Base UI toggle.",
+      "dependencies": ["@base-ui/react", "class-variance-authority"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "toggle.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/toggle.tsx"
+        }
+      ]
+    },
+    {
+      "name": "tooltip",
+      "type": "registry:ui",
+      "title": "Tooltip",
+      "description": "Tooltip, on the Base UI tooltip.",
+      "dependencies": ["@base-ui/react"],
+      "registryDependencies": ["utils"],
+      "files": [
+        {
+          "path": "tooltip.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/tooltip.tsx"
+        }
+      ]
+    }
+  ]
+}

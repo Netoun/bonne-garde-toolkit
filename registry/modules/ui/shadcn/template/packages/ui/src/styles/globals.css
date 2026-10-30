@@ -1,0 +1,167 @@
+@import "tailwindcss";
+
+/* Watch for changes in the ui package */
+@source "../../../../packages/ui/";
+
+@plugin 'tailwindcss-animate';
+
+@custom-variant dark (&:is(.dark *));
+
+@import "./themes/default.css";
+
+/* Font faces are loaded in each app entry point */
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans min-h-screen bg-background text-foreground antialiased;
+    font-feature-settings:
+      "liga" 1,
+      "calt" 1;
+    font-weight: 500;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-heading font-semibold tracking-tight;
+  }
+
+  ::selection {
+    background: var(--selection-background);
+    color: var(--selection-foreground);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 100px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+@utility transition-cozy {
+  transition: all var(--transition-base);
+}
+
+@utility transition-cozy-fast {
+  transition: all var(--transition-fast);
+}
+
+@utility transition-cozy-slow {
+  transition: all var(--transition-slow);
+}
+
+@utility shadow-hover {
+  transition: box-shadow var(--transition-base);
+
+  &:hover {
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(2deg);
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes gentle-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.animate-gentle-pulse {
+  animation: gentle-pulse 2s ease-in-out infinite;
+}
+
+@keyframes scale-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-scale-in {
+  animation: scale-in var(--transition-spring) forwards;
+}
+
+input {
+  &::-webkit-color-swatch {
+    border: none;
+    border-radius: inherit;
+  }
+  &::-moz-color-swatch {
+    border: none;
+    border-radius: inherit;
+  }
+}
+
+@keyframes slide-up {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up var(--transition-base) forwards;
+}
+
+@utility focus-ring {
+  @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+}
+
+@utility interactive {
+  @apply transition-cozy cursor-pointer;
+
+  &:hover {
+    @apply brightness-105;
+  }
+
+  &:active {
+    @apply scale-98 brightness-95;
+  }
+}

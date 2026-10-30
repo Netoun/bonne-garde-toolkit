@@ -27,6 +27,10 @@ export const mediaRoutes = new Elysia({ name: "media.routes", prefix: "/media" }
         },
       });
     } catch (error) {
+      if (error instanceof R2Error && error.code === "INVALID_KEY") {
+        set.status = 400;
+        return { error: error.message, code: error.code };
+      }
       if (error instanceof R2Error && error.code === "BUCKET_NOT_CONFIGURED") {
         set.status = 500;
         return { error: error.message, code: error.code };
@@ -37,15 +41,22 @@ export const mediaRoutes = new Elysia({ name: "media.routes", prefix: "/media" }
   .guard({ auth: true })
   .post(
     "/",
-    async ({ body, mediaService, user }) => {
+    async ({ body, mediaService, user, status }) => {
       const { file, folder = "uploads", organizationId } = body;
 
-      return mediaService.uploadMedia({
-        file,
-        folder,
-        userId: user.id,
-        organizationId,
-      });
+      try {
+        return await mediaService.uploadMedia({
+          file,
+          folder,
+          userId: user.id,
+          organizationId,
+        });
+      } catch (error) {
+        if (error instanceof R2Error && error.code === "INVALID_KEY") {
+          return status(400, { error: error.message, code: error.code });
+        }
+        throw error;
+      }
     },
     { body: uploadMediaBody },
   )

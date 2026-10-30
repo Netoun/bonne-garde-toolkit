@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
-import { authClient } from "@acme/spa/lib/auth";
+import { useSession } from "@acme/spa/hooks/use-session";
 
 function isAuthRoute(pathname: string): boolean {
   const authRoutes = [
@@ -18,14 +18,28 @@ function isSpecialAuthRoute(pathname: string): boolean {
   return specialAuthRoutes.some((route) => pathname.startsWith(route));
 }
 
+const redirectOrigin = "http://redirect.invalid";
+
+/**
+ * Keeps same-origin paths only. Prefix checks are not enough: browsers fold a leading `"/\"` or a
+ * tab into `"//"`, so `/\evil.example` starts with a slash yet resolves to another origin. Only a
+ * resolved URL tells the two apart. The dummy origin must stay `http:`/`https:`: backslash folding
+ * only applies to special schemes.
+ */
 function sanitizeRedirectPath(redirectParam: string | null): string | null {
-  if (!redirectParam) return null;
-  if (!redirectParam.startsWith("/") || redirectParam.startsWith("//")) return null;
-  return redirectParam;
+  if (!redirectParam?.startsWith("/")) return null;
+  let resolved: URL;
+  try {
+    resolved = new URL(redirectParam, redirectOrigin);
+  } catch {
+    return null;
+  }
+  if (resolved.origin !== redirectOrigin) return null;
+  return `${resolved.pathname}${resolved.search}${resolved.hash}`;
 }
 
 export function useAuthRedirect() {
-  const { data: sessionData, isPending } = authClient.useSession();
+  const { data: sessionData, isPending } = useSession();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();

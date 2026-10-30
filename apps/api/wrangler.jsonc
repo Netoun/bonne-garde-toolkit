@@ -20,8 +20,8 @@
   "vars": {
     "API_URL": "http://localhost:5172",
     "R2_PUBLIC_URL": "http://localhost:5172/v1/media/file",
-    "PLAYER_URL": "http://localhost:5174",
-    "BO_URL": "http://localhost:5173",
+    "SPA_URL": "http://localhost:5173",
+    "SSR_URL": "http://localhost:5174",
   },
   "env": {
     "production": {
@@ -44,8 +44,8 @@
       "vars": {
         "API_URL": "https://api.my-app.com",
         "R2_PUBLIC_URL": "https://api.my-app.com/v1/media/file",
-        "PLAYER_URL": "https://play.my-app.com",
-        "BO_URL": "https://app.my-app.com",
+        "SPA_URL": "https://spa.my-app.com",
+        "SSR_URL": "https://ssr.my-app.com",
       },
       // Secrets to configure via `wrangler secret put`:
       // - BETTER_AUTH_SECRET

@@ -16,7 +16,9 @@
 
 ## Project overview
 
-My App is a Bun monorepo for Cloudflare: Elysia API (Workers) + Drizzle/D1 + Better-auth + React Router v8 (SPA / SSR / static) + shadcn/ui + R2 + Resend. Toolchain: Vite+.
+**Platform direction:** Bonne Garde is becoming a shadcn-inspired toolkit — empty base template (`templates/base`) + CLI (`packages/cli`, bin `bg`) + open registry (`registry/`) for UI and full-stack modules. Normative specs live in [`docs/specs/`](./docs/specs/README.md).
+
+**Legacy app (still in-tree during migration):** Bun monorepo for Cloudflare — Elysia API (Workers) + Drizzle/D1 + Better-auth + React Router v8 (SPA / SSR / static) + shadcn/ui + R2 + Resend. Toolchain: Vite+.
 
 | Layer                       | Choice                                                                               |
 | --------------------------- | ------------------------------------------------------------------------------------ |
@@ -49,8 +51,6 @@ My App is a Bun monorepo for Cloudflare: Elysia API (Workers) + Drizzle/D1 + Bet
 acme/
 ├── apps/api
 ├── apps/spa
-├── apps/ssr
-├── apps/static
 ├── packages/config
 ├── packages/emails
 ├── packages/ui
@@ -68,18 +68,24 @@ Full list → [`docs/COMMANDS.md`](./docs/COMMANDS.md) (`bun run gen:commands`).
 
 ```bash
 bun install
-bun run init                              # selection, branding, env, migrations, seed
+bun run bg -- list --source local:./registry
+bun run bg -- create ../tmp-app --yes --no-git --no-install --registry local:./registry
+bun run registry:build                    # flatten registry → dist/r
+bun run pack:cli                          # dist/npm/create-bonne-garde
+bun run publish:cli:dry                   # npm tarball dry-run
+bun run publish:cli                       # publish create-bonne-garde to npm
+bun run gen:playground                    # smoke consumer in ./playground
+bun run init                              # legacy: selection, branding, env, migrations, seed
 bun run brand                             # re-apply product identity / npm scope
 bun run gen:branding                      # regenerate branding.generated.ts from branding.json
 bun run dev                               # all apps in parallel
 bun run typecheck && bun run test         # full verification
 bun run check                             # vp check (fmt + lint via Vite+)
 bun run verify                            # check + typecheck + all tests + all builds (CI gate)
+bun run golden                            # fresh project: create → add modules + items → install → typecheck → test → build → doctor --strict → check → each module's checks → dockerfile configuration: docker build + run (skipped without docker, a failure when GOLDEN_REQUIRE_DOCKER is set) (needs npm)
 
 bun run --filter @acme/api dev
 bun run --filter @acme/spa dev
-bun run --filter @acme/ssr dev
-bun run --filter @acme/static dev
 
 # From apps/api/
 bun run db:generate

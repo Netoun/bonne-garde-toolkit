@@ -1,0 +1,17 @@
+{
+  "name": "{{SCOPE}}/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./components/*": "./src/components/*.tsx",
+    "./globals.css": "./src/styles/globals.css",
+    "./hooks/*": "./src/hooks/*.ts",
+    "./lib/*": "./src/lib/*.ts",
+    "./themes/default.css": "./src/styles/themes/default.css"
+  },
+  "scripts": {
+    "registry": "bunx shadcn@latest",
+    "typecheck": "tsc --noEmit"
+  }
+}

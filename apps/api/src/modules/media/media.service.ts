@@ -1,10 +1,16 @@
 import { Elysia } from "elysia";
-import { medias } from "@acme/api/modules/db/schemas/db.auth-schema";
+import { medias } from "@acme/api/modules/db/schemas/db.core-schema";
 import { eq } from "drizzle-orm";
 import { dbService } from "@acme/api/modules/db/db.service";
 import type { DB } from "@acme/api/modules/db/db.client";
 import type { Env } from "@acme/api/lib/env";
-import { uploadToR2, deleteFromR2, R2Error, type UploadResult } from "@acme/api/lib/r2";
+import {
+  uploadToR2,
+  deleteFromR2,
+  validateKey,
+  R2Error,
+  type UploadResult,
+} from "@acme/api/lib/r2";
 
 export interface UploadMediaInput {
   file: File;
@@ -163,6 +169,9 @@ export const MediaService = new Elysia({ name: "media.service" })
     const getFileFromR2 = async (
       key: string,
     ): Promise<{ blob: Blob; contentType: string } | null> => {
+      // The key comes straight from the request URL.
+      validateKey(key);
+
       const bucket = env.BUCKET;
       if (!bucket) {
         throw new R2Error("R2 bucket not configured", "BUCKET_NOT_CONFIGURED");

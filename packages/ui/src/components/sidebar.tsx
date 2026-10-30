@@ -16,6 +16,8 @@ import {
   SheetTitle,
 } from "@acme/ui/components/sheet";
 import { Skeleton } from "@acme/ui/components/skeleton";
+// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// oxfmt-ignore
 import { Tooltip, TooltipContent, TooltipTrigger } from "@acme/ui/components/tooltip";
 import { PanelLeftIcon } from "lucide-react";
 

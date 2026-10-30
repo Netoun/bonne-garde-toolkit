@@ -1,0 +1,25 @@
+{
+  "name": "@acme/api-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The API's provider seam: Elysia runtime options, environment read, entry",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && bun run typecheck:test",
+    "typecheck:test": "tsc --project tsconfig.test.json --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "elysia": "1.4.29"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260804.1",
+    "@types/node": "26.1.2",
+    "bun-types": "1.3.14",
+    "typescript": "^7.0.2"
+  }
+}

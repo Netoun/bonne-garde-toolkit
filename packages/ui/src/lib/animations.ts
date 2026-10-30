@@ -9,31 +9,31 @@ export const transitions = {
   fast: {
     duration: 0.15,
     ease: [0.4, 0, 0.2, 1],
-  } as Transition,
+  },
   base: {
     duration: 0.2,
     ease: [0.4, 0, 0.2, 1],
-  } as Transition,
+  },
   slow: {
     duration: 0.3,
     ease: [0.4, 0, 0.2, 1],
-  } as Transition,
+  },
   spring: {
     type: "spring",
     stiffness: 400,
     damping: 25,
-  } as Transition,
+  },
   springSoft: {
     type: "spring",
     stiffness: 300,
     damping: 30,
-  } as Transition,
+  },
   bounce: {
     type: "spring",
     stiffness: 500,
     damping: 15,
-  } as Transition,
-};
+  },
+} satisfies Record<string, Transition>;
 
 // === VARIANTS ===
 

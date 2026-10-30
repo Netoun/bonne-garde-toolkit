@@ -1,0 +1,37 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "branding",
+  "category": "config",
+  "version": "0.1.0",
+  "title": "Branding",
+  "description": "The branding constants every app imports, generated from branding.json, and the favicons.",
+  "peers": {},
+  "checks": ["bun run typecheck", "bun run test", "bun run gen:branding"],
+  "variants": [
+    {
+      "key": "default",
+      "match": {},
+      "workspace": { "name": "{{SCOPE}}/config", "path": "packages/config" },
+      "copy": [
+        "packages/config/package.json",
+        "packages/config/tsconfig.json",
+        "packages/config/branding.json",
+        "packages/config/scripts/gen-branding.ts",
+        "packages/config/assets/favicons/favicon.svg",
+        "packages/config/assets/favicons/site.webmanifest",
+        "packages/config/src/branding.generated.ts",
+        "packages/config/src/branding.types.ts",
+        "packages/config/src/gen-branding.test.ts",
+        "packages/config/src/gen-branding.ts",
+        "packages/config/src/index.ts"
+      ],
+      "patch": [
+        {
+          "type": "scripts.merge",
+          "file": "package.json",
+          "scripts": { "gen:branding": "bun packages/config/scripts/gen-branding.ts" }
+        }
+      ]
+    }
+  ]
+}

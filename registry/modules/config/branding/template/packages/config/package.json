@@ -1,0 +1,17 @@
+{
+  "name": "{{SCOPE}}/config",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared branding / white-label config",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./branding": "./src/branding.generated.ts",
+    "./assets/*": "./assets/*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  }
+}

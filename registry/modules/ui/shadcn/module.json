@@ -1,0 +1,41 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "shadcn",
+  "category": "ui",
+  "version": "0.1.0",
+  "title": "shadcn/ui",
+  "description": "The host package of the UI items: package.json with its subpath exports, tsconfig, components.json and the Tailwind theme.",
+  "peers": {},
+  "checks": ["bun run typecheck"],
+  "variants": [
+    {
+      "key": "default",
+      "match": {},
+      "workspace": { "name": "{{SCOPE}}/ui", "path": "packages/ui" },
+      "dependencies": {
+        "@base-ui/react": "1.7.0",
+        "class-variance-authority": "0.7.1",
+        "clsx": "2.1.1",
+        "lucide-react": "1.29.0",
+        "motion": "13.0.0",
+        "react": "19.2.8",
+        "react-dom": "19.2.8",
+        "tailwind-merge": "3.6.0",
+        "tailwindcss": "4.3.3",
+        "tailwindcss-animate": "1.0.7",
+        "vaul": "1.1.2"
+      },
+      "devDependencies": {
+        "@types/react": "19.2.18"
+      },
+      "copy": [
+        "packages/ui/package.json",
+        "packages/ui/tsconfig.json",
+        "packages/ui/components.json",
+        "packages/ui/src/env.d.ts",
+        "packages/ui/src/styles/globals.css",
+        "packages/ui/src/styles/themes/default.css"
+      ]
+    }
+  ]
+}

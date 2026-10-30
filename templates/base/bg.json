@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "scope": "@acme",
+  "platform": {
+    "version": "0.0.0",
+    "remote": "github:Netoun/bonne-garde-toolkit",
+    "intentions": {
+      "applied": [],
+      "skipped": {}
+    }
+  },
+  "registries": {
+    "@bg": "local:./registry"
+  },
+  "apps": [],
+  "modules": {},
+  "items": {},
+  "files": {},
+  "regions": {}
+}

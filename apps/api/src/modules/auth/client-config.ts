@@ -1,8 +1,9 @@
 import type { Env } from "@acme/api/lib/env";
+import { allowedOrigins } from "@acme/api/lib/origins";
 
-export function getAuthClientConfig(env: Pick<Env, "API_URL" | "BO_URL" | "PLAYER_URL">) {
+export function getAuthClientConfig(env: Pick<Env, "API_URL" | "SPA_URL" | "SSR_URL">) {
   return {
     baseURL: env.API_URL,
-    trustedOrigins: [env.BO_URL, env.PLAYER_URL].filter(Boolean) as string[],
+    trustedOrigins: allowedOrigins(env),
   } as const;
 }

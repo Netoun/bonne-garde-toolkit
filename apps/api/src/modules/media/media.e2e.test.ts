@@ -2,9 +2,9 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { Elysia, status } from "elysia";
 import { treaty } from "@elysiajs/eden";
-import { createTestDb, type TestDb } from "../test/db.test";
+import { createTestDb, type TestDb } from "../../../tests/helpers/db.helpers";
 import { user, session, organization, member } from "../db/schemas/db.auth-schema";
-import { medias } from "../db/schemas/db.auth-schema";
+import { medias } from "../db/schemas/db.core-schema";
 import { MediaService } from "./media.service";
 import { deleteMediaBody, uploadMediaBody } from "./contracts/media.contract";
 import {
@@ -498,6 +498,29 @@ describe("MediaService", () => {
 
       expect(error).toBeNull();
       expect(data?.url).toMatch(/\/uploads\//);
+    });
+
+    it("should percent-encode the public url and keep the stored key as is", async () => {
+      const file = createImageFile("test-content", "é #1 100%?.jpg");
+
+      const { data, error } = await api.media.upload.post({ file, folder: "test-folder" });
+
+      expect(error).toBeNull();
+      expect(data?.key).toMatch(/^medias\/test-folder\/[a-f0-9-]+-é #1 100%\?\.jpg$/);
+      expect(data?.url).toMatch(
+        /^https:\/\/media\.example\.com\/medias\/test-folder\/[a-f0-9-]+-%C3%A9%20%231%20100%25%3F\.jpg$/,
+      );
+      expect(extractKeyFromUrl(data?.url ?? "", publicUrl)).toBe(data?.key ?? "");
+    });
+
+    it("should reject a folder that is not a valid key path and store nothing", async () => {
+      const file = createImageFile("test-content", "test.jpg");
+
+      const { error } = await api.media.upload.post({ file, folder: "../outside" });
+
+      expect(error).not.toBeNull();
+      expect((await bucket.list()).objects).toEqual([]);
+      expect(await db.select().from(medias)).toEqual([]);
     });
 
     it("should throw error when bucket is not configured", async () => {

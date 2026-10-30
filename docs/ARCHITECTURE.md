@@ -2,28 +2,30 @@
 
 <!-- GEN:START -->
 
-> Auto-generated from `package.json` files. Regenerate: `bun run gen:architecture`. Last: 2026-10-02.
+> Auto-generated from `package.json` files. Regenerate: `bun run gen:architecture`. Last: 2026-10-30.
 
 ## Overview
 
-My App is a Bun monorepo with 4 apps and 3 packages, deployed on Cloudflare.
+My App is a Bun monorepo with 2 apps and 7 packages, deployed on Cloudflare.
 
 ### Apps
 
-| App           | Framework       | Mode      | Platform |
-| ------------- | --------------- | --------- | -------- |
-| `apps/api`    | Elysia          | CF Worker | Workers  |
-| `apps/spa`    | React Router v8 | SPA       | Pages    |
-| `apps/ssr`    | React Router v8 | SSR       | Workers  |
-| `apps/static` | React Router v8 | SPA       | Pages    |
+| App        | Framework       | Mode      | Platform |
+| ---------- | --------------- | --------- | -------- |
+| `apps/api` | Elysia          | CF Worker | Workers  |
+| `apps/spa` | React Router v8 | SPA       | Pages    |
 
 ### Packages
 
-| Package           | Role                                 |
-| ----------------- | ------------------------------------ |
-| `packages/config` | Shared branding / white-label config |
-| `packages/emails` | React-Email templates                |
-| `packages/ui`     | shadcn/ui + global CSS               |
+| Package                | Role                                 |
+| ---------------------- | ------------------------------------ |
+| `packages/api-runtime` | —                                    |
+| `packages/cli`         | —                                    |
+| `packages/config`      | Shared branding / white-label config |
+| `packages/emails`      | React-Email templates                |
+| `packages/registry`    | —                                    |
+| `packages/schema`      | —                                    |
+| `packages/ui`          | shadcn/ui + global CSS               |
 
 <!-- GEN:END -->
 

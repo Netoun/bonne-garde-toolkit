@@ -1,0 +1,33 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "cloudflare",
+  "category": "provider",
+  "version": "0.1.0",
+  "title": "Cloudflare",
+  "description": "Workers runtime with D1 and R2 bindings, deployed with wrangler.",
+  "peers": {},
+  "checks": ["cd packages/api-runtime && bun run typecheck && bun run test"],
+  "variants": [
+    {
+      "key": "default",
+      "match": {},
+      "workspace": { "name": "{{SCOPE}}/api-runtime", "path": "packages/api-runtime" },
+      "dependencies": { "elysia": "1.4.29" },
+      "devDependencies": {
+        "@cloudflare/workers-types": "5.20260804.1",
+        "@types/node": "26.1.2"
+      },
+      "copy": [
+        "packages/api-runtime/package.json",
+        "packages/api-runtime/tsconfig.json",
+        "packages/api-runtime/tsconfig.test.json",
+        "packages/api-runtime/src/index.ts",
+        "packages/api-runtime/src/index.test.ts"
+      ],
+      "env": [
+        { "name": "BETTER_AUTH_SECRET", "required": true, "example": "" },
+        { "name": "RESEND_API_KEY", "required": true, "example": "" }
+      ]
+    }
+  ]
+}

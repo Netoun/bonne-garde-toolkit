@@ -16,6 +16,7 @@ export default defineConfig({
       "coverage/",
       ".agents/skills/",
       ".claude/skills/",
+      ".claude/worktrees/",
       "*.min.js",
       "*.lock",
       "*.lockb",
@@ -36,13 +37,7 @@ export default defineConfig({
     overrides: [
       {
         // Front apps + shared React packages — plugins replace the base list.
-        files: [
-          "apps/spa/**",
-          "apps/ssr/**",
-          "apps/static/**",
-          "packages/ui/**",
-          "packages/emails/**",
-        ],
+        files: ["apps/spa/**", "packages/ui/**", "packages/emails/**"],
         plugins: ["typescript", "import", "unicorn", "react", "node"],
         env: {
           browser: true,
@@ -78,6 +73,7 @@ export default defineConfig({
       "coverage/",
       ".agents/skills/",
       ".claude/skills/",
+      ".claude/worktrees/",
       "*.lock",
       "bun.lock",
     ],

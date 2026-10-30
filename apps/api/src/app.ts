@@ -1,21 +1,18 @@
 import "elysia";
 import { Elysia } from "elysia";
-import { CloudflareAdapter } from "elysia/adapter/cloudflare-worker";
 import { cors } from "@elysiajs/cors";
 import { openapi } from "@elysiajs/openapi";
+import { runtimeOptions } from "@acme/api-runtime";
 import { branding } from "@acme/config";
-import { config } from "@acme/api/lib/app.config";
+import { originAllowed } from "@acme/api/lib/origins";
 import { dbModule } from "@acme/api/modules/db/db.module";
 import { authModule } from "@acme/api/modules/auth/auth.module";
 import { mediaModule } from "@acme/api/modules/media/media.module";
 
-export const app = new Elysia({ aot: false, adapter: CloudflareAdapter })
+export const app = new Elysia(runtimeOptions)
   .use(
     cors({
-      origin: ({ headers }) => {
-        const origin = headers.get("origin") ?? "";
-        return [config.BO_URL, config.PLAYER_URL].includes(origin);
-      },
+      origin: ({ headers }) => originAllowed(headers.get("origin") ?? ""),
       credentials: true,
     }),
   )

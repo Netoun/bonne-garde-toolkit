@@ -1,0 +1,6 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "bonne-garde",
+  "homepage": "https://github.com/Netoun/bonne-garde-toolkit",
+  "include": ["ui/registry.json", "features/registry.json", "tooling/registry.json"]
+}

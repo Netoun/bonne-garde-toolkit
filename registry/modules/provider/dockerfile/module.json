@@ -1,0 +1,34 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "dockerfile",
+  "category": "provider",
+  "version": "0.1.0",
+  "title": "Dockerfile",
+  "description": "One Bun container serving the API and the built SPA from a single origin, with a data volume.",
+  "peers": {},
+  "checks": ["cd packages/api-runtime && bun run typecheck && bun run test"],
+  "variants": [
+    {
+      "key": "default",
+      "match": {},
+      "workspace": { "name": "{{SCOPE}}/api-runtime", "path": "packages/api-runtime" },
+      "dependencies": { "elysia": "1.4.29" },
+      "copy": [
+        "Dockerfile",
+        ".dockerignore",
+        "compose.yaml",
+        "packages/api-runtime/package.json",
+        "packages/api-runtime/tsconfig.json",
+        "packages/api-runtime/src/index.ts",
+        "packages/api-runtime/src/index.test.ts"
+      ],
+      "env": [
+        { "name": "PORT", "required": false, "example": "5172" },
+        { "name": "DATA_DIR", "required": false, "example": "/data" },
+        { "name": "APP_URL", "required": true, "example": "http://localhost:5172" },
+        { "name": "BETTER_AUTH_SECRET", "required": false, "example": "" },
+        { "name": "RESEND_API_KEY", "required": true, "example": "" }
+      ]
+    }
+  ]
+}

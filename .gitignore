@@ -7,6 +7,12 @@ dist/
 build/
 .cache/
 coverage/
+
+# Generated consumer smoke project
+/playground/
+
+# npm pack output
+/dist/npm/
 /public/build
 /public/uploads
 

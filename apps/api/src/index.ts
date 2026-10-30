@@ -1,8 +1,4 @@
+import { serve } from "@acme/api-runtime";
 import { app } from "./app";
 
-export default {
-  fetch(request: Request, env: unknown, ctx: unknown) {
-    //@ts-ignore
-    return app.fetch(request, env, ctx);
-  },
-};
+export default serve(app);

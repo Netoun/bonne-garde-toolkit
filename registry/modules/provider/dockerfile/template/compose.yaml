@@ -1,0 +1,21 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        # Baked into the SPA bundle at build time; keep it equal to APP_URL below.
+        VITE_API_URL: ${APP_URL:-http://localhost:5172}
+    restart: unless-stopped
+    ports:
+      - "5172:5172"
+    volumes:
+      - app-data:/data
+    environment:
+      APP_URL: ${APP_URL:-http://localhost:5172}
+      # Required by the API's config; `${VAR:?}` stops `compose up` with this message when unset.
+      RESEND_API_KEY: ${RESEND_API_KEY:?set RESEND_API_KEY, the API refuses to start without it}
+      # BETTER_AUTH_SECRET: generated into ${DATA_DIR}/secrets on first start when unset.
+      # BETTER_AUTH_SECRET: "replace-with-a-random-secret-of-at-least-32-characters"
+
+volumes:
+  app-data:
