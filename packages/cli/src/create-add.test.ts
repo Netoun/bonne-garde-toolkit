@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readProjectManifest } from "@bonne-garde/schema";
 import { addItems, listItems } from "./add";
-import { createProject } from "./create";
+import { createProject, MAX_SCOPE_LENGTH } from "./create";
 import { doctorExitCode, runDoctor } from "./doctor";
 import { findRepoRoot, templateBaseDir } from "./paths";
 
@@ -535,6 +535,61 @@ describe("bg create + add", () => {
       name: string;
     };
     expect(pkg.name).toBe("dot-app");
+  });
+
+  describe("a scope too long for the vendored files to stay formatted", () => {
+    // Registry files are formatted for `@acme`; past MAX_SCOPE_LENGTH a line of one of them can
+    // wrap at a width the scope-format contract test does not cover, and `bun run check` fails.
+    const scopeOfLength = (length: number): string => `@${"a".repeat(length - 1)}`;
+
+    test("`--scope` is refused before anything is written, naming the flag", async () => {
+      const parent = await mkdtemp(join(tmpdir(), "bg-cli-scope-"));
+      dirs.push(parent);
+      const scope = scopeOfLength(MAX_SCOPE_LENGTH + 1);
+
+      await expect(
+        createProject({ name: "long", cwd: parent, scope, git: false, install: false }),
+      ).rejects.toThrow(`${scope.length} characters`);
+      await expect(
+        createProject({ name: "long", cwd: parent, scope, git: false, install: false }),
+      ).rejects.toThrow("--scope");
+      expect(await readdir(parent)).toEqual([]);
+    });
+
+    test("the scope derived from a long directory name is refused the same way", async () => {
+      const parent = await mkdtemp(join(tmpdir(), "bg-cli-scope-"));
+      dirs.push(parent);
+
+      await expect(
+        createProject({
+          name: "a".repeat(MAX_SCOPE_LENGTH),
+          cwd: parent,
+          git: false,
+          install: false,
+        }),
+      ).rejects.toThrow("--scope");
+      expect(await readdir(parent)).toEqual([]);
+    });
+
+    test("MAX_SCOPE_LENGTH itself is accepted", async () => {
+      const parent = await mkdtemp(join(tmpdir(), "bg-cli-scope-"));
+      dirs.push(parent);
+      const scope = scopeOfLength(MAX_SCOPE_LENGTH);
+
+      const target = await createProject({
+        name: "edge",
+        cwd: parent,
+        scope,
+        git: false,
+        install: false,
+        registry: repoRegistry(),
+      });
+
+      const { manifest } = readProjectManifest(
+        JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as unknown,
+      );
+      expect(manifest.scope).toBe(scope);
+    });
   });
 
   test("refuses non-empty target", async () => {

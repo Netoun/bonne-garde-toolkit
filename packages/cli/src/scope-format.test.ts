@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadLocalRegistry } from "@bonne-garde/registry";
 import { addItems } from "./add";
-import { createProject } from "./create";
+import { createProject, MAX_SCOPE_LENGTH } from "./create";
 import { findRepoRoot } from "./paths";
 
 /**
@@ -18,8 +18,6 @@ import { findRepoRoot } from "./paths";
 
 /** The scopes the report names: the shortest legal one, the authoring scope, and a long one. */
 const NAMED_SCOPES = ["@a", "@app", "@acme", "@golden-app", "@a-much-longer-company-scope"];
-/** The longest scope the sweep renders. */
-const LONGEST_SCOPE = 40;
 /** The modules a single project holds; each other module is installed alone, as it fills a category `one`. */
 const SHARED_MODULES = ["tooling/vite-plus", "ui/shadcn"];
 
@@ -37,10 +35,10 @@ function repoRoot(): string {
   return root;
 }
 
-/** Every scope of 2 to `LONGEST_SCOPE` characters, and the named ones, which share some of those lengths. */
+/** Every scope of 2 to `MAX_SCOPE_LENGTH` characters, and the named ones, which share some of those lengths. */
 function scopeMatrix(): string[] {
   const swept = Array.from(
-    { length: LONGEST_SCOPE - 1 },
+    { length: MAX_SCOPE_LENGTH - 1 },
     (_, index) => `@${"a".repeat(index + 1)}`,
   );
   return [...new Set([...NAMED_SCOPES, ...swept])];

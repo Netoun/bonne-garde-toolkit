@@ -31,13 +31,13 @@ Package name during monorepo development: `@bonne-garde/cli` with bins `bg` and 
 
 ## Flags (MUST)
 
-| Flag                  | Effect                                                  |
-| --------------------- | ------------------------------------------------------- |
-| `--yes`               | Non-interactive: take the default for every prompt      |
-| `--no-install`        | Skip `bun install`                                      |
-| `--no-git`            | Skip git init                                           |
-| `--scope <scope>`     | npm scope (default derived from the directory basename) |
-| `--registry <source>` | Override the default `@bg` registry source              |
+| Flag                  | Effect                                                                         |
+| --------------------- | ------------------------------------------------------------------------------ |
+| `--yes`               | Non-interactive: take the default for every prompt                             |
+| `--no-install`        | Skip `bun install`                                                             |
+| `--no-git`            | Skip git init                                                                  |
+| `--scope <scope>`     | npm scope, at most 64 characters (default derived from the directory basename) |
+| `--registry <source>` | Override the default `@bg` registry source                                     |
 
 ## Normative
 

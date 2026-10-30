@@ -27,6 +27,7 @@ The catalog is closed. A module MUST NOT invent a patch type; adding one is a pl
 - Every patch MUST be idempotent: applying it twice yields `applied` then `skipped`, and an identical tree.
 - A patch MUST NOT perform free-text search/replace across arbitrary source.
 - Scope placeholder rewriting (`{{SCOPE}}`) happens at template render time on tier-1 files only — it is **not** a patch and MUST NOT run over project-owned files.
+- A tier-1 file that carries the scope MUST be what the project's formatter writes at **every** scope `create` accepts, not only at the scope it was authored for. The scope changes line lengths, so the checksum `bg.json` records would otherwise be of a file `bun run check` rejects, and fixing it by hand makes `doctor` report it user-modified. A line whose wrap depends on the scope carries `// oxfmt-ignore`; `packages/cli/src/scope-format.test.ts` renders every item and module at every length and fails on the first file the formatter would change.
 
 ## Region ownership
 

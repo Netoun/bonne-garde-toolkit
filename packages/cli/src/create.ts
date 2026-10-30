@@ -13,6 +13,14 @@ export type CreateOptions = {
   yes?: boolean;
 };
 
+/**
+ * The longest scope `create` accepts, `@` included. Registry files are formatted for `@acme` and
+ * `add` rewrites the scope, which moves line lengths; `scope-format.test.ts` checks that no file
+ * wants a different wrap at any scope up to this one. Past it, the first file to want one is the
+ * `spa-react-router` item's tsconfig.json at 74 (its `paths` array), so this keeps clear of that.
+ */
+export const MAX_SCOPE_LENGTH = 64;
+
 function slugify(name: string): string {
   return name
     .trim()
@@ -64,10 +72,16 @@ export async function createProject(options: CreateOptions): Promise<string> {
   if (!slug) {
     throw new Error("invalid project name");
   }
+  const scope = options.scope ?? deriveScope(slug);
+  if (scope.length > MAX_SCOPE_LENGTH) {
+    throw new Error(
+      `scope ${scope} is ${scope.length} characters and at most ${MAX_SCOPE_LENGTH} are accepted, ` +
+        `so that the files \`bg add\` copies stay formatted: pass a shorter one, bg create ${options.name} --scope @name`,
+    );
+  }
   await assertEmptyTarget(target);
   await mkdir(target, { recursive: true });
 
-  const scope = options.scope ?? deriveScope(slug);
   const registry = options.registry ?? defaultRegistrySource();
 
   await cp(templateBaseDir(), target, { recursive: true });
