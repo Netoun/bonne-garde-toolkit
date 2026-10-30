@@ -26,7 +26,7 @@
     "test": "bun run test:platform && bun run test:legacy",
     "test:platform": "bun run test:scripts && bun run --parallel --filter '@bonne-garde/*' test",
     "test:legacy": "bun run --parallel --filter '@acme/*' test",
-    "test:scripts": "bun test ./scripts ./registry/modules --path-ignore-patterns 'registry/modules/{api,provider/cloudflare}/**'",
+    "test:scripts": "bun test ./scripts ./registry/modules --path-ignore-patterns 'registry/modules/{api,web,provider/cloudflare}/**'",
     "verify": "bun run check && bun run typecheck && bun run test && bun run intentions:lint && bun run registry:build && bun run build",
     "ui": "bun run --filter '@acme/ui' registry",
     "prepare": "husky",

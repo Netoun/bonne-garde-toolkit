@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createEmptyProjectManifest, type ProjectManifest } from "@bonne-garde/schema";
-import { checkImportedModules, PlanError, resolveInstallPlan, searchCatalog } from "./resolve-plan";
-import type { ModuleRef } from "./module-plan";
+import { PlanError, resolveInstallPlan, searchCatalog } from "./resolve-plan";
 import type { RegistryCatalog } from "./types";
 
 const catalog: RegistryCatalog = {
@@ -232,114 +231,6 @@ describe("resolveInstallPlan: an item that lands in packages/ui needs the ui mod
     };
 
     expect(() => resolveInstallPlan(catalog, ["button"], manifest)).toThrow(/ui\/shadcn/);
-  });
-});
-
-describe("checkImportedModules: an item that imports a module's package needs the module", () => {
-  const importing = (name: string, content: string, registryDependencies: string[] = []) => ({
-    name,
-    type: "registry:block",
-    registryDependencies,
-    files: [
-      {
-        path: `/tmp/${name}.tsx`,
-        type: "registry:file",
-        target: `apps/spa/src/${name}.tsx`,
-        content,
-      },
-    ],
-  });
-  const withImports: RegistryCatalog = {
-    ...catalog,
-    items: [
-      importing("brand", 'import { branding } from "@acme/config";\n'),
-      importing("brand-sub", "import { x } from '@acme/config/branding';\n"),
-      importing("manifest", '{ "dependencies": { "@acme/config": "workspace:*" } }\n'),
-      importing("plain", 'import { x } from "@acme/ui/lib/utils";\n'),
-      importing("lookalike", 'import { x } from "@acme/config-extra";\n'),
-      importing("page", "export {};\n", ["brand"]),
-    ],
-  };
-  const plan = (...names: string[]) => resolveInstallPlan(withImports, names, project());
-  const check = (names: string[], manifest = project(), modules: readonly ModuleRef[] = []) =>
-    checkImportedModules(withImports, names, plan(...names), manifest, modules);
-  const rejection = async (run: () => Promise<void>): Promise<string> =>
-    run().then(
-      () => "",
-      (error: unknown) => (error instanceof PlanError ? error.message : String(error)),
-    );
-
-  test("an item importing @acme/config fails, naming the module and the command to run", async () => {
-    expect(await rejection(() => check(["brand"]))).toBe(
-      "brand needs the config module, and none is installed or named in this call; run: bg add config/branding brand",
-    );
-  });
-
-  test("a subpath import and a workspace dependency count too", async () => {
-    expect(await rejection(() => check(["brand-sub"]))).toStartWith(
-      "brand-sub needs the config module",
-    );
-    expect(await rejection(() => check(["manifest"]))).toStartWith(
-      "manifest needs the config module",
-    );
-  });
-
-  test("an item importing another package, or a package whose name merely starts the same, needs nothing", async () => {
-    await check(["plain"]);
-    await check(["lookalike"]);
-  });
-
-  test("the requested item whose dependency imports it is the one named", async () => {
-    expect(await rejection(() => check(["page"]))).toStartWith("page needs the config module");
-  });
-
-  test("it passes when bg.json records a config module, or the call names one", async () => {
-    const installed = project();
-    installed.modules.config = [
-      {
-        id: "branding",
-        variant: "default",
-        version: "0.0.0",
-        installedAt: "2026-01-01T00:00:00.000Z",
-        options: {},
-        patches: [],
-        intentions: { applied: [], skipped: {} },
-      },
-    ];
-    await check(["brand"], installed);
-    await check(["brand"], project(), [{ category: "config", id: "branding" }]);
-  });
-
-  test("another module in the call does not stand in for it", async () => {
-    // The command keeps the module the caller named: running it must not drop it.
-    expect(await rejection(() => check(["brand"], project(), SHADCN))).toEndWith(
-      "run: bg add config/branding ui/shadcn brand",
-    );
-  });
-
-  test("the module is named from the catalog when it lists one", async () => {
-    const listing: RegistryCatalog = {
-      ...withImports,
-      modules: [
-        {
-          dir: "/tmp/modules/config/other",
-          manifest: {
-            id: "other",
-            category: "config",
-            title: "Other",
-            description: "x",
-            peers: {},
-            variants: [{ key: "default", match: {} }],
-          },
-        },
-      ],
-    };
-
-    const message = await rejection(() =>
-      checkImportedModules(listing, ["brand"], plan("brand"), project(), []),
-    );
-
-    expect(message).toContain("bg add config/other brand");
   });
 });
 

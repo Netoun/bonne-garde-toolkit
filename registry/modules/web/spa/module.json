@@ -1,0 +1,146 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "spa",
+  "category": "web",
+  "version": "0.1.0",
+  "title": "SPA",
+  "description": "A React Router SPA shell on Vite+ and Tailwind: root, error boundary, theme and query providers, and an Eden client for the API.",
+  "peers": { "provider": [], "config": ["branding"], "api": ["elysia"], "ui": ["shadcn"] },
+  "checks": ["cd apps/spa && bun run typecheck && bun run test"],
+  "variants": [
+    {
+      "key": "cloudflare",
+      "match": { "provider": "cloudflare" },
+      "workspace": { "name": "{{SCOPE}}/spa", "path": "apps/spa" },
+      "dependencies": {
+        "{{SCOPE}}/config": "workspace:*",
+        "{{SCOPE}}/ui": "workspace:*",
+        "@elysiajs/eden": "1.4.9",
+        "@fontsource-variable/faustina": "5.3.0",
+        "@fontsource-variable/urbanist": "5.3.0",
+        "@tanstack/react-query": "5.101.4",
+        "clsx": "2.1.1",
+        "isbot": "5.2.1",
+        "lucide-react": "1.29.0",
+        "react": "19.2.8",
+        "react-dom": "19.2.8",
+        "react-router": "8.3.0",
+        "tailwind-merge": "3.6.0",
+        "zustand": "5.0.14"
+      },
+      "devDependencies": {
+        "{{SCOPE}}/api": "workspace:*",
+        "@react-router/dev": "8.3.0",
+        "@tailwindcss/vite": "4.3.3",
+        "@testing-library/jest-dom": "7.0.1",
+        "@testing-library/react": "16.3.3",
+        "@types/node": "26.1.2",
+        "@types/react": "19.2.18",
+        "@types/react-dom": "19.2.4",
+        "jsdom": "30.1.1",
+        "tailwindcss": "4.3.3",
+        "typescript": "7.0.2",
+        "vite": "npm:@voidzero-dev/vite-plus-core@0.2.8",
+        "vite-plus": "0.2.8",
+        "wrangler": "4.119.0"
+      },
+      "env": [{ "name": "VITE_API_URL", "required": true, "example": "http://localhost:5172" }],
+      "copy": [
+        "apps/spa/package.json",
+        "apps/spa/tsconfig.json",
+        "apps/spa/react-router.config.ts",
+        "apps/spa/vite.config.ts",
+        "apps/spa/wrangler.jsonc",
+        "apps/spa/testing/frontend.setup.ts",
+        "apps/spa/testing/matchers.d.ts",
+        "apps/spa/src/vite-env.d.ts",
+        "apps/spa/src/root.tsx",
+        "apps/spa/src/routes.ts",
+        "apps/spa/src/routes/home.tsx",
+        "apps/spa/src/routes/home.test.tsx",
+        "apps/spa/src/lib/api.ts",
+        "apps/spa/src/lib/utils.ts",
+        "apps/spa/src/providers/query-provider.tsx",
+        "apps/spa/src/stores/theme-store.ts",
+        "apps/spa/src/stores/ui.store.ts",
+        "apps/spa/src/hooks/use-init-theme.ts",
+        "apps/spa/src/hooks/use-load-app.ts",
+        "apps/spa/src/components/app-loader.tsx",
+        "apps/spa/src/components/client-only.tsx"
+      ],
+      "patch": [
+        {
+          "type": "scripts.merge",
+          "file": "apps/spa/package.json",
+          "scripts": { "dev": "react-router dev", "deploy": "wrangler pages deploy build/client" }
+        }
+      ]
+    },
+    {
+      "key": "dockerfile",
+      "match": { "provider": "dockerfile" },
+      "workspace": { "name": "{{SCOPE}}/spa", "path": "apps/spa" },
+      "dependencies": {
+        "{{SCOPE}}/config": "workspace:*",
+        "{{SCOPE}}/ui": "workspace:*",
+        "@elysiajs/eden": "1.4.9",
+        "@fontsource-variable/faustina": "5.3.0",
+        "@fontsource-variable/urbanist": "5.3.0",
+        "@tanstack/react-query": "5.101.4",
+        "clsx": "2.1.1",
+        "isbot": "5.2.1",
+        "lucide-react": "1.29.0",
+        "react": "19.2.8",
+        "react-dom": "19.2.8",
+        "react-router": "8.3.0",
+        "tailwind-merge": "3.6.0",
+        "zustand": "5.0.14"
+      },
+      "devDependencies": {
+        "{{SCOPE}}/api": "workspace:*",
+        "@react-router/dev": "8.3.0",
+        "@tailwindcss/vite": "4.3.3",
+        "@testing-library/jest-dom": "7.0.1",
+        "@testing-library/react": "16.3.3",
+        "@types/node": "26.1.2",
+        "@types/react": "19.2.18",
+        "@types/react-dom": "19.2.4",
+        "jsdom": "30.1.1",
+        "tailwindcss": "4.3.3",
+        "typescript": "7.0.2",
+        "vite": "npm:@voidzero-dev/vite-plus-core@0.2.8",
+        "vite-plus": "0.2.8"
+      },
+      "env": [{ "name": "VITE_API_URL", "required": true, "example": "http://localhost:5172" }],
+      "copy": [
+        "apps/spa/package.json",
+        "apps/spa/tsconfig.json",
+        "apps/spa/react-router.config.ts",
+        "apps/spa/vite.config.ts",
+        "apps/spa/testing/frontend.setup.ts",
+        "apps/spa/testing/matchers.d.ts",
+        "apps/spa/src/vite-env.d.ts",
+        "apps/spa/src/root.tsx",
+        "apps/spa/src/routes.ts",
+        "apps/spa/src/routes/home.tsx",
+        "apps/spa/src/routes/home.test.tsx",
+        "apps/spa/src/lib/api.ts",
+        "apps/spa/src/lib/utils.ts",
+        "apps/spa/src/providers/query-provider.tsx",
+        "apps/spa/src/stores/theme-store.ts",
+        "apps/spa/src/stores/ui.store.ts",
+        "apps/spa/src/hooks/use-init-theme.ts",
+        "apps/spa/src/hooks/use-load-app.ts",
+        "apps/spa/src/components/app-loader.tsx",
+        "apps/spa/src/components/client-only.tsx"
+      ],
+      "patch": [
+        {
+          "type": "scripts.merge",
+          "file": "apps/spa/package.json",
+          "scripts": { "dev": "react-router dev" }
+        }
+      ]
+    }
+  ]
+}

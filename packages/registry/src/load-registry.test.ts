@@ -132,7 +132,6 @@ describe("loadRegistryFromSource over github", () => {
     const raw = serve("v1");
     await loadRegistryFromSource("github:acme/bg@v1", "/", { github: { baseUrl: raw.baseUrl } });
     expect(raw.requested.sort()).toEqual([
-      "apps/registry.json",
       "features/registry.json",
       "registry.json",
       "tooling/registry.json",

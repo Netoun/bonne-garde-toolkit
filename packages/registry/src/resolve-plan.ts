@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ModuleCategory, ProjectManifest } from "@bonne-garde/schema";
 import type { ModuleRef } from "./module-plan";
@@ -104,55 +103,6 @@ function checkHostModules(
   for (const { prefix, category, fallback } of MODULE_FOR_TARGET) {
     const needing = ordered.filter((item) => landsIn(item, prefix));
     if (needing.length > 0 && !hasModule(manifest, modules, category)) {
-      throw missingModule(catalog, requested, modules, needing, category, fallback);
-    }
-  }
-}
-
-/**
- * Transitional. An item cannot require a module, and `spa-react-router` imports `@acme/config`, which
- * the `config/branding` module owns. Its files land in `apps/spa/`, so no target prefix says so: the
- * rule reads the imports instead, and goes when `web/spa` replaces the item and peers on `config`.
- * `@acme` is the scope placeholder items are authored with.
- */
-const MODULE_FOR_IMPORT: readonly {
-  specifier: RegExp;
-  category: ModuleCategory;
-  fallback: string;
-}[] = [
-  {
-    specifier: /["']@acme\/config(?:\/[^"']*)?["']/,
-    category: "config",
-    fallback: "config/branding",
-  },
-];
-
-/**
- * The twin of `checkHostModules` for what an item imports: fails when a planned item names a
- * package whose module is neither installed nor named in this call. It reads the file contents,
- * which `resolveInstallPlan` has not got for a local catalog, so it runs once the plan is made.
- */
-export async function checkImportedModules(
-  catalog: RegistryCatalog,
-  requested: string[],
-  plan: InstallPlan,
-  manifest: ProjectManifest,
-  modules: readonly ModuleRef[],
-): Promise<void> {
-  for (const { specifier, category, fallback } of MODULE_FOR_IMPORT) {
-    if (hasModule(manifest, modules, category)) {
-      continue;
-    }
-    const needing: RegistryItem[] = [];
-    for (const item of plan.items) {
-      for (const file of item.files ?? []) {
-        if (specifier.test(file.content ?? (await readFile(file.path, "utf8")))) {
-          needing.push(item);
-          break;
-        }
-      }
-    }
-    if (needing.length > 0) {
       throw missingModule(catalog, requested, modules, needing, category, fallback);
     }
   }

@@ -8,7 +8,7 @@
  *
  * A configuration is a set of modules that fit in one project. `provider` admits one module and the
  * `api` module ships a variant per provider, so each provider is a configuration of its own: the
- * `cloudflare` one installs every item too, the `dockerfile` one only modules, a project with no SPA.
+ * `cloudflare` one installs every item too, the `dockerfile` one only modules, and no SSR or static site.
  * Packing and the refusal run once.
  *
  * Any non-zero exit fails the run and names the phase. It needs a real `bun install` against npm,
@@ -101,12 +101,20 @@ export const CONFIGURATIONS: readonly Configuration[] = [
       "config/branding",
       "ui/shadcn",
       "api/elysia",
+      "web/spa",
     ],
     items: true,
   },
   {
     name: "dockerfile",
-    modules: ["provider/dockerfile", "tooling/vite-plus", "config/branding", "api/elysia"],
+    modules: [
+      "provider/dockerfile",
+      "tooling/vite-plus",
+      "config/branding",
+      "ui/shadcn",
+      "api/elysia",
+      "web/spa",
+    ],
     items: false,
   },
 ];
@@ -182,10 +190,12 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
   cloudflare: {
     "config/branding": ["scripts.gen:branding"],
     "api/elysia": ["scripts.deploy", "scripts.dev"],
+    "web/spa": ["scripts.deploy", "scripts.dev"],
   },
   dockerfile: {
     "config/branding": ["scripts.gen:branding"],
     "api/elysia": ["scripts.dev"],
+    "web/spa": ["scripts.dev"],
   },
 };
 

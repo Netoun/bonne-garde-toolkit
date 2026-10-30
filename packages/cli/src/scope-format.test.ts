@@ -25,12 +25,19 @@ const SHARED_MODULES = [
   "ui/shadcn",
   "provider/cloudflare",
   "api/elysia",
+  "web/spa",
 ];
 /**
  * The project on the other provider. `provider` admits one module, and the variant of `api/elysia`
  * that is selected depends on it, so the files of the other variant need a tree of their own.
  */
-const OTHER_PROVIDER_STACK = ["config/branding", "provider/dockerfile", "api/elysia"];
+const OTHER_PROVIDER_STACK = [
+  "config/branding",
+  "ui/shadcn",
+  "provider/dockerfile",
+  "api/elysia",
+  "web/spa",
+];
 
 const dirs: string[] = [];
 

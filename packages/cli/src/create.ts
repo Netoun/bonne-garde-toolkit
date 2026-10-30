@@ -16,8 +16,8 @@ export type CreateOptions = {
 /**
  * The longest scope `create` accepts, `@` included. Registry files are formatted for `@acme` and
  * `add` rewrites the scope, which moves line lengths; `scope-format.test.ts` checks that no file
- * wants a different wrap at any scope up to this one. Past it, the first file to want one is the
- * `spa-react-router` item's tsconfig.json at 74 (its `paths` array), so this keeps clear of that.
+ * wants a different wrap at any scope up to this one. Past it, the first file to want one is a `web`
+ * module's tsconfig.json at 74 (its `paths` array), so this keeps clear of that.
  */
 export const MAX_SCOPE_LENGTH = 64;
 

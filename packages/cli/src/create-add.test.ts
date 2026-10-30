@@ -227,7 +227,7 @@ describe("bg create + add", () => {
     expect(doctorExitCode(await runDoctor(target), true)).toBe(0);
   });
 
-  describe("`spa-react-router` imports @acme/config, and an item cannot require a module", () => {
+  describe("`web/spa` peers on a provider, the config, the api and the ui", () => {
     async function spaProject(prefix: string): Promise<string> {
       const parent = await mkdtemp(join(tmpdir(), prefix));
       dirs.push(parent);
@@ -240,61 +240,40 @@ describe("bg create + add", () => {
       });
     }
 
-    test("it pulls button through registryDependencies, with no meta.bg, and config/branding is named beside it", async () => {
+    test("with its peers named in the call, it installs the variant of the provider", async () => {
       const target = await spaProject("bg-cli-spa-");
 
-      const { plan, modulePlans } = await addItems({
+      const { modulePlans } = await addItems({
         projectRoot: target,
-        items: ["ui/shadcn", "config/branding", "spa-react-router"],
+        items: ["provider/cloudflare", "config/branding", "ui/shadcn", "api/elysia", "web/spa"],
         dryRun: true,
         install: false,
       });
 
-      expect(plan.items.map((i) => i.name)).toEqual([
-        "utils",
-        "animations",
-        "button",
-        "spa-react-router",
-      ]);
-      expect(modulePlans.map((m) => m.key)).toEqual(["config/branding", "ui/shadcn"]);
+      const spa = modulePlans.find((plan) => plan.key === "web/spa");
+      expect(spa?.variant).toBe("cloudflare");
+      expect(spa?.workspace).toBe("apps/spa");
     });
 
-    test("without the config module it fails before any write, naming the module and the command", async () => {
-      const target = await spaProject("bg-cli-spa-no-config-");
+    test("without a peer it fails before any write, naming the category and what it accepts", async () => {
+      const target = await spaProject("bg-cli-spa-no-peers-");
       const before = await readFile(join(target, "bg.json"), "utf8");
 
       await expect(
+        addItems({ projectRoot: target, items: ["web/spa"], install: false }),
+      ).rejects.toThrow("web/spa needs a module in category provider (any) and none is installed");
+      await expect(
         addItems({
           projectRoot: target,
-          items: ["ui/shadcn", "spa-react-router"],
+          items: ["provider/cloudflare", "config/branding", "ui/shadcn", "web/spa"],
           install: false,
         }),
-      ).rejects.toThrow(
-        "spa-react-router needs the config module, and none is installed or named in this call; run: bg add config/branding ui/shadcn spa-react-router",
-      );
+      ).rejects.toThrow("web/spa needs a module in category api (elysia) and none is installed");
 
       expect(await readFile(join(target, "bg.json"), "utf8")).toBe(before);
-      expect(
-        (await readdir(join(target, "packages"))).filter((name) => name !== ".gitkeep"),
-      ).toEqual([]);
-    });
-
-    test("an installed config module is enough", async () => {
-      const target = await spaProject("bg-cli-spa-installed-");
-      await addItems({
-        projectRoot: target,
-        items: ["config/branding", "ui/shadcn"],
-        install: false,
-      });
-
-      const { plan } = await addItems({
-        projectRoot: target,
-        items: ["spa-react-router"],
-        dryRun: true,
-        install: false,
-      });
-
-      expect(plan.items.map((i) => i.name)).toContain("spa-react-router");
+      expect((await readdir(join(target, "apps"))).filter((name) => name !== ".gitkeep")).toEqual(
+        [],
+      );
     });
   });
 

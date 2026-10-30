@@ -32,7 +32,7 @@ what this module ships.
   `bg create --no-git` still installs. In a git project it points `core.hooksPath` at `.husky/_`,
   and `.husky/pre-commit` runs from the first commit after this module is added.
 
-Without this module, a project with an app that has its own `vite.config.ts` (`spa-react-router`)
+Without this module, a project with an app that has its own `vite.config.ts` (`web/spa`)
 fails `bun run check`: with no root config, `vp fmt` tries to load the app's one as a Vite+ config.
 The root `vite.config.ts` stops that, which is part of why the module exists.
 

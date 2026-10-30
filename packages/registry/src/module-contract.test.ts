@@ -256,7 +256,11 @@ describe("module contract", () => {
           for (const [name, version] of Object.entries(map)) {
             // `workspace:*` is how a module names a sibling package of the project (`{{SCOPE}}/<name>`).
             const sibling = name.startsWith("{{SCOPE}}/") && version === "workspace:*";
-            if (!sibling && !/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version)) {
+            // `npm:<package>@<exact>` is an alias of an exact version: how a project names `vite-plus-core` as `vite`.
+            if (
+              !sibling &&
+              !/^(?:npm:(?:@[^/@]+\/)?[^/@]+@)?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version)
+            ) {
               loose.push(`${manifest.category}/${manifest.id} ${variant.key}: ${name}@${version}`);
             }
           }
@@ -787,6 +791,277 @@ describe("module contract", () => {
       expect(Object.keys(variants.get("cloudflare")?.dependencies ?? {})).not.toContain(
         "drizzle-orm",
       );
+    });
+  });
+
+  describe("web modules are the front shells of apps/<id>, one variant per provider they support (035, 080)", () => {
+    type WebModule = Awaited<ReturnType<typeof loadLocalRegistry>>["modules"][number];
+    const webModules = async (): Promise<WebModule[]> => {
+      const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+      const found = catalog.modules.filter(({ manifest }) => manifest.category === "web");
+      expect(found.map(({ manifest }) => manifest.id).sort()).toEqual(["spa"]);
+      return found;
+    };
+    const providerIds = async (): Promise<string[]> => {
+      const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+      return catalog.modules
+        .filter(({ manifest }) => manifest.category === "provider")
+        .map(({ manifest }) => manifest.id)
+        .sort();
+    };
+    const read = (module: WebModule, path: string): Promise<string> =>
+      readFile(join(module.dir, "template", path), "utf8");
+    /** Every module specifier a source imports, from `from "x"`, `import "x"` and CSS `@import "x"`. */
+    const specifiersOf = (source: string): string[] =>
+      [...source.matchAll(/(?:\bfrom|\bimport|@import)\s+["']([^"']+)["']/g)].flatMap(
+        ([, specifier]) => (specifier === undefined ? [] : [specifier]),
+      );
+    /** `react-dom/server` is `react-dom`, `@react-router/dev/vite` is `@react-router/dev`. */
+    const packageOf = (specifier: string): string => {
+      const [first = "", second = ""] = specifier.split("/");
+      return specifier.startsWith("@") || specifier.startsWith("{") ? `${first}/${second}` : first;
+    };
+    const SOURCE = /\.(?:tsx?|css)$/;
+    const sourcesOf = async (module: WebModule, copy: string[]): Promise<[string, string][]> =>
+      Promise.all(
+        copy
+          .filter((path) => SOURCE.test(path))
+          .map(async (path): Promise<[string, string]> => [path, await read(module, path)]),
+      );
+
+    test("each declares the peers it imports through, and a variant for every provider it accepts", async () => {
+      const providers = await providerIds();
+      for (const module of await webModules()) {
+        const { manifest } = module;
+        const key = `web/${manifest.id}`;
+        expect(Object.keys(manifest.peers)).toEqual(
+          expect.arrayContaining(["provider", "config", "api"]),
+        );
+        const accepted = manifest.peers.provider ?? [];
+        const expected = accepted.length > 0 ? [...accepted].sort() : providers;
+        expect(manifest.variants.map((variant) => variant.key).sort()).toEqual(expected);
+        for (const variant of manifest.variants) {
+          expect(`${key} ${variant.key}: ${JSON.stringify(variant.match)}`).toBe(
+            `${key} ${variant.key}: ${JSON.stringify({ provider: variant.key })}`,
+          );
+          expect(variant.workspace).toEqual({
+            name: `{{SCOPE}}/${manifest.id}`,
+            path: `apps/${manifest.id}`,
+          });
+          // A glob cannot be expanded over `github:`, which has no directory listing.
+          expect(variant.copy?.filter((path) => /[*?[\]{}]/.test(path))).toEqual([]);
+          expect(
+            (variant.copy ?? []).filter((path) => !path.startsWith(`apps/${manifest.id}/`)),
+          ).toEqual([]);
+          for (const path of variant.copy ?? []) {
+            expect(existsSync(join(module.dir, "template", path))).toBe(true);
+          }
+        }
+      }
+    });
+
+    test("the vendored package.json carries scripts and no dependency map, and no script a variant patches in", async () => {
+      for (const module of await webModules()) {
+        const { manifest } = module;
+        const body: unknown = JSON.parse(await read(module, `apps/${manifest.id}/package.json`));
+        expect(body).toMatchObject({ name: `{{SCOPE}}/${manifest.id}` });
+        const scripts = isRecord(body) && isRecord(body.scripts) ? body.scripts : {};
+        for (const map of ["dependencies", "devDependencies", "peerDependencies"]) {
+          expect(isRecord(body) && map in body ? `${manifest.id}: ${map}` : null).toBeNull();
+        }
+        expect(Object.keys(scripts)).toEqual(
+          expect.arrayContaining(["build", "typecheck", "test"]),
+        );
+        for (const variant of manifest.variants) {
+          // On a vendored file a patch is computed on the template: a script it already holds would
+          // be reported `skipped` by the first install.
+          const patched = (variant.patch ?? []).flatMap((patch) =>
+            patch.type === "scripts.merge" && isRecord(patch.scripts)
+              ? Object.keys(patch.scripts)
+              : [],
+          );
+          expect(patched).toContain("dev");
+          expect(patched.filter((name) => name in scripts)).toEqual([]);
+          for (const patch of variant.patch ?? []) {
+            expect(patch.type).toBe("scripts.merge");
+            expect(patch).toMatchObject({ file: `apps/${manifest.id}/package.json` });
+          }
+        }
+      }
+    });
+
+    test("a cloudflare variant also deploys, and carries the wrangler config and wrangler", async () => {
+      for (const { manifest } of await webModules()) {
+        const cloudflare = manifest.variants.find((variant) => variant.key === "cloudflare");
+        const others = manifest.variants.filter((variant) => variant.key !== "cloudflare");
+        expect(cloudflare?.copy).toContain(`apps/${manifest.id}/wrangler.jsonc`);
+        expect(Object.keys(cloudflare?.devDependencies ?? {})).toContain("wrangler");
+        for (const variant of others) {
+          expect(variant.copy).not.toContain(`apps/${manifest.id}/wrangler.jsonc`);
+          expect(Object.keys(variant.devDependencies ?? {})).not.toContain("wrangler");
+        }
+      }
+    });
+
+    test("every package a template imports is declared by the variant, or is the project's own", async () => {
+      const missing: string[] = [];
+      for (const module of await webModules()) {
+        for (const variant of module.manifest.variants) {
+          const declared = new Set([
+            ...Object.keys(variant.dependencies ?? {}),
+            ...Object.keys(variant.devDependencies ?? {}),
+            `{{SCOPE}}/${module.manifest.id}`,
+          ]);
+          for (const [path, source] of await sourcesOf(module, variant.copy ?? [])) {
+            for (const specifier of specifiersOf(source)) {
+              const name = packageOf(specifier);
+              // `bun:test`, `node:*` and `virtual:*` are the runtime's, the bundler's; `.` is a file.
+              if (!specifier.startsWith(".") && !specifier.includes(":") && !declared.has(name)) {
+                missing.push(`${module.manifest.id} ${variant.key} ${path}: ${name}`);
+              }
+            }
+          }
+        }
+      }
+      expect(missing).toEqual([]);
+    });
+
+    test("every dependency a variant declares is imported by it, or is the toolchain", async () => {
+      // A module declares what its code needs. The toolchain is what `react-router`, `vite` and
+      // `tsc` run on: named in the config, a script or a type, and not in an import of the sources.
+      const toolchain = new Set([
+        "@react-router/dev",
+        "@tailwindcss/vite",
+        "@types/node",
+        "@types/react",
+        "@types/react-dom",
+        "@cloudflare/workers-types",
+        "isbot",
+        "jsdom",
+        "tailwindcss",
+        "typescript",
+        "vite",
+        "vite-plus",
+        "wrangler",
+        "@testing-library/jest-dom",
+        // `react-router`'s default server entry imports it; a shell with its own entry does too.
+        "react-dom",
+      ]);
+      const unused: string[] = [];
+      for (const module of await webModules()) {
+        for (const variant of module.manifest.variants) {
+          const imported = new Set<string>();
+          for (const [, source] of await sourcesOf(module, variant.copy ?? [])) {
+            for (const specifier of specifiersOf(source)) {
+              imported.add(packageOf(specifier));
+            }
+          }
+          for (const name of [
+            ...Object.keys(variant.dependencies ?? {}),
+            ...Object.keys(variant.devDependencies ?? {}),
+          ]) {
+            if (!imported.has(name) && !toolchain.has(name) && name !== "{{SCOPE}}/api") {
+              unused.push(`${module.manifest.id} ${variant.key}: ${name}`);
+            }
+          }
+        }
+      }
+      expect(unused).toEqual([]);
+    });
+
+    /** The `exports` of the package a peer module writes, by `{{SCOPE}}/<name>`. */
+    const PEER_PACKAGES: Record<string, { package: string; template: string }> = {
+      "{{SCOPE}}/api": {
+        package: "api/elysia/template/apps/api",
+        template: "api/elysia/template/apps/api",
+      },
+      "{{SCOPE}}/config": {
+        package: "config/branding/template/packages/config",
+        template: "config/branding/template/packages/config",
+      },
+      "{{SCOPE}}/ui": {
+        package: "ui/shadcn/template/packages/ui",
+        template: "ui/shadcn/template/packages/ui",
+      },
+    };
+
+    test("every `{{SCOPE}}/{api,config,ui}` subpath a template imports is an export of that package", async () => {
+      // A subpath that is not an export resolves in this repo through nothing and in a project through
+      // `exports`: the regression class the `paths` entries of the legacy fronts used to hide.
+      const unreachable: string[] = [];
+      for (const module of await webModules()) {
+        for (const variant of module.manifest.variants) {
+          for (const [path, source] of await sourcesOf(module, variant.copy ?? [])) {
+            for (const specifier of specifiersOf(source)) {
+              const name = packageOf(specifier);
+              const peer = PEER_PACKAGES[name];
+              if (peer === undefined) {
+                continue;
+              }
+              const body: unknown = JSON.parse(
+                await readFile(join(MODULES, peer.package, "package.json"), "utf8"),
+              );
+              const exports = isRecord(body) && isRecord(body.exports) ? body.exports : {};
+              const subpath = `.${specifier.slice(name.length)}`;
+              const pattern = Object.keys(exports).find((key) => exportMatches(key, subpath));
+              if (pattern === undefined) {
+                unreachable.push(`${module.manifest.id} ${path}: ${specifier}`);
+              }
+            }
+          }
+        }
+      }
+      expect(unreachable).toEqual([]);
+    });
+
+    test("no template imports a UI item: a module never depends on an item (09 section 2b)", async () => {
+      const importing: string[] = [];
+      for (const module of await webModules()) {
+        for (const variant of module.manifest.variants) {
+          for (const [path, source] of await sourcesOf(module, variant.copy ?? [])) {
+            for (const specifier of specifiersOf(source)) {
+              // The host package's own files (`globals.css`, `themes/*`) are the `ui` module's; the
+              // components, hooks and lib helpers are items, absent from a project that adds none.
+              if (/^\{\{SCOPE\}\}\/ui\/(?:components|hooks|lib)\//.test(specifier)) {
+                importing.push(`${module.manifest.id} ${path}: ${specifier}`);
+              }
+            }
+          }
+        }
+      }
+      expect(importing).toEqual([]);
+    });
+
+    test("its tsconfig keeps one `paths` entry, the app's own alias, and reaches into no other tree", async () => {
+      for (const module of await webModules()) {
+        const { manifest } = module;
+        const body: unknown = JSON.parse(await read(module, `apps/${manifest.id}/tsconfig.json`));
+        const options =
+          isRecord(body) && isRecord(body.compilerOptions) ? body.compilerOptions : {};
+        const paths = isRecord(options.paths) ? options.paths : {};
+        for (const [alias, targets] of Object.entries(paths)) {
+          expect(Array.isArray(targets) ? targets : []).toSatisfy((list: string[]) =>
+            list.every((target) => target.startsWith("./")),
+          );
+          expect(
+            alias === `{{SCOPE}}/${manifest.id}/*` || alias === "+types/*" ? null : alias,
+          ).toBeNull();
+        }
+      }
+    });
+
+    test("the Eden client reaches the API's root: the shell has no `/v1` group", async () => {
+      const mentioning: string[] = [];
+      for (const module of await webModules()) {
+        for (const variant of module.manifest.variants) {
+          for (const [path, source] of await sourcesOf(module, variant.copy ?? [])) {
+            if (/\.v1\b|\bmedia\(/.test(source)) {
+              mentioning.push(`${module.manifest.id} ${path}`);
+            }
+          }
+        }
+      }
+      expect(mentioning).toEqual([]);
     });
   });
 

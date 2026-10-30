@@ -64,7 +64,7 @@ describe("the golden project", () => {
     );
     const listing = catalog.items.map((item) => `${item.name}\t${item.type}`).join("\n");
 
-    expect(selectItems(listing, EXCLUDED).items).toContain("spa-react-router");
+    expect(selectItems(listing, EXCLUDED).items).toContain("button");
   });
 
   test("uses a scope that is not `@acme`'s length, which the registry is formatted with", () => {
@@ -181,6 +181,7 @@ describe("the golden project and modules", () => {
       "config/branding",
       "ui/shadcn",
       "api/elysia",
+      "web/spa",
       "provider/dockerfile",
     ]);
   });
@@ -432,10 +433,12 @@ describe("the golden project and patches", () => {
       cloudflare: {
         "config/branding": ["scripts.gen:branding"],
         "api/elysia": ["scripts.deploy", "scripts.dev"],
+        "web/spa": ["scripts.deploy", "scripts.dev"],
       },
       dockerfile: {
         "config/branding": ["scripts.gen:branding"],
         "api/elysia": ["scripts.dev"],
+        "web/spa": ["scripts.dev"],
       },
     });
   });

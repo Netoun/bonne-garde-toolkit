@@ -1,4 +1,4 @@
-import { branding } from "@acme/config";
+import { branding } from "{{SCOPE}}/config";
 
 export default function Home() {
   return (
