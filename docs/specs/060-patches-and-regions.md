@@ -56,11 +56,11 @@ The catalog is closed. A module MUST NOT invent a patch type; adding one is a pl
 
 For every copied file, `bg.json` records the owner and the SHA-256 of what was written. That is what lets `add`, `doctor`, and `upgrade` tell three states apart:
 
-| Recorded sha vs disk | Meaning         | Default behavior                                     |
-| -------------------- | --------------- | ---------------------------------------------------- |
-| equal                | untouched       | overwrite freely on re-add                           |
-| differs              | user-modified   | keep; report; `--force` to overwrite                 |
-| file absent          | deleted by user | report in `doctor`; re-create only on explicit `add` |
+| Recorded sha vs disk | Meaning         | Default behavior                                      |
+| -------------------- | --------------- | ----------------------------------------------------- |
+| equal                | untouched       | overwrite freely on re-add                            |
+| differs              | user-modified   | see the conflict policy: `add` fails, `upgrade` keeps |
+| file absent          | deleted by user | report in `doctor`; re-create only on explicit `add`  |
 
 ## Patch outcomes
 
@@ -76,15 +76,19 @@ A patch result is `applied`, `skipped`, or `failed` with a reason. Recorded in `
 
 ## Conflict policy
 
-| Situation                                    | Default                                  |
-| -------------------------------------------- | ---------------------------------------- |
-| Target file missing                          | create                                   |
-| Target file identical to recorded sha        | keep, report `skipped`                   |
-| Target file differs from recorded sha        | keep, report; `--force` overwrites       |
-| Region present and equal                     | `skipped`                                |
-| Region present and differing                 | error; `--force` overwrites              |
-| Region owned by another module               | error always — `--force` does not bypass |
-| Category already filled (`cardinality: one`) | error always — use `bg replace`          |
+| Situation                                        | Default                                                          |
+| ------------------------------------------------ | ---------------------------------------------------------------- |
+| Target file missing                              | create                                                           |
+| Target file identical to recorded sha            | keep, report `skipped`                                           |
+| Target file differs from recorded sha, `add`     | error listing every path; `--force` overwrites                   |
+| Target file differs from recorded sha, `upgrade` | keep, report; `--force` overwrites                               |
+| Target file recorded for another owner           | error naming both owners; `--force` takes it over and reports it |
+| Region present and equal                         | `skipped`                                                        |
+| Region present and differing                     | error; `--force` overwrites                                      |
+| Region owned by another module                   | error always — `--force` does not bypass                         |
+| Category already filled (`cardinality: one`)     | error always — use `bg replace`                                  |
+
+`add` and `upgrade` differ on a user-modified file on purpose. `add` is a request to install a module whole: keeping the user's file would record the module as installed without that file, so it fails and names the paths. `upgrade` moves an installed project forward: it keeps the user's edit and reports it.
 
 ## Acceptance
 
