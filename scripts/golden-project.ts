@@ -29,6 +29,14 @@ const PACKED_CLI = join(ROOT, "dist/npm/create-bonne-garde");
 const BUN = "bun";
 
 /**
+ * The project's npm scope. Registry files are authored for `@acme` and `add` rewrites the scope at
+ * copy time, which moves line lengths and so where the formatter wraps. A scope of `@acme`'s length
+ * could not show it, and the one `create` derives from the directory name (`@golden-app`) happened
+ * to wrap like it. `@app` is shorter: it un-wraps what `@acme` had to wrap.
+ */
+export const SCOPE = "@app";
+
+/**
  * Items `bg list` shows that stay out of the golden project, each with its reason. An entry for an
  * item the registry no longer lists fails the run, so this list cannot go stale. Empty on purpose:
  * every item the registry ships is installed, and the test pins that.
@@ -293,7 +301,20 @@ async function golden(work: string, timings: Timing[]): Promise<void> {
   }
 
   await phase(timings, "create", () =>
-    run(bg("create", project, "--yes", "--no-git", "--no-install", "--registry", registry), work),
+    run(
+      bg(
+        "create",
+        project,
+        "--yes",
+        "--no-git",
+        "--no-install",
+        "--scope",
+        SCOPE,
+        "--registry",
+        registry,
+      ),
+      work,
+    ),
   );
   await phase(timings, "refuse", async () => {
     if (!items.includes(REFUSED_ITEM) || !modules.includes(REFUSED_MODULE)) {

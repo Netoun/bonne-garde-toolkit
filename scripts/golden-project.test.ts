@@ -8,6 +8,7 @@ import {
   expectRefusal,
   MODULES,
   readAddedModules,
+  SCOPE,
   selectItems,
   selectModules,
 } from "./golden-project";
@@ -58,6 +59,11 @@ describe("the golden project", () => {
     const listing = catalog.items.map((item) => `${item.name}\t${item.type}`).join("\n");
 
     expect(selectItems(listing, EXCLUDED).items).toContain("spa-react-router");
+  });
+
+  test("uses a scope that is not `@acme`'s length, which the registry is formatted with", () => {
+    expect(SCOPE).toMatch(/^@[a-z0-9-]+$/);
+    expect(SCOPE.length).not.toBe("@acme".length);
   });
 });
 
