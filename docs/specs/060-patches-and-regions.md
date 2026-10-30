@@ -10,15 +10,16 @@ Tier 1 (`copy`) needs none of this — the module owns the whole file. Tier 3 (`
 
 The catalog is closed. A module MUST NOT invent a patch type; adding one is a platform change with its own spec entry and tests.
 
-| `type`              | Args                                                | Target                              | Owned region                           |
-| ------------------- | --------------------------------------------------- | ----------------------------------- | -------------------------------------- |
-| `jsonc.merge`       | `file`, `value`                                     | any JSON / JSONC                    | each leaf dot-path written             |
-| `env.append`        | `file`, `lines`                                     | `.dev.vars.example`, `.env.example` | each `KEY`                             |
-| `workspace.add`     | `name`, `path`, `dependencies?`, `devDependencies?` | root `package.json`                 | `workspaces[<path>]`                   |
-| `scripts.merge`     | `file`, `scripts`                                   | any `package.json`                  | `scripts.<key>`                        |
-| `ts.addImport`      | `file`, `moduleSpecifier`, `namedImports`           | `.ts` / `.tsx`                      | `imports[<specifier>]`                 |
-| `ts.addNamedExport` | `file`, `moduleSpecifier`, `exports`                | `.ts` / `.tsx`                      | `exports[<specifier>]`                 |
-| `ts.elysiaUse`      | `file`, `targetName`, `argument`                    | Elysia seam file                    | `elysia[<targetName>].use[<argument>]` |
+| `type`                 | Args                                                | Target                              | Owned region                                    |
+| ---------------------- | --------------------------------------------------- | ----------------------------------- | ----------------------------------------------- |
+| `jsonc.merge`          | `file`, `value`                                     | any JSON / JSONC                    | each leaf dot-path written                      |
+| `env.append`           | `file`, `lines`                                     | `.dev.vars.example`, `.env.example` | each `KEY`                                      |
+| `workspace.add`        | `name`, `path`, `dependencies?`, `devDependencies?` | root `package.json`                 | `workspaces[<path>]`                            |
+| `scripts.merge`        | `file`, `scripts`                                   | any `package.json`                  | `scripts.<key>`                                 |
+| `package.dependencies` | `file`, `dependencies?`, `devDependencies?`         | any `package.json`                  | `dependencies.<name>`, `devDependencies.<name>` |
+| `ts.addImport`         | `file`, `moduleSpecifier`, `namedImports`           | `.ts` / `.tsx`                      | `imports[<specifier>]`                          |
+| `ts.addNamedExport`    | `file`, `moduleSpecifier`, `exports`                | `.ts` / `.tsx`                      | `exports[<specifier>]`                          |
+| `ts.elysiaUse`         | `file`, `targetName`, `argument`                    | Elysia seam file                    | `elysia[<targetName>].use[<argument>]`          |
 
 **Implementation rules:**
 
@@ -29,10 +30,11 @@ The catalog is closed. A module MUST NOT invent a patch type; adding one is a pl
 - TypeScript patches parse the one file in memory with ts-morph's own compiler: no tsconfig, no module resolution, no type checker.
 - `ts.addImport` and `ts.addNamedExport` count a name already imported (exported) from the specifier, add the missing ones to the declaration the file has for it or else after the last import (re-export), write what the project's formatter writes, and leave a region `equal` or absent, never user-owned.
 - `ts.elysiaUse` puts `.use(<argument>)` on a line of its own after the last `.use` that leads the chain `export const <targetName> = new Elysia(...)...` and before its first other call, is `equal` when any `.use(<argument>)` is in the chain, and is `failed` on a missing file, variable or `new Elysia` root, or on a one-line chain that already has calls.
-- `{{SCOPE}}` is rendered in the `moduleSpecifier` of a TS patch when the install is planned, and the rendered text is the region key.
+- `{{SCOPE}}` is rendered in the arguments a module declares for a patch (a TS `moduleSpecifier`, a dependency name) when the install is planned, and the rendered text is the region key. It is never rendered in text already in a project file.
+- `package.dependencies` writes each entry where the project's formatter sorts it, so the file stays what `vp fmt` writes; a region is a value, so a different version on disk is user-owned. It is how a module that wires itself into another package (an `import` from `{{SCOPE}}/<its package>`) declares that package's dependency on it, and how a module sharing another's home adds its own dependencies to that home's `package.json`.
 - Every patch MUST be idempotent: applying it twice yields `applied` then `skipped`, and an identical tree.
 - A patch MUST NOT perform free-text search/replace across arbitrary source.
-- Scope placeholder rewriting (`{{SCOPE}}`) happens at template render time on tier-1 files only — it is **not** a patch and MUST NOT run over project-owned files.
+- Scope placeholder rewriting (`{{SCOPE}}`) of file text happens at template render time on tier-1 files only — it is **not** a patch and MUST NOT run over project-owned files. Rendering a patch's declared arguments (above) is not rewriting file text.
 - A tier-1 file that carries the scope MUST be what the project's formatter writes at **every** scope `create` accepts, not only at the scope it was authored for. The scope changes line lengths, so the checksum `bg.json` records would otherwise be of a file `bun run check` rejects, and fixing it by hand makes `doctor` report it user-modified. A line whose wrap depends on the scope carries `// oxfmt-ignore`; `packages/cli/src/scope-format.test.ts` renders every item and module at every length and fails on the first file the formatter would change.
 
 ## Region ownership
