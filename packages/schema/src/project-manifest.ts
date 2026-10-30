@@ -1,4 +1,5 @@
 import { categoryCardinality, isModuleCategory, type ModuleCategory } from "./module-manifest";
+import { isRepoRelative } from "./repo-path";
 
 /** This repo's slug — written to a new project's `platform.remote`, and the registry source once published. */
 export const DEFAULT_PLATFORM_REMOTE = "github:Netoun/bonne-garde-toolkit";
@@ -109,14 +110,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
-}
-
-/** Repo-relative and traversal-safe: not absolute, no `..` segment. */
-function isRepoRelative(path: string): boolean {
-  if (path.length === 0 || /^([/\\]|[A-Za-z]:)/.test(path)) {
-    return false;
-  }
-  return !path.split(/[/\\]/).includes("..");
 }
 
 function parseItemRecord(where: string, value: unknown): ItemRecord {

@@ -122,6 +122,101 @@ describe("parseModuleManifest", () => {
   });
 });
 
+describe("parseModuleManifest, the fields `bg add` acts on", () => {
+  const variant = (extra: Record<string, unknown>) => ({
+    ...valid,
+    variants: [{ key: "default", match: {}, ...extra }],
+  });
+
+  it("keeps a variant's patch entries, so an installer can refuse them instead of losing them", () => {
+    const manifest = parseModuleManifest(
+      variant({ patch: [{ type: "ts.elysiaUse", file: "apps/api/src/app.ts", argument: "x" }] }),
+    );
+
+    expect(manifest.variants[0]?.patch).toEqual([
+      { type: "ts.elysiaUse", file: "apps/api/src/app.ts", argument: "x" },
+    ]);
+  });
+
+  it("rejects a patch with no type, and a patch that is not a list", () => {
+    expect(() => parseModuleManifest(variant({ patch: [{ file: "a.ts" }] }))).toThrow(
+      /patch\[0\]\.type is required/,
+    );
+    expect(() => parseModuleManifest(variant({ patch: "ts.elysiaUse" }))).toThrow(
+      /patch must be an array/,
+    );
+  });
+
+  it("keeps a variant's workspace", () => {
+    const manifest = parseModuleManifest(
+      variant({ workspace: { name: "{{SCOPE}}/auth", path: "packages/auth" } }),
+    );
+
+    expect(manifest.variants[0]?.workspace).toEqual({
+      name: "{{SCOPE}}/auth",
+      path: "packages/auth",
+    });
+  });
+
+  it("rejects a workspace whose path leaves the repository", () => {
+    for (const path of ["../auth", "/abs/auth", "packages/../../auth"]) {
+      expect(() => parseModuleManifest(variant({ workspace: { name: "x", path } }))).toThrow(
+        /workspace\.path must be a repo-relative path/,
+      );
+    }
+    expect(() => parseModuleManifest(variant({ workspace: { path: "packages/x" } }))).toThrow(
+      /workspace\.name is required/,
+    );
+  });
+
+  it("rejects a copy glob that is absolute or climbs out of template/", () => {
+    for (const glob of ["../secrets", "/etc/passwd", "a/../../b"]) {
+      expect(() => parseModuleManifest(variant({ copy: [glob] }))).toThrow(
+        /copy\[0\] must be a path relative to template\//,
+      );
+    }
+    expect(
+      parseModuleManifest(variant({ copy: ["packages/auth/**", ".dockerignore"] })),
+    ).toBeTruthy();
+  });
+
+  it("keeps module options with their defaults", () => {
+    const manifest = parseModuleManifest({
+      ...valid,
+      options: {
+        withOrg: { description: "Organization primitives", default: false, values: [true, false] },
+        region: { default: "eu" },
+      },
+    });
+
+    expect(manifest.options).toEqual({
+      withOrg: { description: "Organization primitives", default: false, values: [true, false] },
+      region: { default: "eu" },
+    });
+  });
+
+  it("requires every option to have a default, one of its values", () => {
+    expect(() => parseModuleManifest({ ...valid, options: { a: { values: [1, 2] } } })).toThrow(
+      /options\.a\.default is required/,
+    );
+    expect(() =>
+      parseModuleManifest({ ...valid, options: { a: { default: 3, values: [1, 2] } } }),
+    ).toThrow(/options\.a\.default must be one of its values/);
+    expect(() => parseModuleManifest({ ...valid, options: { a: { default: {} } } })).toThrow(
+      /options\.a\.default must be a string, number or boolean/,
+    );
+  });
+
+  it("keeps the checks a module declares", () => {
+    expect(parseModuleManifest({ ...valid, checks: ["bun run typecheck"] }).checks).toEqual([
+      "bun run typecheck",
+    ]);
+    expect(() => parseModuleManifest({ ...valid, checks: "bun run typecheck" })).toThrow(
+      /checks must be an array of strings/,
+    );
+  });
+});
+
 describe("the category table", () => {
   it("puts provider first, so everything may peer on it", () => {
     expect(MODULE_CATEGORIES[0]).toBe("provider");

@@ -1,3 +1,5 @@
+import { isRepoRelative } from "./repo-path";
+
 /**
  * `module.json` — the native module format of spec 035.
  *
@@ -50,10 +52,25 @@ export class ModuleManifestError extends Error {
   }
 }
 
+/** A consumer-facing toggle (spec 035 `options`): `default` is what `--yes` selects. */
+export type ModuleOptionValue = string | number | boolean;
+
+export type ModuleOption = {
+  description?: string;
+  default: ModuleOptionValue;
+  values?: ModuleOptionValue[];
+};
+
+/** A tier-2 patch (spec 060), as declared. The catalog of types is the patch engine's, not the parser's. */
+export type ModulePatch = { type: string } & Record<string, unknown>;
+
 export type ModuleVariant = {
   key: string;
   match: Partial<Record<ModuleCategory, string>>;
+  /** The workspace package the variant's `dependencies` are written into. `name` may hold `{{SCOPE}}`. */
+  workspace?: { name: string; path: string };
   copy?: string[];
+  patch?: ModulePatch[];
   intent?: string[];
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
@@ -68,6 +85,8 @@ export type ModuleManifest = {
   title: string;
   description: string;
   peers: Partial<Record<ModuleCategory, string[]>>;
+  options?: Record<string, ModuleOption>;
+  checks?: string[];
   variants: ModuleVariant[];
 };
 
@@ -127,6 +146,74 @@ function matchSignature(match: Partial<Record<ModuleCategory, string>>): string 
     .join(",");
 }
 
+function parseOptionValue(value: unknown, where: string): ModuleOptionValue {
+  if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
+    throw new ModuleManifestError(`${where} must be a string, number or boolean`);
+  }
+  return value;
+}
+
+function parseOptions(value: unknown): Record<string, ModuleOption> {
+  if (!isRecord(value)) {
+    throw new ModuleManifestError("options must be an object");
+  }
+  const options: Record<string, ModuleOption> = {};
+  for (const [name, raw] of Object.entries(value)) {
+    const where = `options.${name}`;
+    if (!isRecord(raw)) {
+      throw new ModuleManifestError(`${where} must be an object`);
+    }
+    if (raw.default === undefined) {
+      throw new ModuleManifestError(`${where}.default is required`);
+    }
+    const option: ModuleOption = { default: parseOptionValue(raw.default, `${where}.default`) };
+    if (raw.description !== undefined) {
+      if (typeof raw.description !== "string") {
+        throw new ModuleManifestError(`${where}.description must be a string`);
+      }
+      option.description = raw.description;
+    }
+    if (raw.values !== undefined) {
+      if (!Array.isArray(raw.values) || raw.values.length === 0) {
+        throw new ModuleManifestError(`${where}.values must be a non-empty array`);
+      }
+      option.values = raw.values.map((entry: unknown, index) =>
+        parseOptionValue(entry, `${where}.values[${index}]`),
+      );
+      if (!option.values.includes(option.default)) {
+        throw new ModuleManifestError(`${where}.default must be one of its values`);
+      }
+    }
+    options[name] = option;
+  }
+  return options;
+}
+
+function parseWorkspace(value: unknown, where: string): { name: string; path: string } {
+  if (!isRecord(value)) {
+    throw new ModuleManifestError(`${where} must be an object`);
+  }
+  if (typeof value.name !== "string" || value.name.length === 0) {
+    throw new ModuleManifestError(`${where}.name is required`);
+  }
+  if (typeof value.path !== "string" || !isRepoRelative(value.path)) {
+    throw new ModuleManifestError(`${where}.path must be a repo-relative path without '..'`);
+  }
+  return { name: value.name, path: value.path };
+}
+
+function parsePatches(value: unknown, where: string): ModulePatch[] {
+  if (!Array.isArray(value)) {
+    throw new ModuleManifestError(`${where} must be an array`);
+  }
+  return value.map((entry: unknown, index) => {
+    if (!isRecord(entry) || typeof entry.type !== "string" || entry.type.length === 0) {
+      throw new ModuleManifestError(`${where}[${index}].type is required`);
+    }
+    return { ...entry, type: entry.type };
+  });
+}
+
 function parseVariant(value: unknown, where: string): ModuleVariant {
   if (!isRecord(value)) {
     throw new ModuleManifestError(`${where} must be an object`);
@@ -138,8 +225,21 @@ function parseVariant(value: unknown, where: string): ModuleVariant {
     key: value.key,
     match: parseMatch(value.match ?? {}, `${where}.match`),
   };
+  if (value.workspace !== undefined) {
+    variant.workspace = parseWorkspace(value.workspace, `${where}.workspace`);
+  }
   if (value.copy !== undefined) {
     variant.copy = parseStringArray(value.copy, `${where}.copy`);
+    variant.copy.forEach((glob, index) => {
+      if (!isRepoRelative(glob)) {
+        throw new ModuleManifestError(
+          `${where}.copy[${index}] must be a path relative to template/ without '..': ${glob}`,
+        );
+      }
+    });
+  }
+  if (value.patch !== undefined) {
+    variant.patch = parsePatches(value.patch, `${where}.patch`);
   }
   if (value.intent !== undefined) {
     variant.intent = parseStringArray(value.intent, `${where}.intent`);
@@ -253,6 +353,12 @@ export function parseModuleManifest(input: unknown): ModuleManifest {
     peers,
     variants,
   };
+  if (input.options !== undefined) {
+    manifest.options = parseOptions(input.options);
+  }
+  if (input.checks !== undefined) {
+    manifest.checks = parseStringArray(input.checks, "checks");
+  }
   if (typeof input.$schema === "string") {
     manifest.$schema = input.$schema;
   }

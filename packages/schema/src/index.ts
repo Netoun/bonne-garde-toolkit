@@ -26,5 +26,8 @@ export {
   parseModuleManifest,
   type ModuleCategory,
   type ModuleManifest,
+  type ModuleOption,
+  type ModuleOptionValue,
+  type ModulePatch,
   type ModuleVariant,
 } from "./module-manifest";
