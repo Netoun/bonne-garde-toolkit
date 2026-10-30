@@ -16,6 +16,7 @@ committed, the rest uncommitted. `bun run verify` exits 0; the repo went from 57
 | [06-platform-gaps.md](./06-platform-gaps.md)       | What the backport framing missed: white-label providers (`cloudflare` / `dockerfile`), the CLI, the front layout decision, `packages/ui`, impeccable |
 | [07-handoff.md](./07-handoff.md)                   | Where to pick up: branch state, the ordered remainder, what is already settled                                                                       |
 | [08-plan.md](./08-plan.md)                         | The ordered execution plan: two prerequisites, two tracks, acceptance criteria per step                                                              |
+| [09-dissolution.md](./09-dissolution.md)           | The legacy apps into modules: every piece mapped to a 035 category, the couplings to settle, the stages in 080's order, the open questions           |
 
 ## Verdicts up front
 
