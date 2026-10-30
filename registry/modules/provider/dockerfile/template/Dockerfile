@@ -2,7 +2,7 @@
 #
 # The bun tag must match the root package.json `packageManager`, which is the one source of
 # truth for this repo's Bun version.
-FROM oven/bun:1.3.11 AS bun
+FROM oven/bun:1.4.2 AS bun
 
 # React Router prerenders the SPA through Vite preview, which needs a real Node — Bun alone
 # cannot run that step. Harvested from bonne-garde-keeper, where this was found the hard way.
@@ -14,7 +14,7 @@ COPY . .
 RUN bun install --frozen-lockfile
 RUN bun run --filter '{{SCOPE}}/spa' build
 
-FROM oven/bun:1.3.11-slim
+FROM oven/bun:1.4.2-slim
 WORKDIR /app
 ENV NODE_ENV=production PORT=5172 DATA_DIR=/data APP_URL=http://localhost:5172
 # The runtime stage keeps the whole workspace so `docker exec <container> bun run <script>` works.
