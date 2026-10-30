@@ -5,6 +5,7 @@ import { ApplyError } from "./apply-error";
 import { isMissing, readDisk } from "./disk";
 import type { ModulePlan } from "./module-plan";
 import { sha256Hex } from "./sha256";
+import { inspectScripts, scriptRegion, setScripts } from "./scripts-merge";
 import { stagePatches, type PatchReport } from "./stage-patches";
 import type { StagedFile } from "./write-tree";
 
@@ -136,6 +137,39 @@ async function stageEnv(
   };
 }
 
+/** A region of a file the module both writes and patches, whose text on disk is not what its patch declares. */
+type RegionDrift = { region: string; current: string | null; declared: string };
+
+/**
+ * For a file a module writes and its own patches then edit: the regions the project changed by hand,
+ * when that is the only difference between the disk and what the call would write. The patch is
+ * computed on the template there, so it always `applied`; the sha of the whole file says "modified"
+ * and not where. `null` when the file differs anywhere else too, which stays a file-level collision.
+ */
+function regionDrift(plan: ModulePlan, target: string, onDisk: string, planned: string) {
+  const declared: Record<string, string> = {};
+  for (const patch of plan.patches) {
+    if (patch.file === target) {
+      Object.assign(declared, patch.scripts);
+    }
+  }
+  const inspected = inspectScripts(onDisk, declared);
+  if (!inspected.ok || setScripts(onDisk, declared) !== planned) {
+    return null;
+  }
+  const drift: RegionDrift[] = [];
+  for (const [name, state] of Object.entries(inspected.states)) {
+    if (state.kind === "differs") {
+      drift.push({
+        region: scriptRegion(name),
+        current: state.current,
+        declared: declared[name] ?? "",
+      });
+    }
+  }
+  return drift.length > 0 ? drift : null;
+}
+
 /**
  * 050 steps 10-11 for modules: classify every target against `files` (spec 060), then stage the
  * writes. Nothing touches the disk here. A path the call cannot decide on fails for every module at
@@ -232,6 +266,11 @@ export async function stageModules(options: {
         ([, regionOwner]) => regionOwner !== owner,
       );
       const recorded = manifest.files[target];
+      const plan = plans.find((candidate) => candidate.key === owner);
+      const drift =
+        plan !== undefined && recorded?.owner === owner
+          ? regionDrift(plan, target, disk.content, content)
+          : null;
       if (foreign.length > 0) {
         const names = foreign.map(([region]) => region).join(", ");
         const others = [...new Set(foreign.map(([, regionOwner]) => regionOwner))].join(", ");
@@ -244,9 +283,24 @@ export async function stageModules(options: {
         if (recorded !== undefined && recorded.owner !== owner) {
           staging.tookOver.push({ path: target, from: recorded.owner, by: owner });
         }
+        for (const { region, current } of drift ?? []) {
+          const report = staging.patches.find(
+            (entry) => entry.module === owner && entry.file === target,
+          );
+          const replaced = report?.regions.find((entry) => entry.region === region);
+          if (replaced) {
+            replaced.replaced = current;
+          }
+        }
         stage();
       } else if (recorded === undefined) {
         collisions.push(`${target} exists and is not recorded in bg.json`);
+      } else if (recorded.owner === owner && drift !== null) {
+        for (const { region, current, declared } of drift) {
+          collisions.push(
+            `${region} of ${target} is ${current === null ? "not a string" : JSON.stringify(current)}, which differs from what ${owner} declares (${JSON.stringify(declared)})`,
+          );
+        }
       } else if (recorded.owner === owner) {
         collisions.push(`${target} was modified since ${owner} wrote it`);
       } else {

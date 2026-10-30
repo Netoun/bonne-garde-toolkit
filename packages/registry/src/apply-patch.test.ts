@@ -220,6 +220,78 @@ describe("applyInstallPlan: scripts.merge (060)", () => {
     });
   });
 
+  describe("a file the module writes and then patches (the api module's package.json)", () => {
+    const FILE = "apps/api/package.json";
+    const VENDORED = `${JSON.stringify({ name: "@demo/api", scripts: { test: "bun test" } }, null, 2)}\n`;
+    const DEV = "wrangler dev --port 5172";
+    const vendoring = () =>
+      modulePlan({
+        category: "api",
+        id: "elysia",
+        key: "api/elysia",
+        files: [{ target: FILE, content: VENDORED }],
+        patches: [patch({ dev: DEV }, FILE)],
+      });
+
+    test("a hand-edited region is named as the region, not as a modified file, and --force reports what it replaced", async () => {
+      const { projectRoot, manifest } = await freshProject({});
+      const first = await install(projectRoot, manifest, [vendoring()]);
+      const clean = await read(projectRoot, FILE);
+      expect(JSON.parse(clean)).toEqual({
+        name: "@demo/api",
+        scripts: { test: "bun test", dev: DEV },
+      });
+      await writeFile(join(projectRoot, FILE), clean.replace(DEV, "bun my-own-dev.ts"));
+      const before = await snapshot(projectRoot);
+
+      await expect(install(projectRoot, first.manifest, [vendoring()])).rejects.toThrow(
+        /nothing was written.*in the way \(use --force to overwrite\):\n {2}scripts\.dev of apps\/api\/package\.json is "bun my-own-dev\.ts", which differs from what api\/elysia declares \("wrangler dev --port 5172"\)/s,
+      );
+      expect(await snapshot(projectRoot)).toEqual(before);
+
+      const forced = await install(projectRoot, first.manifest, [vendoring()], { force: true });
+
+      expect(await read(projectRoot, FILE)).toBe(clean);
+      expect(forced.patches[0]?.regions).toEqual([
+        { region: "scripts.dev", status: "applied", replaced: "bun my-own-dev.ts" },
+      ]);
+    });
+
+    test("an edit anywhere else in the file is a modified file, whether or not a region was edited too", async () => {
+      const { projectRoot, manifest } = await freshProject({});
+      const first = await install(projectRoot, manifest, [vendoring()]);
+      const clean = await read(projectRoot, FILE);
+
+      for (const edited of [
+        clean.replace('"name": "@demo/api"', '"name": "@demo/api", "license": "MIT"'),
+        clean
+          .replace('"name": "@demo/api"', '"name": "@demo/api", "license": "MIT"')
+          .replace(DEV, "bun my-own-dev.ts"),
+      ]) {
+        await writeFile(join(projectRoot, FILE), edited);
+
+        await expect(install(projectRoot, first.manifest, [vendoring()])).rejects.toThrow(
+          /apps\/api\/package\.json was modified since api\/elysia wrote it/,
+        );
+        expect(await read(projectRoot, FILE)).toBe(edited);
+      }
+    });
+
+    test("the same install again reports the patch skipped and writes nothing", async () => {
+      const { projectRoot, manifest } = await freshProject({});
+      const first = await install(projectRoot, manifest, [vendoring()]);
+      const before = await snapshot(projectRoot);
+
+      const again = await install(projectRoot, first.manifest, [vendoring()]);
+
+      expect(again.patches[0]).toMatchObject({
+        status: "skipped",
+        regions: [{ region: "scripts.dev", status: "skipped" }],
+      });
+      expect(await snapshot(projectRoot)).toEqual(before);
+    });
+  });
+
   test("a script the project wrote itself, with no region recorded, is user-owned: the same refusal", async () => {
     const { projectRoot, manifest } = await freshProject({
       "package.json": '{ "scripts": { "gen:branding": "echo mine" } }\n',
