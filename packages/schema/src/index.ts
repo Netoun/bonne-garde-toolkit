@@ -31,3 +31,4 @@ export {
   type ModulePatch,
   type ModuleVariant,
 } from "./module-manifest";
+export { isRepoRelative } from "./repo-path";

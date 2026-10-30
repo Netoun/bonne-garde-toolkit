@@ -1,5 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import {
   categoryCardinality,
   isModuleCategory,
@@ -10,6 +10,8 @@ import {
   type ModuleVariant,
   type ProjectManifest,
 } from "@bonne-garde/schema";
+import { FETCH_CONCURRENCY, RegistryFileNotFoundError } from "./github-source";
+import { mapLimit } from "./pool";
 import { PlanError, searchCatalog } from "./resolve-plan";
 import type { RegistryCatalog, RegistryModule } from "./types";
 
@@ -88,7 +90,13 @@ export function classifyNames(
       if (!found) {
         const siblings = catalog.modules.filter(({ manifest }) => manifest.category === category);
         throw new PlanError(
-          `unknown module: ${name} (${siblings.length > 0 ? `modules in ${category}: ${qualifiedForms(siblings)}` : `no modules in ${category}`})`,
+          `unknown module: ${name} (${
+            catalog.reader
+              ? `no modules/${category}/${id}/module.json in ${catalog.reader.label}`
+              : siblings.length > 0
+                ? `modules in ${category}: ${qualifiedForms(siblings)}`
+                : `no modules in ${category}`
+          })`,
         );
       }
       modules.set(name, { category, id });
@@ -260,39 +268,78 @@ async function isDirectory(path: string): Promise<boolean> {
   }
 }
 
-/** Tier 1: `copy` globs, relative to `template/`, which mirrors the target tree (spec 035). */
+const GLOB_CHARS = /[*?[\]{}!\\]/;
+
+/**
+ * Tier 1 over the network: a `copy` entry names a file to fetch, since raw HTTP lists no directory
+ * a glob could be expanded against. A glob is refused rather than skipped, as a patch is.
+ */
+function remoteCopyTarget(module: RegistryModule, label: string, pattern: string): string {
+  const key = keyOf(module.manifest);
+  if (GLOB_CHARS.test(pattern)) {
+    throw new PlanError(
+      `copy "${pattern}" of ${key} is a glob, and ${label} cannot expand one (raw HTTP has no directory listing): name the files in module.json, or install from a local: registry`,
+    );
+  }
+  return pattern;
+}
+
+/** Tier 1: `copy` entries, relative to `template/`, which mirrors the target tree (spec 035). */
 async function copiedFiles(
   module: RegistryModule,
   variant: ModuleVariant,
   scope: string,
 ): Promise<PlannedFile[]> {
-  const templateDir = join(module.dir, "template");
-  const present = await isDirectory(templateDir);
+  const key = keyOf(module.manifest);
+  const { reader } = module;
   const targets = new Set<string>();
-  for (const pattern of variant.copy ?? []) {
-    let matched = 0;
-    if (present) {
-      for await (const path of new Bun.Glob(pattern).scan({
-        cwd: templateDir,
-        dot: true,
-        onlyFiles: true,
-      })) {
-        targets.add(path);
-        matched += 1;
+  if (reader) {
+    for (const pattern of variant.copy ?? []) {
+      targets.add(remoteCopyTarget(module, reader.label, pattern));
+    }
+  } else {
+    const templateDir = join(module.dir, "template");
+    const present = await isDirectory(templateDir);
+    for (const pattern of variant.copy ?? []) {
+      let matched = 0;
+      if (present) {
+        for await (const path of new Bun.Glob(pattern).scan({
+          cwd: templateDir,
+          dot: true,
+          onlyFiles: true,
+        })) {
+          targets.add(path);
+          matched += 1;
+        }
+      }
+      if (matched === 0) {
+        throw new PlanError(`copy "${pattern}" of ${key} matches no file under template/`);
       }
     }
-    if (matched === 0) {
-      throw new PlanError(
-        `copy "${pattern}" of ${keyOf(module.manifest)} matches no file under template/`,
-      );
+  }
+
+  const readTarget = async (target: string): Promise<string> => {
+    if (!reader) {
+      return readFile(join(module.dir, "template", target), "utf8");
     }
-  }
-  const files: PlannedFile[] = [];
-  for (const target of [...targets].sort()) {
-    const raw = await readFile(join(templateDir, target), "utf8");
-    files.push({ target, content: raw.replaceAll("{{SCOPE}}", scope) });
-  }
-  return files;
+    const path = posix.join(module.dir, "template", target);
+    try {
+      return await reader.read(path);
+    } catch (error) {
+      if (error instanceof RegistryFileNotFoundError) {
+        throw new PlanError(
+          `${key} copies ${target}, which ${reader.label} does not have (no ${path}: 404)`,
+        );
+      }
+      throw error;
+    }
+  };
+  const sorted = [...targets].sort();
+  const texts = await mapLimit(sorted, FETCH_CONCURRENCY, readTarget);
+  return sorted.map((target, index) => ({
+    target,
+    content: (texts[index] ?? "").replaceAll("{{SCOPE}}", scope),
+  }));
 }
 
 function generatedPackageJson(
