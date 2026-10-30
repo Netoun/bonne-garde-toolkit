@@ -43,5 +43,5 @@ Name the file `NN-slug.md`, where `NN` is a zero-padded execution-order prefix (
 
 ## Record Result
 
-- Applied → `bg upgrade record --applied <id>`
-- Skipped → `bg upgrade record --skipped <id> --reason "…"`
+- Applied → `bg record <id>`
+- Skipped → `bg record <id> --skip "…"`

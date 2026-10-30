@@ -91,7 +91,7 @@ A domain the project never installed MUST instruct skip — never force-add an u
 | `versions list`                      | Available platform tags from fetched refs                                                                                                                                                                                        |
 | `upgrade path --to <ver\|latest>`    | Print intention plan; read-only                                                                                                                                                                                                  |
 | `upgrade prepare --to <ver\|latest>` | Clean worktree required; build temp workspace; after validation create branch `upgrade/vA-to-vB` and atomically write `.bg/upgrade/` (numbered intentions, source/target projections, session checklist). MUST NOT edit app code |
-| `upgrade record`                     | Record apply/skip in `bg.json` after validation                                                                                                                                                                                  |
+| `record` (top-level)                 | Record apply/skip in `bg.json` after validation: `bg record <id>`, `bg record <id> --skip "<reason>"`; shared with install intentions ([050](./050-cli-add.md))                                                                  |
 | `upgrade finish --to <ver>`          | Fail closed until every intention in range is applied or skipped; then set `platform.version`                                                                                                                                    |
 
 Everyday form: `bg upgrade` → target latest, refresh publications when needed, interactive selection on TTY.
@@ -117,7 +117,7 @@ On each lockstep release ([070](./070-testing-and-release.md)):
 | -------------------- | ---------------------------------------------------------------------------- |
 | Now (specs)          | Lockstep + intention contract normative                                      |
 | After create/add MVP | Tracking fields in `bg.json`; intention lint; empty `migrations/` + TEMPLATE |
-| Next                 | `upgrade status/path/prepare/record/finish` + agent skill shims              |
+| Next                 | `upgrade status/path/prepare/finish` + agent skill shims                     |
 | Later                | Full intention sets per release as the registry grows                        |
 
 ## Out of scope
