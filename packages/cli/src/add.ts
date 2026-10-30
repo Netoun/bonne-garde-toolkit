@@ -24,7 +24,7 @@ function githubOptions(override: GithubOptions | undefined): GithubOptions {
   return token ? { token } : {};
 }
 
-async function openCatalog(projectRoot: string, explicit?: string, github?: GithubOptions) {
+export async function openCatalog(projectRoot: string, explicit?: string, github?: GithubOptions) {
   let source = explicit;
   let platformVersion: string | undefined;
   if (source) {

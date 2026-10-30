@@ -1,8 +1,9 @@
 import type { IntentionOutcome } from "@bonne-garde/schema";
-import { addItems, listItems, searchItems, viewItem } from "./add";
+import { addItems, searchItems, viewItem } from "./add";
 import { createProject } from "./create";
 import { doctorExitCode, formatDoctor, runDoctor } from "./doctor";
 import { lintIntentions } from "./intentions/lint";
+import { listRegistry } from "./list";
 import { migrationsDir } from "./paths";
 import { recordIntentionOutcome } from "./record";
 
@@ -11,7 +12,8 @@ function usage(): string {
 
 Usage:
   bg create <dir> [--yes] [--no-git] [--no-install] [--scope @name] [--registry <source>]
-  bg list [--source <source>]
+  bg list [--items | --category <category>] [--source <source>]
+      with no flag: the items, then the modules as <category>/<id>; --items is the items alone
   bg search <query> [--source <source>]
   bg view <item> [--source <source>]
   bg add <name...> [--dry-run] [--force] [--no-install] [--yes] [--source <source>]
@@ -88,10 +90,19 @@ export async function runCli(argv: string[]): Promise<number> {
 
   if (command === "list") {
     const args = [...rest];
+    const itemsOnly = takeFlag(args, "--items");
+    const category = takeOption(args, "--category");
     const source = takeOption(args, "--source");
-    const items = await listItems(process.cwd(), source);
-    for (const item of items) {
-      console.log(`${item.name}\t${item.type}\t${item.description ?? ""}`);
+    // A flag it did not recognise must fail: `list --itmes` would print the modules it meant to leave out.
+    if (args.length > 0) {
+      throw new Error(`list: unexpected argument: ${args.join(" ")}\n${usage()}`);
+    }
+    const { lines, notes } = await listRegistry(process.cwd(), { itemsOnly, category, source });
+    for (const note of notes) {
+      console.error(note);
+    }
+    for (const line of lines) {
+      console.log(line);
     }
     return 0;
   }
