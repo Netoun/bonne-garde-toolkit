@@ -1,12 +1,16 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  inspectPatch,
+  patchRegions,
   plannedPatches,
   readInstalledModuleManifest,
   readScripts,
   scriptRegion,
   sha256Hex,
   type ModuleManifestLookup,
+  type PatchInspection,
+  type PlannedPatch,
 } from "@bonne-garde/registry";
 import {
   MODULE_CATEGORIES,
@@ -315,16 +319,14 @@ function scriptName(file: string, region: string): string | null {
     : null;
 }
 
-/** What a module's `module.json` says its scripts are, by file, for the variant `bg.json` recorded. */
-type DeclaredScripts =
-  | { ok: true; byFile: Map<string, Record<string, string>> }
-  | { ok: false; reason: string };
+/** What a module's `module.json` says its patches are, for the variant `bg.json` recorded. */
+type DeclaredPatches = { ok: true; patches: PlannedPatch[] } | { ok: false; reason: string };
 
-async function declaredScripts(
+async function declaredPatches(
   projectRoot: string,
   manifest: ProjectManifest,
   installed: InstalledModule & { category: ModuleCategory },
-): Promise<DeclaredScripts> {
+): Promise<DeclaredPatches> {
   const source = defaultSource(manifest);
   const lookup: ModuleManifestLookup = source
     ? await readInstalledModuleManifest(
@@ -341,15 +343,11 @@ async function declaredScripts(
   if (variant === undefined) {
     return { ok: false, reason: `module.json has no variant ${installed.record.variant}` };
   }
-  const byFile = new Map<string, Record<string, string>>();
   try {
-    for (const patch of plannedPatches(installed.key, variant)) {
-      byFile.set(patch.file, { ...byFile.get(patch.file), ...patch.scripts });
-    }
+    return { ok: true, patches: plannedPatches(installed.key, variant) };
   } catch (error) {
     return { ok: false, reason: reasonOf(error) };
   }
-  return { ok: true, byFile };
 }
 
 async function checkRegions(
@@ -366,7 +364,8 @@ async function checkRegions(
   };
   const findings: Finding[] = [];
   const notes: string[] = [];
-  const declared = new Map<string, DeclaredScripts>();
+  const declared = new Map<string, DeclaredPatches>();
+  const inspections = new Map<PlannedPatch, PatchInspection>();
 
   for (const [file, owned] of Object.entries(manifest.regions)) {
     const entries = Object.entries(owned);
@@ -437,21 +436,37 @@ async function checkRegions(
       }
       let known = declared.get(owner);
       if (known === undefined) {
-        known = await declaredScripts(projectRoot, manifest, installed);
+        known = await declaredPatches(projectRoot, manifest, installed);
         declared.set(owner, known);
         if (!known.ok) {
           notes.push(`foreign edit of ${owner}'s regions not checked: ${known.reason}`);
         }
       }
-      const expected = known.ok ? known.byFile.get(file)?.[name] : undefined;
-      if (expected !== undefined && scripts.scripts[name] !== expected) {
+      const patch = known.ok
+        ? known.patches.find(
+            (candidate) =>
+              candidate.file === file &&
+              patchRegions(candidate).some((entry) => entry.region === region),
+          )
+        : undefined;
+      if (patch === undefined) {
+        continue;
+      }
+      let inspection = inspections.get(patch);
+      if (inspection === undefined) {
+        inspection = inspectPatch(text, patch);
+        inspections.set(patch, inspection);
+      }
+      const state = inspection.ok ? inspection.states.get(region) : undefined;
+      if (state?.kind === "differs") {
+        const wanted = patchRegions(patch).find((entry) => entry.region === region)?.declared;
         details.foreignEdit.push(id);
         findings.push({
           severity: "warning",
           code: "region-foreign-edit",
           path: file,
           message:
-            `${region} of ${file} is ${JSON.stringify(scripts.scripts[name])}, but ${owner} declares ${JSON.stringify(expected)}: ` +
+            `${region} of ${file} is ${state.shown}, but ${owner} declares ${wanted ?? "something else"}: ` +
             "the project owns it now, and bg add will not overwrite it without --force",
         });
       }

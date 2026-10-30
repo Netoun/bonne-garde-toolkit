@@ -2,8 +2,8 @@ import { join } from "node:path";
 import type { PatchStatus, ProjectManifest } from "@bonne-garde/schema";
 import { readDisk } from "./disk";
 import type { ModulePlan } from "./module-plan";
-import type { ScriptsMergePatch } from "./patch-plan";
-import { inspectScripts, scriptRegion, setScripts } from "./scripts-merge";
+import { inspectPatch, patchRegions, writePatch } from "./patch-ops";
+import type { PlannedPatch } from "./patch-plan";
 
 /** What one region of a patch did. `replaced` is the text `--force` overwrote (`null`: it was not a string). */
 export type RegionReport = {
@@ -18,7 +18,7 @@ export type RegionReport = {
  */
 export type PatchReport = {
   module: string;
-  type: ScriptsMergePatch["type"];
+  type: PlannedPatch["type"];
   file: string;
   status: PatchStatus;
   /** Why a `failed` patch did not apply. */
@@ -115,16 +115,15 @@ export async function stagePatches(options: {
         fail(current.reason);
         continue;
       }
-      const inspected = inspectScripts(current.text, patch.scripts);
+      const inspected = inspectPatch(current.text, patch);
       if (!inspected.ok) {
         fail(`${file}: ${inspected.reason}`);
         continue;
       }
 
-      const write: Record<string, string> = {};
+      const write = new Set<string>();
       let conflicted = false;
-      for (const [name, value] of Object.entries(patch.scripts)) {
-        const region = scriptRegion(name);
+      for (const { region, declared } of patchRegions(patch)) {
         const claim = `${file}\0${region}`;
         const earlier = regionClaims.get(claim);
         const recorded = manifest.regions[file]?.[region];
@@ -144,18 +143,18 @@ export async function stagePatches(options: {
         }
         regionClaims.set(claim, plan.key);
 
-        const state = inspected.states[name];
-        if (state === undefined || state.kind === "absent") {
-          write[name] = value;
+        const state = inspected.states.get(region) ?? { kind: "absent" };
+        if (state.kind === "absent") {
+          write.add(region);
           report.regions.push({ region, status: "applied" });
         } else if (state.kind === "equal") {
           report.regions.push({ region, status: "skipped" });
         } else if (force) {
-          write[name] = value;
+          write.add(region);
           report.regions.push({ region, status: "applied", replaced: state.current });
         } else {
           staging.collisions.push(
-            `${region} of ${file} is ${state.current === null ? "not a string" : JSON.stringify(state.current)}, which differs from what ${plan.key} declares (${JSON.stringify(value)})`,
+            `${region} of ${file} is ${state.shown}, which differs from what ${plan.key} declares (${declared})`,
           );
           conflicted = true;
           continue;
@@ -167,9 +166,9 @@ export async function stagePatches(options: {
         // The call is refused; what the patch would have written is not worth composing.
         continue;
       }
-      if (Object.keys(write).length > 0) {
+      if (write.size > 0) {
         report.status = "applied";
-        texts.set(file, setScripts(current.text, write));
+        texts.set(file, writePatch(current.text, patch, write));
         touched.add(file);
       }
     }

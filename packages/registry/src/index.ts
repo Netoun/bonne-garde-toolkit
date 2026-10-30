@@ -20,6 +20,13 @@ export {
   type PlannedEnvKey,
   type PlannedFile,
 } from "./module-plan";
+export {
+  inspectPatch,
+  patchRegions,
+  type PatchInspection,
+  type RegionDeclaration,
+  type RegionState,
+} from "./patch-ops";
 export { plannedPatches, type PlannedPatch, type ScriptsMergePatch } from "./patch-plan";
 export { loadNamedModules, readPlanFiles } from "./remote-install";
 export { readInstalledModuleManifest, type ModuleManifestLookup } from "./read-module-manifest";
