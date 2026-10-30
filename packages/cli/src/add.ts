@@ -1,8 +1,10 @@
 import { resolve } from "node:path";
 import {
   applyInstallPlan,
+  classifyNames,
   loadRegistryFromSource,
   resolveInstallPlan,
+  resolveModulePlans,
   searchCatalog,
 } from "@bonne-garde/registry";
 import { defaultSource, loadManifest } from "./manifest-file";
@@ -42,6 +44,7 @@ export async function viewItem(projectRoot: string, name: string, source?: strin
 
 export type AddOptions = {
   projectRoot?: string;
+  /** Item names, module ids, or `<category>/<id>`: spec 050 step 3 sorts them. */
   items: string[];
   source?: string;
   dryRun?: boolean;
@@ -62,21 +65,28 @@ export async function addItems(options: AddOptions) {
     );
   }
   const catalog = await loadRegistryFromSource(source, projectRoot);
-  const plan = resolveInstallPlan(catalog, options.items, manifest);
+  const { items, modules } = classifyNames(catalog, options.items);
+  const plan = resolveInstallPlan(catalog, items, manifest);
+  const modulePlans = await resolveModulePlans(catalog, modules, manifest);
   const { dryRun = false, force = false } = options;
   const result = await applyInstallPlan({
     projectRoot,
     manifest,
     plan,
+    modules: modulePlans,
     sourceLabel: source.startsWith("local:") ? "@bg" : source,
     dryRun,
     force,
   });
 
+  const modulesNeedInstall = modulePlans.some(
+    (module) =>
+      Object.keys(module.dependencies).length + Object.keys(module.devDependencies).length > 0,
+  );
   if (
     !dryRun &&
     options.install !== false &&
-    plan.npmDependencies.length + plan.npmDevDependencies.length > 0
+    (plan.npmDependencies.length + plan.npmDevDependencies.length > 0 || modulesNeedInstall)
   ) {
     const proc = Bun.spawn(["bun", "install"], {
       cwd: projectRoot,
@@ -89,7 +99,7 @@ export async function addItems(options: AddOptions) {
     }
   }
 
-  return { plan, result, migratedFrom };
+  return { plan, modulePlans, result, migratedFrom };
 }
 
 function parseRegistryIsGithub(source: string): boolean {

@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { addItems } from "./add";
 import { createProject } from "./create";
 import { findRepoRoot } from "./paths";
@@ -310,5 +310,273 @@ describe("bg record", () => {
   test("is listed in --help", async () => {
     const { stdout } = await runBg(repoRoot(), "--help");
     expect(stdout).toMatch(/bg record <intention-id> \[--skip "<reason>"\]/);
+  });
+});
+
+/** Every path under `root` with its content, so two trees compare whole. */
+async function snapshot(root: string): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  const walk = async (dir: string): Promise<void> => {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        out[`${relative(root, path)}/`] = "<dir>";
+        await walk(path);
+      } else {
+        out[relative(root, path)] = await readFile(path, "utf8");
+      }
+    }
+  };
+  await walk(root);
+  return out;
+}
+
+type ModuleOutput = {
+  dryRun: boolean;
+  written: string[];
+  skippedIdentical: string[];
+  tookOver: { path: string; from: string; by: string }[];
+  modules: {
+    module: string;
+    variant: string;
+    files: string[];
+    env: { name: string; required: boolean; status: string }[];
+    checks: string[];
+  }[];
+};
+
+describe("bg add <module>", () => {
+  test("installs the cloudflare provider by its bare id: files, env, records, and doctor is green", async () => {
+    const target = await freshProject("bg-cli-mod-cf-");
+
+    const { stdout, stderr, code } = await runBg(
+      target,
+      "add",
+      "cloudflare",
+      "--yes",
+      "--no-install",
+    );
+
+    expect(stderr).toBe("");
+    expect(code).toBe(0);
+    const out = JSON.parse(stdout) as ModuleOutput;
+    expect(out.written).toEqual(["apps/api/wrangler.jsonc"]);
+    expect(out.modules).toEqual([
+      expect.objectContaining({
+        module: "provider/cloudflare",
+        variant: "default",
+        files: ["apps/api/wrangler.jsonc"],
+        env: [
+          { name: "BETTER_AUTH_SECRET", required: true, status: "added" },
+          { name: "RESEND_API_KEY", required: true, status: "added" },
+        ],
+      }),
+    ]);
+
+    const template = await readFile(
+      join(repoRoot(), "registry/modules/provider/cloudflare/template/apps/api/wrangler.jsonc"),
+      "utf8",
+    );
+    expect(await readFile(join(target, "apps/api/wrangler.jsonc"), "utf8")).toBe(template);
+    expect(await readFile(join(target, ".env.example"), "utf8")).toBe(
+      "BETTER_AUTH_SECRET=\nRESEND_API_KEY=\n",
+    );
+
+    const bg = JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as {
+      modules: Record<string, Record<string, unknown>[]>;
+      files: Record<string, { owner: string; sha256: string }>;
+      regions: Record<string, Record<string, string>>;
+    };
+    expect(bg.modules.provider).toEqual([
+      expect.objectContaining({
+        id: "cloudflare",
+        variant: "default",
+        version: "0.1.0",
+        options: {},
+        patches: [],
+        intentions: { applied: [], skipped: {} },
+      }),
+    ]);
+    expect(bg.files["apps/api/wrangler.jsonc"]?.owner).toBe("provider/cloudflare");
+    expect(bg.regions[".env.example"]).toEqual({
+      BETTER_AUTH_SECRET: "provider/cloudflare",
+      RESEND_API_KEY: "provider/cloudflare",
+    });
+
+    const doctor = await runBg(target, "doctor", "--strict");
+    expect(doctor.code).toBe(0);
+    expect(doctor.stdout).toContain("result: ok");
+  });
+
+  test("the qualified name does the same, and a second add is idempotent", async () => {
+    const target = await freshProject("bg-cli-mod-twice-");
+    await runBg(target, "add", "provider/cloudflare", "--yes", "--no-install");
+    const before = await snapshot(target);
+
+    const { stdout, code } = await runBg(
+      target,
+      "add",
+      "provider/cloudflare",
+      "--yes",
+      "--no-install",
+    );
+
+    expect(code).toBe(0);
+    const out = JSON.parse(stdout) as ModuleOutput;
+    expect(out.written).toEqual([]);
+    expect(out.skippedIdentical).toEqual(["apps/api/wrangler.jsonc"]);
+    expect(out.modules[0]?.env.map((key) => key.status)).toEqual(["present", "present"]);
+    const after = await snapshot(target);
+    const withoutInstalledAt = (tree: Record<string, string>) =>
+      (tree["bg.json"] ?? "").replace(/"installedAt": "[^"]*"/g, '"installedAt": "-"');
+    expect({ ...after, "bg.json": withoutInstalledAt(after) }).toEqual({
+      ...before,
+      "bg.json": withoutInstalledAt(before),
+    });
+  });
+
+  test("a second provider fails on cardinality, pointing at bg replace, and changes nothing", async () => {
+    const target = await freshProject("bg-cli-mod-card-");
+    await runBg(target, "add", "cloudflare", "--yes", "--no-install");
+    const before = await snapshot(target);
+
+    const { stderr, code } = await runBg(target, "add", "dockerfile", "--yes", "--no-install");
+
+    expect(code).toBe(1);
+    expect(stderr).toContain("provider is already filled by provider/cloudflare");
+    expect(stderr).toContain("bg replace provider/dockerfile");
+    expect(await snapshot(target)).toEqual(before);
+  });
+
+  test("two providers in one call fail before anything is written", async () => {
+    const target = await freshProject("bg-cli-mod-card2-");
+    const before = await snapshot(target);
+
+    const { stderr, code } = await runBg(target, "add", "cloudflare", "dockerfile", "--no-install");
+
+    expect(code).toBe(1);
+    expect(stderr).toContain("provider admits one module");
+    expect(await snapshot(target)).toEqual(before);
+  });
+
+  test("--dry-run prints the plan and writes nothing", async () => {
+    const target = await freshProject("bg-cli-mod-dry-");
+    const before = await snapshot(target);
+
+    const { stdout, code } = await runBg(target, "add", "dockerfile", "--dry-run", "--yes");
+
+    expect(code).toBe(0);
+    const out = JSON.parse(stdout) as ModuleOutput;
+    expect(out.dryRun).toBe(true);
+    expect(out.written).toEqual([
+      ".dockerignore",
+      "Dockerfile",
+      "compose.yaml",
+      "packages/api-runtime/src/index.test.ts",
+      "packages/api-runtime/src/index.ts",
+    ]);
+    expect(out.modules[0]?.env.map((key) => key.name)).toEqual([
+      "PORT",
+      "DATA_DIR",
+      "APP_URL",
+      "BETTER_AUTH_SECRET",
+      "RESEND_API_KEY",
+    ]);
+    expect(await snapshot(target)).toEqual(before);
+  });
+
+  test("renders the project's scope into the dockerfile module", async () => {
+    const target = await freshProject("bg-cli-mod-scope-");
+
+    await runBg(target, "add", "dockerfile", "--yes", "--no-install");
+
+    const dockerfile = await readFile(join(target, "Dockerfile"), "utf8");
+    expect(dockerfile).toContain("--filter '@cli-app/spa'");
+    expect(dockerfile).not.toContain("{{SCOPE}}");
+  });
+
+  test("an item and a module go in one call, items first in the output", async () => {
+    const target = await freshProject("bg-cli-mod-mixed-");
+
+    const { stdout, code } = await runBg(
+      target,
+      "add",
+      "api-elysia",
+      "dockerfile",
+      "--yes",
+      "--no-install",
+    );
+
+    expect(code).toBe(0);
+    const out = JSON.parse(stdout) as ModuleOutput & { items: string[] };
+    expect(out.items).toEqual(["api-elysia"]);
+    expect(out.modules.map((m) => m.module)).toEqual(["provider/dockerfile"]);
+  });
+
+  test("api-elysia and provider/cloudflare both own apps/api/wrangler.jsonc: refused, naming both, nothing written", async () => {
+    const target = await freshProject("bg-cli-mod-trap-");
+    await runBg(target, "add", "api-elysia", "--yes", "--no-install");
+    const before = await snapshot(target);
+
+    const { stderr, code } = await runBg(target, "add", "cloudflare", "--yes", "--no-install");
+
+    expect(code).toBe(1);
+    expect(stderr).toContain(
+      "apps/api/wrangler.jsonc is owned by api-elysia, and provider/cloudflare would replace it",
+    );
+    expect(await snapshot(target)).toEqual(before);
+
+    const sameCall = await freshProject("bg-cli-mod-trap2-");
+    const both = await runBg(
+      sameCall,
+      "add",
+      "api-elysia",
+      "cloudflare",
+      "--force",
+      "--no-install",
+    );
+    expect(both.code).toBe(1);
+    expect(both.stderr).toContain("named by both api-elysia and provider/cloudflare");
+  });
+
+  test("--force takes the file over, says so, and records the module as its owner", async () => {
+    const target = await freshProject("bg-cli-mod-force-");
+    await runBg(target, "add", "api-elysia", "--yes", "--no-install");
+
+    const { stdout, code } = await runBg(target, "add", "cloudflare", "--force", "--no-install");
+
+    expect(code).toBe(0);
+    expect((JSON.parse(stdout) as ModuleOutput).tookOver).toEqual([
+      { path: "apps/api/wrangler.jsonc", from: "api-elysia", by: "provider/cloudflare" },
+    ]);
+    const bg = JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as {
+      files: Record<string, { owner: string }>;
+    };
+    expect(bg.files["apps/api/wrangler.jsonc"]?.owner).toBe("provider/cloudflare");
+    expect((await runBg(target, "doctor", "--strict")).code).toBe(0);
+  });
+
+  test("an unknown name fails with suggestions from both catalogs", async () => {
+    const target = await freshProject("bg-cli-mod-unknown-");
+
+    const { stderr, code } = await runBg(target, "add", "cloud", "--no-install");
+
+    expect(code).toBe(1);
+    expect(stderr).toContain("unknown name: cloud");
+    expect(stderr).toContain("provider/cloudflare");
+  });
+
+  test("--set, bg remove and bg replace say they are not supported yet instead of doing nothing", async () => {
+    const target = await freshProject("bg-cli-mod-todo-");
+
+    const set = await runBg(target, "add", "cloudflare", "--set", "a=b");
+    expect(set.code).toBe(1);
+    expect(set.stderr).toContain("--set is not supported yet");
+
+    for (const command of ["remove", "replace"]) {
+      const result = await runBg(target, command, "cloudflare");
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain(`bg ${command} is not supported yet`);
+    }
   });
 });

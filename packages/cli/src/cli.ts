@@ -14,7 +14,8 @@ Usage:
   bg list [--source <source>]
   bg search <query> [--source <source>]
   bg view <item> [--source <source>]
-  bg add <item...> [--dry-run] [--force] [--no-install] [--yes] [--source <source>]
+  bg add <name...> [--dry-run] [--force] [--no-install] [--yes] [--source <source>]
+      <name> is an item, a module id, or <category>/<id> (provider/cloudflare)
   bg record <intention-id> [--skip "<reason>"]
   bg doctor [--json] [--strict]
   bg intentions lint [--dir <migrations-dir>]
@@ -124,14 +125,19 @@ export async function runCli(argv: string[]): Promise<number> {
     const dryRun = takeFlag(args, "--dry-run");
     const force = takeFlag(args, "--force");
     const noInstall = takeFlag(args, "--no-install");
-    // Spec 050: --yes selects option defaults and never prompts. `add` has no prompt today, so
-    // honouring it means accepting it; it becomes a real input when module options land.
+    // Spec 050: --yes selects option defaults and never prompts. `add` has no prompt at all, so it
+    // is accepted and changes nothing: options always resolve from their defaults.
     takeFlag(args, "--yes");
     const source = takeOption(args, "--source");
-    if (args.length === 0) {
-      throw new Error("add requires at least one item");
+    if (takeOption(args, "--set") !== undefined) {
+      throw new Error(
+        "--set is not supported yet: options resolve from their defaults, and spec 050 does not say which module a key addresses when several are named",
+      );
     }
-    const { plan, result, migratedFrom } = await addItems({
+    if (args.length === 0) {
+      throw new Error("add requires at least one item or module");
+    }
+    const { plan, modulePlans, result, migratedFrom } = await addItems({
       items: args,
       source,
       dryRun,
@@ -141,13 +147,43 @@ export async function runCli(argv: string[]): Promise<number> {
     if (migratedFrom !== null) {
       console.error(manifestMigrationNotice(dryRun));
     }
+    for (const { path, from, by } of result.tookOver) {
+      console.error(`bg: ${path} was owned by ${from}; ${by} now owns it`);
+    }
+    const unrun = modulePlans.filter((module) => module.checks.length > 0);
+    if (unrun.length > 0) {
+      console.error(
+        `bg: checks were not run (spec 050 step 15 is not implemented): ${unrun
+          .map((module) => `${module.key}: ${module.checks.join("; ")}`)
+          .join(" | ")}`,
+      );
+    }
     console.log(
       JSON.stringify(
         {
           dryRun,
           items: plan.items.map((i) => i.name),
+          modules: modulePlans.map((module) => ({
+            module: module.key,
+            variant: module.variant,
+            options: module.options,
+            files: module.files.map((file) => file.target),
+            env: module.env.map(({ name, required }) => ({
+              name,
+              required,
+              status: result.env?.added.some((a) => a.name === name && a.owner === module.key)
+                ? "added"
+                : "present",
+            })),
+            dependencies: module.dependencies,
+            devDependencies: module.devDependencies,
+            workspace: module.workspace,
+            checks: module.checks,
+          })),
           written: result.written,
           skippedIdentical: result.skippedIdentical,
+          tookOver: result.tookOver,
+          envFile: result.env?.file ?? null,
           capabilities: plan.capabilities,
           npmDependencies: plan.npmDependencies,
         },
@@ -156,6 +192,12 @@ export async function runCli(argv: string[]): Promise<number> {
       ),
     );
     return 0;
+  }
+
+  if (command === "remove" || command === "replace") {
+    throw new Error(
+      `bg ${command} is not supported yet: spec 050 "remove and replace" is not implemented`,
+    );
   }
 
   if (command === "record") {
