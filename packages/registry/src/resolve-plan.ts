@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ModuleCategory, ProjectManifest } from "@bonne-garde/schema";
 import type { ModuleRef } from "./module-plan";
@@ -42,10 +43,56 @@ function landsIn(item: RegistryItem, prefix: string): boolean {
   return (item.files ?? []).some((file) => itemFileTarget(item, file).startsWith(prefix));
 }
 
+/** The names of the items `requested` pulls in, itself included, through `registryDependencies`. */
+function closureOf(catalog: RegistryCatalog, name: string, seen = new Set<string>()): Set<string> {
+  if (!seen.has(name)) {
+    seen.add(name);
+    const item = catalog.items.find((candidate) => candidate.name === name);
+    for (const dep of item?.registryDependencies ?? []) {
+      closureOf(catalog, dep, seen);
+    }
+  }
+  return seen;
+}
+
+/**
+ * The refusal for items that need a module nobody installed or named: it names the requested items
+ * that need it, and the command that fixes it, which keeps every other module the caller named and
+ * every requested item, so running it again is what the caller meant.
+ */
+function missingModule(
+  catalog: RegistryCatalog,
+  requested: string[],
+  modules: readonly ModuleRef[],
+  needing: readonly RegistryItem[],
+  category: ModuleCategory,
+  fallback: string,
+): PlanError {
+  const names = new Set(needing.map((item) => item.name));
+  const asked = requested.filter((name) =>
+    [...closureOf(catalog, name)].some((dep) => names.has(dep)),
+  );
+  const known = catalog.modules
+    .filter(({ manifest: module }) => module.category === category)
+    .map(({ manifest: module }) => `${module.category}/${module.id}`);
+  const host = known.length > 0 ? known.join(" or ") : fallback;
+  const named = modules.map((ref) => `${ref.category}/${ref.id}`);
+  const verb = asked.length > 1 ? "need" : "needs";
+  return new PlanError(
+    `${asked.join(", ")} ${verb} the ${category} module, and none is installed or named in this call; run: bg add ${[host, ...named, ...requested].join(" ")}`,
+  );
+}
+
+const hasModule = (
+  manifest: ProjectManifest,
+  modules: readonly ModuleRef[],
+  category: ModuleCategory,
+): boolean =>
+  (manifest.modules[category] ?? []).length > 0 || modules.some((ref) => ref.category === category);
+
 /**
  * Fails when an item writes into a package whose module is neither installed nor named in this
- * call. `requested` are the names the caller typed: the error names the ones that need the module
- * and the command to run, which keeps all of them.
+ * call. `requested` are the names the caller typed.
  */
 function checkHostModules(
   catalog: RegistryCatalog,
@@ -54,36 +101,60 @@ function checkHostModules(
   manifest: ProjectManifest,
   modules: readonly ModuleRef[],
 ): void {
-  const byName = new Map(catalog.items.map((item) => [item.name, item]));
-  const closure = (name: string, seen = new Set<string>()): Set<string> => {
-    if (!seen.has(name)) {
-      seen.add(name);
-      for (const dep of byName.get(name)?.registryDependencies ?? []) {
-        closure(dep, seen);
-      }
-    }
-    return seen;
-  };
-
   for (const { prefix, category, fallback } of MODULE_FOR_TARGET) {
     const needing = ordered.filter((item) => landsIn(item, prefix));
-    if (
-      needing.length === 0 ||
-      (manifest.modules[category] ?? []).length > 0 ||
-      modules.some((ref) => ref.category === category)
-    ) {
+    if (needing.length > 0 && !hasModule(manifest, modules, category)) {
+      throw missingModule(catalog, requested, modules, needing, category, fallback);
+    }
+  }
+}
+
+/**
+ * Transitional. An item cannot require a module, and `spa-react-router` imports `@acme/config`, which
+ * the `config/branding` module owns. Its files land in `apps/spa/`, so no target prefix says so: the
+ * rule reads the imports instead, and goes when `web/spa` replaces the item and peers on `config`.
+ * `@acme` is the scope placeholder items are authored with.
+ */
+const MODULE_FOR_IMPORT: readonly {
+  specifier: RegExp;
+  category: ModuleCategory;
+  fallback: string;
+}[] = [
+  {
+    specifier: /["']@acme\/config(?:\/[^"']*)?["']/,
+    category: "config",
+    fallback: "config/branding",
+  },
+];
+
+/**
+ * The twin of `checkHostModules` for what an item imports: fails when a planned item names a
+ * package whose module is neither installed nor named in this call. It reads the file contents,
+ * which `resolveInstallPlan` has not got for a local catalog, so it runs once the plan is made.
+ */
+export async function checkImportedModules(
+  catalog: RegistryCatalog,
+  requested: string[],
+  plan: InstallPlan,
+  manifest: ProjectManifest,
+  modules: readonly ModuleRef[],
+): Promise<void> {
+  for (const { specifier, category, fallback } of MODULE_FOR_IMPORT) {
+    if (hasModule(manifest, modules, category)) {
       continue;
     }
-    const names = new Set(needing.map((item) => item.name));
-    const asked = requested.filter((name) => [...closure(name)].some((dep) => names.has(dep)));
-    const known = catalog.modules
-      .filter(({ manifest: module }) => module.category === category)
-      .map(({ manifest: module }) => `${module.category}/${module.id}`);
-    const host = known.length > 0 ? known.join(" or ") : fallback;
-    const verb = asked.length > 1 ? "need" : "needs";
-    throw new PlanError(
-      `${asked.join(", ")} ${verb} the ${category} module, and none is installed or named in this call; run: bg add ${host} ${requested.join(" ")}`,
-    );
+    const needing: RegistryItem[] = [];
+    for (const item of plan.items) {
+      for (const file of item.files ?? []) {
+        if (specifier.test(file.content ?? (await readFile(file.path, "utf8")))) {
+          needing.push(item);
+          break;
+        }
+      }
+    }
+    if (needing.length > 0) {
+      throw missingModule(catalog, requested, modules, needing, category, fallback);
+    }
   }
 }
 

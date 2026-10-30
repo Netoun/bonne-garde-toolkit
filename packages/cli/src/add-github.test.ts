@@ -174,7 +174,7 @@ describe("bg add from a github source", () => {
   test("a project from a github source and one from a local source end up the same", async () => {
     const everyItem = (await listItems(await project(LOCAL))).map((item) => item.name);
     for (const names of [
-      ["ui/shadcn", ...everyItem],
+      ["ui/shadcn", "config/branding", ...everyItem],
       ["provider/cloudflare"],
       ["provider/dockerfile"],
       ["ui/shadcn"],

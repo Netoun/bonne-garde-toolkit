@@ -79,7 +79,7 @@ export function selectItems(
  * them all would fail on cardinality. A module that is in neither this list nor `EXCLUDED_MODULES`
  * fails the run, so a new module is a decision made here and not a silent gap.
  */
-export const MODULES: readonly string[] = ["tooling/vite-plus", "ui/shadcn"];
+export const MODULES: readonly string[] = ["tooling/vite-plus", "config/branding", "ui/shadcn"];
 
 /** The item `refuse` tries with no ui module, and the module its refusal has to name. */
 const REFUSED_ITEM = "button";

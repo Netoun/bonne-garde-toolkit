@@ -1,7 +1,7 @@
 {
   "displayName": "My App",
   "shortName": "My App",
-  "npmScope": "@acme",
+  "npmScope": "{{SCOPE}}",
   "publicOrigin": "https://www.example.com",
   "supportEmail": "support@example.com",
   "legalName": "My App"

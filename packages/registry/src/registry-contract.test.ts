@@ -15,7 +15,8 @@ describe("registry contract", () => {
     expect(names.has("button")).toBe(true);
     expect(names.has("utils")).toBe(true);
     expect(names.has("api-elysia")).toBe(true);
-    expect(names.has("config")).toBe(true);
+    // `config` is the `config/branding` module: an item cannot be required by a module, nor the reverse.
+    expect(names.has("config")).toBe(false);
     for (const item of catalog.items) {
       for (const file of item.files ?? []) {
         expect(file.path.length).toBeGreaterThan(0);

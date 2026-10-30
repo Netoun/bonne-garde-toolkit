@@ -5,7 +5,6 @@
   "include": [
     "ui/registry.json",
     "apps/registry.json",
-    "lib/registry.json",
     "features/registry.json",
     "tooling/registry.json"
   ]

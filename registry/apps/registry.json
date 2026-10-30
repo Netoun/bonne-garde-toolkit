@@ -45,7 +45,7 @@
       "name": "spa-react-router",
       "type": "registry:block",
       "title": "SPA shell",
-      "description": "React Router SPA shell (Vite+, Tailwind, Cloudflare Pages) with a root route and an index route, rendering the button item.",
+      "description": "React Router SPA shell (Vite+, Tailwind, Cloudflare Pages) with a root route and an index route, rendering the button item. Imports @acme/config, so it needs the config module: bg add config/branding.",
       "dependencies": ["isbot@5.2.1", "react@19.2.8", "react-dom@19.2.8", "react-router@8.3.0"],
       "devDependencies": [
         "@react-router/dev@8.3.0",
@@ -55,7 +55,7 @@
         "tailwindcss@4.3.3",
         "wrangler@4.119.0"
       ],
-      "registryDependencies": ["config", "button"],
+      "registryDependencies": ["button"],
       "files": [
         {
           "path": "spa-react-router/package.json",

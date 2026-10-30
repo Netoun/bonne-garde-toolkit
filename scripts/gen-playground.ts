@@ -29,9 +29,8 @@ await createProject({
 
 await addItems({
   projectRoot: target,
-  items: ["api-elysia", "button", "config"],
+  items: ["tooling/vite-plus", "ui/shadcn", "config/branding", "api-elysia", "button"],
   install: true,
-  force: true,
 });
 
 console.log(`playground ready at ${resolve(target)}`);

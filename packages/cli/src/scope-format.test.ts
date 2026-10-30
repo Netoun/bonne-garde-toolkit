@@ -19,7 +19,7 @@ import { findRepoRoot } from "./paths";
 /** The scopes the report names: the shortest legal one, the authoring scope, and a long one. */
 const NAMED_SCOPES = ["@a", "@app", "@acme", "@golden-app", "@a-much-longer-company-scope"];
 /** The modules a single project holds; each other module is installed alone, as it fills a category `one`. */
-const SHARED_MODULES = ["tooling/vite-plus", "ui/shadcn"];
+const SHARED_MODULES = ["tooling/vite-plus", "config/branding", "ui/shadcn"];
 
 const dirs: string[] = [];
 

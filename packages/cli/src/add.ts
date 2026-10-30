@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import {
   applyInstallPlan,
+  checkImportedModules,
   classifyNames,
   loadNamedModules,
   loadRegistryFromSource,
@@ -102,6 +103,7 @@ export async function addItems(options: AddOptions) {
   const catalog = await loadNamedModules(loaded, options.items);
   const { items, modules } = classifyNames(catalog, options.items);
   const plan = await readPlanFiles(catalog, resolveInstallPlan(catalog, items, manifest, modules));
+  await checkImportedModules(catalog, items, plan, manifest, modules);
   const modulePlans = await resolveModulePlans(catalog, modules, manifest);
   const { dryRun = false, force = false } = options;
   const result = await applyInstallPlan({

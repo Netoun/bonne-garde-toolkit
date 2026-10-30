@@ -223,35 +223,75 @@ describe("bg create + add", () => {
     expect(doctorExitCode(await runDoctor(target), true)).toBe(0);
   });
 
-  test("`spa-react-router` still pulls config and button through registryDependencies, with no meta.bg", async () => {
-    const parent = await mkdtemp(join(tmpdir(), "bg-cli-spa-"));
-    dirs.push(parent);
-    const target = await createProject({
-      name: "spa-demo",
-      cwd: parent,
-      git: false,
-      install: false,
-      registry: repoRegistry(),
+  describe("`spa-react-router` imports @acme/config, and an item cannot require a module", () => {
+    async function spaProject(prefix: string): Promise<string> {
+      const parent = await mkdtemp(join(tmpdir(), prefix));
+      dirs.push(parent);
+      return createProject({
+        name: "spa-demo",
+        cwd: parent,
+        git: false,
+        install: false,
+        registry: repoRegistry(),
+      });
+    }
+
+    test("it pulls button through registryDependencies, with no meta.bg, and config/branding is named beside it", async () => {
+      const target = await spaProject("bg-cli-spa-");
+
+      const { plan, modulePlans } = await addItems({
+        projectRoot: target,
+        items: ["ui/shadcn", "config/branding", "spa-react-router"],
+        dryRun: true,
+        install: false,
+      });
+
+      expect(plan.items.map((i) => i.name)).toEqual([
+        "utils",
+        "animations",
+        "button",
+        "spa-react-router",
+      ]);
+      expect(modulePlans.map((m) => m.key)).toEqual(["config/branding", "ui/shadcn"]);
     });
 
-    // `config` and `ui` were its `meta.bg.requires`; `registryDependencies` already says both.
-    const { plan } = await addItems({
-      projectRoot: target,
-      items: ["ui/shadcn", "spa-react-router"],
-      dryRun: true,
-      install: false,
-    });
-    expect(plan.items.map((i) => i.name)).toEqual([
-      "config",
-      "utils",
-      "animations",
-      "button",
-      "spa-react-router",
-    ]);
+    test("without the config module it fails before any write, naming the module and the command", async () => {
+      const target = await spaProject("bg-cli-spa-no-config-");
+      const before = await readFile(join(target, "bg.json"), "utf8");
 
-    await expect(
-      addItems({ projectRoot: target, items: ["spa-react-router"], dryRun: true, install: false }),
-    ).rejects.toThrow("run: bg add ui/shadcn spa-react-router");
+      await expect(
+        addItems({
+          projectRoot: target,
+          items: ["ui/shadcn", "spa-react-router"],
+          install: false,
+        }),
+      ).rejects.toThrow(
+        "spa-react-router needs the config module, and none is installed or named in this call; run: bg add config/branding ui/shadcn spa-react-router",
+      );
+
+      expect(await readFile(join(target, "bg.json"), "utf8")).toBe(before);
+      expect(
+        (await readdir(join(target, "packages"))).filter((name) => name !== ".gitkeep"),
+      ).toEqual([]);
+    });
+
+    test("an installed config module is enough", async () => {
+      const target = await spaProject("bg-cli-spa-installed-");
+      await addItems({
+        projectRoot: target,
+        items: ["config/branding", "ui/shadcn"],
+        install: false,
+      });
+
+      const { plan } = await addItems({
+        projectRoot: target,
+        items: ["spa-react-router"],
+        dryRun: true,
+        install: false,
+      });
+
+      expect(plan.items.map((i) => i.name)).toContain("spa-react-router");
+    });
   });
 
   describe("add records what it wrote", () => {

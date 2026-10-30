@@ -134,7 +134,6 @@ describe("loadRegistryFromSource over github", () => {
     expect(raw.requested.sort()).toEqual([
       "apps/registry.json",
       "features/registry.json",
-      "lib/registry.json",
       "registry.json",
       "tooling/registry.json",
       "ui/registry.json",

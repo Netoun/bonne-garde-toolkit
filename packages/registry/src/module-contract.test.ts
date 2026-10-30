@@ -3,6 +3,10 @@ import { readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { isModuleCategory, parseModuleManifest } from "@bonne-garde/schema";
+import {
+  assertBranding,
+  renderBrandingModule,
+} from "../../../registry/modules/config/branding/template/packages/config/src/gen-branding";
 import { loadLocalRegistry } from "./load-registry";
 
 const ROOT = join(import.meta.dir, "../../..");
@@ -286,6 +290,190 @@ describe("module contract", () => {
       }
 
       expect(unreachable).toEqual([]);
+    });
+  });
+
+  describe("config/branding is the branding every app imports (035, 080)", () => {
+    const TEMPLATE = join(MODULES, "config/branding/template");
+    const text = (path: string): Promise<string> => readFile(join(TEMPLATE, path), "utf8");
+    const brandingModule = async () => {
+      const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+      const found = catalog.modules.find(
+        ({ manifest }) => manifest.category === "config" && manifest.id === "branding",
+      );
+      if (!found) {
+        throw new Error("registry/modules/config/branding is missing");
+      }
+      const [variant] = found.manifest.variants;
+      if (!variant) {
+        throw new Error("config/branding has no variant");
+      }
+      return { ...found, variant };
+    };
+
+    /** What `add` does to the one placeholder a template may carry. */
+    const rendered = (source: string, scope: string): string =>
+      source.replaceAll("{{SCOPE}}", scope);
+
+    test("it writes packages/config from explicit paths, and `{{SCOPE}}/config` is its workspace", async () => {
+      const { manifest, variant } = await brandingModule();
+
+      expect(manifest.peers).toEqual({});
+      expect(variant.match).toEqual({});
+      expect(variant.workspace).toEqual({ name: "{{SCOPE}}/config", path: "packages/config" });
+      expect(variant.copy?.filter((path) => /[*?[\]{}]/.test(path))).toEqual([]);
+      expect(variant.copy).toEqual([
+        "packages/config/package.json",
+        "packages/config/tsconfig.json",
+        "packages/config/branding.json",
+        "packages/config/scripts/gen-branding.ts",
+        "packages/config/assets/favicons/favicon.svg",
+        "packages/config/assets/favicons/site.webmanifest",
+        "packages/config/src/branding.generated.ts",
+        "packages/config/src/branding.types.ts",
+        "packages/config/src/gen-branding.test.ts",
+        "packages/config/src/gen-branding.ts",
+        "packages/config/src/index.ts",
+      ]);
+      expect(variant.dependencies ?? {}).toEqual({});
+      expect(variant.devDependencies ?? {}).toEqual({});
+      expect(variant.intent ?? []).toEqual([]);
+    });
+
+    test("its package.json carries exports and scripts and no dependency map (the variant has none to merge)", async () => {
+      const body: unknown = JSON.parse(await text("packages/config/package.json"));
+
+      expect(body).toMatchObject({
+        name: "{{SCOPE}}/config",
+        exports: {
+          ".": "./src/index.ts",
+          "./branding": "./src/branding.generated.ts",
+          "./assets/*": "./assets/*",
+        },
+        scripts: { typecheck: "tsc --noEmit", test: "bun test" },
+      });
+      for (const map of [
+        "dependencies",
+        "devDependencies",
+        "peerDependencies",
+        "optionalDependencies",
+      ]) {
+        expect(body).not.toHaveProperty(map);
+      }
+    });
+
+    test("a package-homed module writes only inside its package (035 seam)", async () => {
+      const homes: Partial<Record<string, string>> = {
+        config: "packages/config",
+        ui: "packages/ui",
+      };
+      const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+      const outside: string[] = [];
+
+      for (const { manifest } of catalog.modules) {
+        const home = homes[manifest.category];
+        if (home === undefined) {
+          continue;
+        }
+        for (const variant of manifest.variants) {
+          for (const path of variant.copy ?? []) {
+            if (!path.startsWith(`${home}/`)) {
+              outside.push(`${manifest.category}/${manifest.id}: ${path}`);
+            }
+          }
+        }
+      }
+
+      expect(outside).toEqual([]);
+    });
+
+    test("the generated module is what its generator renders from branding.json, at any scope", async () => {
+      const json = await text("packages/config/branding.json");
+      const generated = await text("packages/config/src/branding.generated.ts");
+
+      // A drift here is `bun run gen:branding` rewriting a file `bg.json` recorded the sha256 of.
+      for (const scope of ["@a", "@app", "@acme", "@a-much-longer-company-scope"]) {
+        const branding = assertBranding(JSON.parse(rendered(json, scope)));
+        expect(branding.npmScope).toBe(scope);
+        expect(renderBrandingModule(branding)).toBe(rendered(generated, scope));
+      }
+    });
+
+    const LEGACY = join(ROOT, "packages/config");
+    const LEGACY_SCRIPT = join(ROOT, "scripts/gen-branding.ts");
+    const LEGACY_BRANDING = join(ROOT, "branding.json");
+    const LEGACY_FAVICONS = join(ROOT, "assets/favicons");
+
+    test.skipIf(!existsSync(LEGACY))(
+      "while the legacy package is in the tree, each file is its legacy file byte for byte (080: no rewrites)",
+      async () => {
+        const different: string[] = [];
+        const same = async (module: string, legacy: string, scope = "@acme") => {
+          if (rendered(await text(module), scope) !== (await readFile(legacy, "utf8"))) {
+            different.push(`${module} differs from ${legacy}`);
+          }
+        };
+
+        for (const file of [
+          "branding.generated.ts",
+          "branding.types.ts",
+          "gen-branding.test.ts",
+          "gen-branding.ts",
+          "index.ts",
+        ]) {
+          await same(`packages/config/src/${file}`, join(LEGACY, "src", file));
+        }
+        await same("packages/config/branding.json", LEGACY_BRANDING);
+        for (const file of ["favicon.svg", "site.webmanifest"]) {
+          await same(`packages/config/assets/favicons/${file}`, join(LEGACY_FAVICONS, file));
+        }
+
+        expect(different).toEqual([]);
+      },
+    );
+
+    test.skipIf(!existsSync(LEGACY_SCRIPT))(
+      "the generator is the legacy script with its paths moved into the package, and nothing else",
+      async () => {
+        // The legacy script sits in the repo's scripts/ and reads the repo's branding.json. The module
+        // may not write outside packages/config, so both move there; these are the lines that follow,
+        // and the shorter import, which the formatter writes on one line.
+        const moved = (await readFile(LEGACY_SCRIPT, "utf8"))
+          .replace(
+            " * Reads branding.json and writes packages/config/src/branding.generated.ts",
+            " * Reads packages/config/branding.json and writes packages/config/src/branding.generated.ts",
+          )
+          .replace(
+            " *   bun scripts/gen-branding.ts",
+            " *   bun packages/config/scripts/gen-branding.ts",
+          )
+          .replace(
+            'import {\n  assertBranding,\n  renderBrandingModule,\n  type Branding,\n} from "../packages/config/src/gen-branding";',
+            'import { assertBranding, renderBrandingModule, type Branding } from "../src/gen-branding";',
+          )
+          .replace(
+            'const ROOT = resolve(import.meta.dir, "..");',
+            'const PACKAGE_DIR = resolve(import.meta.dir, "..");',
+          )
+          .replace('join(ROOT, "branding.json")', 'join(PACKAGE_DIR, "branding.json")')
+          .replace(
+            'join(ROOT, "packages/config/src/branding.generated.ts")',
+            'join(PACKAGE_DIR, "src/branding.generated.ts")',
+          );
+
+        expect(await text("packages/config/scripts/gen-branding.ts")).toBe(moved);
+      },
+    );
+
+    test("its tsconfig extends the project's and covers the generator script", async () => {
+      const body: unknown = JSON.parse(await text("packages/config/tsconfig.json"));
+
+      expect(body).toMatchObject({
+        extends: "../../tsconfig.json",
+        // The generator reads files and `import.meta.dir`: without the types `tsc` cannot see them.
+        compilerOptions: { types: ["bun"] },
+        include: ["src/**/*.ts", "scripts/**/*.ts"],
+      });
     });
   });
 

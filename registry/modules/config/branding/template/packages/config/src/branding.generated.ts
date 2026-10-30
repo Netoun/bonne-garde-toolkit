@@ -7,7 +7,7 @@ import type { Branding } from "./branding.types";
 export const branding = {
   displayName: "My App",
   shortName: "My App",
-  npmScope: "@acme",
+  npmScope: "{{SCOPE}}",
   publicOrigin: "https://www.example.com",
   supportEmail: "support@example.com",
   legalName: "My App",
