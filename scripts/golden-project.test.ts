@@ -8,6 +8,7 @@ import {
   EXCLUDED_MODULES,
   expectPatches,
   expectRefusal,
+  expectRegionsRecorded,
   MODULES,
   PATCHED,
   readAddedModules,
@@ -405,5 +406,44 @@ describe("diffTrees (a re-add leaves the project the same bytes)", () => {
     expect(diffTrees(before, { "bg.json": '{ "files": { "a": 1 } }' })).toEqual([
       "bg.json changed",
     ]);
+  });
+});
+
+describe("expectRegionsRecorded (bg.json carries what `bg add` reported)", () => {
+  const added: AddedModule[] = [
+    {
+      module: "config/branding",
+      checks: [],
+      patches: [
+        {
+          type: "scripts.merge",
+          file: "package.json",
+          status: "applied",
+          regions: [{ region: "scripts.gen:branding", status: "applied" }],
+        },
+      ],
+    },
+  ];
+
+  test("passes when bg.json records each region for the module that reported it", () => {
+    const manifest = { regions: { "package.json": { "scripts.gen:branding": "config/branding" } } };
+
+    expect(() => expectRegionsRecorded(manifest, added)).not.toThrow();
+  });
+
+  test("fails when a region is missing from bg.json, or recorded for someone else", () => {
+    expect(() => expectRegionsRecorded({ regions: {} }, added)).toThrow(
+      /scripts\.gen:branding of package\.json/,
+    );
+    expect(() =>
+      expectRegionsRecorded(
+        { regions: { "package.json": { "scripts.gen:branding": "dev/other" } } },
+        added,
+      ),
+    ).toThrow(/dev\/other/);
+  });
+
+  test("fails on a bg.json that is not an object with regions", () => {
+    expect(() => expectRegionsRecorded("nope", added)).toThrow(/regions/);
   });
 });

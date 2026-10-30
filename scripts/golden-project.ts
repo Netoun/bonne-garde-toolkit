@@ -278,6 +278,30 @@ export function expectPatches(
 }
 
 /**
+ * The regions `bg add` reported must be in `bg.json` under `regions`, owned by the module that
+ * reported them: the printed outcome and the recorded state are two things, and this ties them.
+ */
+export function expectRegionsRecorded(manifest: unknown, added: readonly AddedModule[]): void {
+  const regions = isRecord(manifest) && isRecord(manifest.regions) ? manifest.regions : null;
+  if (regions === null) {
+    throw new Error("bg.json has no `regions` object");
+  }
+  for (const { module, patches } of added) {
+    for (const { file, regions: reported } of patches) {
+      const owned = regions[file];
+      for (const { region } of reported) {
+        const owner = isRecord(owned) ? owned[region] : undefined;
+        if (owner !== module) {
+          throw new Error(
+            `bg.json records ${region} of ${file} for ${String(owner)}, and bg add reported it for ${module}`,
+          );
+        }
+      }
+    }
+  }
+}
+
+/**
  * What differs between two snapshots of a project, as `<path> changed|added|removed`. `bg.json` is
  * compared without `installedAt`, the one thing a re-add moves in it. Any other change in it is
  * reported, the recorded status of a patch included.
@@ -469,6 +493,7 @@ async function golden(work: string, timings: Timing[]): Promise<void> {
     process.stdout.write(stdout);
     const reported = readAddedModules(stdout, modules);
     expectPatches(reported, "applied", PATCHED);
+    expectRegionsRecorded(JSON.parse(await Bun.file(join(project, "bg.json")).text()), reported);
     return reported;
   });
   // Before `bun install`, so that node_modules and the lockfile are not in the comparison.
