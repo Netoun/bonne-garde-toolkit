@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { join, resolve } from "node:path";
-import { loadLocalRegistry } from "../packages/registry/src/index";
-import { jsoncLeaves, jsonRegion } from "../packages/registry/src/jsonc-merge";
+import { loadLocalRegistry, patchRegions, plannedPatches } from "../packages/registry/src/index";
 import {
   addArguments,
   assetPath,
@@ -437,17 +436,11 @@ describe("the golden project and patches", () => {
         const [variant] = satisfied.sort(
           (a, b) => Object.keys(b.match).length - Object.keys(a.match).length,
         );
-        // `scripts.merge` writes one region per script, `jsonc.merge` one per leaf of its value.
-        const written = (variant?.patch ?? []).flatMap((patch) => [
-          ...Object.keys((patch.scripts as Record<string, string> | undefined) ?? {}).map(
-            (script) => `scripts.${script}`,
-          ),
-          ...(patch.type === "jsonc.merge"
-            ? jsoncLeaves(patch.value as Record<string, unknown>).map(({ path }) =>
-                jsonRegion(path),
-              )
-            : []),
-        ]);
+        // The regions the engine says the declared patches write, `{{SCOPE}}` rendered at golden's scope.
+        const key = `${manifest.category}/${manifest.id}`;
+        const written = (variant === undefined ? [] : plannedPatches(key, variant, SCOPE)).flatMap(
+          (patch) => patchRegions(patch).map(({ region }) => region),
+        );
         if ((variant?.patch ?? []).length > 0) {
           regions[`${manifest.category}/${manifest.id}`] = written.sort();
         }
@@ -468,9 +461,9 @@ describe("the golden project and patches", () => {
           "scripts.db:migrate:remote",
         ],
         "orm/drizzle": [
-          "dependencies.drizzle-kit",
           "dependencies.drizzle-orm",
           "dependencies.elysia",
+          "devDependencies.drizzle-kit",
           'exports."."',
           'exports."./schema"',
           'exports."./testing"',

@@ -38,22 +38,17 @@ exactly one module may. `db/d1` is first in 035's order and the only one that ca
 owns the workspace and the vendored `package.json`, and orm adds to that file with patches, one
 region each, which `bg remove orm/drizzle` deletes and nothing else:
 
-| Type            | Regions                                                                                                                                   |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `jsonc.merge`   | `exports."."`, `exports."./schema"`, `exports."./testing"`; `dependencies.drizzle-kit`, `dependencies.drizzle-orm`, `dependencies.elysia` |
-| `scripts.merge` | `scripts.db:generate`, `scripts.db:studio`                                                                                                |
+| Type                   | Regions                                                                          |
+| ---------------------- | -------------------------------------------------------------------------------- |
+| `jsonc.merge`          | `exports."."`, `exports."./schema"`, `exports."./testing"`                       |
+| `package.dependencies` | `dependencies.drizzle-orm`, `dependencies.elysia`, `devDependencies.drizzle-kit` |
+| `scripts.merge`        | `scripts.db:generate`, `scripts.db:studio`                                       |
 
-**The dependencies are in `jsonc.merge`, which departs from 050** (dependencies come from the variant
-and nowhere else). The variant's maps reach only a `package.json` the module writes, and this one is
-db/d1's; two claimants for it are refused. It is a bridge, and the decision is open: the clean form is the
-planner merging a second module's variant maps into the `package.json` of a home it shares, as regions
-(`dependencies.drizzle-orm` is the same region either way). Until then, two things follow, both pinned
-by the contract test: the versions are exact by that test and not by the variant check, and a name has to
-sort after the ones already in its map, because `jsonc.merge` appends and the formatter's
-`sortPackageJson` sorts (`@scope/api-runtime` first, then `drizzle-kit`, `drizzle-orm`, `elysia`).
-`drizzle-kit` is a dependency and not a dev dependency for that reason, and because `./testing` imports
-`drizzle-kit/api` at run time: as a dev dependency it would come after `miniflare`, db/d1's, and
-`bun run check` would fail.
+The dependencies are a patch because the variant's maps reach only a `package.json` the module writes,
+and this one is db/d1's. `package.dependencies` writes each entry where the formatter sorts it, so
+`drizzle-kit` lands between db/d1's `@cloudflare/workers-types` and `miniflare` and `bun run check`
+has nothing to say. `drizzle-kit` is a dev dependency: `./testing` imports `drizzle-kit/api`, which a
+workspace package resolves from its own devDependencies.
 
 ## Schemas, not SQL
 
@@ -77,13 +72,11 @@ export { user, session } from "@scope/auth/schema";
 export { medias } from "@scope/storage/schema";
 ```
 
-**That line does not resolve yet.** The patch and the format are tested (the contract test applies it to
-the shipped barrel); the import is not. Bun's isolated installs give `packages/db` only what its own
-`package.json` declares, so `@scope/auth/schema` fails to resolve (`tsc`: TS2307, `drizzle-kit`:
-`MODULE_NOT_FOUND`) until `packages/db` depends on `@scope/auth`, and no patch can write that
-dependency: `jsonc.merge` refuses `{{SCOPE}}` (060). Declared by hand, it typechecks and generates a
-migration; it also makes a workspace cycle, since `auth` imports `createDB` from `{{SCOPE}}/db`, which
-Bun accepts. This is the same gap as the wiring below, in the other direction.
+**That line resolves once `packages/db` depends on `@scope/auth`.** Bun's isolated installs give
+`packages/db` only what its own `package.json` declares (`tsc`: TS2307, `drizzle-kit`:
+`MODULE_NOT_FOUND` otherwise), so the module that adds the table adds that dependency to
+`packages/db/package.json` with a `package.dependencies` patch, next to the line. It makes a workspace
+cycle, since `auth` imports `createDB` from `{{SCOPE}}/db`, which Bun accepts.
 
 The barrel is empty because the one table of the legacy `db.core-schema.ts`, `medias`, has foreign
 keys onto `user` and `organization`: it belongs to `storage`, which comes after `auth`, and cannot be

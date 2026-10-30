@@ -244,9 +244,9 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "scripts.db:migrate:remote",
     ],
     "orm/drizzle": [
-      "dependencies.drizzle-kit",
       "dependencies.drizzle-orm",
       "dependencies.elysia",
+      "devDependencies.drizzle-kit",
       'exports."."',
       'exports."./schema"',
       'exports."./testing"',

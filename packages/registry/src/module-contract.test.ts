@@ -14,6 +14,7 @@ import {
 import { formatWithProjectFormatter } from "../test-support/project-formatter";
 import { loadLocalRegistry } from "./load-registry";
 import { resolveModulePlans } from "./module-plan";
+import { patchRegions, writePatch } from "./patch-ops";
 import { plannedPatches } from "./patch-plan";
 import { addNamedExport } from "./ts-patches";
 
@@ -266,14 +267,19 @@ describe("module contract", () => {
     expect(ignored).toContain("packages/db/migrations/");
   });
 
-  test("every dependency a variant declares is an exact version (035: exact version maps)", async () => {
+  test("every dependency a variant or a package.dependencies patch declares is an exact version (035: exact version maps)", async () => {
     const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
     const loose: string[] = [];
 
     for (const { manifest } of catalog.modules) {
       for (const variant of manifest.variants) {
-        for (const map of [variant.dependencies ?? {}, variant.devDependencies ?? {}]) {
-          for (const [name, version] of Object.entries(map)) {
+        // A `package.dependencies` patch writes dependencies too (060): its versions are held to the same rule.
+        const patched = (variant.patch ?? []).flatMap((patch) =>
+          patch.type === "package.dependencies" ? [patch.dependencies, patch.devDependencies] : [],
+        );
+        for (const map of [variant.dependencies ?? {}, variant.devDependencies ?? {}, ...patched]) {
+          for (const [name, declared] of Object.entries(isRecord(map) ? map : {})) {
+            const version = String(declared);
             // `workspace:*` is how a module names a sibling package of the project (`{{SCOPE}}/<name>`).
             const sibling = name.startsWith("{{SCOPE}}/") && version === "workspace:*";
             // `npm:<package>@<exact>` is an alias of an exact version: how a project names `vite-plus-core` as `vite`.
@@ -1348,9 +1354,14 @@ describe("module contract", () => {
       expect(orm.variant.copy).toContain("packages/db/src/drizzle.config.ts");
     });
 
-    test("dependencies are exact, the two modules' maps merge into one that the formatter leaves sorted, and each is imported", async () => {
-      const { d1, orm } = await dbModules();
-      const merged = mergedInto(orm.variant.patch, "packages/db/package.json");
+    /** The `package.dependencies` patch of a variant on `file`, as declared. */
+    const dependenciesPatch = (
+      patches: { type: string; file?: unknown }[] | undefined,
+      file: string,
+    ) => {
+      const found = (patches ?? []).find(
+        (patch) => patch.type === "package.dependencies" && patch.file === file,
+      );
       const mapOf = (value: unknown): Record<string, string> =>
         isRecord(value)
           ? Object.fromEntries(
@@ -1359,46 +1370,41 @@ describe("module contract", () => {
               ),
             )
           : {};
-      const dependencies = {
-        d1: d1.variant.dependencies ?? {},
-        orm: mapOf(merged.dependencies),
+      return {
+        dependencies: mapOf(
+          found !== undefined && "dependencies" in found ? found.dependencies : {},
+        ),
+        devDependencies: mapOf(
+          found !== undefined && "devDependencies" in found ? found.devDependencies : {},
+        ),
       };
-      const devDependencies = {
-        d1: d1.variant.devDependencies ?? {},
-        orm: mapOf(merged.devDependencies),
-      };
+    };
 
-      // orm's versions come through `jsonc.merge`, which the exact-version test over variants cannot see.
-      for (const [name, version] of Object.entries({
-        ...dependencies.orm,
-        ...devDependencies.orm,
-      })) {
-        expect(`${name}@${version}`).toMatch(/^[^@]+@\d+\.\d+\.\d+$/);
-      }
-      expect(dependencies.orm).toEqual({
-        "drizzle-kit": "0.31.10",
-        "drizzle-orm": "0.45.2",
-        elysia: "1.4.29",
+    test("orm merges only its subpaths with jsonc.merge, and its dependencies with package.dependencies (060)", async () => {
+      const { orm } = await dbModules();
+
+      // A subpath is a leaf the formatter does not move; a dependency is one it sorts, so it has its own patch.
+      expect(Object.keys(mergedInto(orm.variant.patch, "packages/db/package.json"))).toEqual([
+        "exports",
+      ]);
+      expect(dependenciesPatch(orm.variant.patch, "packages/db/package.json")).toEqual({
+        dependencies: { "drizzle-orm": "0.45.2", elysia: "1.4.29" },
+        // `drizzle-kit` is a dev dependency again: it sorts between db/d1's two, which the patch handles.
+        devDependencies: { "drizzle-kit": "0.31.10" },
       });
-      // `jsonc.merge` appends, and `sortPackageJson` sorts a dependency map: a name that does not sort
-      // after the ones already there fails `bun run check`. The planner sorts db/d1's own map.
-      for (const maps of [dependencies, devDependencies]) {
-        // Every scope starts with `@`, which sorts before the names orm adds, at any length.
-        const rendered = (name: string) => name.replaceAll("{{SCOPE}}", "@app");
-        const installed = [
-          ...Object.keys(maps.d1).map(rendered).sort(),
-          ...Object.keys(maps.orm).map(rendered),
-        ];
-        expect(installed).toEqual([...installed].sort());
-      }
+    });
 
+    test("the dependencies the two modules declare are each imported, and every import is declared", async () => {
+      const { d1, orm } = await dbModules();
+      const added = dependenciesPatch(orm.variant.patch, "packages/db/package.json");
       const declared = new Set([
-        ...Object.keys(dependencies.d1),
-        ...Object.keys(dependencies.orm),
-        ...Object.keys(devDependencies.d1),
-        ...Object.keys(devDependencies.orm),
+        ...Object.keys(d1.variant.dependencies ?? {}),
+        ...Object.keys(d1.variant.devDependencies ?? {}),
+        ...Object.keys(added.dependencies),
+        ...Object.keys(added.devDependencies),
       ]);
       const named = new Set<string>();
+
       for (const [path, source] of await sourcesOf()) {
         for (const name of packagesNamedBy(source)) {
           if (!name.includes(":")) {
@@ -1407,8 +1413,47 @@ describe("module contract", () => {
           }
         }
       }
+
       // And nothing is declared that no source of the package names.
       expect([...declared].filter((name) => !named.has(name))).toEqual([]);
+    });
+
+    test("package.json as the project gets it, db/d1's entries and orm's in one file, is what the formatter writes", async () => {
+      const { catalog } = await dbModules();
+      const project = createEmptyProjectManifest({ scope: "@app", registries: {} });
+      const plans = await resolveModulePlans(
+        catalog,
+        [
+          { category: "provider", id: "cloudflare" },
+          { category: "db", id: "d1" },
+          { category: "orm", id: "drizzle" },
+        ],
+        project,
+      );
+      const file = "packages/db/package.json";
+      const planned = plans
+        .find(({ key }) => key === "db/d1")
+        ?.files.find((f) => f.target === file);
+      const ormPlan = plans.find(({ key }) => key === "orm/drizzle");
+
+      // What `bg add db/d1 orm/drizzle` writes: the vendored file with the variant's maps merged in
+      // (sorted by the planner), then orm's patches on it, in the order declared.
+      let text = planned?.content ?? "";
+      for (const patch of ormPlan?.patches ?? []) {
+        if (patch.file === file) {
+          text = writePatch(text, patch, new Set(patchRegions(patch).map(({ region }) => region)));
+        }
+      }
+
+      const body: unknown = JSON.parse(text);
+      expect(
+        isRecord(body) && isRecord(body.dependencies) ? Object.keys(body.dependencies) : [],
+      ).toEqual(["@app/api-runtime", "drizzle-orm", "elysia"]);
+      // `drizzle-kit` goes between db/d1's two dev dependencies, not after them.
+      expect(
+        isRecord(body) && isRecord(body.devDependencies) ? Object.keys(body.devDependencies) : [],
+      ).toEqual(["@cloudflare/workers-types", "drizzle-kit", "miniflare"]);
+      await expect(formatWithProjectFormatter({ [file]: text })).resolves.toEqual({ [file]: text });
     });
 
     test("a peer is declared exactly when a source reaches the module's package or file", async () => {
@@ -1502,7 +1547,7 @@ describe("module contract", () => {
     });
 
     // This proves the text and its format. It does not prove the specifier resolves: `packages/db` has
-    // to depend on `@app/auth`, and no patch can write that (jsonc.merge refuses `{{SCOPE}}`).
+    // to depend on `@app/auth`, which the module that adds the table declares with `package.dependencies`.
     test("the schema barrel takes the patches `auth` and `storage` bring, and stays what the formatter writes", async () => {
       const file = "packages/db/src/schema/index.ts";
       const barrel = await ormText(file);

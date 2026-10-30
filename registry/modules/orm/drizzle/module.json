@@ -31,13 +31,14 @@
               ".": "./src/index.ts",
               "./schema": "./src/schema/index.ts",
               "./testing": "./src/testing.ts"
-            },
-            "dependencies": {
-              "drizzle-kit": "0.31.10",
-              "drizzle-orm": "0.45.2",
-              "elysia": "1.4.29"
             }
           }
+        },
+        {
+          "type": "package.dependencies",
+          "file": "packages/db/package.json",
+          "dependencies": { "drizzle-orm": "0.45.2", "elysia": "1.4.29" },
+          "devDependencies": { "drizzle-kit": "0.31.10" }
         },
         {
           "type": "scripts.merge",
