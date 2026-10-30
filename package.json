@@ -36,6 +36,7 @@
     "pack:cli": "bun scripts/pack-cli.ts",
     "publish:cli": "bun scripts/pack-cli.ts && bun publish --cwd dist/npm/create-bonne-garde",
     "publish:cli:dry": "bun scripts/pack-cli.ts && bun pm pack --cwd dist/npm/create-bonne-garde",
+    "golden": "bun scripts/golden-project.ts",
     "gen:playground": "bun scripts/gen-playground.ts",
     "gen:commands": "bun scripts/gen-commands.ts",
     "gen:architecture": "bun scripts/gen-architecture.ts",
