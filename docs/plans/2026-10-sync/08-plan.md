@@ -62,6 +62,13 @@ commit, so a bisect can find it.
 
 ## P2 — Bring `templates/base` up to spec 010
 
+**Done 2026-10-30, except the `bg.json` row, which stays with B1.** Two gaps this section missed:
+`.acme-init.json` was still in `_gitignore` (a legacy-init leftover 010 forbids), and `typecheck` /
+`test` exited 1 on the empty workspace ("No workspace packages matched the filter"), which breaks
+010's own acceptance. Both fixed; the aggregate scripts now pass `--if-present`. The template's
+`vite.config.ts` copies the root's fmt options so vendored registry files pass `check` as
+installed. Observed on a fresh create + install: `check`, `typecheck`, `test` all exit 0.
+
 **Why:** spec 010 is a MUST list and the template breaks three items. The golden project (C1) is
 built from this template, so every gap here shows up there.
 

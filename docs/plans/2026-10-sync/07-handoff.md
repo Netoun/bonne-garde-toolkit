@@ -5,7 +5,8 @@ Written 2026-10-29 at `HEAD` of `feat/platform-cli-registry`. Read this, then
 
 ## Start here
 
-**P1 is done (2026-10-30). Next: P2, then A1 or B1 — see [08-plan.md](./08-plan.md).**
+**P1 and P2 are done (2026-10-30). Next: A1 or B1 — see [08-plan.md](./08-plan.md).** B1 also
+carries P2's last row, `templates/base/bg.json` at `version: 2`.
 
 The diagnosis this file first gave for P1 was wrong. It blamed the Bun version for
 `error: lockfile had changes, but lockfile is frozen`; in fact `--frozen-lockfile` failed under
@@ -14,7 +15,8 @@ move. Bun 1.3.11 accepts the re-locked file. A second, unrelated cause then stop
 the SPA prerender (`ECONNREFUSED 127.0.0.1`, Debian's `::1`-first `localhost`). `docker build` of
 the dockerfile template now completes; the build recipe is in that module's README.
 
-Not yet observed: CI on #16 past the install step. The branch was not pushed with these commits.
+CI on #16 is green since P1 (run 41030795565, Bun 1.4.2): the first run past install, and the two
+`media.routes` tests that failed under 1.3.11 pass.
 
 ## State of the branch
 
@@ -36,6 +38,7 @@ legacy), 153 tests, intentions lint, registry build and all four app builds. Bef
 | `f7c17c1` | P1: re-locked `bun.lock` after the CLI move — the actual CI fix                                              |
 | `375c4dd` | P1: pinned Bun 1.4.2 at all four sites — alignment only                                                      |
 | `59b79fa` | P1: `ipv4first` in the dockerfile build stage; `docker build` completes                                      |
+| `f8c826f` | P2: `templates/base` up to spec 010 — `.bg/`, Vite+ `check`, empty-workspace `typecheck`/`test`              |
 
 ## What is left, and in what shape
 
@@ -47,7 +50,7 @@ The remainder is not one line. Two shared prerequisites, then two independent tr
 |             |                                                                                                                          |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------ |
 | **P1**      | **Done.** Re-locked `bun.lock` (the real CI fix), pinned Bun 1.4.2, and `docker build` completes.                        |
-| **P2**      | Bring `templates/base` up to spec 010, which it breaks in three places.                                                  |
+| **P2**      | **Done**, except `bg.json` v2, which lands with B1. Two more gaps found and fixed than planned.                          |
 | **Track A** | Finish the providers: a package for the API entry, then make `provider/dockerfile` run, then verify it before saying so. |
 | **Track B** | `bg.json` v2 → `add` records `files`/`regions`/`modules` → `bg doctor` → `bg record`.                                    |
 | **Then**    | One golden project, which needs both tracks and would have caught most of this session's findings.                       |
@@ -116,10 +119,8 @@ its `_gitignore` ignores `bg.upgrade/`, a name no spec uses any more (`.bg/` is 
 
 ## Loose ends worth one line each
 
-- **CI on #16:** the latest runs died at `bun install`, nine seconds in. The 2 failing tests in
-  `apps/api/src/modules/media/media.routes.test.ts` ("Unhandled error between tests", empty body,
-  Bun 1.3.11) came from older runs. The first push after P1 is the first run to reach them on 1.4.2.
-  Auto-fix was turned **off** deliberately.
+- **CI on #16 is green.** The 2 `media.routes.test.ts` failures ("Unhandled error between tests",
+  empty body) were seen only under Bun 1.3.11 and pass on 1.4.2. Auto-fix stays **off**.
 - **`bg create /absolute/path/my-app`** slugifies the whole path into the scope
   (`@private-tmp-...-my-app`). `slugify(options.name)` at `packages/cli/src/create.ts:59` should
   take `basename(resolve(...))`.
