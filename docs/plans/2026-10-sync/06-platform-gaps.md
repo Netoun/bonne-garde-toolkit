@@ -252,7 +252,7 @@ and knip ignore lists, because `vp check` otherwise lints the skills themselves
 
 ## Unresolved questions
 
-1. **`doctor` strictness on unrecorded files.** A file in a module's directory that `bg.json` does
+1. **`doctor` strictness on unrecorded files.** _Settled 2026-10-30: not drift; `doctor` checks only the paths `bg.json` records (`ce46708`)._ A file in a module's directory that `bg.json` does
    not record: drift, or the consumer's own code? Spec 050 says `--strict` is green right after a
    clean `add`, which implies unrecorded files are drift — but that makes `doctor` noisy the moment
    anyone adds a file next to a vendored one. Needs a decision before implementing.
