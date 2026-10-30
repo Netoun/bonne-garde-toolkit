@@ -4,7 +4,10 @@
  *
  *   bg create → bg add of a UI item, refused → bg add of the configuration's modules and every item in
  *   one call → the same bg add again, which must skip every patch and change nothing → bun install
- *   → typecheck → test → build → bg doctor --strict → bun run check → the `checks` of every installed module
+ *   → typecheck → test → build → bg doctor --strict
+ *   → for a configuration with a database: a table added to the schema barrel, `bun run db:generate`,
+ *     the migration applied to a local D1 (`wrangler`, no network, no account), and what D1 holds read back
+ *   → bun run check → the `checks` of every installed module
  *   → for the configuration that ships a Dockerfile, docker build, docker run, and the container's answers
  *
  * A configuration is a set of modules that fit in one project. `provider` admits one module and the
@@ -31,7 +34,7 @@
  *   bun scripts/golden-project.ts
  */
 
-import { cp, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -134,6 +137,31 @@ const IMAGE_MODULE = "provider/dockerfile";
 export function buildsImage(configuration: Configuration): boolean {
   return configuration.modules.includes(IMAGE_MODULE);
 }
+
+/** The module that turns a schema into migrations, so that there is a database to generate and migrate. */
+const ORM_MODULE = "orm/drizzle";
+
+/** Whether the configuration has an `orm`, so golden adds a table, generates its migration and applies it to a local D1. */
+export function hasDatabase(configuration: Configuration): boolean {
+  return configuration.modules.includes(ORM_MODULE);
+}
+
+/**
+ * `orm/drizzle` ships an empty schema barrel: the tables are the modules' (`auth`, `storage`) and the
+ * project's. Golden adds one the way the project does, a file of its own and a line in the barrel,
+ * since `db:generate` has nothing to write for an empty schema.
+ */
+export const GOLDEN_TABLE = "golden_notes";
+export const GOLDEN_SCHEMA_FILE = "packages/db/src/schema/golden-notes.ts";
+export const GOLDEN_BARREL_FILE = "packages/db/src/schema/index.ts";
+export const GOLDEN_BARREL_LINE = 'export { goldenNotes } from "./golden-notes";\n';
+export const GOLDEN_SCHEMA = `import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const goldenNotes = sqliteTable("${GOLDEN_TABLE}", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  body: text("body").notNull(),
+});
+`;
 
 /** The modules of every configuration, each once, in the order they first appear. */
 export const MODULES: readonly string[] = [
@@ -423,6 +451,85 @@ export function addArguments(modules: readonly string[], items: readonly string[
   return ["add", ...names, "--yes", "--no-install"];
 }
 
+/**
+ * What `bun run db:generate` left in `packages/db/migrations`: one migration, which creates `table`.
+ * `files` is the directory listing, `sql` the text of the `.sql` file in it. Returns the file's name,
+ * which is what D1 records as applied. An empty schema writes nothing, and a second migration would
+ * mean a stale one is being taken for the new one.
+ */
+export function expectGenerated(files: readonly string[], sql: string, table: string): string {
+  const migrations = files.filter((file) => file.endsWith(".sql")).sort();
+  const [migration, ...others] = migrations;
+  if (migration === undefined) {
+    throw new Error(`db:generate wrote no migration (migrations/ holds: ${files.join(", ")})`);
+  }
+  if (others.length > 0) {
+    throw new Error(`db:generate left ${migrations.join(", ")}: expected one migration`);
+  }
+  if (!sql.includes(`CREATE TABLE \`${table}\``)) {
+    throw new Error(`${migration} does not create ${table}:\n${sql}`);
+  }
+  return migration;
+}
+
+/** The rows of the one statement `wrangler d1 execute --json` ran. */
+export function d1Rows(stdout: string): Record<string, unknown>[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    throw new Error(`wrangler d1 execute did not print JSON: ${stdout.trim() || "(nothing)"}`);
+  }
+  const [statement] = Array.isArray(parsed) ? parsed : [];
+  if (!isRecord(statement)) {
+    throw new Error("wrangler d1 execute printed no statement result");
+  }
+  if (statement.success !== true || !Array.isArray(statement.results)) {
+    throw new Error(`wrangler d1 execute reported no success: ${JSON.stringify(statement)}`);
+  }
+  return statement.results.filter(isRecord);
+}
+
+/** What D1 holds after `db:migrate:local`: its tables, and the migrations it recorded as applied. */
+export type MigratedDatabase = { tables: readonly string[]; applied: readonly string[] };
+
+/** The table exists and D1 recorded the generated migration: a table made another way proves nothing. */
+export function expectMigrated(database: MigratedDatabase, table: string, migration: string): void {
+  if (!database.applied.includes(migration)) {
+    throw new Error(
+      `d1_migrations holds [${database.applied.join(", ")}], not ${migration}: the migration was not applied`,
+    );
+  }
+  if (!database.tables.includes(table)) {
+    throw new Error(`${migration} was recorded as applied, but D1 has no table ${table}`);
+  }
+}
+
+/** A second `db:migrate:local` finds nothing to do: what is applied is not applied again. */
+export function expectNothingToApply(stdout: string): void {
+  if (!stdout.includes("No migrations to apply")) {
+    throw new Error(
+      `the second run of db:migrate:local did not say there was nothing to apply:\n${stdout}`,
+    );
+  }
+}
+
+/**
+ * How many tests each workspace ran, read from the prefixed output of the root `test` script: the
+ * `Ran N tests` line of `bun test` (which prints it on stderr) and the `Tests  N passed` line of Vitest.
+ */
+export function testCounts(output: string): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const line of output.split("\n")) {
+    const [, workspace, ran] =
+      /^(\S+):test\s*\|\s*(?:Ran |Tests\s+)(\d+) (?:tests? |passed)/.exec(line) ?? [];
+    if (workspace !== undefined && ran !== undefined) {
+      counts[workspace] = Number(ran);
+    }
+  }
+  return counts;
+}
+
 /** How a command ended, for one that is expected to fail. */
 export type Attempt = { code: number; stderr: string };
 
@@ -549,21 +656,55 @@ function seconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-async function run(argv: string[], cwd: string): Promise<void> {
-  const proc = Bun.spawn(argv, { cwd, stdin: "ignore", stdout: "inherit", stderr: "inherit" });
+/** The environment of a command that runs `wrangler` against local state: no metrics, so nothing leaves the machine. */
+const OFFLINE = { WRANGLER_SEND_METRICS: "false" };
+
+async function run(argv: string[], cwd: string, env?: Record<string, string>): Promise<void> {
+  const proc = Bun.spawn(argv, {
+    cwd,
+    stdin: "ignore",
+    stdout: "inherit",
+    stderr: "inherit",
+    ...(env === undefined ? {} : { env: { ...process.env, ...env } }),
+  });
   const code = await proc.exited;
   if (code !== 0) {
     throw new Error(`\`${argv.join(" ")}\` exited with ${code}`);
   }
 }
 
-async function capture(argv: string[], cwd: string): Promise<string> {
-  const proc = Bun.spawn(argv, { cwd, stdin: "ignore", stdout: "pipe", stderr: "inherit" });
+async function capture(argv: string[], cwd: string, env?: Record<string, string>): Promise<string> {
+  const proc = Bun.spawn(argv, {
+    cwd,
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "inherit",
+    ...(env === undefined ? {} : { env: { ...process.env, ...env } }),
+  });
   const [code, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
   if (code !== 0) {
     throw new Error(`\`${argv.join(" ")}\` exited with ${code}`);
   }
   return stdout;
+}
+
+/** Both streams of a command that has to succeed: `bun test` prints its report on stderr. */
+async function captureBoth(
+  argv: string[],
+  cwd: string,
+): Promise<{ stdout: string; stderr: string }> {
+  const proc = Bun.spawn(argv, { cwd, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+  const [code, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  process.stderr.write(stderr);
+  process.stdout.write(stdout);
+  if (code !== 0) {
+    throw new Error(`\`${argv.join(" ")}\` exited with ${code}`);
+  }
+  return { stdout, stderr };
 }
 
 async function attempt(argv: string[], cwd: string, timeoutMs?: number): Promise<Attempt> {
@@ -701,9 +842,18 @@ async function configured(
   });
   await step("install", () => run([BUN, "install"], project));
   await step("typecheck", () => run([BUN, "run", "typecheck"], project));
-  await step("test", () => run([BUN, "run", "test"], project));
+  await step("test", async () => {
+    const { stdout, stderr } = await captureBoth([BUN, "run", "test"], project);
+    const counts = Object.entries(testCounts(`${stdout}\n${stderr}`));
+    console.log(
+      `golden: tests run: ${counts.map(([workspace, ran]) => `${workspace} ${ran}`).join(", ")}`,
+    );
+  });
   await step("build", () => run([BUN, "run", "build"], project));
   await step("doctor", () => run(bg("doctor", "--strict"), project));
+  if (hasDatabase(configuration)) {
+    await migrated(project, timings, name);
+  }
   await step("check", () => run([BUN, "run", "check"], project));
   for (const { module, checks } of added.filter(({ checks }) => checks.length > 0)) {
     await step(`checks:${module}`, async () => {
@@ -715,6 +865,53 @@ async function configured(
   if (buildsImage(configuration)) {
     await imaged(project, timings, name);
   }
+}
+
+/**
+ * The database of a project with an `orm`: a table added to the schema barrel, `bun run db:generate`
+ * writing its migration, `bun run db:migrate:local` applying it to the local D1 `wrangler` keeps under
+ * `apps/api/.wrangler` (no network, no Cloudflare account, the placeholder `database_id` of the
+ * module), and the database read back: the table is there and the migration is the one D1 recorded.
+ * It runs after `doctor`, which would report the barrel as edited, and before `check`, which has to
+ * pass over what `db:generate` wrote.
+ */
+async function migrated(project: string, timings: Timing[], name: string): Promise<void> {
+  const db = join(project, "packages/db");
+  const api = join(project, "apps/api");
+  let migration = "";
+
+  await phase(timings, `${name}: db generate`, async () => {
+    await Bun.write(join(project, GOLDEN_SCHEMA_FILE), GOLDEN_SCHEMA);
+    const barrel = join(project, GOLDEN_BARREL_FILE);
+    await Bun.write(barrel, `${await Bun.file(barrel).text()}${GOLDEN_BARREL_LINE}`);
+    await run([BUN, "run", "db:generate"], db);
+    const directory = join(db, "migrations");
+    const files = await readdir(directory);
+    const [first] = files.filter((file) => file.endsWith(".sql"));
+    const sql = first === undefined ? "" : await Bun.file(join(directory, first)).text();
+    migration = expectGenerated(files, sql, GOLDEN_TABLE);
+  });
+
+  await phase(timings, `${name}: db migrate`, async () => {
+    await run([BUN, "run", "db:migrate:local"], api, OFFLINE);
+    const rows = async (statement: string, column: string): Promise<string[]> =>
+      d1Rows(
+        await capture(
+          ["bunx", "wrangler", "d1", "execute", "DB", "--local", "--json", "--command", statement],
+          api,
+          OFFLINE,
+        ),
+      ).flatMap((row) => (typeof row[column] === "string" ? [row[column]] : []));
+    expectMigrated(
+      {
+        tables: await rows("SELECT name FROM sqlite_master WHERE type = 'table'", "name"),
+        applied: await rows("SELECT name FROM d1_migrations ORDER BY id", "name"),
+      },
+      GOLDEN_TABLE,
+      migration,
+    );
+    expectNothingToApply(await capture([BUN, "run", "db:migrate:local"], api, OFFLINE));
+  });
 }
 
 /**

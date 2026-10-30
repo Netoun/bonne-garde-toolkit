@@ -1,21 +1,29 @@
 import { describe, expect, test } from "bun:test";
 import { join, resolve } from "node:path";
 import { loadLocalRegistry } from "../packages/registry/src/index";
+import { jsoncLeaves, jsonRegion } from "../packages/registry/src/jsonc-merge";
 import {
   addArguments,
   assetPath,
   buildsImage,
   CONFIGURATIONS,
+  d1Rows,
   diffTrees,
   dockerDecision,
   dockerName,
   dockerSkipReason,
   EXCLUDED,
   EXCLUDED_MODULES,
+  expectGenerated,
+  expectMigrated,
+  expectNothingToApply,
   expectPatches,
   expectRefusal,
   expectRegionsRecorded,
   expectServed,
+  GOLDEN_BARREL_LINE,
+  GOLDEN_TABLE,
+  hasDatabase,
   MODULES,
   PATCHED,
   publishedPort,
@@ -24,6 +32,7 @@ import {
   SCOPE,
   selectItems,
   selectModules,
+  testCounts,
   until,
   type AddedModule,
 } from "./golden-project";
@@ -426,11 +435,17 @@ describe("the golden project and patches", () => {
         const [variant] = satisfied.sort(
           (a, b) => Object.keys(b.match).length - Object.keys(a.match).length,
         );
-        const written = (variant?.patch ?? []).flatMap((patch) =>
-          Object.keys((patch.scripts as Record<string, string> | undefined) ?? {}).map(
+        // `scripts.merge` writes one region per script, `jsonc.merge` one per leaf of its value.
+        const written = (variant?.patch ?? []).flatMap((patch) => [
+          ...Object.keys((patch.scripts as Record<string, string> | undefined) ?? {}).map(
             (script) => `scripts.${script}`,
           ),
-        );
+          ...(patch.type === "jsonc.merge"
+            ? jsoncLeaves(patch.value as Record<string, unknown>).map(({ path }) =>
+                jsonRegion(path),
+              )
+            : []),
+        ]);
         if ((variant?.patch ?? []).length > 0) {
           regions[`${manifest.category}/${manifest.id}`] = written.sort();
         }
@@ -695,5 +710,110 @@ describe("until (readiness is a bounded retry, not a fixed sleep)", () => {
     );
 
     expect(ready).toBe(true);
+  });
+});
+
+describe("the database phases", () => {
+  test("a configuration has a database to generate and migrate when it installs the orm module", () => {
+    expect(hasDatabase({ name: "a", modules: ["api/elysia", "orm/drizzle"], items: false })).toBe(
+      true,
+    );
+    expect(hasDatabase({ name: "b", modules: ["api/elysia", "db/d1"], items: false })).toBe(false);
+  });
+
+  test("the table golden adds is exported from the barrel the way a module's tables are", () => {
+    expect(GOLDEN_TABLE).toBe("golden_notes");
+    expect(GOLDEN_BARREL_LINE).toBe('export { goldenNotes } from "./golden-notes";\n');
+  });
+
+  describe("expectGenerated", () => {
+    const sql = "CREATE TABLE `golden_notes` (\n\t`id` integer PRIMARY KEY NOT NULL\n);\n";
+
+    test("returns the one migration `db:generate` wrote, when it creates the table", () => {
+      expect(expectGenerated(["0000_silly_multiple_man.sql", "meta"], sql, "golden_notes")).toBe(
+        "0000_silly_multiple_man.sql",
+      );
+    });
+
+    test("fails when nothing was generated: an empty schema writes no migration", () => {
+      expect(() => expectGenerated(["meta"], sql, "golden_notes")).toThrow(/no migration/);
+    });
+
+    test("fails when the migration does not create the table", () => {
+      expect(() => expectGenerated(["0000_x.sql"], "SELECT 1;", "golden_notes")).toThrow(
+        /golden_notes/,
+      );
+    });
+
+    test("fails on more than one, so a stale migration is not taken for the new one", () => {
+      expect(() => expectGenerated(["0000_x.sql", "0001_y.sql"], sql, "golden_notes")).toThrow(
+        /0000_x\.sql.*0001_y\.sql/s,
+      );
+    });
+  });
+
+  describe("d1Rows", () => {
+    test("reads the rows of the one statement `wrangler d1 execute --json` ran", () => {
+      const stdout = JSON.stringify([
+        { results: [{ name: "notes" }], success: true, meta: { duration: 0 } },
+      ]);
+
+      expect(d1Rows(stdout)).toEqual([{ name: "notes" }]);
+    });
+
+    test("fails on a statement that did not succeed, and on output that is not that JSON", () => {
+      expect(() => d1Rows(JSON.stringify([{ results: [], success: false }]))).toThrow(/success/);
+      expect(() => d1Rows("not json")).toThrow(/JSON/);
+      expect(() => d1Rows("[]")).toThrow(/statement/);
+    });
+  });
+
+  describe("expectMigrated", () => {
+    test("passes when the table exists and the migration is the one recorded as applied", () => {
+      expect(() =>
+        expectMigrated(
+          { tables: ["d1_migrations", "golden_notes"], applied: ["0000_x.sql"] },
+          "golden_notes",
+          "0000_x.sql",
+        ),
+      ).not.toThrow();
+    });
+
+    test("fails when the table is not in the database", () => {
+      expect(() =>
+        expectMigrated(
+          { tables: ["d1_migrations"], applied: ["0000_x.sql"] },
+          "golden_notes",
+          "0000_x.sql",
+        ),
+      ).toThrow(/golden_notes/);
+    });
+
+    test("fails when the migration is not recorded as applied: a table made another way proves nothing", () => {
+      expect(() =>
+        expectMigrated({ tables: ["golden_notes"], applied: [] }, "golden_notes", "0000_x.sql"),
+      ).toThrow(/0000_x\.sql/);
+    });
+  });
+
+  describe("expectNothingToApply", () => {
+    test("passes on what wrangler prints when the database is up to date, fails on anything else", () => {
+      expect(() => expectNothingToApply("✅ No migrations to apply!\n")).not.toThrow();
+      expect(() => expectNothingToApply("Migrations to be applied:\n")).toThrow(/second run/);
+    });
+  });
+});
+
+describe("testCounts", () => {
+  test("reads how many tests each workspace ran from the prefixed output of the root test script", () => {
+    const output = [
+      "@app/config:test      |  6 pass",
+      "@app/config:test      | Ran 6 tests across 1 file. [5.00ms]",
+      "@app/db:test          | Ran 12 tests across 4 files. [437.00ms]",
+      "@app/ssr:test         |       Tests  4 passed (4)",
+      "bun test v1.4.2",
+    ].join("\n");
+
+    expect(testCounts(output)).toEqual({ "@app/config": 6, "@app/db": 12, "@app/ssr": 4 });
   });
 });
