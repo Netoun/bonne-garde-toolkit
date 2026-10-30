@@ -579,6 +579,239 @@ describe("applyInstallPlan: scripts.merge (060)", () => {
   });
 });
 
+describe("applyInstallPlan: jsonc.merge (060)", () => {
+  const WRANGLER = `{
+  // the worker
+  "name": "my-app-api",
+  "vars": {
+    "API_URL": "http://localhost:5172",
+  },
+}
+`;
+  const FILE = "apps/api/wrangler.jsonc";
+  const D1 = [{ binding: "DB", database_name: "my-app", database_id: "local" }];
+  const merge = (value: Record<string, unknown>, file = FILE) =>
+    ({ type: "jsonc.merge", file, value }) satisfies PlannedPatch;
+  const dbModule = (patches: PlannedPatch[] = [merge({ d1_databases: D1 })]) =>
+    modulePlan({ category: "db", id: "d1", key: "db/d1", patches });
+  const project = () => freshProject({ [FILE]: WRANGLER, "package.json": ROOT_PACKAGE });
+
+  test("merges the value, one region per leaf and an array whole, and records them", async () => {
+    const { projectRoot, manifest } = await project();
+
+    const result = await install(projectRoot, manifest, [
+      dbModule([merge({ d1_databases: D1, vars: { SPA_URL: "http://localhost:5173" } })]),
+    ]);
+
+    expect(await read(projectRoot, FILE)).toBe(`{
+  // the worker
+  "name": "my-app-api",
+  "vars": {
+    "API_URL": "http://localhost:5172",
+    "SPA_URL": "http://localhost:5173",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "my-app",
+      "database_id": "local",
+    },
+  ],
+}
+`);
+    expect(result.patches).toEqual([
+      {
+        module: "db/d1",
+        type: "jsonc.merge",
+        file: FILE,
+        status: "applied",
+        regions: [
+          { region: "d1_databases", status: "applied" },
+          { region: "vars.SPA_URL", status: "applied" },
+        ],
+      },
+    ]);
+    expect(result.manifest.regions).toEqual({
+      [FILE]: { d1_databases: "db/d1", "vars.SPA_URL": "db/d1" },
+    });
+    expect(result.manifest.modules.db?.[0]?.patches).toEqual([
+      { type: "jsonc.merge", file: FILE, status: "applied" },
+    ]);
+    // The file belongs to the project, not to the module.
+    expect(result.manifest.files).toEqual({});
+  });
+
+  test("the same install again skips every region, and the tree is the same bytes", async () => {
+    const { projectRoot, manifest } = await project();
+    const first = await install(projectRoot, manifest, [dbModule()]);
+    const tree = await snapshot(projectRoot);
+
+    const second = await install(projectRoot, first.manifest, [dbModule()]);
+
+    expect(second.patches[0]).toMatchObject({
+      status: "skipped",
+      regions: [{ region: "d1_databases", status: "skipped" }],
+    });
+    expect(second.manifest.regions).toEqual(first.manifest.regions);
+    const { "bg.json": _bg, ...files } = await snapshot(projectRoot);
+    const { "bg.json": _first, ...firstFiles } = tree;
+    expect(files).toEqual(firstFiles);
+  });
+
+  test("some leaves present and equal and others absent: applied, region by region", async () => {
+    const { projectRoot, manifest } = await project();
+
+    const result = await install(projectRoot, manifest, [
+      dbModule([merge({ name: "my-app-api", vars: { NEW: "1" } })]),
+    ]);
+
+    expect(result.patches[0]).toMatchObject({
+      status: "applied",
+      regions: [
+        { region: "name", status: "skipped" },
+        { region: "vars.NEW", status: "applied" },
+      ],
+    });
+  });
+
+  test("a leaf that differs is user-owned: the install fails naming it, --force overwrites and reports what it replaced", async () => {
+    const { projectRoot, manifest } = await project();
+    const first = await install(projectRoot, manifest, [dbModule()]);
+    const edited = (await read(projectRoot, FILE)).replace('"local"', '"my-own-id"');
+    await writeFile(join(projectRoot, FILE), edited);
+    const before = await snapshot(projectRoot);
+
+    await expect(install(projectRoot, first.manifest, [dbModule()])).rejects.toThrow(
+      /nothing was written.*in the way \(use --force to overwrite\):\n {2}d1_databases of apps\/api\/wrangler\.jsonc is \[\{"binding":"DB","database_name":"my-app","database_id":"my-own-id"\}\], which differs from what db\/d1 declares \(\[\{"binding":"DB","database_name":"my-app","database_id":"local"\}\]\)/s,
+    );
+    expect(await snapshot(projectRoot)).toEqual(before);
+
+    const forced = await install(projectRoot, first.manifest, [dbModule()], { force: true });
+
+    expect(await read(projectRoot, FILE)).toBe(edited.replace('"my-own-id"', '"local"'));
+    expect(forced.patches[0]?.regions).toEqual([
+      {
+        region: "d1_databases",
+        status: "applied",
+        replaced: '[{"binding":"DB","database_name":"my-app","database_id":"my-own-id"}]',
+      },
+    ]);
+  });
+
+  test("a leaf the project wrote itself, with no region recorded, is user-owned too", async () => {
+    const { projectRoot, manifest } = await freshProject({
+      [FILE]: '{ "d1_databases": [] }\n',
+      "package.json": ROOT_PACKAGE,
+    });
+
+    await expect(install(projectRoot, manifest, [dbModule()])).rejects.toThrow(
+      /d1_databases of apps\/api\/wrangler\.jsonc is \[\], which differs/,
+    );
+  });
+
+  test("a region of another module fails always, even when the other module used scripts.merge", async () => {
+    const { projectRoot, manifest } = await project();
+    const first = await install(projectRoot, manifest, [
+      modulePlan({
+        category: "dev",
+        id: "other",
+        key: "dev/other",
+        patches: [patch({ lint: "vp lint" })],
+      }),
+    ]);
+    const before = await snapshot(projectRoot);
+
+    for (const force of [false, true]) {
+      await expect(
+        install(
+          projectRoot,
+          first.manifest,
+          [dbModule([merge({ scripts: { lint: "vp lint" } }, "package.json")])],
+          { force },
+        ),
+      ).rejects.toThrow(
+        /nothing was written; --force does not change this:\n {2}scripts\.lint of package\.json is owned by dev\/other, and db\/d1 would write it/,
+      );
+    }
+    expect(await snapshot(projectRoot)).toEqual(before);
+  });
+
+  test("two modules merging one leaf in the same call fail, whoever comes first", async () => {
+    const { projectRoot, manifest } = await project();
+
+    await expect(
+      install(projectRoot, manifest, [
+        dbModule(),
+        modulePlan({
+          category: "dev",
+          id: "other",
+          key: "dev/other",
+          patches: [merge({ d1_databases: [] })],
+        }),
+      ]),
+    ).rejects.toThrow(
+      /d1_databases of apps\/api\/wrangler\.jsonc is named by both db\/d1 and dev\/other/,
+    );
+  });
+
+  describe("a patch that cannot apply is `failed`, recorded, and never aborts the install", () => {
+    test.each([
+      ["a target that does not exist", undefined, /^apps\/api\/wrangler\.jsonc does not exist$/],
+      [
+        "a target that is not JSON",
+        '{\n  "a": \n}\n',
+        /^apps\/api\/wrangler\.jsonc: not valid JSON \(.* at line 3\)$/,
+      ],
+      [
+        "a root that is not an object",
+        "[]\n",
+        /^apps\/api\/wrangler\.jsonc: the root is not a JSON object$/,
+      ],
+    ])("%s", async (_, text, reason) => {
+      const { projectRoot, manifest } = await freshProject(
+        text === undefined ? {} : { [FILE]: text },
+      );
+
+      const result = await install(projectRoot, manifest, [
+        dbModule([merge({ d1_databases: D1 })]),
+      ]);
+
+      expect(result.patches[0]?.status).toBe("failed");
+      expect(result.patches[0]?.reason).toMatch(reason);
+      expect(result.patches[0]?.regions).toEqual([]);
+      expect(result.manifest.regions).toEqual({});
+      expect(result.manifest.modules.db?.[0]?.patches[0]).toMatchObject({ status: "failed" });
+      if (text !== undefined) {
+        expect(await read(projectRoot, FILE)).toBe(text);
+      }
+    });
+
+    test("a parent that is not an object", async () => {
+      const { projectRoot, manifest } = await freshProject({ [FILE]: '{ "vars": "text" }\n' });
+
+      const result = await install(projectRoot, manifest, [
+        dbModule([merge({ vars: { A: "1" } })]),
+      ]);
+
+      expect(result.patches[0]).toMatchObject({
+        status: "failed",
+        reason: `${FILE}: "vars" is a string, not an object`,
+      });
+    });
+  });
+
+  test("--dry-run computes the merge, reports it and writes nothing", async () => {
+    const { projectRoot, manifest } = await project();
+    await writeFile(join(projectRoot, "bg.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+    const before = await snapshot(projectRoot);
+
+    const result = await install(projectRoot, manifest, [dbModule()], { dryRun: true });
+
+    expect(result.patches[0]?.status).toBe("applied");
+    expect(await snapshot(projectRoot)).toEqual(before);
+  });
+});
+
 describe("a module record keeps only what 020 names", () => {
   test("patches carry type, file, status and a reason when failed, no per-region detail", async () => {
     const { projectRoot, manifest } = await freshProject();

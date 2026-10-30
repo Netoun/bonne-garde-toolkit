@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { inspectScripts, readScripts, scriptRegion, setScripts } from "./scripts-merge";
+import { inspectScripts, scriptRegion, setScripts } from "./scripts-merge";
 
 const PACKAGE = `{
   "name": "demo",
@@ -159,17 +159,9 @@ describe("scripts.merge: inspectScripts", () => {
   });
 });
 
-describe("scripts.merge: readScripts and scriptRegion (what doctor reads)", () => {
-  test("the region of a script is `scripts.<name>`", () => {
+describe("scripts.merge: scriptRegion", () => {
+  test("the region of a script is `scripts.<name>`, the name quoted when it has a dot in it", () => {
     expect(scriptRegion("gen:branding")).toBe("scripts.gen:branding");
-  });
-
-  test("reads the scripts object, and nothing when there is none", () => {
-    expect(readScripts('{ "scripts": { "a": "x", "b": 2 } }')).toEqual({
-      ok: true,
-      scripts: { a: "x", b: 2 },
-    });
-    expect(readScripts('{ "name": "x" }')).toEqual({ ok: true, scripts: {} });
-    expect(readScripts("nope").ok).toBe(false);
+    expect(scriptRegion("build.prod")).toBe('scripts."build.prod"');
   });
 });

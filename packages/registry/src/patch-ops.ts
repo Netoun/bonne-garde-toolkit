@@ -1,4 +1,6 @@
+import { inspectJsonc, jsonRegion, jsoncLeaves, setJsoncLeaves } from "./jsonc-merge";
 import type { PlannedPatch } from "./patch-plan";
+import type { RegionState } from "./region-state";
 import { inspectScripts, scriptRegion, setScripts } from "./scripts-merge";
 
 /**
@@ -9,12 +11,7 @@ import { inspectScripts, scriptRegion, setScripts } from "./scripts-merge";
  * default, so a type added to `PlannedPatch` fails to compile until each one handles it.
  */
 
-/** What the file holds at one region, against what the patch declares for it. */
-export type RegionState =
-  | { kind: "absent" }
-  | { kind: "equal" }
-  /** `current` is what `--force` replaces (`null`: it has no text); `shown` is how a message quotes it. */
-  | { kind: "differs"; current: string | null; shown: string };
+export type { RegionState };
 
 /** One region a patch writes, with the value it declares for it as a message quotes it. */
 export type RegionDeclaration = { region: string; declared: string };
@@ -30,6 +27,11 @@ export function patchRegions(patch: PlannedPatch): RegionDeclaration[] {
       return Object.entries(patch.scripts).map(([name, command]) => ({
         region: scriptRegion(name),
         declared: JSON.stringify(command),
+      }));
+    case "jsonc.merge":
+      return jsoncLeaves(patch.value).map(({ path, value }) => ({
+        region: jsonRegion(path),
+        declared: JSON.stringify(value),
       }));
   }
 }
@@ -57,6 +59,8 @@ export function inspectPatch(text: string, patch: PlannedPatch): PatchInspection
       }
       return { ok: true, states };
     }
+    case "jsonc.merge":
+      return inspectJsonc(text, jsoncLeaves(patch.value));
   }
 }
 
@@ -77,6 +81,11 @@ export function writePatch(
         Object.fromEntries(
           Object.entries(patch.scripts).filter(([name]) => regions.has(scriptRegion(name))),
         ),
+      );
+    case "jsonc.merge":
+      return setJsoncLeaves(
+        text,
+        jsoncLeaves(patch.value).filter(({ path }) => regions.has(jsonRegion(path))),
       );
   }
 }

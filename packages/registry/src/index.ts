@@ -37,7 +37,8 @@ export {
   searchCatalog,
   type InstallPlan,
 } from "./resolve-plan";
-export { readScripts, scriptRegion } from "./scripts-merge";
+export { isReadableRegion, regionPresence, type RegionPresence } from "./region-presence";
+export { scriptRegion } from "./scripts-merge";
 export { sha256Hex } from "./sha256";
 export type {
   RegistryCatalog,

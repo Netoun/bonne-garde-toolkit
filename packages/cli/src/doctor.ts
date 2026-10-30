@@ -4,9 +4,9 @@ import {
   inspectPatch,
   patchRegions,
   plannedPatches,
+  isReadableRegion,
   readInstalledModuleManifest,
-  readScripts,
-  scriptRegion,
+  regionPresence,
   sha256Hex,
   type ModuleManifestLookup,
   type PatchInspection,
@@ -311,14 +311,6 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
-/** `scripts.<name>` in a `package.json`: the one kind of region a patch writes today. */
-function scriptName(file: string, region: string): string | null {
-  const name = region.startsWith(scriptRegion("")) ? region.slice(scriptRegion("").length) : null;
-  return name !== null && name.length > 0 && file.split("/").at(-1) === "package.json"
-    ? name
-    : null;
-}
-
 /** What a module's `module.json` says its patches are, for the variant `bg.json` recorded. */
 type DeclaredPatches = { ok: true; patches: PlannedPatch[] } | { ok: false; reason: string };
 
@@ -389,13 +381,13 @@ async function checkRegions(
           message: `region ${region} of ${file} is owned by ${owner}, which is neither an installed item nor an installed module`,
         });
       }
-      if (scriptName(file, region) === null) {
+      if (!isReadableRegion(file, region)) {
         details.unchecked.push(`${file}#${region}`);
       }
     }
 
-    const scriptRegions = entries.filter(([region]) => scriptName(file, region) !== null);
-    if (!exists || scriptRegions.length === 0) {
+    const readable = entries.filter(([region]) => isReadableRegion(file, region));
+    if (!exists || readable.length === 0) {
       continue;
     }
     let text: string;
@@ -404,27 +396,27 @@ async function checkRegions(
     } catch {
       continue; // a directory or an unreadable file: `files` reports it when it is a recorded one
     }
-    const scripts = readScripts(text);
-    if (!scripts.ok) {
+    const presences = readable.map(([region]) => regionPresence(file, text, region));
+    const invalid = presences.find((presence) => presence.kind === "invalid");
+    if (invalid !== undefined) {
       findings.push({
         severity: "error",
         code: "region-file-invalid",
         path: file,
-        message: `${file} cannot hold its recorded regions (${scripts.reason}): ${scriptRegions.map(([region]) => region).join(", ")}`,
+        message: `${file} cannot hold its recorded regions (${invalid.reason}): ${readable.map(([region]) => region).join(", ")}`,
       });
       continue;
     }
 
-    for (const [region, owner] of scriptRegions) {
-      const name = scriptName(file, region) ?? "";
+    for (const [index, [region, owner]] of readable.entries()) {
       const id = `${file}#${region}`;
-      if (!Object.hasOwn(scripts.scripts, name)) {
+      if (presences[index]?.kind === "missing") {
         details.missing.push(id);
         findings.push({
           severity: "error",
           code: "region-missing",
           path: file,
-          message: `${region} is gone from ${file}: recorded for ${owner}, and the file no longer has that script`,
+          message: `${region} is gone from ${file}: recorded for ${owner}, and the file no longer has it`,
         });
         continue;
       }

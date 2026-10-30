@@ -24,6 +24,8 @@ The catalog is closed. A module MUST NOT invent a patch type; adding one is a pl
 
 - JSON/JSONC edits MUST go through `jsonc-parser` `modify` + `applyEdits` — comments and formatting survive.
 - TypeScript edits MUST go through `ts-morph`. Never regex, never string concatenation.
+- A region key is the leaf's path joined with dots (`scripts.gen:branding`); a segment with a `.`, `[`, `]`, `"` or `\` in it, or an empty one, is written as a JSON string (`dependencies."lodash.merge"`), so `scripts.merge` and `jsonc.merge` claim the same text for the same leaf.
+- `jsonc.merge` writes an array whole, as a leaf. What it inserts is laid out like the file around it: after the last member, objects expanded, an array of scalars on one line while it fits in 100 columns, trailing commas where the file uses them. A leaf under a parent that is not an object makes the patch `failed`. It does not know `sortPackageJson`: a new key of a `package.json` lands last, where the formatter may move it, so a module's dependencies stay in its variant (050).
 - Every patch MUST be idempotent: applying it twice yields `applied` then `skipped`, and an identical tree.
 - A patch MUST NOT perform free-text search/replace across arbitrary source.
 - Scope placeholder rewriting (`{{SCOPE}}`) happens at template render time on tier-1 files only — it is **not** a patch and MUST NOT run over project-owned files.

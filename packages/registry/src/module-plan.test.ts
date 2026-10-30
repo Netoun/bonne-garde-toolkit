@@ -892,6 +892,81 @@ describe("resolveModulePlans: scripts.merge (060)", () => {
   });
 });
 
+describe("resolveModulePlans: jsonc.merge (060)", () => {
+  const plan = async (patch: unknown[]) => {
+    const catalog = await registry([
+      {
+        category: "provider",
+        id: "cloudflare",
+        json: { variants: [{ key: "default", match: {}, patch }] },
+      },
+    ]);
+    const [first] = await resolveModulePlans(
+      catalog,
+      [{ category: "provider", id: "cloudflare" }],
+      project(),
+    );
+    return first;
+  };
+  const D1 = [{ binding: "DB", database_name: "my-app" }];
+
+  test("is planned with its file and value, an array being a leaf", async () => {
+    const planned = await plan([
+      { type: "jsonc.merge", file: "apps/api/wrangler.jsonc", value: { d1_databases: D1 } },
+    ]);
+
+    expect(planned?.patches).toEqual([
+      { type: "jsonc.merge", file: "apps/api/wrangler.jsonc", value: { d1_databases: D1 } },
+    ]);
+  });
+
+  test.each(["wrangler.jsonc", "tsconfig.json", "packages/db/package.json"])(
+    "%s is a valid target",
+    async (file) => {
+      expect((await plan([{ type: "jsonc.merge", file, value: { a: 1 } }]))?.patches[0]?.file).toBe(
+        file,
+      );
+    },
+  );
+
+  test.each([
+    [
+      "has no value",
+      { type: "jsonc.merge", file: "a.json" },
+      /value must be an object of the leaves to merge/,
+    ],
+    ["has an empty value", { type: "jsonc.merge", file: "a.json", value: {} }, /value is empty/],
+    [
+      "has an object with nothing in it, which names no leaf",
+      { type: "jsonc.merge", file: "a.json", value: { a: { b: {} } } },
+      /value\.a\.b is an empty object/,
+    ],
+    [
+      "targets a file that is neither JSON nor JSONC",
+      { type: "jsonc.merge", file: "src/app.ts", value: { a: 1 } },
+      /file must be a \.json or \.jsonc file, got: src\/app\.ts/,
+    ],
+    [
+      "targets a path outside the project",
+      { type: "jsonc.merge", file: "../a.json", value: { a: 1 } },
+      /file must be a repo-relative path without '\.\.'/,
+    ],
+    [
+      "has an argument it does not know",
+      { type: "jsonc.merge", file: "a.json", value: { a: 1 }, scripts: {} },
+      /has an argument it does not know: scripts/,
+    ],
+    [
+      "carries a scope placeholder, which only a tier-1 file is rendered with",
+      { type: "jsonc.merge", file: "a.json", value: { a: ["{{SCOPE}}/x"] } },
+      /value holds \{\{SCOPE\}\}.*only tier-1 files are rendered/,
+    ],
+  ])("a patch that %s is refused as a registry authoring error", async (_, patch, message) => {
+    await expect(plan([patch])).rejects.toThrow(message);
+    await expect(plan([patch])).rejects.toThrow(/provider\/cloudflare declares patch jsonc\.merge/);
+  });
+});
+
 describe("resolveModulePlans: what is not supported yet fails loudly", () => {
   const withVariant = (extra: Record<string, unknown>) =>
     registry([
@@ -904,13 +979,13 @@ describe("resolveModulePlans: what is not supported yet fails loudly", () => {
 
   test("a patch of a type this CLI does not apply is refused, naming it, never skipped", async () => {
     const catalog = await withVariant({
-      patch: [{ type: "ts.elysiaUse", file: "apps/api/src/app.ts", argument: "authModule" }],
+      patch: [{ type: "env.append", file: ".env.example", lines: ["A=1"] }],
     });
 
     await expect(
       resolveModulePlans(catalog, [{ category: "api", id: "elysia" }], project()),
     ).rejects.toThrow(
-      /api\/elysia declares patch ts\.elysiaUse on apps\/api\/src\/app\.ts: only scripts\.merge is applied yet, and a variant is never installed with another patch skipped/,
+      /api\/elysia declares patch env\.append on \.env\.example: this CLI does not apply it yet \(.*are applied\), and a variant is never installed with another patch skipped/,
     );
   });
 
@@ -935,7 +1010,7 @@ describe("resolveModulePlans: what is not supported yet fails loudly", () => {
             {
               key: "docker",
               match: { provider: "dockerfile" },
-              patch: [{ type: "ts.elysiaUse", file: "a.ts" }],
+              patch: [{ type: "env.append", file: "a.ts" }],
               intent: ["01-wire.md"],
             },
           ],

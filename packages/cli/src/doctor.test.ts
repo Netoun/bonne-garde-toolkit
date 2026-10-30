@@ -295,6 +295,30 @@ describe("runDoctor: a file with recorded regions is checked by region, not by s
     expect(report.checks.regions.findings[0]?.severity).toBe("error");
   });
 
+  test("a region that is a path in any JSON file is read, whichever patch wrote it", async () => {
+    const root = await brandingProject();
+    await editManifest(root, (m) => ({
+      ...m,
+      regions: {
+        "package.json": {
+          ...m.regions["package.json"],
+          name: "config/branding",
+          license: "config/branding",
+          'scripts."gen.x"': "config/branding",
+        },
+      },
+    }));
+
+    const report = await runDoctor(root);
+
+    expect(report.checks.regions.details).toMatchObject({
+      checked: ["package.json#scripts.gen:branding", "package.json#name"],
+      missing: ["package.json#license", 'package.json#scripts."gen.x"'],
+      unchecked: [],
+    });
+    expect(codes(report, "regions")).toEqual(["region-missing", "region-missing"]);
+  });
+
   test("with a registry doctor cannot read (offline: not a local path), presence is checked and the foreign edit is said to be unchecked", async () => {
     const root = await brandingProject();
     await editManifest(root, (m) => ({

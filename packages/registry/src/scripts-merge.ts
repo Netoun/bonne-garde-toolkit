@@ -1,14 +1,6 @@
-import {
-  applyEdits,
-  findNodeAtLocation,
-  getNodeValue,
-  modify,
-  parseTree,
-  printParseErrorCode,
-  type Edit,
-  type Node,
-  type ParseError,
-} from "jsonc-parser";
+import { applyEdits, findNodeAtLocation, modify, type Edit, type Node } from "jsonc-parser";
+import { layoutOf, lineIndent, ownLineIndent, treeOf } from "./json-tree";
+import { jsonRegion } from "./jsonc-merge";
 
 /**
  * `scripts.merge` (spec 060): adds keys to the `scripts` object of a `package.json` without
@@ -16,8 +8,8 @@ import {
  * trailing commas and the file's own layout survive; nothing here touches text with a regex.
  */
 
-/** The region `bg.json` records for one script: `scripts.<name>`. The name is everything after the first dot. */
-export const scriptRegion = (name: string): string => `scripts.${name}`;
+/** The region `bg.json` records for one script: `scripts.<name>`, the name quoted when it has a dot in it (`jsonRegion`). */
+export const scriptRegion = (name: string): string => jsonRegion(["scripts", name]);
 
 export type ScriptState =
   | { kind: "absent" }
@@ -28,27 +20,6 @@ export type ScriptState =
 export type ScriptsInspection =
   | { ok: true; states: Record<string, ScriptState> }
   | { ok: false; reason: string };
-
-function lineOf(text: string, offset: number): number {
-  return text.slice(0, offset).split("\n").length;
-}
-
-/** The syntax tree of a JSON or JSONC file, or why it has none. */
-function treeOf(text: string): { ok: true; root: Node } | { ok: false; reason: string } {
-  const errors: ParseError[] = [];
-  const root = parseTree(text, errors, { allowTrailingComma: true });
-  const [first] = errors;
-  if (first !== undefined) {
-    return {
-      ok: false,
-      reason: `not valid JSON (${printParseErrorCode(first.error)} at line ${lineOf(text, first.offset)})`,
-    };
-  }
-  if (root === undefined || root.type !== "object") {
-    return { ok: false, reason: "the root is not a JSON object" };
-  }
-  return { ok: true, root };
-}
 
 /** The `scripts` node, `null` when the file has none, or why it cannot hold scripts. */
 function scriptsNode(root: Node): { ok: true; node: Node | null } | { ok: false; reason: string } {
@@ -88,18 +59,6 @@ export function inspectScripts(text: string, wanted: Record<string, string>): Sc
   return { ok: true, states };
 }
 
-/** The whitespace that starts the line `offset` sits on. */
-function lineIndent(text: string, offset: number): string {
-  return /^[ \t]*/.exec(text.slice(text.lastIndexOf("\n", offset - 1) + 1))?.[0] ?? "";
-}
-
-/** The indentation of `offset`'s line when `offset` is the first thing on it, else `null`: it shares the line. */
-function ownLineIndent(text: string, offset: number): string | null {
-  const start = text.lastIndexOf("\n", offset - 1) + 1;
-  const before = text.slice(start, offset);
-  return /^[ \t]*$/.test(before) ? before : null;
-}
-
 /**
  * Where `modify` inserts a new key and what goes there. `modify` can format what it inserts, but its
  * formatter normalises the whole line the edit touches, so the neighbouring member would change too.
@@ -108,9 +67,7 @@ function ownLineIndent(text: string, offset: number): string | null {
  * are the inserted ones.
  */
 function insertionAt(text: string, root: Node, name: string, value: string, at: Edit): Edit {
-  const eol = text.includes("\r\n") ? "\r\n" : "\n";
-  const unitOfFile = /^([ \t]+)\S/m.exec(text)?.[1] ?? "  ";
-  const unit = unitOfFile.startsWith("\t") ? "\t" : unitOfFile;
+  const { eol, unit } = layoutOf(text);
   const entry = `${JSON.stringify(name)}: ${JSON.stringify(value)}`;
 
   // The container is `scripts` when the file has one, else the root, which then gets a `scripts`.
@@ -169,26 +126,4 @@ export function setScripts(text: string, scripts: Record<string, string>): strin
     (next, [name, value]) => setScript(next, name, value),
     text,
   );
-}
-
-export type ScriptsReading =
-  | { ok: true; scripts: Record<string, unknown> }
-  | { ok: false; reason: string };
-
-/** The `scripts` object of a `package.json`, for a reader (`doctor`) that compares against it. */
-export function readScripts(text: string): ScriptsReading {
-  const tree = treeOf(text);
-  if (!tree.ok) {
-    return tree;
-  }
-  const scripts = scriptsNode(tree.root);
-  if (!scripts.ok) {
-    return scripts;
-  }
-  const value: unknown = scripts.node === null ? {} : getNodeValue(scripts.node);
-  return { ok: true, scripts: isRecord(value) ? value : {} };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
