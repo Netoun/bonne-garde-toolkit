@@ -47,6 +47,26 @@
             "db:generate": "drizzle-kit generate --config ./src/drizzle.config.ts",
             "db:studio": "drizzle-kit studio --config ./src/drizzle.config.ts"
           }
+        },
+        {
+          "type": "package.dependencies",
+          "file": "apps/api/package.json",
+          "dependencies": { "{{SCOPE}}/db": "workspace:*" },
+          "intent": "Declare the project's db package as a dependency of the API app."
+        },
+        {
+          "type": "ts.addImport",
+          "file": "apps/api/src/app.ts",
+          "moduleSpecifier": "{{SCOPE}}/db",
+          "namedImports": ["dbModule"],
+          "intent": "Import dbModule from the project's db package in the API app."
+        },
+        {
+          "type": "ts.elysiaUse",
+          "file": "apps/api/src/app.ts",
+          "targetName": "app",
+          "argument": "dbModule",
+          "intent": "Register dbModule on the API app after its last .use and before its routes, so every route gets db on its context."
         }
       ]
     }

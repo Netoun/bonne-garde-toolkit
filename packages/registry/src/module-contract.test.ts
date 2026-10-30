@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { readdir, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import {
   createEmptyProjectManifest,
@@ -12,6 +13,7 @@ import {
   renderBrandingModule,
 } from "../../../registry/modules/config/branding/template/packages/config/src/gen-branding";
 import { formatWithProjectFormatter } from "../test-support/project-formatter";
+import { applyInstallPlan } from "./apply-plan";
 import { loadLocalRegistry } from "./load-registry";
 import { resolveModulePlans } from "./module-plan";
 import { patchRegions, writePatch } from "./patch-ops";
@@ -1606,11 +1608,133 @@ describe("module contract", () => {
       );
     });
 
-    // The wiring in `apps/api/src/app.ts`, `ts.addImport` of `dbModule` from `{{SCOPE}}/db` and
-    // `ts.elysiaUse`, is built (4a) and format-stable, but `apps/api` cannot import `{{SCOPE}}/db`
-    // until its package.json declares it, and no patch can: `jsonc.merge` refuses `{{SCOPE}}` (060).
-    test.todo("orm/drizzle wires dbModule into apps/api/src/app.ts, once a patch can declare {{SCOPE}}/db in apps/api/package.json", () =>
-      undefined);
+    test("orm/drizzle wires dbModule into the API: the dependency, the import and the .use, because `.` and dbModule are its own", async () => {
+      const { orm } = await dbModules();
+      const patches = orm.variant.patch ?? [];
+
+      // `dbModule` is what `{{SCOPE}}/db` serves at its root, and the root export is orm's: db/d1 alone
+      // exports `./d1`, so the API has nothing to `.use()` until orm is installed.
+      expect(await ormText("packages/db/src/index.ts")).toMatch(
+        /export \{[^}]*\bdbModule\b[^}]*\} from "\.\/module"/,
+      );
+      expect(mergedInto(patches, "packages/db/package.json").exports).toMatchObject({
+        ".": "./src/index.ts",
+      });
+      expect(dependenciesPatch(patches, "apps/api/package.json")).toEqual({
+        dependencies: { "{{SCOPE}}/db": "workspace:*" },
+        devDependencies: {},
+      });
+      expect(patches.filter((patch) => patch.file === "apps/api/src/app.ts")).toMatchObject([
+        { type: "ts.addImport", moduleSpecifier: "{{SCOPE}}/db", namedImports: ["dbModule"] },
+        { type: "ts.elysiaUse", targetName: "app", argument: "dbModule" },
+      ]);
+    });
+
+    describe("installed over the API shell, in one call or each module alone", () => {
+      const NO_ITEMS = { items: [], npmDependencies: [], npmDevDependencies: [] };
+      const REFS = [
+        { category: "provider", id: "cloudflare" },
+        { category: "config", id: "branding" },
+        { category: "api", id: "elysia" },
+        { category: "db", id: "d1" },
+        { category: "orm", id: "drizzle" },
+      ] as const;
+      const WIRED = ["apps/api/package.json", "apps/api/src/app.ts", "packages/db/package.json"];
+
+      /** Every file of a project, `bg.json` without the time it was written. */
+      async function tree(root: string): Promise<Record<string, string>> {
+        const files: Record<string, string> = {};
+        for await (const path of new Bun.Glob("**/*").scan({
+          cwd: root,
+          dot: true,
+          onlyFiles: true,
+        })) {
+          const text = await readFile(join(root, path), "utf8");
+          files[path] = path === "bg.json" ? text.replace(/"installedAt": "[^"]*"/g, "") : text;
+        }
+        return files;
+      }
+
+      // `@app` sorts before `@elysiajs/*` and `@zz` after it, so `{{SCOPE}}/db` lands in different places.
+      test.each(["@app", "@zz"])(
+        "scope %s: every patch applies, the three files are what the formatter writes, and a re-add moves nothing",
+        async (scope) => {
+          const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+          const root = await mkdtemp(join(tmpdir(), "bg-wired-"));
+          try {
+            await writeFile(
+              join(root, "package.json"),
+              '{\n  "name": "p",\n  "private": true,\n  "workspaces": ["apps/*", "packages/*"]\n}\n',
+            );
+            const manifest = createEmptyProjectManifest({ scope, registries: {} });
+            const plans = await resolveModulePlans(catalog, [...REFS], manifest);
+
+            const first = await applyInstallPlan({
+              projectRoot: root,
+              manifest,
+              plan: NO_ITEMS,
+              modules: plans,
+              sourceLabel: "@bg",
+            });
+
+            expect(
+              first.patches
+                .filter(({ status }) => status !== "applied")
+                .map(({ module, type, reason }) => ({ module, type, reason })),
+            ).toEqual([]);
+            const orm = first.patches.filter(({ module }) => module === "orm/drizzle");
+            expect(orm.map(({ type, file }) => `${type} ${file}`)).toEqual([
+              "jsonc.merge packages/db/package.json",
+              "package.dependencies packages/db/package.json",
+              "scripts.merge packages/db/package.json",
+              "package.dependencies apps/api/package.json",
+              "ts.addImport apps/api/src/app.ts",
+              "ts.elysiaUse apps/api/src/app.ts",
+            ]);
+
+            const app = await readFile(join(root, "apps/api/src/app.ts"), "utf8");
+            expect(app).toContain(`import { dbModule } from "${scope}/db";\n`);
+            // Between the last `.use` of the shell and its routes.
+            expect(app).toMatch(/\)\n {2}\.use\(dbModule\)\n {2}\/\/ Insertion point/s);
+            const api: unknown = JSON.parse(
+              await readFile(join(root, "apps/api/package.json"), "utf8"),
+            );
+            expect(
+              isRecord(api) && isRecord(api.dependencies) ? api.dependencies[`${scope}/db`] : null,
+            ).toBe("workspace:*");
+
+            const written = Object.fromEntries(
+              await Promise.all(
+                WIRED.map(
+                  async (path) => [path, await readFile(join(root, path), "utf8")] as const,
+                ),
+              ),
+            );
+            await expect(formatWithProjectFormatter(written)).resolves.toEqual(written);
+
+            // The one-call record is what each module alone would leave: re-adding any of them changes nothing.
+            const before = await tree(root);
+            for (const ref of REFS) {
+              const [alone] = await resolveModulePlans(catalog, [ref], first.manifest);
+              if (alone === undefined) {
+                throw new Error(`no plan for ${ref.category}/${ref.id}`);
+              }
+              const again = await applyInstallPlan({
+                projectRoot: root,
+                manifest: first.manifest,
+                plan: NO_ITEMS,
+                modules: [alone],
+                sourceLabel: "@bg",
+              });
+              expect(again.patches.filter(({ status }) => status !== "skipped")).toEqual([]);
+              expect(await tree(root)).toEqual(before);
+            }
+          } finally {
+            await rm(root, { recursive: true, force: true });
+          }
+        },
+      );
+    });
   });
 
   test("every patch a variant declares is one the CLI applies, with arguments it accepts", async () => {

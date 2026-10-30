@@ -50,6 +50,25 @@ and this one is db/d1's. `package.dependencies` writes each entry where the form
 has nothing to say. `drizzle-kit` is a dev dependency: `./testing` imports `drizzle-kit/api`, which a
 workspace package resolves from its own devDependencies.
 
+## Wiring into the API (060)
+
+`dbModule` is this module's: `{{SCOPE}}/db` serves it at its root export, which orm adds, and `db/d1`
+alone exports only `./d1`. So orm wires it, with three patches on the files `api/elysia` ships:
+
+| Type                   | File                    | Region                                             |
+| ---------------------- | ----------------------- | -------------------------------------------------- |
+| `package.dependencies` | `apps/api/package.json` | `dependencies.{{SCOPE}}/db` (`workspace:*`)        |
+| `ts.addImport`         | `apps/api/src/app.ts`   | `imports[{{SCOPE}}/db]`: `dbModule`                |
+| `ts.elysiaUse`         | `apps/api/src/app.ts`   | `elysia[app].use[dbModule]`, after the last `.use` |
+
+The dependency is what lets the import resolve: Bun's isolated installs link only what a `package.json`
+declares. Like `db/d1`, orm does not peer on `api`: without `apps/api` the three fail and become pending
+intentions (060), not a failed install. With it, in one call or after, `bg add` of either module alone
+later skips every patch and changes nothing.
+
+Every route registered after it has `db` on its context. The API shell's own tests, and every route
+that does not query, still load and answer with no binding (see `db/d1`).
+
 ## Schemas, not SQL
 
 A module ships tables, never migrations. The legacy `0000` migration mixes the `auth` tables with
@@ -93,11 +112,6 @@ the legacy `createTestDb` was not, because `drizzle-kit/api` is.
 
 ## Not here
 
-- **Wiring `.use(dbModule)` into `apps/api/src/app.ts`.** `ts.addImport` and `ts.elysiaUse` are built and
-  keep the file what the formatter writes, but `apps/api` cannot import `{{SCOPE}}/db` until its
-  `package.json` depends on it, and with Bun's isolated installs it fails to resolve it without that.
-  No patch can write the line: `jsonc.merge` refuses `{{SCOPE}}`, so a dependency on a sibling package
-  cannot be named. `auth` and `storage` will meet the same wall.
 - **The seed.** Every statement of the legacy `db.seed.ts` and of `drizzle/seed.sql` inserts into
   `user`, `account`, `organization` or `member`, and hashes a password: it is `auth`'s. `seed.sql` is
   referenced by nothing.
