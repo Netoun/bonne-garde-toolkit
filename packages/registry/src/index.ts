@@ -20,6 +20,7 @@ export {
   type PlannedEnvKey,
   type PlannedFile,
 } from "./module-plan";
+export { plannedPatches, type PlannedPatch, type ScriptsMergePatch } from "./patch-plan";
 export { loadNamedModules, readPlanFiles } from "./remote-install";
 export { readInstalledModuleManifest, type ModuleManifestLookup } from "./read-module-manifest";
 export {
@@ -30,6 +31,7 @@ export {
   searchCatalog,
   type InstallPlan,
 } from "./resolve-plan";
+export { readScripts, scriptRegion } from "./scripts-merge";
 export { sha256Hex } from "./sha256";
 export type {
   RegistryCatalog,

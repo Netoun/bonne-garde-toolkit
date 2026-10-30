@@ -11,6 +11,7 @@ import {
   type ProjectManifest,
 } from "@bonne-garde/schema";
 import { FETCH_CONCURRENCY, RegistryFileNotFoundError } from "./github-source";
+import { plannedPatches, type PlannedPatch } from "./patch-plan";
 import { mapLimit } from "./pool";
 import { PlanError, searchCatalog } from "./resolve-plan";
 import type { RegistryCatalog, RegistryModule } from "./types";
@@ -33,6 +34,8 @@ export type ModulePlan = {
   /** Tier 1, as it will land: paths relative to the project, content with `{{SCOPE}}` rendered. */
   files: PlannedFile[];
   env: PlannedEnvKey[];
+  /** Tier 2, as declared and checked: applied in the virtual tree, after every tier-1 file is known. */
+  patches: PlannedPatch[];
   dependencies: Record<string, string>;
   devDependencies: Record<string, string>;
   /** The workspace package `dependencies` are written into, when the variant declares one. */
@@ -240,18 +243,8 @@ function selectVariant(manifest: ModuleManifest, present: Present): ModuleVarian
   return winner;
 }
 
-/** What this CLI cannot do yet, refused for the variant that was selected, never skipped. */
+/** Intentions cannot be staged yet: refused for the variant that was selected, never skipped. */
 function refuseUnsupported(key: string, variant: ModuleVariant): void {
-  const patches = variant.patch ?? [];
-  if (patches.length > 0) {
-    const named = patches.map((patch) => {
-      const file = typeof patch.file === "string" ? ` on ${patch.file}` : "";
-      return `patch ${patch.type}${file}`;
-    });
-    throw new PlanError(
-      `${key} declares ${named.join(", ")}: patches are not supported yet, and a variant is never installed with one skipped`,
-    );
-  }
   const intents = variant.intent ?? [];
   if (intents.length > 0) {
     throw new PlanError(
@@ -449,6 +442,7 @@ async function planModule(
   const { manifest } = module;
   const key = keyOf(manifest);
   const variant = selectVariant(manifest, present);
+  const patches = plannedPatches(key, variant);
   refuseUnsupported(key, variant);
 
   const copied = await copiedFiles(module, variant, project.scope);
@@ -465,6 +459,7 @@ async function planModule(
     variant: variant.key,
     options: resolveOptions(manifest),
     files,
+    patches,
     env: (variant.env ?? []).map((entry) => ({
       name: entry.name,
       required: entry.required ?? false,

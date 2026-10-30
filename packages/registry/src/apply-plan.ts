@@ -11,6 +11,7 @@ import type { ModulePlan } from "./module-plan";
 import { itemFileTarget, type InstallPlan } from "./resolve-plan";
 import { sha256Hex } from "./sha256";
 import { stageModules, type EnvResult, type TookOver } from "./stage-module";
+import type { PatchReport } from "./stage-patches";
 import { writeAllOrNothing, type StagedFile } from "./write-tree";
 
 export { ApplyError };
@@ -35,6 +36,8 @@ export type ApplyResult = {
   tookOver: TookOver[];
   /** What the modules' env keys did to the example env file; `null` when none declared any. */
   env: EnvResult | null;
+  /** What each tier-2 patch did: `applied`, `skipped` or `failed` with its reason, and per region. */
+  patches: PatchReport[];
 };
 
 async function pathExists(path: string): Promise<boolean> {
@@ -47,14 +50,42 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 /**
+ * What the module record keeps of a run's patches. The run reports `skipped` when it finds a patch
+ * already in place, and the record describes the state, so a patch recorded `applied` stays
+ * `applied` and a re-add moves nothing in `bg.json` but `installedAt`. Anything else is this run's
+ * outcome: a patch that failed before and is in place now is `skipped`, and one that is `failed` again
+ * says so.
+ */
+function recordedPatches(
+  reports: PatchReport[],
+  previous: ModuleRecord | undefined,
+): ModuleRecord["patches"] {
+  return reports.map(({ type, file, status, reason }, index) => {
+    const before = previous?.patches[index];
+    const kept =
+      status === "skipped" &&
+      before?.type === type &&
+      before.file === file &&
+      before.status === "applied";
+    return {
+      type,
+      file,
+      status: kept ? "applied" : status,
+      ...(reason === undefined ? {} : { reason }),
+    };
+  });
+}
+
+/**
  * Spec 020 "Module record". Re-adding the module that already fills a category replaces its record
  * rather than appending a second, and keeps the intentions recorded for it. `version` is the
- * platform version, as an item's is; there are no patches to record, since none is applied.
+ * platform version, as an item's is.
  */
 function withModules(
   manifest: ProjectManifest,
   plans: ModulePlan[],
   installedAt: string,
+  reports: PatchReport[],
 ): ProjectManifest["modules"] {
   const next: ProjectManifest["modules"] = { ...manifest.modules };
   for (const plan of plans) {
@@ -66,7 +97,10 @@ function withModules(
       version: manifest.platform.version,
       installedAt,
       options: plan.options,
-      patches: [],
+      patches: recordedPatches(
+        reports.filter((report) => report.module === plan.key),
+        previous,
+      ),
       intentions: previous?.intentions ?? { applied: [], skipped: {} },
     };
     next[plan.category] =
@@ -141,7 +175,7 @@ export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResu
   }
   const nextManifest = parseProjectManifest({
     ...options.manifest,
-    modules: withModules(options.manifest, modules, installedAt),
+    modules: withModules(options.manifest, modules, installedAt, staging.patches),
     items: nextItems,
     files: nextFiles,
     regions: nextRegions,
@@ -152,6 +186,7 @@ export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResu
     manifest: nextManifest,
     tookOver: staging.tookOver,
     env: staging.env,
+    patches: staging.patches,
   };
 
   if (options.dryRun) {

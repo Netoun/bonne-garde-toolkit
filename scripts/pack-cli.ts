@@ -91,6 +91,23 @@ for (const file of await walkFiles(join(OUT, "lib/registry"))) {
   }
 }
 
+// Schema and registry are bundled in, so what their `package.json` files depend on is what the
+// packed package has to declare. Read from there, so the pin lives in one place.
+const registryManifest: unknown = JSON.parse(
+  await readFile(join(ROOT, "packages/registry/package.json"), "utf8"),
+);
+const registryDependencies =
+  typeof registryManifest === "object" &&
+  registryManifest !== null &&
+  "dependencies" in registryManifest &&
+  typeof registryManifest.dependencies === "object" &&
+  registryManifest.dependencies !== null
+    ? Object.entries(registryManifest.dependencies)
+    : [];
+const dependencies = Object.fromEntries(
+  registryDependencies.filter(([name]) => !name.startsWith("@bonne-garde/")),
+);
+
 const pkg = {
   name: "create-bonne-garde",
   version: "0.1.0",
@@ -126,6 +143,7 @@ const pkg = {
     bg: "./src/bin.ts",
   },
   files: ["src", "lib", "templates", "README.md", "LICENSE"],
+  dependencies,
   scripts: {
     test: "bun test",
   },

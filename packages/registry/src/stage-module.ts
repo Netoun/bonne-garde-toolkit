@@ -1,9 +1,11 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { FileRecord, ProjectManifest } from "@bonne-garde/schema";
 import { ApplyError } from "./apply-error";
+import { isMissing, readDisk } from "./disk";
 import type { ModulePlan } from "./module-plan";
 import { sha256Hex } from "./sha256";
+import { stagePatches, type PatchReport } from "./stage-patches";
 import type { StagedFile } from "./write-tree";
 
 /**
@@ -29,36 +31,13 @@ export type ModuleStaging = {
   skippedIdentical: string[];
   /** The `files` records to merge into the manifest. */
   files: Record<string, FileRecord>;
-  /** The `regions` records to merge in: one per env key a module added. */
+  /** The `regions` records to merge in: one per env key a module added, one per script a patch wrote or found. */
   regions: Record<string, Record<string, string>>;
   tookOver: TookOver[];
   env: EnvResult | null;
+  /** What each tier-2 patch did, in plan order. */
+  patches: PatchReport[];
 };
-
-type Disk = { kind: "absent" } | { kind: "file"; content: string } | { kind: "other" };
-
-function isMissing(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error.code === "ENOENT" || error.code === "ENOTDIR")
-  );
-}
-
-async function readDisk(path: string): Promise<Disk> {
-  try {
-    const info = await stat(path);
-    return info.isFile()
-      ? { kind: "file", content: await readFile(path, "utf8") }
-      : { kind: "other" };
-  } catch (error) {
-    if (isMissing(error)) {
-      return { kind: "absent" };
-    }
-    throw error;
-  }
-}
 
 /** Workspace globs of the root `package.json`: the array form or `{ packages: [...] }`. */
 async function rootWorkspaces(projectRoot: string): Promise<string[]> {
@@ -162,11 +141,16 @@ async function stageEnv(
  * writes. Nothing touches the disk here. A path the call cannot decide on fails for every module at
  * once, listing all of them, so one run shows everything in the way.
  *
+ * Tier 2 is computed first, in the virtual tree: a patch edits the file a module writes in this call,
+ * or the file on disk, so a file is classified by what it will finally hold.
+ *
  * - absent: written. Identical to what would be written: skipped, whoever owns it keeps it.
  * - differs, recorded for this module and still at the recorded sha: untouched, so overwritten.
  * - differs otherwise (edited since, owned by another owner, or not recorded): a collision that
  *   `--force` overwrites, the module becoming the owner. 060's table is silent on a file owned by
  *   another module, so it follows the row for a file that differs from its recorded sha.
+ * - differs and carries regions of another module: rewriting would drop them, so refused, `--force`
+ *   or not (060: a region owned by another module is an error always).
  * - named by an item and a module, or by two modules, in the same call, or not a regular file:
  *   refused, `--force` or not. Nothing says which of two claimants should win.
  */
@@ -187,10 +171,14 @@ export async function stageModules(options: {
     regions: {},
     tookOver: [],
     env: null,
+    patches: [],
   };
   const refused: string[] = [];
   const collisions: string[] = [];
 
+  // Who writes what, whole: a path two claimants name is refused, and every other target is kept.
+  const owners = new Map<string, string>();
+  const contents = new Map<string, string>();
   for (const plan of plans) {
     await assertWorkspaceCovered(projectRoot, plan);
     for (const { target, content } of plan.files) {
@@ -200,46 +188,85 @@ export async function stageModules(options: {
         continue;
       }
       claimed.set(target, plan.key);
+      owners.set(target, plan.key);
+      contents.set(target, content);
+    }
+  }
 
-      const sha256 = sha256Hex(content);
-      const disk = await readDisk(join(projectRoot, target));
-      const stage = () => {
-        staging.staged.push({ path: join(projectRoot, target), content });
-        staging.written.push(target);
-        staging.files[target] = { owner: plan.key, sha256 };
-      };
+  const patches = await stagePatches({
+    projectRoot,
+    manifest,
+    plans,
+    tierOne: contents,
+    claimed,
+    force,
+  });
+  staging.patches = patches.reports;
+  staging.regions = patches.regions;
+  refused.push(...patches.refused);
+  collisions.push(...patches.collisions);
 
-      if (disk.kind === "other") {
-        refused.push(`${target} exists and is not a regular file`);
-      } else if (disk.kind === "absent") {
-        const recorded = manifest.files[target];
-        if (recorded !== undefined && recorded.owner !== plan.key) {
-          staging.tookOver.push({ path: target, from: recorded.owner, by: plan.key });
+  for (const [target, content] of contents) {
+    const owner = owners.get(target) ?? "";
+    const sha256 = sha256Hex(content);
+    const disk = await readDisk(join(projectRoot, target));
+    const stage = () => {
+      staging.staged.push({ path: join(projectRoot, target), content });
+      staging.written.push(target);
+      staging.files[target] = { owner, sha256 };
+    };
+
+    if (disk.kind === "other") {
+      refused.push(`${target} exists and is not a regular file`);
+    } else if (disk.kind === "absent") {
+      const recorded = manifest.files[target];
+      if (recorded !== undefined && recorded.owner !== owner) {
+        staging.tookOver.push({ path: target, from: recorded.owner, by: owner });
+      }
+      stage();
+    } else if (disk.content === content) {
+      staging.skippedIdentical.push(target);
+      staging.files[target] = { owner: manifest.files[target]?.owner ?? owner, sha256 };
+    } else {
+      const foreign = Object.entries(manifest.regions[target] ?? {}).filter(
+        ([, regionOwner]) => regionOwner !== owner,
+      );
+      const recorded = manifest.files[target];
+      if (foreign.length > 0) {
+        const names = foreign.map(([region]) => region).join(", ");
+        const others = [...new Set(foreign.map(([, regionOwner]) => regionOwner))].join(", ");
+        refused.push(
+          `${target} carries ${names}, owned by ${others}; writing ${owner}'s version would drop ${foreign.length === 1 ? "it" : "them"}`,
+        );
+      } else if (recorded?.owner === owner && sha256Hex(disk.content) === recorded.sha256) {
+        stage();
+      } else if (force) {
+        if (recorded !== undefined && recorded.owner !== owner) {
+          staging.tookOver.push({ path: target, from: recorded.owner, by: owner });
         }
         stage();
-      } else if (disk.content === content) {
-        staging.skippedIdentical.push(target);
-        staging.files[target] = { owner: manifest.files[target]?.owner ?? plan.key, sha256 };
+      } else if (recorded === undefined) {
+        collisions.push(`${target} exists and is not recorded in bg.json`);
+      } else if (recorded.owner === owner) {
+        collisions.push(`${target} was modified since ${owner} wrote it`);
       } else {
-        const recorded = manifest.files[target];
-        if (recorded?.owner === plan.key && sha256Hex(disk.content) === recorded.sha256) {
-          stage();
-        } else if (force) {
-          if (recorded !== undefined && recorded.owner !== plan.key) {
-            staging.tookOver.push({ path: target, from: recorded.owner, by: plan.key });
-          }
-          stage();
-        } else if (recorded === undefined) {
-          collisions.push(`${target} exists and is not recorded in bg.json`);
-        } else if (recorded.owner === plan.key) {
-          collisions.push(`${target} was modified since ${plan.key} wrote it`);
-        } else {
-          collisions.push(
-            `${target} is owned by ${recorded.owner}, and ${plan.key} would replace it`,
-          );
-        }
+        collisions.push(`${target} is owned by ${recorded.owner}, and ${owner} would replace it`);
       }
     }
+  }
+
+  // A patch on a module file is computed on the template, so it always "applies" there. When the
+  // result is what the disk already holds, the regions were present and equal: 060 says skipped.
+  for (const report of staging.patches) {
+    if (report.status === "applied" && staging.skippedIdentical.includes(report.file)) {
+      report.status = "skipped";
+      report.regions = report.regions.map(({ region }) => ({ region, status: "skipped" }));
+    }
+  }
+
+  // A file a patch edits that no module writes: it goes to disk whole, and `files` does not own it.
+  for (const [file, content] of patches.patched) {
+    staging.staged.push({ path: join(projectRoot, file), content });
   }
 
   if (refused.length > 0) {
@@ -255,6 +282,8 @@ export async function stageModules(options: {
 
   const { env, regions } = await stageEnv(projectRoot, plans, claimed, staging.staged);
   staging.env = env;
-  staging.regions = regions;
+  for (const [file, owned] of Object.entries(regions)) {
+    staging.regions[file] = { ...staging.regions[file], ...owned };
+  }
   return staging;
 }

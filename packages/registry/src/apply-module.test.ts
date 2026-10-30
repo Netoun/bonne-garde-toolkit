@@ -29,6 +29,7 @@ function modulePlan(overrides: Partial<ModulePlan> = {}): ModulePlan {
     options: {},
     files: [{ target: "apps/api/wrangler.jsonc", content: '{ "name": "api" }\n' }],
     env: [],
+    patches: [],
     dependencies: {},
     devDependencies: {},
     workspace: null,

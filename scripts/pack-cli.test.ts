@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
+const PACKED = join(ROOT, "dist/npm/create-bonne-garde");
 
 describe("pack-cli", () => {
   const dirs: string[] = [];
@@ -18,6 +19,13 @@ describe("pack-cli", () => {
       stderr: "pipe",
     });
     expect(await pack.exited).toBe(0);
+    // What `bunx create-bonne-garde` does first: fetch the packed package's own dependencies.
+    const install = Bun.spawn(["bun", "install"], {
+      cwd: PACKED,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(await install.exited).toBe(0);
 
     const parent = await mkdtemp(join(tmpdir(), "bg-pack-"));
     dirs.push(parent);
@@ -25,7 +33,7 @@ describe("pack-cli", () => {
     const create = Bun.spawn(
       [
         "bun",
-        join(ROOT, "dist/npm/create-bonne-garde/src/create-bin.ts"),
+        join(PACKED, "src/create-bin.ts"),
         "packed-app",
         "--yes",
         "--no-git",
@@ -47,5 +55,26 @@ describe("pack-cli", () => {
     const bg = await Bun.file(join(parent, "packed-app/bg.json")).json();
     expect(bg.version).toBe(2);
     expect(bg.scope).toBe("@packed-app");
+  });
+
+  test("the packed package declares the npm dependencies of the registry package it bundles, pinned as they are", async () => {
+    const pack = Bun.spawn(["bun", "scripts/pack-cli.ts"], {
+      cwd: ROOT,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(await pack.exited).toBe(0);
+
+    const registry = await Bun.file(join(ROOT, "packages/registry/package.json")).json();
+    const packed = await Bun.file(join(PACKED, "package.json")).json();
+
+    // The workspace packages are bundled in; what remains is what `bun install` has to fetch.
+    const external = Object.fromEntries(
+      Object.entries<string>(registry.dependencies).filter(
+        ([name]) => !name.startsWith("@bonne-garde/"),
+      ),
+    );
+    expect(external).toEqual({ "jsonc-parser": expect.stringMatching(/^\d+\.\d+\.\d+$/) });
+    expect(packed.dependencies).toEqual(external);
   });
 });

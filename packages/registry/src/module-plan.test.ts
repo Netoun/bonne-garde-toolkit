@@ -770,6 +770,88 @@ describe("resolveModulePlans: the plan (050 step 8)", () => {
   });
 });
 
+describe("resolveModulePlans: scripts.merge (060)", () => {
+  const withPatch = (patch: unknown[]) =>
+    registry([
+      {
+        category: "config",
+        id: "branding",
+        json: { variants: [{ key: "default", match: {}, patch }] },
+      },
+    ]);
+  const plan = async (patch: unknown[]) => {
+    const [first] = await resolveModulePlans(
+      await withPatch(patch),
+      [{ category: "config", id: "branding" }],
+      project(),
+    );
+    return first;
+  };
+
+  test("is planned with its file and scripts, beside the files", async () => {
+    const planned = await plan([
+      { type: "scripts.merge", file: "package.json", scripts: { "gen:branding": "bun x.ts" } },
+    ]);
+
+    expect(planned?.patches).toEqual([
+      { type: "scripts.merge", file: "package.json", scripts: { "gen:branding": "bun x.ts" } },
+    ]);
+  });
+
+  test("a variant with no patch plans none", async () => {
+    expect((await plan([]))?.patches).toEqual([]);
+  });
+
+  test("a package.json other than the root's is a valid target", async () => {
+    const planned = await plan([
+      { type: "scripts.merge", file: "apps/api/package.json", scripts: { dev: "wrangler dev" } },
+    ]);
+
+    expect(planned?.patches[0]?.file).toBe("apps/api/package.json");
+  });
+
+  test.each([
+    [
+      "has no scripts",
+      { type: "scripts.merge", file: "package.json" },
+      /scripts must be an object of script names to commands/,
+    ],
+    [
+      "has an empty scripts",
+      { type: "scripts.merge", file: "package.json", scripts: {} },
+      /scripts is empty/,
+    ],
+    [
+      "has a script that is not a string",
+      { type: "scripts.merge", file: "package.json", scripts: { a: 1 } },
+      /scripts\.a must be a non-empty string/,
+    ],
+    [
+      "targets a file that is not a package.json",
+      { type: "scripts.merge", file: "tsconfig.json", scripts: { a: "x" } },
+      /file must be a package\.json, got: tsconfig\.json/,
+    ],
+    [
+      "targets a path outside the project",
+      { type: "scripts.merge", file: "../package.json", scripts: { a: "x" } },
+      /file must be a repo-relative path without '\.\.'/,
+    ],
+    [
+      "has an argument it does not know",
+      { type: "scripts.merge", file: "package.json", scripts: { a: "x" }, value: 1 },
+      /has an argument it does not know: value/,
+    ],
+    [
+      "carries a scope placeholder, which only a tier-1 file is rendered with",
+      { type: "scripts.merge", file: "package.json", scripts: { a: "bun {{SCOPE}}/x" } },
+      /scripts\.a holds \{\{SCOPE\}\}.*only tier-1 files are rendered/,
+    ],
+  ])("a patch that %s is refused as a registry authoring error", async (_, patch, message) => {
+    await expect(plan([patch])).rejects.toThrow(message);
+    await expect(plan([patch])).rejects.toThrow(/config\/branding declares patch scripts\.merge/);
+  });
+});
+
 describe("resolveModulePlans: what is not supported yet fails loudly", () => {
   const withVariant = (extra: Record<string, unknown>) =>
     registry([
@@ -780,7 +862,7 @@ describe("resolveModulePlans: what is not supported yet fails loudly", () => {
       },
     ]);
 
-  test("a patch is refused, naming it, never skipped", async () => {
+  test("a patch of a type this CLI does not apply is refused, naming it, never skipped", async () => {
     const catalog = await withVariant({
       patch: [{ type: "ts.elysiaUse", file: "apps/api/src/app.ts", argument: "authModule" }],
     });
@@ -788,7 +870,7 @@ describe("resolveModulePlans: what is not supported yet fails loudly", () => {
     await expect(
       resolveModulePlans(catalog, [{ category: "api", id: "elysia" }], project()),
     ).rejects.toThrow(
-      /api\/elysia declares patch ts\.elysiaUse on apps\/api\/src\/app\.ts: patches are not supported yet/,
+      /api\/elysia declares patch ts\.elysiaUse on apps\/api\/src\/app\.ts: only scripts\.merge is applied yet, and a variant is never installed with another patch skipped/,
     );
   });
 
