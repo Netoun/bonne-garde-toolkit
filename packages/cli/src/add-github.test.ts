@@ -154,7 +154,12 @@ describe("bg add from a github source", () => {
 
   test("a project from a github source and one from a local source end up the same", async () => {
     const everyItem = (await listItems(await project(LOCAL))).map((item) => item.name);
-    for (const names of [everyItem, ["provider/cloudflare"], ["provider/dockerfile"]]) {
+    for (const names of [
+      everyItem,
+      ["provider/cloudflare"],
+      ["provider/dockerfile"],
+      ["ui/shadcn"],
+    ]) {
       const raw = serve();
       const fromGithub = await project(SOURCE);
       const fromLocal = await project(LOCAL);

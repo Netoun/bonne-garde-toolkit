@@ -81,6 +81,8 @@ export const EXCLUDED_MODULES: Readonly<Record<string, string>> = {
     "it ships apps/api/wrangler.jsonc, which item api-elysia ships too, and add refuses to overwrite a file it did not write without --force; stage 3 moves the file into api/elysia",
   "provider/dockerfile":
     "a project has one provider; stage 3 installs cloudflare and covers this one in a second run through `docker build`",
+  "ui/shadcn":
+    "it writes packages/ui/package.json and tsconfig.json, which item utils ships too, and add refuses to overwrite a file it did not write without --force; the commit that takes them out of utils installs the module",
 };
 
 /**

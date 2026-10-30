@@ -132,6 +132,163 @@ describe("module contract", () => {
     }
   });
 
+  test("every dependency a variant declares is an exact version (035: exact version maps)", async () => {
+    const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+    const loose: string[] = [];
+
+    for (const { manifest } of catalog.modules) {
+      for (const variant of manifest.variants) {
+        for (const map of [variant.dependencies ?? {}, variant.devDependencies ?? {}]) {
+          for (const [name, version] of Object.entries(map)) {
+            if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version)) {
+              loose.push(`${manifest.category}/${manifest.id} ${variant.key}: ${name}@${version}`);
+            }
+          }
+        }
+      }
+    }
+
+    expect(loose).toEqual([]);
+  });
+
+  describe("ui/shadcn is the host package of the UI items (030, 035)", () => {
+    const uiModule = async () => {
+      const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+      const found = catalog.modules.find(
+        ({ manifest }) => manifest.category === "ui" && manifest.id === "shadcn",
+      );
+      if (!found) {
+        throw new Error("registry/modules/ui/shadcn is missing");
+      }
+      const [variant] = found.manifest.variants;
+      if (!variant) {
+        throw new Error("ui/shadcn has no variant");
+      }
+      return { ...found, variant };
+    };
+
+    /** The packages a file imports from, as `react`, `@base-ui/react`, `motion`: subpaths folded away. */
+    const packagesImportedBy = (source: string): string[] =>
+      [...source.matchAll(/from\s+"([^".][^"]*)"/g)].flatMap(([, specifier]) => {
+        if (specifier === undefined) {
+          return [];
+        }
+        const [scope, name] = specifier.split("/");
+        return [specifier.startsWith("@") ? `${scope}/${name}` : (scope ?? specifier)];
+      });
+
+    /** 030: the rule is keyed on where the files land, not on a field. */
+    const landsInPackagesUi = (item: { files?: { target?: string }[] }): boolean =>
+      (item.files ?? []).some((file) => file.target?.startsWith("packages/ui/") === true);
+
+    const exportMatches = (pattern: string, subpath: string): boolean => {
+      const star = pattern.indexOf("*");
+      return star === -1
+        ? pattern === subpath
+        : subpath.startsWith(pattern.slice(0, star)) && subpath.endsWith(pattern.slice(star + 1));
+    };
+
+    test("it writes packages/ui from explicit paths, and `{{SCOPE}}/ui` is its workspace", async () => {
+      const { manifest, variant } = await uiModule();
+
+      expect(manifest.peers).toEqual({});
+      expect(variant.match).toEqual({});
+      expect(variant.workspace).toEqual({ name: "{{SCOPE}}/ui", path: "packages/ui" });
+      // A glob cannot be expanded over `github:`, which has no directory listing.
+      expect(variant.copy?.filter((path) => /[*?[\]{}]/.test(path))).toEqual([]);
+      expect(variant.copy).toEqual([
+        "packages/ui/package.json",
+        "packages/ui/tsconfig.json",
+        "packages/ui/components.json",
+        "packages/ui/src/env.d.ts",
+        "packages/ui/src/styles/globals.css",
+        "packages/ui/src/styles/themes/default.css",
+      ]);
+      expect(manifest.checks).toEqual(["bun run typecheck"]);
+      expect(variant.patch ?? []).toEqual([]);
+      expect(variant.intent ?? []).toEqual([]);
+    });
+
+    test("its package.json carries exports and scripts and no dependency map (the variant has them)", async () => {
+      const { dir } = await uiModule();
+      const body: unknown = JSON.parse(
+        await readFile(join(dir, "template/packages/ui/package.json"), "utf8"),
+      );
+
+      expect(body).toMatchObject({
+        name: "{{SCOPE}}/ui",
+        exports: {
+          "./components/*": "./src/components/*.tsx",
+          "./globals.css": "./src/styles/globals.css",
+          "./hooks/*": "./src/hooks/*.ts",
+          "./lib/*": "./src/lib/*.ts",
+          "./themes/default.css": "./src/styles/themes/default.css",
+        },
+        scripts: { typecheck: "tsc --noEmit" },
+      });
+      for (const map of [
+        "dependencies",
+        "devDependencies",
+        "peerDependencies",
+        "optionalDependencies",
+      ]) {
+        expect(body).not.toHaveProperty(map);
+      }
+    });
+
+    test("every package a UI item imports is declared by the variant", async () => {
+      const { variant } = await uiModule();
+      const declared = new Set([
+        ...Object.keys(variant.dependencies ?? {}),
+        ...Object.keys(variant.devDependencies ?? {}),
+      ]);
+      const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+      const missing: string[] = [];
+
+      for (const item of catalog.items.filter(landsInPackagesUi)) {
+        for (const file of item.files ?? []) {
+          if (!/\.tsx?$/.test(file.path)) {
+            continue;
+          }
+          for (const name of packagesImportedBy(await readFile(file.path, "utf8"))) {
+            // `@acme/ui/...` is the host package itself, checked below.
+            if (name !== "@acme/ui" && !declared.has(name)) {
+              missing.push(`${item.name}: ${name}`);
+            }
+          }
+        }
+      }
+
+      expect(missing).toEqual([]);
+    });
+
+    test("every `@acme/ui/<subpath>` a UI item imports is an export of the package", async () => {
+      const { dir } = await uiModule();
+      const { exports }: { exports: Record<string, string> } = JSON.parse(
+        await readFile(join(dir, "template/packages/ui/package.json"), "utf8"),
+      );
+      const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+      const unreachable: string[] = [];
+
+      for (const item of catalog.items.filter(landsInPackagesUi)) {
+        for (const file of item.files ?? []) {
+          if (!/\.tsx?$/.test(file.path)) {
+            continue;
+          }
+          for (const [, subpath] of (await readFile(file.path, "utf8")).matchAll(
+            /from\s+"@acme\/ui\/([^"]+)"/g,
+          )) {
+            if (!Object.keys(exports).some((pattern) => exportMatches(pattern, `./${subpath}`))) {
+              unreachable.push(`${item.name}: @acme/ui/${subpath}`);
+            }
+          }
+        }
+      }
+
+      expect(unreachable).toEqual([]);
+    });
+  });
+
   test("every copy glob of every variant matches a file under template/", async () => {
     const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
     const unmatched: string[] = [];

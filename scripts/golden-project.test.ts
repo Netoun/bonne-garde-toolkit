@@ -168,6 +168,7 @@ describe("the golden project and modules", () => {
     expect(Object.keys(EXCLUDED_MODULES).sort()).toEqual([
       "provider/cloudflare",
       "provider/dockerfile",
+      "ui/shadcn",
     ]);
     expect(MODULES.some((name) => name.startsWith("provider/"))).toBe(false);
   });

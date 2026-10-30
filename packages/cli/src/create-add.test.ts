@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { readProjectManifest } from "@bonne-garde/schema";
 import { addItems, listItems } from "./add";
 import { createProject } from "./create";
+import { doctorExitCode, runDoctor } from "./doctor";
 import { findRepoRoot, templateBaseDir } from "./paths";
 
 const dirs: string[] = [];
@@ -157,6 +158,58 @@ describe("bg create + add", () => {
     const { manifest, migratedFrom } = readProjectManifest(template);
     expect(migratedFrom).toBeNull();
     expect(manifest).toMatchObject({ apps: [], modules: {}, items: {}, files: {}, regions: {} });
+  });
+
+  test("`bg add ui/shadcn` writes the host package, with its dependencies merged into the vendored package.json", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "bg-cli-ui-"));
+    dirs.push(parent);
+    const target = await createProject({
+      name: "ui-demo",
+      cwd: parent,
+      git: false,
+      install: false,
+      registry: repoRegistry(),
+      scope: "@shop",
+    });
+
+    const { modulePlans, result } = await addItems({
+      projectRoot: target,
+      items: ["ui/shadcn"],
+      install: false,
+    });
+
+    expect(modulePlans.map((plan) => plan.key)).toEqual(["ui/shadcn"]);
+    expect(result.written.sort()).toEqual([
+      "packages/ui/components.json",
+      "packages/ui/package.json",
+      "packages/ui/src/env.d.ts",
+      "packages/ui/src/styles/globals.css",
+      "packages/ui/src/styles/themes/default.css",
+      "packages/ui/tsconfig.json",
+    ]);
+    const pkg = JSON.parse(await readFile(join(target, "packages/ui/package.json"), "utf8")) as {
+      name: string;
+      exports: Record<string, string>;
+      scripts: Record<string, string>;
+      dependencies: Record<string, string>;
+      devDependencies: Record<string, string>;
+    };
+    expect(pkg.name).toBe("@shop/ui");
+    expect(Object.keys(pkg.exports)).toContain("./hooks/*");
+    expect(pkg.scripts.typecheck).toBe("tsc --noEmit");
+    expect(Object.keys(pkg.dependencies)).toEqual(Object.keys(pkg.dependencies).sort());
+    expect(pkg.dependencies.react).toBe("19.2.8");
+    expect(pkg.devDependencies).toEqual({ "@types/react": "19.2.18" });
+    expect(await readFile(join(target, "packages/ui/components.json"), "utf8")).toContain(
+      '"components": "@shop/ui/components"',
+    );
+
+    const { manifest } = readProjectManifest(
+      JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as unknown,
+    );
+    expect(manifest.modules.ui?.map((record) => record.id)).toEqual(["shadcn"]);
+    expect(manifest.files["packages/ui/package.json"]?.owner).toBe("ui/shadcn");
+    expect(doctorExitCode(await runDoctor(target), true)).toBe(0);
   });
 
   describe("add records what it wrote", () => {
