@@ -6,13 +6,11 @@
 
 ## Stack
 
-| App           | Runner               | Env                    | HTTP Mock      | Command                |
-| ------------- | -------------------- | ---------------------- | -------------- | ---------------------- |
-| `apps/api`    | `bun:test` (native)  | `bun:sqlite` in-memory | None (real DB) | `bun test`             |
-| `apps/spa`    | Vite+ (Vitest) + RTL | `jsdom`                | MSW            | `bun run test`         |
-| `apps/ssr`    | Vite+ (Vitest) + RTL | `jsdom`                | MSW            | `bun run test`         |
-| `apps/static` | Vite+ (Vitest) + RTL | `jsdom`                | MSW            | `bun run test`         |
-| `scripts`     | `bun:test`           | Temporary directories  | None           | `bun run test:scripts` |
+| App        | Runner               | Env                    | HTTP Mock      | Command                |
+| ---------- | -------------------- | ---------------------- | -------------- | ---------------------- |
+| `apps/api` | `bun:test` (native)  | `bun:sqlite` in-memory | None (real DB) | `bun test`             |
+| `apps/spa` | Vite+ (Vitest) + RTL | `jsdom`                | MSW            | `bun run test`         |
+| `scripts`  | `bun:test`           | Temporary directories  | None           | `bun run test:scripts` |
 
 From root: `bun run test` runs scripts first, then all workspace test scripts in parallel. `bun run verify` is the repo gate (check, typecheck, test, build); CI then runs `bun run golden`, which scaffolds a fresh project from the packed CLI, installs its modules and items, and runs the quality gate (`bun run check`, then each module's `checks`) in it; it needs npm.
 
@@ -192,7 +190,7 @@ describe("loader — /resources/:slug", () => {
 
 Cover: **nominal case + all error cases** (404, 401, 500…).
 
-Set `cloudflareContext` on the provider when the loader needs Worker bindings. The runnable example in `apps/ssr/src/lib/api.server.test.ts` verifies URL resolution and cookie forwarding through the real Eden client and MSW. The snippet above illustrates a future resource route; no such domain route is shipped.
+Set `cloudflareContext` on the provider when the loader needs Worker bindings. The runnable example in the `web/ssr` module (`registry/modules/web/ssr/template/apps/ssr/src/lib/api.server.test.ts`, which golden runs) verifies URL resolution and cookie forwarding through the real Eden client and MSW. The snippet above illustrates a future resource route; no such domain route is shipped.
 
 ### Front Checklist
 
@@ -223,8 +221,6 @@ bun run test
 # Per app
 bun run --filter @acme/api test
 bun run --filter @acme/spa test
-bun run --filter @acme/ssr test
-bun run --filter @acme/static test
 bun run test:scripts
 
 # Watch mode (from the app)

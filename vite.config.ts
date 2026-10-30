@@ -37,13 +37,7 @@ export default defineConfig({
     overrides: [
       {
         // Front apps + shared React packages — plugins replace the base list.
-        files: [
-          "apps/spa/**",
-          "apps/ssr/**",
-          "apps/static/**",
-          "packages/ui/**",
-          "packages/emails/**",
-        ],
+        files: ["apps/spa/**", "packages/ui/**", "packages/emails/**"],
         plugins: ["typescript", "import", "unicorn", "react", "node"],
         env: {
           browser: true,

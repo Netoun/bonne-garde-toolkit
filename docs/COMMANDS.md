@@ -17,7 +17,7 @@
 | `brand`              | `bun scripts/brand.ts`                                                                                                     |
 | `build`              | `bun run --parallel --filter '*' build`                                                                                    |
 | `check`              | `vp check`                                                                                                                 |
-| `check:legacy`       | `vp check apps/api apps/spa apps/ssr apps/static packages/api-runtime packages/config packages/emails packages/ui`         |
+| `check:legacy`       | `vp check apps/api apps/spa packages/api-runtime packages/config packages/emails packages/ui`                              |
 | `check:platform`     | `vp check packages/cli packages/registry packages/schema scripts`                                                          |
 | `dev`                | `bun run --parallel --filter '*' dev`                                                                                      |
 | `fmt`                | `vp fmt --write`                                                                                                           |
@@ -41,7 +41,7 @@
 | `test`               | `bun run test:platform && bun run test:legacy`                                                                             |
 | `test:legacy`        | `bun run --parallel --filter '@acme/*' test`                                                                               |
 | `test:platform`      | `bun run test:scripts && bun run --parallel --filter '@bonne-garde/*' test`                                                |
-| `test:scripts`       | `bun test ./scripts ./registry/modules --path-ignore-patterns 'registry/modules/{api,provider/cloudflare}/**'`             |
+| `test:scripts`       | `bun test ./scripts ./registry/modules --path-ignore-patterns 'registry/modules/{api,web,provider/cloudflare}/**'`         |
 | `typecheck`          | `bun run typecheck:platform && bun run typecheck:legacy`                                                                   |
 | `typecheck:legacy`   | `bun run --parallel --filter '@acme/*' typecheck`                                                                          |
 | `typecheck:platform` | `bun run typecheck:scripts && bun run --parallel --filter '@bonne-garde/*' typecheck`                                      |
@@ -80,38 +80,6 @@
 ### apps/spa
 
 `@acme/spa` · From root: `bun run --filter @acme/spa <script>` · or from `apps/spa/`: `bun run <script>`
-
-| Script         | Command                              |
-| -------------- | ------------------------------------ |
-| `build`        | `react-router build`                 |
-| `deploy`       | `wrangler pages deploy build/client` |
-| `dev`          | `react-router dev`                   |
-| `pretypecheck` | `react-router typegen`               |
-| `test`         | `vp test`                            |
-| `test:watch`   | `vp test watch`                      |
-| `typecheck`    | `tsc --noEmit`                       |
-
----
-
-### apps/ssr
-
-`@acme/ssr` · From root: `bun run --filter @acme/ssr <script>` · or from `apps/ssr/`: `bun run <script>`
-
-| Script         | Command                |
-| -------------- | ---------------------- |
-| `build`        | `react-router build`   |
-| `deploy`       | `wrangler deploy`      |
-| `dev`          | `react-router dev`     |
-| `pretypecheck` | `react-router typegen` |
-| `test`         | `vp test`              |
-| `test:watch`   | `vp test watch`        |
-| `typecheck`    | `tsc --noEmit`         |
-
----
-
-### apps/static
-
-`@acme/static` · From root: `bun run --filter @acme/static <script>` · or from `apps/static/`: `bun run <script>`
 
 | Script         | Command                              |
 | -------------- | ------------------------------------ |

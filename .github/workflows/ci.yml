@@ -17,8 +17,6 @@ jobs:
     timeout-minutes: 15
     env:
       VITE_API_URL: http://localhost:5172
-      VITE_PLAYER_URL: http://localhost:5174
-      VITE_MARKETING_URL: http://localhost:5175
       VITE_APP_URL: http://localhost:5173
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

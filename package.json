@@ -20,7 +20,7 @@
     "fmt:check": "vp fmt --check",
     "check": "vp check",
     "check:platform": "vp check packages/cli packages/registry packages/schema scripts",
-    "check:legacy": "vp check apps/api apps/spa apps/ssr apps/static packages/api-runtime packages/config packages/emails packages/ui",
+    "check:legacy": "vp check apps/api apps/spa packages/api-runtime packages/config packages/emails packages/ui",
     "knip": "knip",
     "knip:fix": "knip --fix --allow-remove-files",
     "test": "bun run test:platform && bun run test:legacy",

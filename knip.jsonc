@@ -11,12 +11,6 @@
     "apps/spa": {
       "project": ["src/**/*.{ts,tsx,css}"],
     },
-    "apps/ssr": {
-      "project": ["src/**/*.{ts,tsx,css}"],
-    },
-    "apps/static": {
-      "project": ["src/**/*.{ts,tsx,css}"],
-    },
     "packages/emails": {
       "project": ["src/**/*.{ts,tsx}"],
     },

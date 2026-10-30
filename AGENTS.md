@@ -51,8 +51,6 @@
 acme/
 ├── apps/api
 ├── apps/spa
-├── apps/ssr
-├── apps/static
 ├── packages/config
 ├── packages/emails
 ├── packages/ui
@@ -88,8 +86,6 @@ bun run golden                            # fresh project: create → add module
 
 bun run --filter @acme/api dev
 bun run --filter @acme/spa dev
-bun run --filter @acme/ssr dev
-bun run --filter @acme/static dev
 
 # From apps/api/
 bun run db:generate
