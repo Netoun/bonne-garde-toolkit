@@ -2,8 +2,9 @@
 /**
  * The golden project: what a consumer does, end to end, in a fresh directory.
  *
- *   bg create → bg add → bun install → typecheck → test → build → bg doctor --strict
- *   → bun run check → the `checks` of every installed module
+ *   bg create → bg add of a UI item, refused → bg add of every module and every item in one call
+ *   → bun install → typecheck → test → build → bg doctor --strict → bun run check
+ *   → the `checks` of every installed module
  *
  * Any non-zero exit fails the run and names the phase. It needs a real `bun install` against npm,
  * so it is not part of `verify`; CI runs it as its own step.
@@ -71,6 +72,10 @@ export function selectItems(
  * fails the run, so a new module is a decision made here and not a silent gap.
  */
 export const MODULES: readonly string[] = ["tooling/vite-plus", "ui/shadcn"];
+
+/** The item `refuse` tries with no ui module, and the module its refusal has to name. */
+const REFUSED_ITEM = "button";
+const REFUSED_MODULE = "ui/shadcn";
 
 /**
  * Modules `bg list` shows that stay out of the golden project, each with its reason. An entry for
@@ -171,6 +176,49 @@ export function readAddedModules(stdout: string, expected: readonly string[]): A
   return added;
 }
 
+/**
+ * The argv of the one `bg add` golden runs: every module, then every item. One call, so a module
+ * and the items that need it are planned together, and never `--force`: two installs that write
+ * the same file have to fail here and not be settled by an overwrite. A name given twice, and an
+ * empty side, fail, so a broken `bg list` is not a green run.
+ */
+export function addArguments(modules: readonly string[], items: readonly string[]): string[] {
+  if (modules.length === 0) {
+    throw new Error("no modules to add");
+  }
+  if (items.length === 0) {
+    throw new Error("no items to add");
+  }
+  const names = [...modules, ...items];
+  const twice = names.filter((name, index) => names.indexOf(name) !== index);
+  if (twice.length > 0) {
+    throw new Error(`named twice in one \`bg add\`: ${[...new Set(twice)].join(", ")}`);
+  }
+  return ["add", ...names, "--yes", "--no-install"];
+}
+
+/** How a command ended, for one that is expected to fail. */
+export type Attempt = { code: number; stderr: string };
+
+/**
+ * An item that lands in `packages/ui` is refused until a `ui` module is named (030). Golden tries it
+ * with the packed CLI in a project that has none, before installing anything: the refusal has to
+ * carry the command that fixes it, as an agent running `bg add` reads it and nothing else.
+ */
+export function expectRefusal(attempt: Attempt, item: string, module: string): void {
+  if (attempt.code === 0) {
+    throw new Error(
+      `\`bg add ${item}\` succeeded in a project with no ${module}: it must be refused`,
+    );
+  }
+  const fix = `bg add ${module} ${item}`;
+  if (!attempt.stderr.includes(fix)) {
+    throw new Error(
+      `\`bg add ${item}\` was refused without naming \`${fix}\`; it printed: ${attempt.stderr.trim() || "(nothing)"}`,
+    );
+  }
+}
+
 type Timing = { phase: string; ms: number };
 
 function seconds(ms: number): string {
@@ -192,6 +240,12 @@ async function capture(argv: string[], cwd: string): Promise<string> {
     throw new Error(`\`${argv.join(" ")}\` exited with ${code}`);
   }
   return stdout;
+}
+
+async function attempt(argv: string[], cwd: string): Promise<Attempt> {
+  const proc = Bun.spawn(argv, { cwd, stdin: "ignore", stdout: "ignore", stderr: "pipe" });
+  const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+  return { code, stderr };
 }
 
 async function phase<T>(timings: Timing[], name: string, body: () => Promise<T>): Promise<T> {
@@ -241,8 +295,24 @@ async function golden(work: string, timings: Timing[]): Promise<void> {
   await phase(timings, "create", () =>
     run(bg("create", project, "--yes", "--no-git", "--no-install", "--registry", registry), work),
   );
+  await phase(timings, "refuse", async () => {
+    if (!items.includes(REFUSED_ITEM) || !modules.includes(REFUSED_MODULE)) {
+      throw new Error(
+        `the refusal check needs ${REFUSED_ITEM} and ${REFUSED_MODULE} in the install`,
+      );
+    }
+    const manifest = await Bun.file(join(project, "bg.json")).text();
+    expectRefusal(
+      await attempt(bg("add", REFUSED_ITEM, "--yes", "--no-install"), project),
+      REFUSED_ITEM,
+      REFUSED_MODULE,
+    );
+    if ((await Bun.file(join(project, "bg.json")).text()) !== manifest) {
+      throw new Error(`the refused \`bg add ${REFUSED_ITEM}\` changed bg.json`);
+    }
+  });
   const added = await phase(timings, "add", async () => {
-    const stdout = await capture(bg("add", ...modules, ...items, "--yes", "--no-install"), project);
+    const stdout = await capture(bg(...addArguments(modules, items)), project);
     process.stdout.write(stdout);
     return readAddedModules(stdout, modules);
   });

@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { join, resolve } from "node:path";
 import { loadLocalRegistry } from "../packages/registry/src/index";
 import {
+  addArguments,
   EXCLUDED,
   EXCLUDED_MODULES,
+  expectRefusal,
   MODULES,
   readAddedModules,
   selectItems,
@@ -170,5 +172,67 @@ describe("the golden project and modules", () => {
       "provider/dockerfile",
     ]);
     expect(MODULES.some((name) => name.startsWith("provider/"))).toBe(false);
+  });
+});
+
+describe("addArguments", () => {
+  test("is one `bg add`: the modules, then every item, with --yes and --no-install", () => {
+    expect(addArguments(["tooling/vite-plus", "ui/shadcn"], ["utils", "button"])).toEqual([
+      "add",
+      "tooling/vite-plus",
+      "ui/shadcn",
+      "utils",
+      "button",
+      "--yes",
+      "--no-install",
+    ]);
+  });
+
+  test("never passes --force: a collision between two installs must fail the run", () => {
+    expect(addArguments(MODULES, ["utils", "button"])).not.toContain("--force");
+  });
+
+  test("fails when a name is given twice, since a second mention hides a gap in a list", () => {
+    expect(() => addArguments(["ui/shadcn"], ["button", "button"])).toThrow(/button/);
+    expect(() => addArguments(["ui/shadcn"], ["ui/shadcn"])).toThrow(/ui\/shadcn/);
+  });
+
+  test("fails with nothing to install, so an empty `bg list` is not a green run", () => {
+    expect(() => addArguments([], ["button"])).toThrow(/no modules/);
+    expect(() => addArguments(["ui/shadcn"], [])).toThrow(/no items/);
+  });
+
+  test("golden installs the ui module that every UI item needs, in the same call as the items", async () => {
+    const catalog = await loadLocalRegistry(
+      join(resolve(import.meta.dir, ".."), "registry/registry.json"),
+    );
+    const listing = catalog.items.map((item) => `${item.name}\t${item.type}`).join("\n");
+
+    const argv = addArguments(MODULES, selectItems(listing, EXCLUDED).items);
+
+    expect(argv).toContain("ui/shadcn");
+    expect(argv).toContain("button");
+    expect(argv.indexOf("ui/shadcn")).toBeLessThan(argv.indexOf("button"));
+  });
+});
+
+describe("expectRefusal", () => {
+  const stderr =
+    "button needs the ui module, and none is installed or named in this call; run: bg add ui/shadcn button\n";
+
+  test("passes when the add failed and the message gives the command that fixes it", () => {
+    expect(() => expectRefusal({ code: 1, stderr }, "button", "ui/shadcn")).not.toThrow();
+  });
+
+  test("fails when the add succeeded: an item with no host module must not install", () => {
+    expect(() => expectRefusal({ code: 0, stderr: "" }, "button", "ui/shadcn")).toThrow(
+      /succeeded/,
+    );
+  });
+
+  test("fails when it was refused for another reason, and says what it printed", () => {
+    expect(() =>
+      expectRefusal({ code: 1, stderr: "unknown name: button\n" }, "button", "ui/shadcn"),
+    ).toThrow(/bg add ui\/shadcn button.*unknown name: button/s);
   });
 });
