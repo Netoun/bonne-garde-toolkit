@@ -604,29 +604,169 @@ describe("resolveModulePlans: the plan (050 step 8)", () => {
     ).rejects.toThrow(/declares dependencies but no workspace package/);
   });
 
-  test("a variant that also vendors the package.json it generates is refused (035)", async () => {
-    const catalog = await registry([
+  describe("a vendored package.json (035: exports and scripts, no dependency maps)", () => {
+    const VENDORED = `${JSON.stringify(
       {
-        category: "auth",
-        id: "better-auth",
-        json: {
-          variants: [
-            {
-              key: "default",
-              match: {},
-              workspace: { name: "{{SCOPE}}/auth", path: "packages/auth" },
-              dependencies: { "better-auth": "1.4.2" },
-              copy: ["packages/auth/**"],
-            },
-          ],
-        },
-        template: { "packages/auth/package.json": "{}\n" },
+        name: "{{SCOPE}}/ui",
+        version: "0.1.0",
+        private: true,
+        type: "module",
+        exports: { "./components/*": "./src/components/*.tsx" },
+        scripts: { test: "bun test", typecheck: "tsc --noEmit" },
       },
-    ]);
+      null,
+      2,
+    )}\n`;
 
-    await expect(
-      resolveModulePlans(catalog, [{ category: "auth", id: "better-auth" }], project()),
-    ).rejects.toThrow(/both vendors packages\/auth\/package.json and generates it/);
+    const keysOf = (value: unknown): string[] =>
+      typeof value === "object" && value !== null ? Object.keys(value) : [];
+    const bodyOf = (content: string | undefined): Record<string, unknown> => {
+      const parsed: unknown = JSON.parse(content ?? "null");
+      return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+        ? Object.fromEntries(Object.entries(parsed))
+        : {};
+    };
+
+    const uiModule = (
+      template: string,
+      variant: Record<string, unknown> = {
+        dependencies: { tailwindcss: "4.3.3", "@base-ui/react": "1.7.0", clsx: "2.1.1" },
+        devDependencies: { typescript: "7.0.2" },
+      },
+      extra: Record<string, string> = {},
+    ): ModuleSpec => ({
+      category: "ui",
+      id: "shadcn",
+      json: {
+        variants: [
+          {
+            key: "default",
+            match: {},
+            workspace: { name: "{{SCOPE}}/ui", path: "packages/ui" },
+            copy: ["packages/ui/package.json", ...Object.keys(extra)],
+            ...variant,
+          },
+        ],
+      },
+      template: { "packages/ui/package.json": template, ...extra },
+    });
+
+    const planFiles = async (spec: ModuleSpec) => {
+      const catalog = await registry([spec]);
+      const [plan] = await resolveModulePlans(
+        catalog,
+        [{ category: "ui", id: "shadcn" }],
+        project({}, "@shop"),
+      );
+      return plan?.files ?? [];
+    };
+    const planUi = async (spec: ModuleSpec) =>
+      (await planFiles(spec)).filter((file) => file.target === "packages/ui/package.json");
+
+    test("the variant's maps are merged into it, sorted, and the file is written once", async () => {
+      const files = await planUi(uiModule(VENDORED));
+
+      expect(files).toHaveLength(1);
+      const [file] = files;
+      expect(JSON.parse(file?.content ?? "null")).toEqual({
+        name: "@shop/ui",
+        version: "0.1.0",
+        private: true,
+        type: "module",
+        exports: { "./components/*": "./src/components/*.tsx" },
+        scripts: { test: "bun test", typecheck: "tsc --noEmit" },
+        dependencies: { "@base-ui/react": "1.7.0", clsx: "2.1.1", tailwindcss: "4.3.3" },
+        devDependencies: { typescript: "7.0.2" },
+      });
+      // Key order is the one `vp fmt` (sortPackageJson) leaves alone: the vendored keys as they
+      // were, then the maps, each sorted. Two-space JSON and a final newline, as the formatter has it.
+      const body = bodyOf(file?.content);
+      expect(Object.keys(body)).toEqual([
+        "name",
+        "version",
+        "private",
+        "type",
+        "exports",
+        "scripts",
+        "dependencies",
+        "devDependencies",
+      ]);
+      expect(keysOf(body.dependencies)).toEqual(["@base-ui/react", "clsx", "tailwindcss"]);
+      expect(file?.content.endsWith("}\n")).toBe(true);
+      expect(file?.content).toContain('\n  "name": "@shop/ui",\n');
+    });
+
+    test("a variant with only devDependencies adds only that map", async () => {
+      const [file] = await planUi(uiModule(VENDORED, { devDependencies: { typescript: "7.0.2" } }));
+
+      const body = bodyOf(file?.content);
+      expect(body.devDependencies).toEqual({ typescript: "7.0.2" });
+      expect("dependencies" in body).toBe(false);
+    });
+
+    test("a variant with no dependency leaves the vendored file byte for byte", async () => {
+      const [file] = await planUi(uiModule(VENDORED, {}));
+
+      expect(file?.content).toBe(VENDORED.replaceAll("{{SCOPE}}", "@shop"));
+    });
+
+    for (const map of [
+      "dependencies",
+      "devDependencies",
+      "peerDependencies",
+      "optionalDependencies",
+    ]) {
+      test(`a vendored ${map} map is refused, naming the module, the file, the map and the variant`, async () => {
+        const vendored = `${JSON.stringify({ name: "{{SCOPE}}/ui", [map]: { clsx: "2.1.1" } })}\n`;
+
+        await expect(planUi(uiModule(vendored))).rejects.toThrow(
+          new RegExp(
+            `ui/shadcn vendors packages/ui/package\\.json with ${map}.*variant "default" in module\\.json`,
+            "s",
+          ),
+        );
+      });
+    }
+
+    test("every offending map is named at once", async () => {
+      const vendored = JSON.stringify({ dependencies: { a: "1.0.0" }, devDependencies: {} });
+
+      await expect(planUi(uiModule(vendored))).rejects.toThrow(
+        /with dependencies, devDependencies/,
+      );
+    });
+
+    test("the maps are refused even when the variant declares none to merge", async () => {
+      const vendored = JSON.stringify({ name: "x", dependencies: { a: "1.0.0" } });
+
+      await expect(planUi(uiModule(vendored, {}))).rejects.toThrow(
+        /vendors packages\/ui\/package\.json with dependencies/,
+      );
+    });
+
+    test("a vendored file that is not JSON fails naming the file, not with a parser trace", async () => {
+      await expect(planUi(uiModule("{ not json"))).rejects.toThrow(
+        /ui\/shadcn vendors packages\/ui\/package\.json, which is not valid JSON/,
+      );
+    });
+
+    test("a vendored file that is JSON but not an object fails the same way", async () => {
+      await expect(planUi(uiModule("[]\n"))).rejects.toThrow(
+        /ui\/shadcn vendors packages\/ui\/package\.json, which is not a JSON object/,
+      );
+    });
+
+    test("only the workspace's package.json is merged into: another vendored one is left alone", async () => {
+      const other = JSON.stringify({ name: "other", dependencies: { a: "1.0.0" } });
+
+      const files = await planFiles(
+        uiModule(VENDORED, undefined, { "packages/other/package.json": other }),
+      );
+
+      expect(files.find((file) => file.target === "packages/other/package.json")?.content).toBe(
+        other,
+      );
+    });
   });
 });
 

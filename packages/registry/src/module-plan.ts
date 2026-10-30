@@ -342,33 +342,97 @@ async function copiedFiles(
   }));
 }
 
-function generatedPackageJson(
+/** npm's four dependency maps: 035 declares a dependency once, in the variant, so a vendored file carries none. */
+const DEPENDENCY_MAPS = [
+  "dependencies",
+  "devDependencies",
+  "peerDependencies",
+  "optionalDependencies",
+] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sortedMap(map: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(map).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+}
+
+/** The vendored `package.json`, parsed: it must be a JSON object with no dependency map (035). */
+function parseVendoredPackageJson(
+  key: string,
+  variant: ModuleVariant,
+  file: PlannedFile,
+): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(file.content);
+  } catch (error) {
+    throw new PlanError(
+      `${key} vendors ${file.target}, which is not valid JSON (${error instanceof Error ? error.message : String(error)}): fix the file under its template/`,
+    );
+  }
+  if (!isRecord(parsed)) {
+    throw new PlanError(
+      `${key} vendors ${file.target}, which is not a JSON object: fix the file under its template/`,
+    );
+  }
+  const carried = DEPENDENCY_MAPS.filter((map) => map in parsed);
+  if (carried.length > 0) {
+    throw new PlanError(
+      `${key} vendors ${file.target} with ${carried.join(", ")}: spec 035 keeps dependency maps out of a vendored package.json and merges the variant's. ` +
+        `Move them to variant "${variant.key}" in module.json (dependencies, devDependencies) and delete them from the file`,
+    );
+  }
+  return parsed;
+}
+
+/**
+ * The workspace `package.json` of a variant (spec 035, 050): the vendored one with the variant's
+ * `dependencies` / `devDependencies` merged in, sorted, or, when the module vendors none, one
+ * generated from the variant. `null` when the variant has no workspace and no dependency, and when
+ * a vendored file has nothing to merge, which then lands as it was written.
+ */
+function workspacePackageJson(
   manifest: ModuleManifest,
   variant: ModuleVariant,
   scope: string,
+  vendored: PlannedFile[],
 ): PlannedFile | null {
+  const key = keyOf(manifest);
   const dependencies = variant.dependencies ?? {};
   const devDependencies = variant.devDependencies ?? {};
-  if (Object.keys(dependencies).length + Object.keys(devDependencies).length === 0) {
-    return null;
-  }
+  const declared = Object.keys(dependencies).length + Object.keys(devDependencies).length;
   if (!variant.workspace) {
+    if (declared === 0) {
+      return null;
+    }
     throw new PlanError(
-      `${keyOf(manifest)} declares dependencies but no workspace package to hold them: spec 050 writes them into a generated package.json, so variant ${variant.key} needs a \`workspace\``,
+      `${key} declares dependencies but no workspace package to hold them: spec 050 writes them into a package.json, so variant ${variant.key} needs a \`workspace\``,
     );
   }
-  const body = {
+
+  const target = `${variant.workspace.path}/package.json`;
+  const own = vendored.find((file) => file.target === target);
+  // Parsed even when there is nothing to merge: a vendored file with a map is refused either way.
+  const vendoredBody = own ? parseVendoredPackageJson(key, variant, own) : null;
+  if (declared === 0) {
+    return null;
+  }
+  const base = vendoredBody ?? {
     name: variant.workspace.name.replaceAll("{{SCOPE}}", scope),
     version: manifest.version ?? "0.0.0",
     private: true,
     type: "module",
-    ...(Object.keys(dependencies).length > 0 ? { dependencies } : {}),
-    ...(Object.keys(devDependencies).length > 0 ? { devDependencies } : {}),
   };
-  return {
-    target: `${variant.workspace.path}/package.json`,
-    content: `${JSON.stringify(body, null, 2)}\n`,
+  const body = {
+    ...base,
+    ...(Object.keys(dependencies).length > 0 ? { dependencies: sortedMap(dependencies) } : {}),
+    ...(Object.keys(devDependencies).length > 0
+      ? { devDependencies: sortedMap(devDependencies) }
+      : {}),
   };
+  return { target, content: `${JSON.stringify(body, null, 2)}\n` };
 }
 
 function resolveOptions(manifest: ModuleManifest): Record<string, ModuleOptionValue> {
@@ -387,16 +451,11 @@ async function planModule(
   const variant = selectVariant(manifest, present);
   refuseUnsupported(key, variant);
 
-  const files = await copiedFiles(module, variant, project.scope);
-  const generated = generatedPackageJson(manifest, variant, project.scope);
-  if (generated) {
-    if (files.some((file) => file.target === generated.target)) {
-      throw new PlanError(
-        `${key} both vendors ${generated.target} and generates it from dependencies: spec 035 allows one`,
-      );
-    }
-    files.push(generated);
-  }
+  const copied = await copiedFiles(module, variant, project.scope);
+  const packageJson = workspacePackageJson(manifest, variant, project.scope, copied);
+  const files = packageJson
+    ? [...copied.filter((file) => file.target !== packageJson.target), packageJson]
+    : copied;
   files.sort((a, b) => (a.target < b.target ? -1 : a.target > b.target ? 1 : 0));
 
   return {
