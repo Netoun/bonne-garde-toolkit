@@ -24,11 +24,12 @@ The catalog is closed. A module MUST NOT invent a patch type; adding one is a pl
 
 - JSON/JSONC edits MUST go through `jsonc-parser` `modify` + `applyEdits` — comments and formatting survive.
 - TypeScript edits MUST go through `ts-morph`. Never regex, never string concatenation.
-- A region key is the leaf's path joined with dots (`scripts.gen:branding`); a segment with a `.`, `[`, `]`, `"` or `\` in it, or an empty one, is written as a JSON string (`dependencies."lodash.merge"`), so `scripts.merge` and `jsonc.merge` claim the same text for the same leaf.
-- `jsonc.merge` writes an array whole, as a leaf. What it inserts is laid out like the file around it: after the last member, objects expanded, an array of scalars on one line while it fits in 100 columns, trailing commas where the file uses them. A leaf under a parent that is not an object makes the patch `failed`. It does not know `sortPackageJson`: a new key of a `package.json` lands last, where the formatter may move it, so a module's dependencies stay in its variant (050).
-- `ts.addImport` and `ts.addNamedExport` parse the one file in memory, with the compiler ts-morph brings: no tsconfig, no module resolution, no type checker. They insert text at a position ts-morph found and format nothing, and what they write is what the project's formatter writes (one line up to 100 columns, else one name per line). A name already imported (exported) from the specifier counts; the missing ones are added to the declaration the file has for it, else a new one goes after the last import (re-export). The region is `equal` or absent, never user-owned, since the patch declares a presence and not a value; a comment inside the braces it would have to rewrite makes it `failed`.
-- `ts.elysiaUse` finds the exported `const <targetName>` built as a chain of calls on `new Elysia(...)` and puts `.use(<argument>)` on a line of its own, indented like the call it follows, after the last `.use` that leads the chain and before the first call that is not one. `targetName` and `argument` are identifiers; importing the argument is a `ts.addImport` of its own. The region is `equal` when any `.use(<argument>)` is in the chain, else absent, never user-owned. A missing file, variable or `new Elysia` root makes it `failed`, and so does a chain written on one line that already has calls, which the formatter would lay out differently.
-- `{{SCOPE}}` is rendered in the `moduleSpecifier` of a TS patch when the install is planned, as in a variant's dependency keys, and the rendered text is the region key; no other argument of any patch accepts it.
+- A region key is the leaf's path joined with dots, a segment holding `.`, `[`, `]`, `"` or `\`, or an empty one, being written as a JSON string (`dependencies."lodash.merge"`), so `scripts.merge` and `jsonc.merge` claim the same text for the same leaf.
+- `jsonc.merge` writes an array whole as a leaf, lays out what it inserts like the file around it (objects expanded, an array of scalars on one line while it fits in 100 columns, trailing commas where the file uses them), and fails a leaf under a parent that is not an object.
+- TypeScript patches parse the one file in memory with ts-morph's own compiler: no tsconfig, no module resolution, no type checker.
+- `ts.addImport` and `ts.addNamedExport` count a name already imported (exported) from the specifier, add the missing ones to the declaration the file has for it or else after the last import (re-export), write what the project's formatter writes, and leave a region `equal` or absent, never user-owned.
+- `ts.elysiaUse` puts `.use(<argument>)` on a line of its own after the last `.use` that leads the chain `export const <targetName> = new Elysia(...)...` and before its first other call, is `equal` when any `.use(<argument>)` is in the chain, and is `failed` on a missing file, variable or `new Elysia` root, or on a one-line chain that already has calls.
+- `{{SCOPE}}` is rendered in the `moduleSpecifier` of a TS patch when the install is planned, and the rendered text is the region key.
 - Every patch MUST be idempotent: applying it twice yields `applied` then `skipped`, and an identical tree.
 - A patch MUST NOT perform free-text search/replace across arbitrary source.
 - Scope placeholder rewriting (`{{SCOPE}}`) happens at template render time on tier-1 files only — it is **not** a patch and MUST NOT run over project-owned files.
@@ -76,7 +77,7 @@ A patch result is `applied`, `skipped`, or `failed` with a reason. Recorded in `
 
 **Degradation (normative):** a `failed` patch MUST NOT abort the whole install and MUST NOT be silently ignored. It is converted into a pending tier-3 intent carrying the patch's intent, target file, and failure reason. `doctor` reports it; the executor protocol of [065](./065-intentions.md) resolves it.
 
-The intention's id is `<category>/<module-id>/patch-<type>-<file>-<first region>` in kebab case (`auth/better-auth/patch-ts-elysia-use-apps-api-src-app-ts-elysia-app-use-auth-module`): the module whose patch failed, so `bg record` finds its record, and a slug made of what the patch is rather than its place in the list, so it is the same on every `add`. `bg.json` records it on the failed patch as `intention`, since `.bg/` is disposable. A patch may carry an optional `intent` sentence for it; the engine words one from the patch when it does not. `add` stages it as `.bg/add/NN-<slug>.md` beside `session.md`, the entry point of 065, and withholds the module's `checks`, which are its Validation, until nothing is pending. `doctor` reports it as pending until `bg record` closes it, applied or skipped.
+The intention's id is `<category>/<module-id>/patch-<type>-<file>-<first region>` in kebab case, `bg.json` records it on the failed patch as `intention`, a patch may carry an optional `intent` sentence for it, and `add` stages it as `.bg/add/NN-<slug>.md` beside `session.md` and withholds the module's `checks` until none is pending.
 
 ## Staging
 
@@ -86,20 +87,18 @@ The intention's id is `<category>/<module-id>/patch-<type>-<file>-<first region>
 
 ## Conflict policy
 
-| Situation                                                        | Default                                                          |
-| ---------------------------------------------------------------- | ---------------------------------------------------------------- |
-| Target file missing                                              | create                                                           |
-| Target file identical to recorded sha                            | keep, report `skipped`                                           |
-| Target file without regions differs from recorded sha, `add`     | error listing every path; `--force` overwrites                   |
-| Target file without regions differs from recorded sha, `upgrade` | keep, report; `--force` overwrites                               |
-| Target file recorded for another owner                           | error naming both owners; `--force` takes it over and reports it |
-| Target file with regions, edited since written, `add`            | keep, report `kept`; classify its regions (below)                |
-| Region present and equal                                         | `skipped`                                                        |
-| Region present and differing                                     | error; `--force` overwrites                                      |
-| Region owned by another module                                   | error always — `--force` does not bypass                         |
-| Category already filled (`cardinality: one`)                     | error always — use `bg replace`                                  |
-
-A file with recorded regions is never rewritten whole by `add`: when its tier-1 owner asks again and the file changed since it was written, the file is kept and reported `kept`, the patches run on it as it is, and only the regions the call writes are classified, so an edit outside every region is not a conflict. `--force` overwrites a differing region, never the rest of the file. A module that is not the file's tier-1 owner and would write it whole is refused while the file carries another module's regions, as above.
+| Situation                                                        | Default                                                                                                               |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Target file missing                                              | create                                                                                                                |
+| Target file identical to recorded sha                            | keep, report `skipped`                                                                                                |
+| Target file without regions differs from recorded sha, `add`     | error listing every path; `--force` overwrites                                                                        |
+| Target file without regions differs from recorded sha, `upgrade` | keep, report; `--force` overwrites                                                                                    |
+| Target file recorded for another owner                           | error naming both owners; `--force` takes it over and reports it                                                      |
+| Target file with recorded regions, edited since written, `add`   | keep, report `kept`; only the regions written are classified; `--force` overwrites a differing region, never the file |
+| Region present and equal                                         | `skipped`                                                                                                             |
+| Region present and differing                                     | error; `--force` overwrites                                                                                           |
+| Region owned by another module                                   | error always — `--force` does not bypass                                                                              |
+| Category already filled (`cardinality: one`)                     | error always — use `bg replace`                                                                                       |
 
 `add` and `upgrade` differ on a user-modified file on purpose. `add` is a request to install a module whole: keeping the user's file would record the module as installed without that file, so it fails and names the paths. `upgrade` moves an installed project forward: it keeps the user's edit and reports it.
 
