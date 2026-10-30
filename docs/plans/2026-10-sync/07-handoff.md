@@ -1,24 +1,25 @@
 # 07 — Handoff: where to pick up
 
-Written 2026-10-29 at `HEAD` of `feat/platform-cli-registry`; updated 2026-10-30 at `a47036e`. Read
-this, then [08-plan.md](./08-plan.md) §"Next steps". [06-platform-gaps.md](./06-platform-gaps.md)
-holds the argument for the order of the legacy dissolution.
+Written 2026-10-29 at `HEAD` of `feat/platform-cli-registry`; updated 2026-10-30 at `833d2ef`. Read
+this, then [09-dissolution.md](./09-dissolution.md). [06-platform-gaps.md](./06-platform-gaps.md)
+holds the argument for the legacy dissolution; 09 corrects its order to spec 080's.
 
 ## Start here
 
-**Every step of [08-plan.md](./08-plan.md) is done (2026-10-30): P1, P2, A1–A3, B1–B4 and C1.** What
-is left is what those steps exposed, not more of the same plan. 08's "Next steps" has the detail;
-in this order:
+**Every step of [08-plan.md](./08-plan.md) is done (2026-10-30): P1, P2, A1–A3, B1–B4 and C1, and
+the first two of its "Next steps".** What is left is the legacy dissolution. 08's "Next steps" has
+the detail; in this order:
 
-1. **Complete the `spa-react-router` registry item** — list all of its files in
-   `registry/apps/registry.json` — and drop its exclusion from `scripts/golden-project.ts`. Its
-   entry lists 3 of the item's 8 files, so the golden project cannot install it. Until it does,
-   golden does not cover missing `exports` subpaths, the regression class C1 was meant to catch.
-2. **A module install path in `bg add`** (`module.json`: copy list, env, `bg.json` `modules`
-   record). Today `add` cannot install a module at all, so the dockerfile provider can only be
-   materialised by hand, and there is no dockerfile golden run.
-3. **Then the legacy dissolution**, in the order 06 argues: smallest item first, `apps/api` last.
-   C1 unblocked it, within the limit stated in step 1.
+1. **Complete the `spa-react-router` registry item.** **Done** (`2cce2f8`, `9e35a15`, `f56fab1`).
+   Golden installs 8 items and runs `build`, so it now covers missing `exports` subpaths: removing
+   `./components/*` from `registry/ui/package.json` fails it at typecheck, and the same break went
+   green at `fcea043`. CI run 41043145162 is green.
+2. **A module install path in `bg add`.** **Done** (`5aa660e`, `588aa53`, `befac8a`, `9e725ad`,
+   `28296b5`, `833d2ef`). `bg add` installs a `module.json` module; see "What exists now". CI run
+   41044930659 is green.
+3. **The legacy dissolution, in 080's order, not smallest-first.** The plan is
+   [09-dissolution.md](./09-dissolution.md). **Next action: answer the questions at its end, then
+   start at its stage 1 (`tooling`).** Stage 1 depends on none of them.
 
 The diagnosis this file first gave for P1 was wrong. It blamed the Bun version for
 `error: lockfile had changes, but lockfile is frozen`; in fact `--frozen-lockfile` failed under
@@ -29,13 +30,14 @@ the dockerfile template now completes; the build recipe is in that module's READ
 
 CI on #16 is green since P1 (run 41030795565, Bun 1.4.2): the first run past install, and the two
 `media.routes` tests that failed under 1.3.11 pass. It stayed green through the rest: `783d331`
-(run 41035969379), `f162f10` (run 41038194932) and `a47036e` (run 41039492663). That last run is the
-first with the `bun run golden` step, which took 1.3s in total in CI.
+(run 41035969379), `f162f10` (run 41038194932) and `a47036e` (run 41039492663). That run is the
+first with the `bun run golden` step, which took 1.3s in total in CI. Since then `f56fab1` (run 41043145162) and `833d2ef` (run 41044930659) are green too.
 
 ## State of the branch
 
-The table lists the platform commits in order; the last fifteen, `af4352d` to `a47036e`, are B1–B4,
-A1–A3 and C1, in commit order (`git log --oneline 83523b3..HEAD`). `bun install --frozen-lockfile && bun run verify`
+The table lists the platform commits in order; the last twenty-five, `af4352d` to `833d2ef`, are
+B1–B4, A1–A3 and C1, then the spa item and the module install, in commit order
+(`git log --oneline 83523b3..HEAD`; `30b6183` and `fcea043` are plan updates and not listed). `bun install --frozen-lockfile && bun run verify`
 is green in CI, followed by `bun run golden`. `verify` is `vp check`, typecheck (platform +
 legacy), the tests, intentions lint, registry build and the builds. Before the P1 re-lock, `verify`
 was only green on a warm local `node_modules`; CI never got past install.
@@ -69,6 +71,16 @@ was only green on a warm local `node_modules`; CI never got past install.
 | `c26ffb6` | C1: `docs/TESTING.md` says CI also runs the golden project                                                    |
 | `75e91fd` | A2: the dockerfile variant of `@acme/api-runtime`                                                             |
 | `a47036e` | A3: the dockerfile module README, written after the container was built and observed                          |
+| `e4a94e1` | Specs 090 and the intention template name the command `bg record`                                             |
+| `2cce2f8` | Next step 1: `spa-react-router` vendors every file it needs                                                   |
+| `9e35a15` | Next step 1: golden installs `spa-react-router` with the other items                                          |
+| `f56fab1` | Next step 1: golden builds the generated project                                                              |
+| `5aa660e` | Next step 2: the schema keeps the `module.json` fields `add` must act on                                      |
+| `588aa53` | Next step 2: item apply is all-or-nothing                                                                     |
+| `befac8a` | Next step 2: plan a module install (050 steps 3 to 8)                                                         |
+| `9e725ad` | Next step 2: apply a module install and record it (050 steps 10 to 12)                                        |
+| `28296b5` | Next step 2: `bg add` installs a module                                                                       |
+| `833d2ef` | Next step 2: the provider READMEs say what `bg add` does with them                                            |
 
 ## What the plan covered, and what it left
 
@@ -78,13 +90,13 @@ kept for the record. What follows is only the shape of it, so this file stands a
 
 Two shared prerequisites, then two independent tracks, then one step that needed both. All done:
 
-|             |                                                                                                                                                               |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **P1**      | **Done** (`f7c17c1`, `375c4dd`, `59b79fa`). Re-locked `bun.lock` (the real CI fix), pinned Bun 1.4.2, and `docker build` completes.                           |
-| **P2**      | **Done** (`f8c826f`); the `bg.json` v2 row landed with B1 (`af4352d`). Two more gaps found and fixed than planned.                                            |
-| **Track A** | **Done.** A1 `aad1c96` and `783d331`, A2 `75e91fd`, A3 `a47036e`. The dockerfile provider runs; it has no database and no media storage.                      |
-| **Track B** | **Done.** B1 `af4352d`, B2 `c2ac047`, B3 `ce46708`, B4 `f162f10`. `add` records files only: nothing yet produces regions, patches or module records.          |
-| **Then**    | **Done.** C1 `177c690` and `9ee6dd0`. Covers less than planned: `spa-react-router` is excluded, so missing `exports` subpaths and the Bun pin are not caught. |
+|             |                                                                                                                                                                        |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **P1**      | **Done** (`f7c17c1`, `375c4dd`, `59b79fa`). Re-locked `bun.lock` (the real CI fix), pinned Bun 1.4.2, and `docker build` completes.                                    |
+| **P2**      | **Done** (`f8c826f`); the `bg.json` v2 row landed with B1 (`af4352d`). Two more gaps found and fixed than planned.                                                     |
+| **Track A** | **Done.** A1 `aad1c96` and `783d331`, A2 `75e91fd`, A3 `a47036e`. The dockerfile provider runs; it has no database and no media storage.                               |
+| **Track B** | **Done.** B1 `af4352d`, B2 `c2ac047`, B3 `ce46708`, B4 `f162f10`. `add` then recorded files only; since `9e725ad` it also records modules, and `regions` for env keys. |
+| **Then**    | **Done.** C1 `177c690` and `9ee6dd0`. It covered less than planned; `2cce2f8` to `f56fab1` closed the `exports` gap. The Bun pin is still not caught.                  |
 
 ### Three findings that reshaped the plan on 2026-10-29
 
@@ -144,30 +156,40 @@ explicit paths, not the bare sweep spec 070 forbids), but its code is typechecke
 image. The dockerfile module overwrites `packages/api-runtime`, and the cloudflare module ships no
 copy of its own, so swapping back has nothing to restore.
 
+**`bg add` of a module** (`packages/registry/src/{module-plan,stage-module}.ts`; `5aa660e` to
+`833d2ef`). `<category>/<id>` is always a module; a bare name is one when it is exactly one of an
+item or a module, and an ambiguous bare name fails closed. Peers, cardinality and variant selection
+follow 035. Tier 1 is copied with `{{SCOPE}}` rendered; a variant's `dependencies` become a generated
+`package.json` in its `workspace`; env keys are merged into the root `.env.example`, never
+overwritten, and recorded as `regions[".env.example"][KEY]`. The module record lands under
+`modules` with its `files`, `bg.json` is written last, and item and module apply are all-or-nothing.
+It refuses instead of skipping: a variant that declares `patch` or `intent`, `--set`, `remove` and
+`replace`. `checks` are printed, not run; `consumesPackages` is ignored; `apps` is not written. Two
+modules exist to install, the providers, and `provider/cloudflare` collides with `api-elysia` on
+`apps/api/wrangler.jsonc`: see 09 (c) and (d).
+
 **The golden project** (`scripts/golden-project.ts`, `bun run golden`) packs the CLI, copies the
-pack outside the repo, and runs `bg create`, `bg add`, `bun install`, typecheck, test and
+pack outside the repo, and runs `bg create`, `bg add`, `bun install`, typecheck, test, `build` and
 `bg doctor --strict` there. The copy matters: a pack run in place silently falls back to the repo's
 `templates/base` through `packages/cli/src/paths.ts`, so a pack that dropped its templates would
-still pass. It installs 7 items: `utils button badge card api-elysia config portless`.
-`spa-react-router` is excluded: its `registry/apps/registry.json` entry lists 3 of the item's 8
-files (`react-router.config.ts`, `src/root.tsx`, `vite.config.ts`, `wrangler.jsonc` and `app.css`
-are never vendored), so `react-router typegen` fails. Two consequences. Golden does not cover
-missing `exports` subpaths, because no vendored file imports another workspace package. It does not
-cover the Bun pin either: `packageManager: bun@9.9.9` still installs. It does cover the
-`apps/cli` → `packages/cli` path churn class, through the pack's import rewriting.
+still pass. It installs 8 items, every one `bg list` prints: `utils button badge card api-elysia
+config portless spa-react-router`. It covers missing `exports` subpaths and the `apps/cli` →
+`packages/cli` path churn class, through the pack's import rewriting. It does not cover the Bun pin:
+`packageManager: bun@9.9.9` still installs. And it installs no module: `bg list` prints items only,
+so the module path of `bg add` is covered by unit tests alone. 09 adds modules to golden in stage 1.
 
 ## Decisions waiting on the user
 
-- **Rename the GitHub repo** to `bonne-garde-toolkit`. The code references are all renamed; the
-  repository is still `Netoun/bonne-garde-boilerplate`. After renaming on GitHub, run
-  `git remote set-url origin git@github.com:Netoun/bonne-garde-toolkit.git` — cosmetic, since
-  GitHub redirects the old URL. Renaming the local folder orphans
+- **The GitHub repo was renamed** to `Netoun/bonne-garde-toolkit` on 2026-10-30, and `origin` points
+  there (`git@github.com:Netoun/bonne-garde-toolkit.git`). The local folder is still
+  `bonne-garde-boilerplate`; renaming it orphans
   `~/.claude/projects/-Users-nicolqs-Workspace-bonne-garde-boilerplate/`.
 - **The legacy apps.** Dissolving `apps/{api,spa,ssr,static}` into registry items is agreed in
   principle. 06 argues the order must be `bg doctor` → one golden project → extract one item per
   commit, smallest first, deleting each legacy source only once its item is green. `apps/api` last:
   87 tests at `a47036e` and the most peers. Both prerequisites now exist (B3, C1); golden's limits
-  are in "What exists now", and Start here step 1 widens what it covers.
+  are in "What exists now", and Start here step 1 widens what it covers. Go given 2026-10-30; order
+  per 080, see [09](./09-dissolution.md).
 - **`docs/plans/`** — whether a dated audit belongs in git at all. It is committed because the
   original request asked for a folder; it will go stale and nothing in it is normative.
 - **`EMAIL` binding.** AGENTS.md forbids Cloudflare proprietary APIs outside `DB` and `BUCKET`.
@@ -202,17 +224,14 @@ cover the Bun pin either: `packageManager: bun@9.9.9` still installs. It does co
 
 - **CI on #16 is green.** The 2 `media.routes.test.ts` failures ("Unhandled error between tests",
   empty body) were seen only under Bun 1.3.11 and pass on 1.4.2. Auto-fix stays **off**.
-- **`bg add` cannot install a `module.json` module.** There is no module install path, so the
-  dockerfile provider can only be materialised by hand (the README recipe). The largest gap.
-- **No `add` produces regions, patches or module records**, and `add` does not stage intentions
-  (spec 050 step 14). `bg doctor`'s regions, patches and intentions checks are proven on
-  hand-written fixtures only.
+- **`add` produces module records and `regions` for env keys, and nothing else of tier 2.** It
+  refuses a variant that declares a patch, and it does not stage intentions (spec 050 step 14).
+  `bg doctor`'s patches and intentions checks are proven on hand-written fixtures only.
 - **`parseProjectManifest` rebuilds the object**, so unknown top-level `bg.json` fields are dropped
   on every write. Spec 020 says to preserve them with a warning.
-- **Apply is not all-or-nothing on write errors**, and spec 060's rule to overwrite a file when the
-  recorded sha256 matches is not wired.
-- **`migrations/TEMPLATE.md` points at `bg upgrade record`**, which does not exist; the command is
-  `bg record`.
+- **Spec 060's rule to overwrite a file when its recorded sha256 matches** is wired for modules
+  (`stageModules`) and not for items: `apply-plan.ts` throws on any differing file unless `--force`,
+  whatever the record says.
 - **`bg create --yes` is parsed and discarded** (`void yes` in `packages/cli/src/cli.ts`), and
   `--scope` is validated only after the template has been copied.
 - **Spec inconsistencies.** 050 says `.bg/session.md`, 065 says `.bg/add/session.md`. No spec
@@ -226,7 +245,7 @@ cover the Bun pin either: `packageManager: bun@9.9.9` still installs. It does co
 - **`scripts/pack-cli.ts` has a dead `rewriteImports` and a duplicate `replaceAll`.** `bun run knip`
   fails at `a47036e`: unused exported types in `packages/cli/src/doctor.ts` and
   `packages/cli/src/intentions/lint.ts`.
-- **Lint baseline: 16 `no-console` warnings** at `f162f10`, up from 12 at `783d331`.
+- **Lint baseline: 18 `no-console` warnings** at `833d2ef`, up from 16 at `f162f10`.
 - **`bun run gen:commands`** emits unformatted Markdown, so `verify` fails immediately after it
   runs. The generator wants a `vp fmt --write` at the end.
 - **`bun.lock` declares `"name": "treashunt"`** at the root. Harmless. P1's re-lock did not rename
@@ -240,3 +259,27 @@ cover the Bun pin either: `packageManager: bun@9.9.9` still installs. It does co
   `auth.macro.ts` depend on them. treashunt has the same hole.
 - **`apps/spa/src/hooks/use-session.ts`** is a three-line pass-through. Keep or delete.
 - **`@testing-library/user-event`** is declared in the root `package.json` and imported nowhere.
+- **050 "Errors" against 060's conflict table.** 050 says a collision with a user-modified file
+  **fails** (`--force` overwrites); 060 says **keep, report** (`--force` overwrites). `add` follows 050. Pending decision.
+- **`--force` takes over a file another owner recorded** and reports it as `tookOver`. 060 has no
+  row for a file owned by another owner. Pending decision.
+- **035 says a filled category points at `--replace`; 050 says `bg replace`.** The code follows 050.
+- **Env files.** 035 says `.dev.vars.example` / `.env.example` with no rule to choose; 060 lists
+  `env.append` as a patch with `KEY` regions. The code uses the root `.env.example` only, and wrangler
+  reads `.dev.vars` beside `apps/api/wrangler.jsonc`. Shared keys such as `BETTER_AUTH_SECRET`
+  conflict with 060's "two modules claiming one region is an error"; the code skips keys already
+  present.
+- **035 says a variant's `workspace` is "derived from home".** Repo-homed categories have no package,
+  so the code requires an explicit `workspace` when a variant declares dependencies.
+- **020 says `apps` is "written by app-homed modules"**, but `module.json` has no field for an app's
+  kind.
+- **050 `--set key=value` has no rule for which module a key addresses.** Not implemented.
+- **`bg list` shows items only**, because golden runs `bg add` on every line it prints.
+- **A `github:` registry source still refuses file installs** (`packages/cli/src/add.ts:64`).
+  `DEFAULT_PLATFORM_REMOTE` (`github:Netoun/bonne-garde-toolkit`) is a real repo now, so a project
+  created from the published CLI without `--registry local:` cannot `bg add` anything.
+- **`templates/base/_gitignore` does not ignore `.react-router/`.**
+- **The spa plan's `npmDependencies` lists `react` and `react@19.2.8` side by side**, with no dedupe.
+- **The SPA root `ErrorBoundary` shows "Unexpected error" on a 404**; `isRouteErrorResponse` would
+  fix it.
+- **`react-router dev` warns about a missing `HydrateFallback`.**

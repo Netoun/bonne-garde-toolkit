@@ -3,10 +3,10 @@
 Written 2026-10-29. [07-handoff.md](./07-handoff.md) says where the branch stands and what is
 already settled; this file says what to do, in what order, and how to know each step is done.
 
-**Updated 2026-10-30: every step below is done (`a47036e`).** Each opens with a **Done** line that
-says what landed, with commit hashes. Where a premise or an instruction turned out wrong, the
-original text is kept "for the record", the way P1 does. What to do next is in
-[Next steps](#next-steps).
+**Updated 2026-10-30: every step below is done (`a47036e`), and so are the first two of
+[Next steps](#next-steps) (`833d2ef`).** Each opens with a **Done** line that says what landed, with
+commit hashes. Where a premise or an instruction turned out wrong, the original text is kept "for
+the record", the way P1 does. What to do next is in [09](./09-dissolution.md).
 
 Every acceptance line is a command with an expected result. `bun run verify` must exit 0 at every
 commit, and it is the gate of CI (`.github/workflows/ci.yml` is one job:
@@ -321,7 +321,8 @@ entry in `registry/apps/registry.json` lists 3 of its 8 files (`react-router.con
 `react-router typegen` fails. Against the claim below, golden catches the `apps/cli` →
 `packages/cli` path churn class, because it goes through the pack's import rewriting. It does
 **not** catch missing `exports` subpaths, since no vendored file imports another workspace package,
-and it does **not** catch the Bun pin: `packageManager: bun@9.9.9` still installs.
+and it does **not** catch the Bun pin: `packageManager: bun@9.9.9` still installs. The first of those two gaps
+closed later the same day: see [Next steps](#next-steps) 1.
 
 **Why last, and why not the matrix.** Spec 070 asks for golden projects asserted byte-for-byte per
 peer combination plus an E2E matrix. One fixture catches the class of regression the matrix is for
@@ -340,22 +341,54 @@ paragraph at the top of this step.
 
 ## Next steps
 
-Everything above is done. What is left follows from what those steps found, in this order:
+**Updated 2026-10-30 at `833d2ef`: steps 1 and 2 are done, and step 3 had the wrong order.** What is
+left is [09](./09-dissolution.md): every legacy piece mapped to a 035 category, the couplings, the
+stages and the questions. Each step keeps its original text "for the record".
 
-1. **Complete the `spa-react-router` registry item.** List all of its files in
-   `registry/apps/registry.json`, then drop its entry from `EXCLUDED` in
-   `scripts/golden-project.ts`. First, because it is what makes golden cover `exports` subpaths, the
-   regression class C1 was meant to catch and does not yet. **Accept:** `bun run golden` exits 0 with
-   `spa-react-router` among the installed items.
-2. **A module install path in `bg add`.** Read `module.json`: the copy list, the env, and a record
+1. **Complete the `spa-react-router` registry item.** **Done 2026-10-30** (`2cce2f8`, `9e35a15`,
+   `f56fab1`). `2cce2f8` vendors every file the item needs, `9e35a15` makes golden install it with the
+   other items, and `f56fab1` makes golden run `build`. Golden installs 8 items now. It catches the
+   class it missed: removing `./components/*` from `registry/ui/package.json` makes golden fail at
+   typecheck, and the same break went green at `fcea043`. CI run 41043145162 is green.
+
+   _As first written, kept for the record:_ List all of its files in `registry/apps/registry.json`,
+   then drop its entry from `EXCLUDED` in `scripts/golden-project.ts`. First, because it is what makes
+   golden cover `exports` subpaths, the regression class C1 was meant to catch and does not yet.
+   **Accept:** `bun run golden` exits 0 with `spa-react-router` among the installed items.
+
+2. **A module install path in `bg add`.** **Done 2026-10-30** (`5aa660e`, `588aa53`, `befac8a`,
+   `9e725ad`, `28296b5`, `833d2ef`). CI run 41044930659 is green.
+   - **Naming:** `bg add cloudflare` or `bg add provider/cloudflare`. A bare name that is both an item
+     and a module, or a module id used in two categories, fails closed and asks for the qualified form.
+   - **Env:** a module's keys are merged into the root `.env.example`, never overwritten, and recorded
+     as `regions[".env.example"][KEY]`.
+   - **All-or-nothing:** item and module apply both are (`packages/registry/src/write-tree.ts`);
+     `bg.json` is written last.
+   - **Refused, loudly:** a variant that declares `patch` or `intent`, `--set`, and `remove` /
+     `replace`. A filled `cardinality: one` category fails pointing at `bg replace`.
+   - **Not done:** `checks` are printed, not run. `consumesPackages` is ignored. `apps` is not written.
+
+   The spec questions this raised are in [07](./07-handoff.md) §"Loose ends worth one line each".
+
+   _As first written, kept for the record:_ Read `module.json`: the copy list, the env, and a record
    under `bg.json` `modules`. Second, because it is the prerequisite for installing a provider
    through the CLI and for a dockerfile golden run; today the provider can only be materialised by
    hand. It is also the first code that would write `modules` records.
-3. **Dissolve the legacy apps**, in the order [06](./06-platform-gaps.md) argues: extract one item
-   per commit, smallest first (`apps/static`), delete each source only once its item is green in the
-   golden project, and leave `apps/api` for last (87 tests at `a47036e`, and the most peers). Third,
-   because it was gated on C1, which exists now. Golden's limits are why step 1 comes before the
-   first front item.
+
+3. **Dissolve the legacy apps, in 080's order, not smallest-first.** Not started; the plan is
+   [09](./09-dissolution.md). The order is the one spec
+   [080](../../specs/080-existing-code-migration.md) makes a MUST: `tooling`; `ui` and the UI items with
+   `meta.bg` removed; the app shells, `api` then `web`; `db` and `orm`, then `auth`; `email`, `queue`,
+   `storage`. A legacy tree is deleted only after golden is green for the module that replaces it,
+   and consumers go before the packages they use.
+
+   _As first written, kept for the record, and wrong:_ Dissolve the legacy apps, in the order
+   [06](./06-platform-gaps.md) argues: extract one item per commit, smallest first (`apps/static`),
+   delete each source only once its item is green in the golden project, and leave `apps/api` for last
+   (87 tests at `a47036e`, and the most peers). Third, because it was gated on C1, which exists now.
+   Golden's limits are why step 1 comes before the first front item. It contradicts 080, and it fails on
+   the code: `apps/static` imports `@acme/config` and `type App` from `@acme/api/app`, so no `web`
+   module can come before the `ui`, `api` and `config` modules it peers on.
 
 The loose ends these steps left open are in [07](./07-handoff.md) §"Loose ends worth one line each".
 
@@ -378,7 +411,7 @@ The loose ends these steps left open are in [07](./07-handoff.md) §"Loose ends 
 git log --oneline 4b329e8..HEAD          # what the branch did since main
 bun run verify                            # expect 0
 bun run golden                            # expect 0; packs the CLI, `bun install` needs the network
-gh pr checks 16 --repo Netoun/bonne-garde-boilerplate
+gh pr checks 16 --repo Netoun/bonne-garde-toolkit
 ```
 
-Then step 1 of "Next steps", in its own commit.
+Then [09](./09-dissolution.md): answer its questions, and start at stage 1, in its own commit.
