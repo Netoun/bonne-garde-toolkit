@@ -32,7 +32,7 @@ bg doctor [--json] [--strict]
 11. Apply to disk all-or-nothing. Convert every `failed` patch into a pending intent.
 12. Update `bg.json`: `modules` / `items`, `files` (sha256), `regions`, `apps`, patch outcomes.
 13. Unless `--no-install`, run `bun install`.
-14. Stage pending intents into `.bg/session.md` and print the executor entry point ([065](./065-intentions.md)).
+14. Stage pending intents into `.bg/add/session.md` and print the executor entry point ([065](./065-intentions.md)).
 15. Run the modules' `checks` when nothing is pending; report but do not roll back on failure.
 
 **Normative:**
