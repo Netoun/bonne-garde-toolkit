@@ -41,7 +41,7 @@
 | `test`               | `bun run test:platform && bun run test:legacy`                                                                             |
 | `test:legacy`        | `bun run --parallel --filter '@acme/*' test`                                                                               |
 | `test:platform`      | `bun run test:scripts && bun run --parallel --filter '@bonne-garde/*' test`                                                |
-| `test:scripts`       | `bun test ./scripts`                                                                                                       |
+| `test:scripts`       | `bun test ./scripts ./registry/modules`                                                                                    |
 | `typecheck`          | `bun run typecheck:platform && bun run typecheck:legacy`                                                                   |
 | `typecheck:legacy`   | `bun run --parallel --filter '@acme/*' typecheck`                                                                          |
 | `typecheck:platform` | `bun run typecheck:scripts && bun run --parallel --filter '@bonne-garde/*' typecheck`                                      |

@@ -50,17 +50,21 @@ itself has not been run, so this section stays until it has.
 
 ## Building the image
 
-From the repo root, on a clean export so nothing untracked reaches the context:
+`bg add` cannot install a `module.json` module yet, so "a generated project" is built by hand: a
+clean export of this repo with the module's `template/` written over it. From the repo root:
 
 ```bash
 S=$(mktemp -d) T=registry/modules/provider/dockerfile/template
-git archive HEAD | tar -x -C "$S"
+git archive HEAD | tar -x -C "$S"             # clean export: nothing untracked reaches the context
+cp -R "$T"/. "$S"/                            # Dockerfile, .dockerignore, compose.yaml, api-runtime
 sed 's/{{SCOPE}}/@acme/g' "$T/Dockerfile" > "$S/Dockerfile"
-cp "$T/.dockerignore" "$S/.dockerignore"
 docker build -t bg-dockerfile "$S"
 ```
 
-The `.dockerignore` has to sit at the context root, beside the `Dockerfile`.
+The `.dockerignore` has to sit at the context root, beside the `Dockerfile`; `cp -R "$T"/.` carries
+it, and the two files under `packages/api-runtime/src` replace the Workers variant of that
+package in the export. `index.test.ts` is one of them: left behind, the Workers one asserts
+`aot === false` against code that now says `true`.
 
 It took two fixes to get here, neither of them where the first diagnosis put it:
 

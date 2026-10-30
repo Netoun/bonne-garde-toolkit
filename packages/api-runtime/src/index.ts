@@ -7,7 +7,8 @@
  * - `runtimeOptions`: the constructor options of `new Elysia(...)` that differ per provider.
  * - `readRuntimeEnv()`: the environment record, read once by `apps/api`'s config.
  * - `serve(app)`: what `apps/api/src/index.ts` default-exports. Workers want a `{ fetch }` object,
- *   so that is what this variant returns; a variant that listens on a port returns nothing.
+ *   so that is what this variant returns; the `dockerfile` variant returns `{ port, fetch }`, which
+ *   Bun serves by itself when that file is the entry.
  */
 import type { ElysiaConfig } from "elysia";
 import { CloudflareAdapter } from "elysia/adapter/cloudflare-worker";

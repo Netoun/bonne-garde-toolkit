@@ -12,6 +12,11 @@ WORKDIR /app
 # Debian resolves `localhost` to ::1 first, so the prerender's Vite preview server listens on ::1
 # while React Router fetches it on 127.0.0.1 and gets ECONNREFUSED. IPv4 first makes both agree.
 ENV HUSKY=0 NODE_OPTIONS=--dns-result-order=ipv4first
+# Vite bakes `VITE_API_URL` into the SPA bundle when it builds, and the SPA throws at load without a
+# valid one. It has to be the origin the browser reaches the container on — the same as `APP_URL`
+# at run time — so a different origin means a rebuild: `--build-arg VITE_API_URL=https://...`.
+ARG VITE_API_URL=http://localhost:5172
+ENV VITE_API_URL=$VITE_API_URL
 COPY . .
 RUN bun install --frozen-lockfile
 RUN bun run --filter '{{SCOPE}}/spa' build
@@ -26,5 +31,5 @@ VOLUME /data
 USER bun
 EXPOSE 5172
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD ["bun", "-e", "fetch('http://127.0.0.1:5172/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+  CMD ["bun", "-e", "fetch(`http://127.0.0.1:${process.env.PORT}/health`).then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
 CMD ["bun", "apps/api/src/index.ts"]
