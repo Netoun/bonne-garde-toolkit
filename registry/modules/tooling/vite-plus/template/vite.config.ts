@@ -36,6 +36,34 @@ export default defineConfig({
       "no-debugger": "error",
       "unicorn/prefer-string-slice": "warn",
     },
+    overrides: [
+      {
+        // Generated React code lands at 035's fixed homes: a `web` module in `apps/<id>`, the shadcn
+        // items in `packages/ui`. An override's plugins replace the base list, and enabling one
+        // switches none of its rules on, so the rules are named.
+        files: ["apps/*/**", "packages/ui/**"],
+        excludeFiles: ["apps/api/**"],
+        plugins: ["typescript", "import", "unicorn", "react", "node"],
+        env: {
+          browser: true,
+          es2022: true,
+        },
+        rules: {
+          "react/jsx-key": "error",
+          "react/jsx-no-duplicate-props": "error",
+          "react/jsx-no-undef": "error",
+          "react/no-children-prop": "error",
+          "react/rules-of-hooks": "error",
+        },
+      },
+      {
+        // `api` is server code and `portless` writes `scripts/dev-portless.ts`.
+        files: ["apps/api/**", "scripts/**"],
+        rules: {
+          "no-console": "off",
+        },
+      },
+    ],
   },
   fmt: {
     ignorePatterns: [

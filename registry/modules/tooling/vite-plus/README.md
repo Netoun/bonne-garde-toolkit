@@ -43,25 +43,30 @@ config's, unchanged. Two things differ:
 
 - **Added:** `.bg/`, the scratch root of the intentions ([065](../../../../docs/specs/065-intentions.md)),
   in both ignore lists. The base template's stub carried it; the root config has no use for it.
-- **Dropped:** the three `lint.overrides`. The dissolution plan (09) deletes them with the legacy
-  apps they are keyed on, and a module has no way to say "this path, if it exists".
+- **Re-keyed:** the three `lint.overrides`. The root config names the legacy apps; this one names the
+  homes [035](../../../../docs/specs/035-module-registry.md) fixes, because that is where generated
+  code lands whatever the app ids are.
 
-| Override dropped                                | What it did                                    | Keyed on                                    |
-| ----------------------------------------------- | ---------------------------------------------- | ------------------------------------------- |
-| `apps/{spa,ssr,static}`, `packages/{ui,emails}` | added the `react` plugin and the `browser` env | the legacy fronts and the shared React code |
-| `apps/api/**`                                   | `no-console: off`                              | the legacy `api` app                        |
-| `scripts/**`                                    | `no-console: off`                              | this repository's `scripts/` directory      |
+| Override                         | Files                           | What it does                                                         |
+| -------------------------------- | ------------------------------- | -------------------------------------------------------------------- |
+| React code                       | `apps/*/**`, `packages/ui/**`   | the `react` plugin, the `browser` env, five `react/*` rules at error |
+| (the same, minus the server app) | `excludeFiles: ["apps/api/**"]` | `api` is Elysia code: no JSX, no `react` plugin, no `browser` env    |
+| `no-console: off`                | `apps/api/**`, `scripts/**`     | a server logs, and `portless` writes `scripts/dev-portless.ts`       |
 
-**What that costs.** Several of those paths are where generated code lands: `spa-react-router`
-writes `apps/spa`, the UI items write `packages/ui`, `api-elysia` writes `apps/api` (035 fixes
-`api` there) and `portless` writes `scripts/dev-portless.ts`. In a generated project the `react`
-plugin does not run on those files, and `no-console` is a warning everywhere. The golden project
-shows the second: `bun run check` exits 0 with two `no-console` warnings from `scripts/dev-portless.ts`.
-A warning does not fail `vp check`; a missing plugin does not either, it only checks less.
+**The `react` rules are named, not inherited.** Oxlint switches on a plugin's rules only where the
+plugin is enabled at the top level. An override that adds `react` to `plugins` enables the plugin and
+none of its rules, so the root config's override linted React code with no React rule: the proof is a
+`.map` with no `key` in a vendored SPA file, which `bun run check` passed (exit 0, no warning) until
+the rule was named. Even at the top level, the plugin's rules are `warn`, and a warning does not fail
+`vp check`. The five rules are the ones that name a bug: `jsx-key`, `jsx-no-duplicate-props`,
+`jsx-no-undef`, `no-children-prop` and `rules-of-hooks`, each `error`.
 
-Putting an override back is a config change that needs an owner. `tooling` is `one` and this file is
-the only place the rule can live, so the module that wants it (a `web` module for React) would have
-to patch `vite.config.ts`, and `add` refuses patches today.
+**A web app that is not `api` is a React app.** A `web` module's id is free (`many`), so the glob is
+`apps/*/**` and the one app that is not React is excluded by name: `api` is fixed by 035. Oxlint
+overrides take `excludeFiles`, which is what makes that possible.
+
+**What it still costs.** An app that is not React and not `api` (a `testing` module, say) is linted
+with the `react` plugin; its files have no JSX, so the rules have nothing to report.
 
 ## What this module does not do
 
