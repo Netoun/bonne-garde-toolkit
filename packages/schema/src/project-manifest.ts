@@ -488,6 +488,95 @@ export function readProjectManifest(input: unknown): ProjectManifestRead {
   return { manifest: parseProjectManifest(input), migratedFrom: null };
 }
 
+export type IntentionOutcome = { status: "applied" } | { status: "skipped"; reason: string };
+
+export type RecordedIntention = {
+  manifest: ProjectManifest;
+  /** `"platform"`, or `<category>/<module-id>` for an install intention. */
+  recordedIn: string;
+};
+
+/** An id sits in exactly one of `applied` / `skipped`; recording it again moves it, never repeats it. */
+function withOutcome(
+  intentions: PlatformIntentions,
+  id: string,
+  outcome: IntentionOutcome,
+): PlatformIntentions {
+  const skipped = Object.fromEntries(
+    Object.entries(intentions.skipped).filter(([skippedId]) => skippedId !== id),
+  );
+  if (outcome.status === "applied") {
+    return {
+      applied: intentions.applied.includes(id) ? intentions.applied : [...intentions.applied, id],
+      skipped,
+    };
+  }
+  return {
+    applied: intentions.applied.filter((appliedId) => appliedId !== id),
+    skipped: { ...skipped, [id]: outcome.reason },
+  };
+}
+
+/**
+ * Spec 065 "Recording": the outcome of one intention lands where its id says it belongs. A release
+ * id (`vX.Y.Z/slug`) goes to `platform.intentions`; an install id (`<category>/<module-id>/<slug>`)
+ * goes to that module's record, which must exist. Returns a new manifest; nothing is written here,
+ * and whether the intention's Validation passed is the caller's to have established.
+ */
+export function recordIntention(
+  manifest: ProjectManifest,
+  id: string,
+  outcome: IntentionOutcome,
+): RecordedIntention {
+  if (outcome.status === "skipped" && outcome.reason.trim().length === 0) {
+    throw new ProjectManifestError(`skipping ${id} needs a reason`);
+  }
+
+  if (PLATFORM_INTENTION_ID_RE.test(id)) {
+    return {
+      manifest: parseProjectManifest({
+        ...manifest,
+        platform: {
+          ...manifest.platform,
+          intentions: withOutcome(manifest.platform.intentions, id, outcome),
+        },
+      }),
+      recordedIn: "platform",
+    };
+  }
+
+  if (!MODULE_INTENTION_ID_RE.test(id)) {
+    throw new ProjectManifestError(
+      `not a canonical intention id: ${id} (expected vX.Y.Z/slug or <category>/<module-id>/<slug>)`,
+    );
+  }
+  const [category, moduleId] = id.split("/");
+  if (!isModuleCategory(category)) {
+    throw new ProjectManifestError(`${id}: unknown category: ${String(category)}`);
+  }
+  const records = manifest.modules[category] ?? [];
+  const target = records.find((record) => record.id === moduleId);
+  if (!target) {
+    throw new ProjectManifestError(
+      `${category}/${String(moduleId)} is not installed, so ${id} has no module record to land in`,
+    );
+  }
+  return {
+    manifest: parseProjectManifest({
+      ...manifest,
+      modules: {
+        ...manifest.modules,
+        [category]: records.map((record) =>
+          record === target
+            ? { ...record, intentions: withOutcome(record.intentions, id, outcome) }
+            : record,
+        ),
+      },
+    }),
+    recordedIn: `${category}/${target.id}`,
+  };
+}
+
 export function createEmptyProjectManifest(options: {
   scope: string;
   registries: Record<string, string>;

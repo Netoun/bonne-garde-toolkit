@@ -1,8 +1,10 @@
+import type { IntentionOutcome } from "@bonne-garde/schema";
 import { addItems, listItems, searchItems, viewItem } from "./add";
 import { createProject } from "./create";
 import { doctorExitCode, formatDoctor, runDoctor } from "./doctor";
 import { lintIntentions } from "./intentions/lint";
 import { migrationsDir } from "./paths";
+import { recordIntentionOutcome } from "./record";
 
 function usage(): string {
   return `bg — Bonne Garde CLI
@@ -13,6 +15,7 @@ Usage:
   bg search <query> [--source <source>]
   bg view <item> [--source <source>]
   bg add <item...> [--dry-run] [--force] [--no-install] [--yes] [--source <source>]
+  bg record <intention-id> [--skip "<reason>"]
   bg doctor [--json] [--strict]
   bg intentions lint [--dir <migrations-dir>]
 `;
@@ -151,6 +154,39 @@ export async function runCli(argv: string[]): Promise<number> {
         null,
         2,
       ),
+    );
+    return 0;
+  }
+
+  if (command === "record") {
+    const args = [...rest];
+    const reason = takeOption(args, "--skip");
+    const id = args.shift();
+    if (!id) {
+      throw new Error("record requires an intention id");
+    }
+    if (args.length > 0) {
+      throw new Error(`record: unexpected argument: ${args.join(" ")}\n${usage()}`);
+    }
+    const outcome: IntentionOutcome =
+      reason === undefined ? { status: "applied" } : { status: "skipped", reason };
+    const { recordedIn, migratedFrom, staged } = await recordIntentionOutcome(
+      process.cwd(),
+      id,
+      outcome,
+    );
+    if (migratedFrom !== null) {
+      console.error(manifestMigrationNotice(false));
+    }
+    if (!staged) {
+      console.error(
+        `bg: ${id} is not staged under .bg/; recorded anyway (the scratch root is disposable).`,
+      );
+    }
+    console.log(
+      outcome.status === "applied"
+        ? `recorded ${id} as applied in ${recordedIn}`
+        : `recorded ${id} as skipped in ${recordedIn}: ${outcome.reason}`,
     );
     return 0;
   }
