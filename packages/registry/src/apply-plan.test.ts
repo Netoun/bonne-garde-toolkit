@@ -28,10 +28,8 @@ const plan: InstallPlan = {
       ],
     },
   ],
-  capabilities: [],
   npmDependencies: [],
   npmDevDependencies: [],
-  transforms: [],
 };
 
 describe("applyInstallPlan", () => {

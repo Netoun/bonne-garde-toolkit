@@ -86,7 +86,7 @@ describe("bg add from a github source", () => {
 
     const { plan, result } = await addItems({
       projectRoot: root,
-      items: ["button"],
+      items: ["ui/shadcn", "button"],
       install: false,
       github: { baseUrl: raw.baseUrl },
     });
@@ -100,6 +100,25 @@ describe("bg add from a github source", () => {
     expect(bg.items.button?.source).toBe(`${SOURCE}/button`);
     expect(bg.items.utils?.source).toBe(`${SOURCE}/utils`);
     expect(bg.registries["@bg"]).toBe(SOURCE);
+  });
+
+  test("an item that needs the ui module fails without it, naming ui/shadcn: github lists no modules to name it from", async () => {
+    const raw = serve();
+    const root = await project(SOURCE);
+    const before = await snapshot(root);
+
+    const failure = await addItems({
+      projectRoot: root,
+      items: ["button"],
+      install: false,
+      github: { baseUrl: raw.baseUrl },
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe(
+      "button needs the ui module, and none is installed or named in this call; run: bg add ui/shadcn button",
+    );
+    expect(await snapshot(root)).toEqual(before);
   });
 
   test("replaces @acme in what it fetched, as a local install does", async () => {
@@ -155,7 +174,7 @@ describe("bg add from a github source", () => {
   test("a project from a github source and one from a local source end up the same", async () => {
     const everyItem = (await listItems(await project(LOCAL))).map((item) => item.name);
     for (const names of [
-      everyItem,
+      ["ui/shadcn", ...everyItem],
       ["provider/cloudflare"],
       ["provider/dockerfile"],
       ["ui/shadcn"],
@@ -183,7 +202,11 @@ describe("bg add from a github source", () => {
   });
 
   test("a file the registry lacks fails the whole install and leaves the tree and bg.json as they were", async () => {
-    const cases = ["ui/button.tsx", "modules/provider/cloudflare/template/apps/api/wrangler.jsonc"];
+    const cases = [
+      "ui/button.tsx",
+      "modules/provider/cloudflare/template/apps/api/wrangler.jsonc",
+      "modules/ui/shadcn/template/packages/ui/package.json",
+    ];
     for (const missing of cases) {
       const raw = serve();
       const root = await project(SOURCE);
@@ -192,7 +215,7 @@ describe("bg add from a github source", () => {
 
       const failure = await addItems({
         projectRoot: root,
-        items: ["button", "provider/cloudflare"],
+        items: ["ui/shadcn", "button", "provider/cloudflare"],
         install: false,
         github: { baseUrl: raw.baseUrl },
       }).catch((error: unknown) => error);
@@ -212,7 +235,7 @@ describe("bg add from a github source", () => {
 
     const { result } = await addItems({
       projectRoot: root,
-      items: ["button", "provider/cloudflare"],
+      items: ["ui/shadcn", "button", "provider/cloudflare"],
       dryRun: true,
       install: false,
       github: { baseUrl: raw.baseUrl },
@@ -224,6 +247,7 @@ describe("bg add from a github source", () => {
     expect(raw.requested).toContain("ui/button.tsx");
     expect(raw.requested).toContain("ui/utils.ts");
     expect(raw.requested).toContain("modules/provider/cloudflare/template/apps/api/wrangler.jsonc");
+    expect(raw.requested).toContain("modules/ui/shadcn/template/packages/ui/package.json");
     expect(raw.requested).not.toContain("ui/card.tsx");
     expect(raw.requested).not.toContain("apps/api-elysia/src/app.ts");
   });
@@ -252,7 +276,7 @@ describe("bg add from a github source", () => {
 
     await addItems({
       projectRoot: root,
-      items: ["button"],
+      items: ["ui/shadcn", "button"],
       install: false,
       github: { baseUrl: raw.baseUrl },
     });
@@ -286,7 +310,7 @@ describe("bg add from a github source", () => {
     const root = await project(SOURCE);
     await addItems({
       projectRoot: root,
-      items: ["button"],
+      items: ["ui/shadcn", "button"],
       install: false,
       github: { baseUrl: raw.baseUrl, token: "t0ken" },
     });

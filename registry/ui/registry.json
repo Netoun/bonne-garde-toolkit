@@ -9,27 +9,11 @@
       "dependencies": ["clsx", "tailwind-merge"],
       "files": [
         {
-          "path": "package.json",
-          "type": "registry:file",
-          "target": "packages/ui/package.json"
-        },
-        {
-          "path": "tsconfig.json",
-          "type": "registry:file",
-          "target": "packages/ui/tsconfig.json"
-        },
-        {
           "path": "utils.ts",
           "type": "registry:lib",
           "target": "packages/ui/src/lib/utils.ts"
         }
-      ],
-      "meta": {
-        "bg": {
-          "provides": ["ui-utils"],
-          "transforms": ["workspace:packages/ui"]
-        }
-      }
+      ]
     },
     {
       "name": "button",
@@ -44,13 +28,7 @@
           "type": "registry:ui",
           "target": "packages/ui/src/components/button.tsx"
         }
-      ],
-      "meta": {
-        "bg": {
-          "provides": ["ui"],
-          "requires": ["ui-utils"]
-        }
-      }
+      ]
     },
     {
       "name": "badge",
@@ -65,13 +43,7 @@
           "type": "registry:ui",
           "target": "packages/ui/src/components/badge.tsx"
         }
-      ],
-      "meta": {
-        "bg": {
-          "provides": ["ui"],
-          "requires": ["ui-utils"]
-        }
-      }
+      ]
     },
     {
       "name": "card",
@@ -86,13 +58,7 @@
           "type": "registry:ui",
           "target": "packages/ui/src/components/card.tsx"
         }
-      ],
-      "meta": {
-        "bg": {
-          "provides": ["ui"],
-          "requires": ["ui-utils"]
-        }
-      }
+      ]
     }
   ]
 }

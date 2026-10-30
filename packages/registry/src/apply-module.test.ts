@@ -52,10 +52,8 @@ function libItem(name: string, files: Record<string, string>): RegistryItem {
 
 const NO_ITEMS = {
   items: [],
-  capabilities: [],
   npmDependencies: [],
   npmDevDependencies: [],
-  transforms: [],
 };
 
 async function freshProject(): Promise<{ projectRoot: string; manifest: ProjectManifest }> {

@@ -7,13 +7,6 @@ export type RegistryFile = {
   content?: string;
 };
 
-export type BgMeta = {
-  provides?: string[];
-  requires?: string[];
-  conflicts?: string[];
-  transforms?: string[];
-};
-
 export type RegistryItem = {
   name: string;
   type: string;
@@ -23,7 +16,6 @@ export type RegistryItem = {
   devDependencies?: string[];
   registryDependencies?: string[];
   files?: RegistryFile[];
-  meta?: { bg?: BgMeta };
 };
 
 /** A native module (spec 035) found under `modules/<category>/<id>/` of a local registry. */

@@ -55,18 +55,29 @@ describe("bg create + add", () => {
     expect(listed.some((i) => i.name === "button")).toBe(true);
     expect(listed.some((i) => i.name === "api-elysia")).toBe(true);
 
+    // 030: an item that lands in packages/ui needs the ui module, and the error says which command to run.
+    const bgBefore = await readFile(join(target, "bg.json"), "utf8");
+    await expect(
+      addItems({ projectRoot: target, items: ["button"], install: false }),
+    ).rejects.toThrow(
+      "button needs the ui module, and none is installed or named in this call; run: bg add ui/shadcn button",
+    );
+    expect(await readFile(join(target, "bg.json"), "utf8")).toBe(bgBefore);
+    expect(await stat(join(target, "packages/ui")).catch(() => null)).toBeNull();
+
     const dry = await addItems({
       projectRoot: target,
-      items: ["button"],
+      items: ["ui/shadcn", "button"],
       dryRun: true,
       install: false,
     });
     expect(dry.plan.items.map((i) => i.name)).toEqual(["utils", "button"]);
+    expect(dry.modulePlans.map((m) => m.key)).toEqual(["ui/shadcn"]);
     expect(dry.result.written.length).toBeGreaterThan(0);
 
     await addItems({
       projectRoot: target,
-      items: ["button"],
+      items: ["ui/shadcn", "button"],
       install: false,
     });
 
@@ -81,11 +92,11 @@ describe("bg create + add", () => {
     expect(after.version).toBe(2);
     expect(after.items.button?.source).toBe("@bg/button");
     expect(after.items.utils?.source).toBe("@bg/utils");
-    expect(after.modules).toEqual({});
+    expect(Object.keys(after.modules)).toEqual(["ui"]);
     expect(after).not.toHaveProperty("installed");
     expect(after).not.toHaveProperty("capabilities");
 
-    // idempotent re-add
+    // idempotent re-add, and the recorded ui module is what lets `button` be named alone
     const again = await addItems({
       projectRoot: target,
       items: ["button"],
@@ -212,6 +223,36 @@ describe("bg create + add", () => {
     expect(doctorExitCode(await runDoctor(target), true)).toBe(0);
   });
 
+  test("`spa-react-router` still pulls config and button through registryDependencies, with no meta.bg", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "bg-cli-spa-"));
+    dirs.push(parent);
+    const target = await createProject({
+      name: "spa-demo",
+      cwd: parent,
+      git: false,
+      install: false,
+      registry: repoRegistry(),
+    });
+
+    // `config` and `ui` were its `meta.bg.requires`; `registryDependencies` already says both.
+    const { plan } = await addItems({
+      projectRoot: target,
+      items: ["ui/shadcn", "spa-react-router"],
+      dryRun: true,
+      install: false,
+    });
+    expect(plan.items.map((i) => i.name)).toEqual([
+      "config",
+      "utils",
+      "button",
+      "spa-react-router",
+    ]);
+
+    await expect(
+      addItems({ projectRoot: target, items: ["spa-react-router"], dryRun: true, install: false }),
+    ).rejects.toThrow("run: bg add ui/shadcn spa-react-router");
+  });
+
   describe("add records what it wrote", () => {
     function sha256Hex(bytes: string | Uint8Array): string {
       return createHash("sha256").update(bytes).digest("hex");
@@ -249,7 +290,11 @@ describe("bg create + add", () => {
 
     test("`files` has one entry per written file, and each sha256 is the file's", async () => {
       const target = await freshProject("bg-cli-rec-");
-      const { result } = await addItems({ projectRoot: target, items: ["button"], install: false });
+      const { result } = await addItems({
+        projectRoot: target,
+        items: ["ui/shadcn", "button"],
+        install: false,
+      });
 
       const { manifest } = readProjectManifest(
         JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as unknown,
@@ -261,13 +306,18 @@ describe("bg create + add", () => {
       }
       expect(manifest.files["packages/ui/src/components/button.tsx"]?.owner).toBe("button");
       expect(manifest.files["packages/ui/src/lib/utils.ts"]?.owner).toBe("utils");
+      expect(manifest.files["packages/ui/package.json"]?.owner).toBe("ui/shadcn");
       // The engine applies no patch yet, so there is nothing to record under `regions`.
       expect(manifest.regions).toEqual({});
     });
 
     test("a second add skips every file and changes nothing but installedAt", async () => {
       const target = await freshProject("bg-cli-rec-twice-");
-      const first = await addItems({ projectRoot: target, items: ["button"], install: false });
+      const first = await addItems({
+        projectRoot: target,
+        items: ["ui/shadcn", "button"],
+        install: false,
+      });
       const firstJson = await readFile(join(target, "bg.json"), "utf8");
       const firstTree = await snapshot(target);
 
@@ -278,7 +328,9 @@ describe("bg create + add", () => {
       expect(second.plan.items.map((i) => i.name)).toEqual(["button"]);
       expect(second.result.skippedIdentical).toEqual(["packages/ui/src/components/button.tsx"]);
       // ... and the records of everything the first add wrote survive
-      expect(Object.keys(first.result.manifest.files)).toHaveLength(4);
+      expect(Object.keys(first.result.manifest.files).sort()).toEqual(
+        [...first.result.written].sort(),
+      );
       expect(second.result.manifest.files).toEqual(first.result.manifest.files);
       const secondJson = await readFile(join(target, "bg.json"), "utf8");
       expect(withoutInstalledAt(secondJson)).toBe(withoutInstalledAt(firstJson));
@@ -287,13 +339,34 @@ describe("bg create + add", () => {
       expect(secondTree).toEqual(firstFiles);
     });
 
+    test("the same call twice is idempotent for the module's files too", async () => {
+      const target = await freshProject("bg-cli-rec-same-");
+      const first = await addItems({
+        projectRoot: target,
+        items: ["ui/shadcn", "button"],
+        install: false,
+      });
+
+      const again = await addItems({
+        projectRoot: target,
+        items: ["ui/shadcn", "button"],
+        install: false,
+      });
+
+      expect(again.result.written).toEqual([]);
+      // `utils` is installed, so it is not planned again: a transitive dependency is skipped.
+      expect(again.result.skippedIdentical.sort()).toEqual(
+        first.result.written.filter((path) => path !== "packages/ui/src/lib/utils.ts").sort(),
+      );
+    });
+
     test("--dry-run leaves the tree and bg.json byte-identical", async () => {
       const target = await freshProject("bg-cli-rec-dry-");
       const before = await snapshot(target);
 
       const { result } = await addItems({
         projectRoot: target,
-        items: ["button"],
+        items: ["ui/shadcn", "button"],
         dryRun: true,
         install: false,
       });
@@ -343,7 +416,7 @@ describe("bg create + add", () => {
 
       const { migratedFrom } = await addItems({
         projectRoot: target,
-        items: ["button"],
+        items: ["ui/shadcn", "button"],
         install: false,
       });
       expect(migratedFrom).toBe(1);
@@ -372,7 +445,7 @@ describe("bg create + add", () => {
       const before = await readFile(join(target, "bg.json"), "utf8");
       const { migratedFrom } = await addItems({
         projectRoot: target,
-        items: ["button"],
+        items: ["ui/shadcn", "button"],
         dryRun: true,
         install: false,
       });
@@ -382,7 +455,7 @@ describe("bg create + add", () => {
 
     async function runAdd(target: string, ...args: string[]) {
       const bin = join(findRepoRoot() ?? "", "packages/cli/src/bin.ts");
-      const proc = Bun.spawn(["bun", bin, "add", "button", "--no-install", ...args], {
+      const proc = Bun.spawn(["bun", bin, "add", "ui/shadcn", "button", "--no-install", ...args], {
         cwd: target,
         stdout: "pipe",
         stderr: "pipe",

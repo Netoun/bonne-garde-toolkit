@@ -161,14 +161,13 @@ describe("the golden project and modules", () => {
 
     const { modules } = selectModules(listing, MODULES, EXCLUDED_MODULES);
 
-    expect(modules).toEqual(["tooling/vite-plus"]);
+    expect(modules).toEqual(["tooling/vite-plus", "ui/shadcn"]);
   });
 
   test("leaves every provider out until stage 3: cloudflare collides with api-elysia's wrangler.jsonc", () => {
     expect(Object.keys(EXCLUDED_MODULES).sort()).toEqual([
       "provider/cloudflare",
       "provider/dockerfile",
-      "ui/shadcn",
     ]);
     expect(MODULES.some((name) => name.startsWith("provider/"))).toBe(false);
   });

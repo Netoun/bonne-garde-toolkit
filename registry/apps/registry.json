@@ -39,13 +39,7 @@
           "type": "registry:file",
           "target": "apps/api/src/app.test.ts"
         }
-      ],
-      "meta": {
-        "bg": {
-          "provides": ["api"],
-          "transforms": ["workspace:apps/api"]
-        }
-      }
+      ]
     },
     {
       "name": "spa-react-router",
@@ -108,14 +102,7 @@
           "type": "registry:file",
           "target": "apps/spa/src/routes/home.tsx"
         }
-      ],
-      "meta": {
-        "bg": {
-          "provides": ["spa"],
-          "requires": ["config", "ui"],
-          "transforms": ["workspace:apps/spa"]
-        }
-      }
+      ]
     }
   ]
 }

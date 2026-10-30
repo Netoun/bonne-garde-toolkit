@@ -101,7 +101,7 @@ export async function addItems(options: AddOptions) {
   // files of the planned items, before anything is applied, so a 404 fails the install whole.
   const catalog = await loadNamedModules(loaded, options.items);
   const { items, modules } = classifyNames(catalog, options.items);
-  const plan = await readPlanFiles(catalog, resolveInstallPlan(catalog, items, manifest));
+  const plan = await readPlanFiles(catalog, resolveInstallPlan(catalog, items, manifest, modules));
   const modulePlans = await resolveModulePlans(catalog, modules, manifest);
   const { dryRun = false, force = false } = options;
   const result = await applyInstallPlan({

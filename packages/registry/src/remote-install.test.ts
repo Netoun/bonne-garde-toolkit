@@ -145,7 +145,9 @@ describe("readPlanFiles", () => {
   test("fetches the files of the planned items, and no others", async () => {
     const raw = serve();
     const catalog = await remote(raw);
-    const plan = resolveInstallPlan(catalog, ["button"], PROJECT);
+    const plan = resolveInstallPlan(catalog, ["button"], PROJECT, [
+      { category: "ui", id: "shadcn" },
+    ]);
     raw.requested.length = 0;
 
     const read = await readPlanFiles(catalog, plan);
@@ -165,7 +167,9 @@ describe("readPlanFiles", () => {
   test("a file the registry does not have fails the whole read, naming it and the ref", async () => {
     const raw = serve();
     const catalog = await remote(raw);
-    const plan = resolveInstallPlan(catalog, ["button"], PROJECT);
+    const plan = resolveInstallPlan(catalog, ["button"], PROJECT, [
+      { category: "ui", id: "shadcn" },
+    ]);
     raw.missing.add("ui/button.tsx");
 
     const failure = await readPlanFiles(catalog, plan).catch((error: unknown) => error);

@@ -8,7 +8,7 @@ import {
 } from "@bonne-garde/schema";
 import { ApplyError } from "./apply-error";
 import type { ModulePlan } from "./module-plan";
-import type { InstallPlan } from "./resolve-plan";
+import { itemFileTarget, type InstallPlan } from "./resolve-plan";
 import { sha256Hex } from "./sha256";
 import { stageModules, type EnvResult, type TookOver } from "./stage-module";
 import { writeAllOrNothing, type StagedFile } from "./write-tree";
@@ -36,17 +36,6 @@ export type ApplyResult = {
   /** What the modules' env keys did to the example env file; `null` when none declared any. */
   env: EnvResult | null;
 };
-
-function defaultTarget(itemType: string, filePath: string): string {
-  const base = filePath.split("/").pop() ?? filePath;
-  if (itemType === "registry:ui" || filePath.includes("/ui/")) {
-    return join("packages/ui/src/components", base);
-  }
-  if (base === "utils.ts") {
-    return join("packages/ui/src/lib", base);
-  }
-  return base;
-}
 
 async function pathExists(path: string): Promise<boolean> {
   try {
@@ -99,7 +88,7 @@ export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResu
 
   for (const item of options.plan.items) {
     for (const file of item.files ?? []) {
-      const relTarget = file.target ?? defaultTarget(item.type, file.path);
+      const relTarget = itemFileTarget(item, file);
       claimed.set(relTarget, item.name);
       const absTarget = join(options.projectRoot, relTarget);
       const raw = file.content ?? (await readFile(file.path, "utf8"));

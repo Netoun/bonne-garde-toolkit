@@ -50,10 +50,34 @@ async function runBg(cwd: string, ...args: string[]) {
 describe("bg add --yes", () => {
   test("is accepted as a flag, not read as an item name", async () => {
     const target = await freshProject("bg-cli-yes-");
-    const { stdout, stderr, code } = await runBg(target, "add", "button", "--yes", "--no-install");
+    const { stdout, stderr, code } = await runBg(
+      target,
+      "add",
+      "ui/shadcn",
+      "button",
+      "--yes",
+      "--no-install",
+    );
     expect(stderr).not.toContain("unknown registry item");
     expect(code).toBe(0);
-    expect(JSON.parse(stdout)).toMatchObject({ dryRun: false, items: ["utils", "button"] });
+    const added = JSON.parse(stdout);
+    expect(added).toMatchObject({ dryRun: false, items: ["utils", "button"] });
+    // meta.bg is gone, and its `capabilities` list with it.
+    expect(added).not.toHaveProperty("capabilities");
+  });
+
+  test("an item that needs the ui module fails without it, naming ui/shadcn and the command to run", async () => {
+    const target = await freshProject("bg-cli-no-ui-");
+    const before = await readFile(join(target, "bg.json"), "utf8");
+
+    const { stdout, stderr, code } = await runBg(target, "add", "button", "--yes", "--no-install");
+
+    expect(code).toBe(1);
+    expect(stdout).toBe("");
+    expect(stderr).toContain(
+      "button needs the ui module, and none is installed or named in this call; run: bg add ui/shadcn button",
+    );
+    expect(await readFile(join(target, "bg.json"), "utf8")).toBe(before);
   });
 
   test("is documented in --help", async () => {
@@ -68,7 +92,7 @@ describe("bg doctor", () => {
 
   async function projectWithButton(prefix: string): Promise<string> {
     const target = await freshProject(prefix);
-    await addItems({ projectRoot: target, items: ["button"], install: false });
+    await addItems({ projectRoot: target, items: ["ui/shadcn", "button"], install: false });
     return target;
   }
 
@@ -165,7 +189,7 @@ describe("bg record", () => {
 
   test("a pending intention becomes applied, or skipped with its reason, in bg.json and in doctor", async () => {
     const target = await freshProject("bg-cli-record-");
-    await addItems({ projectRoot: target, items: ["button"], install: false });
+    await addItems({ projectRoot: target, items: ["ui/shadcn", "button"], install: false });
     await stageUpgrade(target, "00-align-bun-pin.md", "v0.2.0/align-bun-pin");
     await stageUpgrade(target, "01-adopt-x.md", "v0.2.0/adopt-x");
 

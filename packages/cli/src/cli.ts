@@ -197,7 +197,6 @@ export async function runCli(argv: string[]): Promise<number> {
           skippedIdentical: result.skippedIdentical,
           tookOver: result.tookOver,
           envFile: result.env?.file ?? null,
-          capabilities: plan.capabilities,
           npmDependencies: plan.npmDependencies,
         },
         null,

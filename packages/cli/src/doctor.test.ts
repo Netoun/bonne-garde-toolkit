@@ -47,7 +47,7 @@ async function emptyProject(registry = repoRegistry()): Promise<string> {
 /** A project after one clean `bg add button`. */
 async function projectWithButton(): Promise<string> {
   const root = await emptyProject();
-  await addItems({ projectRoot: root, items: ["button"], install: false });
+  await addItems({ projectRoot: root, items: ["ui/shadcn", "button"], install: false });
   return root;
 }
 
@@ -116,11 +116,11 @@ describe("runDoctor: the report", () => {
     expect(doctorExitCode(report, true)).toBe(0);
     expect(report.checks.manifest.details).toMatchObject({
       version: 2,
-      modules: 0,
+      modules: 1,
       items: 2,
-      files: 4,
+      files: 8,
     });
-    expect(report.checks.files.details).toMatchObject({ tracked: 4, intact: 4 });
+    expect(report.checks.files.details).toMatchObject({ tracked: 8, intact: 8 });
   });
 
   test("is green on a project nothing was added to", async () => {
@@ -141,7 +141,7 @@ describe("runDoctor: files", () => {
       severity: "warning",
       path: BUTTON,
     });
-    expect(report.checks.files.details).toMatchObject({ modified: [BUTTON], intact: 3 });
+    expect(report.checks.files.details).toMatchObject({ modified: [BUTTON], intact: 7 });
     expect(report.status).toBe("warning");
     expect(doctorExitCode(report, false)).toBe(0);
     expect(doctorExitCode(report, true)).toBe(1);
@@ -168,7 +168,7 @@ describe("runDoctor: files", () => {
     const report = await runDoctor(root);
 
     expect(report.status).toBe("ok");
-    expect(report.checks.files.details).toMatchObject({ tracked: 4, untrackedButExpected: [] });
+    expect(report.checks.files.details).toMatchObject({ tracked: 8, untrackedButExpected: [] });
     expect(report.checks.files.notes.join(" ")).toMatch(/not checked/);
   });
 

@@ -22,10 +22,15 @@ export {
 } from "./module-plan";
 export { loadNamedModules, readPlanFiles } from "./remote-install";
 export { readInstalledModuleManifest, type ModuleManifestLookup } from "./read-module-manifest";
-export { PlanError, resolveInstallPlan, searchCatalog, type InstallPlan } from "./resolve-plan";
+export {
+  itemFileTarget,
+  PlanError,
+  resolveInstallPlan,
+  searchCatalog,
+  type InstallPlan,
+} from "./resolve-plan";
 export { sha256Hex } from "./sha256";
 export type {
-  BgMeta,
   RegistryCatalog,
   RegistryFile,
   RegistryItem,

@@ -42,13 +42,7 @@
           "type": "registry:lib",
           "target": "packages/config/src/index.ts"
         }
-      ],
-      "meta": {
-        "bg": {
-          "provides": ["config"],
-          "transforms": ["workspace:packages/config"]
-        }
-      }
+      ]
     }
   ]
 }

@@ -1,12 +1,12 @@
-import type { ProjectManifest } from "@bonne-garde/schema";
-import type { RegistryCatalog, RegistryItem } from "./types";
+import { join } from "node:path";
+import type { ModuleCategory, ProjectManifest } from "@bonne-garde/schema";
+import type { ModuleRef } from "./module-plan";
+import type { RegistryCatalog, RegistryFile, RegistryItem } from "./types";
 
 export type InstallPlan = {
   items: RegistryItem[];
-  capabilities: string[];
   npmDependencies: string[];
   npmDevDependencies: string[];
-  transforms: string[];
 };
 
 export class PlanError extends Error {
@@ -16,25 +16,82 @@ export class PlanError extends Error {
   }
 }
 
-function itemCapabilities(item: RegistryItem): {
-  provides: string[];
-  requires: string[];
-  conflicts: string[];
-  transforms: string[];
-} {
-  const bg = item.meta?.bg;
-  return {
-    provides: bg?.provides ?? [],
-    requires: bg?.requires ?? [],
-    conflicts: bg?.conflicts ?? [],
-    transforms: bg?.transforms ?? [],
+/** Where `add` writes an item's file: its `target`, or the place its type implies. */
+export function itemFileTarget(item: RegistryItem, file: RegistryFile): string {
+  if (file.target !== undefined) {
+    return file.target;
+  }
+  const base = file.path.split("/").pop() ?? file.path;
+  if (item.type === "registry:ui" || file.path.includes("/ui/")) {
+    return join("packages/ui/src/components", base);
+  }
+  if (base === "utils.ts") {
+    return join("packages/ui/src/lib", base);
+  }
+  return base;
+}
+
+/**
+ * Spec 030: an item is tier 1 and does not create the package it lands in, so a module has to. One
+ * rule, keyed on where the item's files land and not on a field: the first matching prefix wins.
+ */
+const MODULE_FOR_TARGET: readonly { prefix: string; category: ModuleCategory; fallback: string }[] =
+  [{ prefix: "packages/ui/", category: "ui", fallback: "ui/shadcn" }];
+
+function landsIn(item: RegistryItem, prefix: string): boolean {
+  return (item.files ?? []).some((file) => itemFileTarget(item, file).startsWith(prefix));
+}
+
+/**
+ * Fails when an item writes into a package whose module is neither installed nor named in this
+ * call. `requested` are the names the caller typed: the error names the ones that need the module
+ * and the command to run, which keeps all of them.
+ */
+function checkHostModules(
+  catalog: RegistryCatalog,
+  requested: string[],
+  ordered: RegistryItem[],
+  manifest: ProjectManifest,
+  modules: readonly ModuleRef[],
+): void {
+  const byName = new Map(catalog.items.map((item) => [item.name, item]));
+  const closure = (name: string, seen = new Set<string>()): Set<string> => {
+    if (!seen.has(name)) {
+      seen.add(name);
+      for (const dep of byName.get(name)?.registryDependencies ?? []) {
+        closure(dep, seen);
+      }
+    }
+    return seen;
   };
+
+  for (const { prefix, category, fallback } of MODULE_FOR_TARGET) {
+    const needing = ordered.filter((item) => landsIn(item, prefix));
+    if (
+      needing.length === 0 ||
+      (manifest.modules[category] ?? []).length > 0 ||
+      modules.some((ref) => ref.category === category)
+    ) {
+      continue;
+    }
+    const names = new Set(needing.map((item) => item.name));
+    const asked = requested.filter((name) => [...closure(name)].some((dep) => names.has(dep)));
+    const known = catalog.modules
+      .filter(({ manifest: module }) => module.category === category)
+      .map(({ manifest: module }) => `${module.category}/${module.id}`);
+    const host = known.length > 0 ? known.join(" or ") : fallback;
+    const verb = asked.length > 1 ? "need" : "needs";
+    throw new PlanError(
+      `${asked.join(", ")} ${verb} the ${category} module, and none is installed or named in this call; run: bg add ${host} ${requested.join(" ")}`,
+    );
+  }
 }
 
 export function resolveInstallPlan(
   catalog: RegistryCatalog,
   requestedNames: string[],
   manifest: ProjectManifest,
+  requestedModules: readonly ModuleRef[] = [],
 ): InstallPlan {
   const byName = new Map(catalog.items.map((item) => [item.name, item]));
   const ordered: RegistryItem[] = [];
@@ -70,38 +127,11 @@ export function resolveInstallPlan(
     visit(name);
   }
 
-  // bg.json stores no capabilities (spec 020), so what is already satisfied is derived: the
-  // `provides` of the catalog entries for the items the manifest records as installed.
-  const plannedCaps = new Set(
-    catalog.items
-      .filter((item) => manifest.items[item.name])
-      .flatMap((item) => itemCapabilities(item).provides),
-  );
-  const transforms: string[] = [];
+  checkHostModules(catalog, requestedNames, ordered, manifest, requestedModules);
+
   const npmDependencies = new Set<string>();
   const npmDevDependencies = new Set<string>();
-
   for (const item of ordered) {
-    const meta = itemCapabilities(item);
-    for (const conflict of meta.conflicts) {
-      if (plannedCaps.has(conflict) || ordered.some((i) => i.name === conflict)) {
-        throw new PlanError(`item ${item.name} conflicts with ${conflict}`);
-      }
-    }
-    for (const req of meta.requires) {
-      if (
-        !plannedCaps.has(req) &&
-        !ordered.some((i) => itemCapabilities(i).provides.includes(req))
-      ) {
-        throw new PlanError(`item ${item.name} requires capability ${req}`);
-      }
-    }
-    for (const cap of meta.provides) {
-      plannedCaps.add(cap);
-    }
-    for (const t of meta.transforms) {
-      transforms.push(t);
-    }
     for (const dep of item.dependencies ?? []) {
       npmDependencies.add(dep);
     }
@@ -112,10 +142,8 @@ export function resolveInstallPlan(
 
   return {
     items: ordered,
-    capabilities: [...plannedCaps].sort(),
     npmDependencies: [...npmDependencies].sort(),
     npmDevDependencies: [...npmDevDependencies].sort(),
-    transforms: [...new Set(transforms)],
   };
 }
 
