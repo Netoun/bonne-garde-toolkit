@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { isModuleCategory, parseModuleManifest } from "@bonne-garde/schema";
 import {
   assertBranding,
@@ -799,7 +799,7 @@ describe("module contract", () => {
     const webModules = async (): Promise<WebModule[]> => {
       const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
       const found = catalog.modules.filter(({ manifest }) => manifest.category === "web");
-      expect(found.map(({ manifest }) => manifest.id).sort()).toEqual(["spa"]);
+      expect(found.map(({ manifest }) => manifest.id).sort()).toEqual(["spa", "static"]);
       return found;
     };
     const providerIds = async (): Promise<string[]> => {
@@ -1030,6 +1030,26 @@ describe("module contract", () => {
         }
       }
       expect(importing).toEqual([]);
+    });
+
+    test("no import leaves the app: a relative path stays under apps/<id>, and the rest is a package", async () => {
+      // The legacy fronts reached `../../testing`, `../../../packages/ui/src` and `../../../../testing`;
+      // a module's files may only reach another tree through that tree's package `exports` (035 seam).
+      const leaving: string[] = [];
+      for (const module of await webModules()) {
+        const home = `apps/${module.manifest.id}`;
+        for (const variant of module.manifest.variants) {
+          for (const [path, source] of await sourcesOf(module, variant.copy ?? [])) {
+            for (const specifier of specifiersOf(source).filter((name) => name.startsWith("."))) {
+              const target = posix.normalize(posix.join(posix.dirname(path), specifier));
+              if (target !== home && !target.startsWith(`${home}/`)) {
+                leaving.push(`${module.manifest.id} ${path}: ${specifier}`);
+              }
+            }
+          }
+        }
+      }
+      expect(leaving).toEqual([]);
     });
 
     test("its tsconfig keeps one `paths` entry, the app's own alias, and reaches into no other tree", async () => {

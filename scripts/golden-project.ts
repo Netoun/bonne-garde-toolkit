@@ -102,6 +102,7 @@ export const CONFIGURATIONS: readonly Configuration[] = [
       "ui/shadcn",
       "api/elysia",
       "web/spa",
+      "web/static",
     ],
     items: true,
   },
@@ -191,6 +192,7 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
     "config/branding": ["scripts.gen:branding"],
     "api/elysia": ["scripts.deploy", "scripts.dev"],
     "web/spa": ["scripts.deploy", "scripts.dev"],
+    "web/static": ["scripts.deploy", "scripts.dev"],
   },
   dockerfile: {
     "config/branding": ["scripts.gen:branding"],

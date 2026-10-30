@@ -26,6 +26,7 @@ const SHARED_MODULES = [
   "provider/cloudflare",
   "api/elysia",
   "web/spa",
+  "web/static",
 ];
 /**
  * The project on the other provider. `provider` admits one module, and the variant of `api/elysia`
