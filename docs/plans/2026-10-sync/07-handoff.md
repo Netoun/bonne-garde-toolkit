@@ -20,7 +20,7 @@ the detail; in this order:
 3. **Installing from a `github:` source.** **Done** (`2eea6a5`, `6a86bc0`); the user put it ahead
    of the dissolution. A real consumer still needs a tagged release; see the loose ends.
 4. **The legacy dissolution, in 080's order, not smallest-first.** The plan is
-   [09-dissolution.md](./09-dissolution.md). **Stages 1 (`tooling`, `0c862a2`) and 2 (`ui`, `daf604f`) are done.** The scope-dependent formatting bug they exposed is fixed (`797fae7`). Stage 3 is done at `4876f41` (`config/branding`, `scripts.merge`, providers, `api/elysia`, `web/{spa,static,ssr}`; `apps/ssr` and `apps/static` deleted); 3d added golden's docker phase (`21d3b94`). Stage 4 is in progress: 4a, the patch engine, is done (`a54e3e5`); 4b's modules landed unwired (`424ae79`) and 4b2 adds `package.dependencies` and the wiring, while 4c builds `auth` in parallel; then 4b `db/d1` + `orm/drizzle`, then 4c `auth/better-auth`. The
+   [09-dissolution.md](./09-dissolution.md). **Stages 1 (`tooling`, `0c862a2`) and 2 (`ui`, `daf604f`) are done.** The scope-dependent formatting bug they exposed is fixed (`797fae7`). Stage 3 is done at `4876f41` (`config/branding`, `scripts.merge`, providers, `api/elysia`, `web/{spa,static,ssr}`; `apps/ssr` and `apps/static` deleted); 3d added golden's docker phase (`21d3b94`). Stage 4 is in progress: 4a, the patch engine, is done (`a54e3e5`); 4b (`db/d1`, `orm/drizzle`) is done and wired (`66a0b12`, with the new `package.dependencies` patch); 4c builds `auth`; then 4b `db/d1` + `orm/drizzle`, then 4c `auth/better-auth`. The
    questions at its end are answered; see the settled list below.
 
 The diagnosis this file first gave for P1 was wrong. It blamed the Bun version for
