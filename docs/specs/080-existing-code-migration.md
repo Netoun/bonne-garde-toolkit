@@ -18,7 +18,7 @@ The POC's patch implementation (`jsonc-parser` + `ts-morph`) is the **starting p
 
 1. `tooling` module + base template alignment
 2. `ui` module (host package) + UI items, `meta.bg` removed
-3. `config` (the branding constants every shell imports), then the app shells: `api`, then `web` (spa / ssr / static). `config` lands here, not after `tooling`, because an item cannot depend on a module: the `spa-react-router` item pulls `config` through `registryDependencies` until `web/spa` replaces it in this same step
+3. `config` (the branding constants every shell imports), then the app shells: `api`, then `web` (spa / ssr / static). `config` lands here, first, because every shell declares it as a peer
 4. `db` + `orm`, then `auth`
 5. `email`, `queue`, `storage`
 6. Delete a legacy app/package **only** after the generated playground is green for the module that replaces it
