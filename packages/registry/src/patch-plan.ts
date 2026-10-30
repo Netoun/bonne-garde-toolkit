@@ -19,10 +19,30 @@ export type JsoncMergePatch = {
   value: Record<string, unknown>;
 };
 
-/** Every patch the engine applies. The union grows with each patch type; the refusal below names what is missing. */
-export type PlannedPatch = ScriptsMergePatch | JsoncMergePatch;
+export type AddImportPatch = {
+  type: "ts.addImport";
+  file: string;
+  /** With `{{SCOPE}}` rendered: it is the key of the region `bg.json` records. */
+  moduleSpecifier: string;
+  namedImports: string[];
+};
 
-const APPLIED = ["scripts.merge", "jsonc.merge"] as const;
+export type AddNamedExportPatch = {
+  type: "ts.addNamedExport";
+  file: string;
+  /** With `{{SCOPE}}` rendered, as for `ts.addImport`. */
+  moduleSpecifier: string;
+  exports: string[];
+};
+
+/** Every patch the engine applies. The union grows with each patch type; the refusal below names what is missing. */
+export type PlannedPatch =
+  | ScriptsMergePatch
+  | JsoncMergePatch
+  | AddImportPatch
+  | AddNamedExportPatch;
+
+const APPLIED = ["scripts.merge", "jsonc.merge", "ts.addImport", "ts.addNamedExport"] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -114,11 +134,79 @@ function parseJsoncMerge(refuse: Refuse, patch: ModulePatch): JsoncMergePatch {
   return { type: "jsonc.merge", file, value };
 }
 
+const TS_FILE = /\.(?:[cm]?ts|tsx)$/;
+const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+
+function checkTsFile(refuse: Refuse, patch: ModulePatch): string {
+  const file = checkFile(refuse, patch);
+  if (!TS_FILE.test(file)) {
+    return refuse(`file must be a .ts or .tsx file, got: ${file}`);
+  }
+  return file;
+}
+
+/** The module a TS patch names, with the scope rendered: a specifier is a declared value, not text of the project's file. */
+function checkSpecifier(refuse: Refuse, patch: ModulePatch, scope: string): string {
+  const { moduleSpecifier } = patch;
+  if (typeof moduleSpecifier !== "string" || moduleSpecifier.length === 0) {
+    return refuse("moduleSpecifier must be a non-empty string");
+  }
+  if (/[\r\n]/.test(moduleSpecifier)) {
+    return refuse("moduleSpecifier must be on one line");
+  }
+  return moduleSpecifier.replaceAll("{{SCOPE}}", scope);
+}
+
+/** The names a TS patch brings: identifiers, each once, in the order they are written. */
+function checkNames(refuse: Refuse, patch: ModulePatch, argument: string): string[] {
+  const names = patch[argument];
+  if (!Array.isArray(names) || names.length === 0) {
+    return refuse(`${argument} must be a non-empty array of names`);
+  }
+  const written: string[] = [];
+  for (const name of names) {
+    if (typeof name !== "string" || !IDENTIFIER.test(name)) {
+      return refuse(`${argument} must hold identifiers, got: ${JSON.stringify(name)}`);
+    }
+    if (written.includes(name)) {
+      return refuse(`${argument} names ${name} twice`);
+    }
+    written.push(name);
+  }
+  return written;
+}
+
+function parseAddImport(refuse: Refuse, patch: ModulePatch, scope: string): AddImportPatch {
+  checkArguments(refuse, patch, ["file", "moduleSpecifier", "namedImports"]);
+  const file = checkTsFile(refuse, patch);
+  return {
+    type: "ts.addImport",
+    file,
+    moduleSpecifier: checkSpecifier(refuse, patch, scope),
+    namedImports: checkNames(refuse, patch, "namedImports"),
+  };
+}
+
+function parseAddNamedExport(
+  refuse: Refuse,
+  patch: ModulePatch,
+  scope: string,
+): AddNamedExportPatch {
+  checkArguments(refuse, patch, ["file", "moduleSpecifier", "exports"]);
+  const file = checkTsFile(refuse, patch);
+  return {
+    type: "ts.addNamedExport",
+    file,
+    moduleSpecifier: checkSpecifier(refuse, patch, scope),
+    exports: checkNames(refuse, patch, "exports"),
+  };
+}
+
 /**
  * The patches of the selected variant, checked. A type this CLI does not apply fails the install
  * before anything is written, and so does a malformed argument: both are registry authoring errors.
  */
-export function plannedPatches(key: string, variant: ModuleVariant): PlannedPatch[] {
+export function plannedPatches(key: string, variant: ModuleVariant, scope: string): PlannedPatch[] {
   return (variant.patch ?? []).map((patch) => {
     const refuse: Refuse = (why) => {
       throw new PlanError(`${key} declares patch ${patch.type}: ${why}`);
@@ -128,6 +216,10 @@ export function plannedPatches(key: string, variant: ModuleVariant): PlannedPatc
         return parseScriptsMerge(refuse, patch);
       case "jsonc.merge":
         return parseJsoncMerge(refuse, patch);
+      case "ts.addImport":
+        return parseAddImport(refuse, patch, scope);
+      case "ts.addNamedExport":
+        return parseAddNamedExport(refuse, patch, scope);
       default: {
         const file = typeof patch.file === "string" ? ` on ${patch.file}` : "";
         throw new PlanError(

@@ -459,7 +459,7 @@ async function planModule(
   const { manifest } = module;
   const key = keyOf(manifest);
   const variant = selectVariant(manifest, present);
-  const patches = plannedPatches(key, variant);
+  const patches = plannedPatches(key, variant, project.scope);
   refuseUnsupported(key, variant);
 
   const copied = await copiedFiles(module, variant, project.scope);

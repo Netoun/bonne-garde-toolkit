@@ -74,7 +74,11 @@ describe("pack-cli", () => {
         ([name]) => !name.startsWith("@bonne-garde/"),
       ),
     );
-    expect(external).toEqual({ "jsonc-parser": expect.stringMatching(/^\d+\.\d+\.\d+$/) });
+    // Both are pinned to an exact version: a patch's output depends on what parses the file.
+    expect(external).toEqual({
+      "jsonc-parser": expect.stringMatching(/^\d+\.\d+\.\d+$/),
+      "ts-morph": expect.stringMatching(/^\d+\.\d+\.\d+$/),
+    });
     expect(packed.dependencies).toEqual(external);
   });
 });

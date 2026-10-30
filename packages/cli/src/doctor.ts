@@ -336,7 +336,7 @@ async function declaredPatches(
     return { ok: false, reason: `module.json has no variant ${installed.record.variant}` };
   }
   try {
-    return { ok: true, patches: plannedPatches(installed.key, variant) };
+    return { ok: true, patches: plannedPatches(installed.key, variant, manifest.scope) };
   } catch (error) {
     return { ok: false, reason: reasonOf(error) };
   }

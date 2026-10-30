@@ -967,6 +967,106 @@ describe("resolveModulePlans: jsonc.merge (060)", () => {
   });
 });
 
+describe("resolveModulePlans: ts.addImport and ts.addNamedExport (060)", () => {
+  const plan = async (patch: unknown[], scope = "@demo") => {
+    const catalog = await registry([
+      {
+        category: "auth",
+        id: "better-auth",
+        json: { variants: [{ key: "default", match: {}, patch }] },
+      },
+    ]);
+    const [first] = await resolveModulePlans(catalog, [{ category: "auth", id: "better-auth" }], {
+      ...project(),
+      scope,
+    });
+    return first;
+  };
+  const addImport = {
+    type: "ts.addImport",
+    file: "apps/api/src/app.ts",
+    moduleSpecifier: "{{SCOPE}}/auth",
+    namedImports: ["authModule"],
+  };
+  const addExport = {
+    type: "ts.addNamedExport",
+    file: "packages/db/src/schema.ts",
+    moduleSpecifier: "{{SCOPE}}/auth/schema",
+    exports: ["users", "sessions"],
+  };
+
+  test("is planned with the scope rendered in the specifier, which is the key of its region", async () => {
+    const planned = await plan([addImport, addExport], "@demo");
+
+    const patches: unknown = planned?.patches;
+    expect(patches).toEqual([
+      { ...addImport, moduleSpecifier: "@demo/auth" },
+      { ...addExport, moduleSpecifier: "@demo/auth/schema" },
+    ]);
+  });
+
+  test.each([
+    [
+      "has no moduleSpecifier",
+      { ...addImport, moduleSpecifier: undefined },
+      /moduleSpecifier must be a non-empty string/,
+    ],
+    [
+      "has an empty one",
+      { ...addImport, moduleSpecifier: "" },
+      /moduleSpecifier must be a non-empty string/,
+    ],
+    [
+      "has no names",
+      { ...addImport, namedImports: [] },
+      /namedImports must be a non-empty array of names/,
+    ],
+    [
+      "has a name that is not an identifier",
+      { ...addImport, namedImports: ["a as b"] },
+      /namedImports must hold identifiers, got: "a as b"/,
+    ],
+    ["names one twice", { ...addImport, namedImports: ["a", "a"] }, /namedImports names a twice/],
+    [
+      "targets a file that is not TypeScript",
+      { ...addImport, file: "apps/api/src/app.js" },
+      /file must be a \.ts or \.tsx file, got: apps\/api\/src\/app\.js/,
+    ],
+    [
+      "has an argument it does not know",
+      { ...addImport, exports: ["a"] },
+      /has an argument it does not know: exports/,
+    ],
+  ])(
+    "a ts.addImport that %s is refused as a registry authoring error",
+    async (_, patch, message) => {
+      await expect(plan([patch])).rejects.toThrow(message);
+      await expect(plan([patch])).rejects.toThrow(/auth\/better-auth declares patch ts\.addImport/);
+    },
+  );
+
+  test.each([
+    [
+      "has no exports",
+      { ...addExport, exports: undefined },
+      /exports must be a non-empty array of names/,
+    ],
+    [
+      "has an argument it does not know",
+      { ...addExport, namedImports: ["a"] },
+      /has an argument it does not know: namedImports/,
+    ],
+  ])(
+    "a ts.addNamedExport that %s is refused as a registry authoring error",
+    async (_, patch, message) => {
+      await expect(plan([patch])).rejects.toThrow(message);
+      await expect(plan([patch])).rejects.toThrow(
+        /auth\/better-auth declares patch ts\.addNamedExport/,
+      );
+    },
+  );
+});
+
 describe("resolveModulePlans: what is not supported yet fails loudly", () => {
   const withVariant = (extra: Record<string, unknown>) =>
     registry([

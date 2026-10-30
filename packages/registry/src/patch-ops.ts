@@ -2,6 +2,14 @@ import { inspectJsonc, jsonRegion, jsoncLeaves, setJsoncLeaves } from "./jsonc-m
 import type { PlannedPatch } from "./patch-plan";
 import type { RegionState } from "./region-state";
 import { inspectScripts, scriptRegion, setScripts } from "./scripts-merge";
+import {
+  addImport,
+  addNamedExport,
+  exportRegion,
+  importRegion,
+  inspectImport,
+  inspectNamedExport,
+} from "./ts-patches";
 
 /**
  * What the engine asks of every tier-2 patch type (spec 060), so that the conflict table lives in
@@ -33,6 +41,20 @@ export function patchRegions(patch: PlannedPatch): RegionDeclaration[] {
         region: jsonRegion(path),
         declared: JSON.stringify(value),
       }));
+    case "ts.addImport":
+      return [
+        {
+          region: importRegion(patch.moduleSpecifier),
+          declared: `{ ${patch.namedImports.join(", ")} }`,
+        },
+      ];
+    case "ts.addNamedExport":
+      return [
+        {
+          region: exportRegion(patch.moduleSpecifier),
+          declared: `{ ${patch.exports.join(", ")} }`,
+        },
+      ];
   }
 }
 
@@ -61,6 +83,26 @@ export function inspectPatch(text: string, patch: PlannedPatch): PatchInspection
     }
     case "jsonc.merge":
       return inspectJsonc(text, jsoncLeaves(patch.value));
+    case "ts.addImport":
+    case "ts.addNamedExport": {
+      const inspected =
+        patch.type === "ts.addImport"
+          ? inspectImport(patch.file, text, patch.moduleSpecifier, patch.namedImports)
+          : inspectNamedExport(patch.file, text, patch.moduleSpecifier, patch.exports);
+      return inspected.ok
+        ? {
+            ok: true,
+            states: new Map([
+              [
+                patch.type === "ts.addImport"
+                  ? importRegion(patch.moduleSpecifier)
+                  : exportRegion(patch.moduleSpecifier),
+                inspected.state,
+              ],
+            ]),
+          }
+        : inspected;
+    }
   }
 }
 
@@ -87,5 +129,13 @@ export function writePatch(
         text,
         jsoncLeaves(patch.value).filter(({ path }) => regions.has(jsonRegion(path))),
       );
+    case "ts.addImport":
+      return regions.has(importRegion(patch.moduleSpecifier))
+        ? addImport(patch.file, text, patch.moduleSpecifier, patch.namedImports)
+        : text;
+    case "ts.addNamedExport":
+      return regions.has(exportRegion(patch.moduleSpecifier))
+        ? addNamedExport(patch.file, text, patch.moduleSpecifier, patch.exports)
+        : text;
   }
 }

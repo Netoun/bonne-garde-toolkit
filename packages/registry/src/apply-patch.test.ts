@@ -812,6 +812,167 @@ describe("applyInstallPlan: jsonc.merge (060)", () => {
   });
 });
 
+describe("applyInstallPlan: ts.addImport and ts.addNamedExport (060)", () => {
+  const APP = 'import { Elysia } from "elysia";\n\nexport const app = new Elysia();\n';
+  const FILE = "apps/api/src/app.ts";
+  const importing = (names = ["authModule"], specifier = "@demo/auth", file = FILE) =>
+    ({
+      type: "ts.addImport",
+      file,
+      moduleSpecifier: specifier,
+      namedImports: names,
+    }) satisfies PlannedPatch;
+  const exporting = (names = ["users"], specifier = "@demo/auth/schema", file = FILE) =>
+    ({
+      type: "ts.addNamedExport",
+      file,
+      moduleSpecifier: specifier,
+      exports: names,
+    }) satisfies PlannedPatch;
+  const authModule = (patches: PlannedPatch[] = [importing()]) =>
+    modulePlan({ category: "auth", id: "better-auth", key: "auth/better-auth", patches });
+  const project = () => freshProject({ [FILE]: APP });
+
+  test("adds the import and records its region, and the file is the same but for the line", async () => {
+    const { projectRoot, manifest } = await project();
+
+    const result = await install(projectRoot, manifest, [authModule([importing(), exporting()])]);
+
+    expect(await read(projectRoot, FILE)).toBe(
+      'import { Elysia } from "elysia";\nimport { authModule } from "@demo/auth";\nexport { users } from "@demo/auth/schema";\n\nexport const app = new Elysia();\n',
+    );
+    expect(result.patches.map(({ type, status, regions }) => ({ type, status, regions }))).toEqual([
+      {
+        type: "ts.addImport",
+        status: "applied",
+        regions: [{ region: "imports[@demo/auth]", status: "applied" }],
+      },
+      {
+        type: "ts.addNamedExport",
+        status: "applied",
+        regions: [{ region: "exports[@demo/auth/schema]", status: "applied" }],
+      },
+    ]);
+    expect(result.manifest.regions).toEqual({
+      [FILE]: {
+        "imports[@demo/auth]": "auth/better-auth",
+        "exports[@demo/auth/schema]": "auth/better-auth",
+      },
+    });
+    expect(result.manifest.files).toEqual({});
+  });
+
+  test("the same install again skips both, and the tree is the same bytes", async () => {
+    const { projectRoot, manifest } = await project();
+    const first = await install(projectRoot, manifest, [authModule([importing(), exporting()])]);
+    const tree = await snapshot(projectRoot);
+
+    const second = await install(projectRoot, first.manifest, [
+      authModule([importing(), exporting()]),
+    ]);
+
+    expect(second.patches.map(({ status }) => status)).toEqual(["skipped", "skipped"]);
+    expect(second.manifest.regions).toEqual(first.manifest.regions);
+    const { "bg.json": _bg, ...files } = await snapshot(projectRoot);
+    const { "bg.json": _first, ...firstFiles } = tree;
+    expect(files).toEqual(firstFiles);
+  });
+
+  test("a name the file already imports from the specifier is skipped, and the rest is added to that import", async () => {
+    const { projectRoot, manifest } = await freshProject({
+      [FILE]: 'import { a } from "@demo/auth";\n',
+    });
+
+    const result = await install(projectRoot, manifest, [authModule([importing(["a", "b"])])]);
+
+    expect(await read(projectRoot, FILE)).toBe('import { a, b } from "@demo/auth";\n');
+    expect(result.patches[0]?.status).toBe("applied");
+  });
+
+  test("a region of another module fails always, and so does one named twice in the call", async () => {
+    const { projectRoot, manifest } = await project();
+    const first = await install(projectRoot, manifest, [authModule()]);
+    const other = () =>
+      modulePlan({
+        category: "dev",
+        id: "other",
+        key: "dev/other",
+        patches: [importing(["other"])],
+      });
+    const before = await snapshot(projectRoot);
+
+    for (const force of [false, true]) {
+      await expect(install(projectRoot, first.manifest, [other()], { force })).rejects.toThrow(
+        /nothing was written; --force does not change this:\n {2}imports\[@demo\/auth\] of apps\/api\/src\/app\.ts is owned by auth\/better-auth, and dev\/other would write it/,
+      );
+    }
+    await expect(install(projectRoot, manifest, [authModule(), other()])).rejects.toThrow(
+      /imports\[@demo\/auth\] of apps\/api\/src\/app\.ts is named by both auth\/better-auth and dev\/other/,
+    );
+    expect(await snapshot(projectRoot)).toEqual(before);
+  });
+
+  test("an import the project removed is added again by the next add: a presence has no value to disagree on", async () => {
+    const { projectRoot, manifest } = await project();
+    const first = await install(projectRoot, manifest, [authModule()]);
+    await writeFile(join(projectRoot, FILE), APP);
+
+    const again = await install(projectRoot, first.manifest, [authModule()]);
+
+    expect(again.patches[0]?.status).toBe("applied");
+    expect(await read(projectRoot, FILE)).toContain('import { authModule } from "@demo/auth";');
+  });
+
+  test.each([
+    ["a target that does not exist", undefined, /^apps\/api\/src\/app\.ts does not exist$/],
+    [
+      "a target that is not TypeScript",
+      "export const a = (;\n",
+      /^apps\/api\/src\/app\.ts: not valid TypeScript \(.* at line 1\)$/,
+    ],
+    [
+      "an import it would have to rewrite around a comment",
+      'import { a /* keep */ } from "@demo/auth";\n',
+      /^apps\/api\/src\/app\.ts: a comment inside the braces of the import from @demo\/auth would be lost/,
+    ],
+  ])(
+    "a patch on %s is `failed`, recorded, and never aborts the install",
+    async (_, text, reason) => {
+      const { projectRoot, manifest } = await freshProject(
+        text === undefined ? {} : { [FILE]: text },
+      );
+
+      const result = await install(projectRoot, manifest, [authModule()]);
+
+      expect(result.patches[0]?.status).toBe("failed");
+      expect(result.patches[0]?.reason).toMatch(reason);
+      expect(result.manifest.regions).toEqual({});
+      expect(result.manifest.modules.auth?.[0]?.patches[0]).toMatchObject({ status: "failed" });
+      if (text !== undefined) {
+        expect(await read(projectRoot, FILE)).toBe(text);
+      }
+    },
+  );
+
+  test("a file the same call writes is patched in the virtual tree, once, with the sha of what landed", async () => {
+    const { projectRoot, manifest } = await freshProject({});
+    const shell = modulePlan({
+      category: "api",
+      id: "elysia",
+      key: "api/elysia",
+      files: [{ target: FILE, content: APP }],
+      patches: [],
+    });
+
+    const result = await install(projectRoot, manifest, [shell, authModule()]);
+
+    const landed = await read(projectRoot, FILE);
+    expect(landed).toContain('import { authModule } from "@demo/auth";');
+    expect(result.manifest.files[FILE]).toEqual({ owner: "api/elysia", sha256: sha256Hex(landed) });
+    expect(result.written).toEqual([FILE]);
+  });
+});
+
 describe("a module record keeps only what 020 names", () => {
   test("patches carry type, file, status and a reason when failed, no per-region detail", async () => {
     const { projectRoot, manifest } = await freshProject();

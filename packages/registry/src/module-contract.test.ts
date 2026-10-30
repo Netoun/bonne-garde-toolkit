@@ -1144,7 +1144,7 @@ describe("module contract", () => {
     for (const { manifest } of catalog.modules) {
       for (const variant of manifest.variants) {
         try {
-          plannedPatches(`${manifest.category}/${manifest.id}`, variant);
+          plannedPatches(`${manifest.category}/${manifest.id}`, variant, "@acme");
         } catch (error) {
           refused.push(error instanceof Error ? error.message : String(error));
         }

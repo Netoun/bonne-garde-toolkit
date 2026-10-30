@@ -1,4 +1,5 @@
 import { parseJsonRegion, readJsonPath } from "./jsonc-merge";
+import { parseTsRegion, readTsRegion } from "./ts-patches";
 
 /**
  * What `doctor` asks of a recorded region without the module's `module.json`: is it still in the
@@ -14,19 +15,29 @@ export type RegionPresence =
   | { kind: "invalid"; reason: string };
 
 const isJsonFile = (file: string): boolean => file.endsWith(".json") || file.endsWith(".jsonc");
+const isTsFile = (file: string): boolean => /\.(?:[cm]?ts|tsx)$/.test(file);
 
 /** Whether `regionPresence` can read this region: `false` for a kind of region it does not know. */
 export function isReadableRegion(file: string, region: string): boolean {
-  return isJsonFile(file) && parseJsonRegion(region) !== null;
+  return (
+    (isJsonFile(file) && parseJsonRegion(region) !== null) ||
+    (isTsFile(file) && parseTsRegion(region) !== null)
+  );
 }
 
 /** The region in the file's text. Only meaningful when `isReadableRegion(file, region)` holds. */
 export function regionPresence(file: string, text: string, region: string): RegionPresence {
   const path = isJsonFile(file) ? parseJsonRegion(region) : null;
-  if (path === null) {
+  const typescript = isTsFile(file) ? parseTsRegion(region) : null;
+  const read =
+    path !== null
+      ? readJsonPath(text, path)
+      : typescript !== null
+        ? readTsRegion(file, text, typescript)
+        : null;
+  if (read === null) {
     return { kind: "missing" };
   }
-  const read = readJsonPath(text, path);
   if (!read.ok) {
     return { kind: "invalid", reason: read.reason };
   }

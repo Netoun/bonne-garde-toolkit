@@ -336,17 +336,41 @@ describe("runDoctor: a file with recorded regions is checked by region, not by s
     );
   });
 
+  test("an import or an export of a TypeScript file is read: present is checked, gone is an error", async () => {
+    const root = await projectWithButton();
+    await editManifest(root, (m) => ({
+      ...m,
+      regions: {
+        [BUTTON]: {
+          "imports[react]": "button",
+          "imports[motion/react]": "button",
+          "imports[@app/auth]": "button",
+          "exports[./x]": "button",
+        },
+      },
+    }));
+
+    const report = await runDoctor(root);
+
+    expect(report.checks.regions.details).toMatchObject({
+      checked: [`${BUTTON}#imports[react]`, `${BUTTON}#imports[motion/react]`],
+      missing: [`${BUTTON}#imports[@app/auth]`, `${BUTTON}#exports[./x]`],
+      unchecked: [],
+    });
+    expect(codes(report, "regions")).toEqual(["region-missing", "region-missing"]);
+  });
+
   test("a region of a kind doctor cannot resolve is listed as unchecked, not as an error", async () => {
     const root = await projectWithButton();
     await editManifest(root, (m) => ({
       ...m,
-      regions: { [BUTTON]: { "exports[./x]": "button" } },
+      regions: { [BUTTON]: { "banner[top]": "button" } },
     }));
 
     const report = await runDoctor(root);
 
     expect(report.checks.regions.status).toBe("ok");
-    expect(report.checks.regions.details).toMatchObject({ unchecked: [`${BUTTON}#exports[./x]`] });
+    expect(report.checks.regions.details).toMatchObject({ unchecked: [`${BUTTON}#banner[top]`] });
   });
 });
 
@@ -415,7 +439,7 @@ describe("runDoctor: regions", () => {
     const root = await projectWithButton();
     await editManifest(root, (m) => ({
       ...m,
-      regions: { [BUTTON]: { "exports[./x]": "button" } },
+      regions: { [BUTTON]: { "imports[react]": "button" } },
     }));
     const report = await runDoctor(root);
     expect(report.checks.regions.status).toBe("ok");
@@ -440,7 +464,7 @@ describe("runDoctor: regions", () => {
     const root = await projectWithButton();
     await editManifest(root, (m) => ({
       ...m,
-      regions: { [BUTTON]: { "exports[./x]": "auth/better-auth" } },
+      regions: { [BUTTON]: { "imports[react]": "auth/better-auth" } },
     }));
     const report = await runDoctor(root);
     expect(codes(report, "regions")).toEqual(["region-owner-unknown"]);
@@ -452,7 +476,7 @@ describe("runDoctor: regions", () => {
     await editManifest(root, (m) => ({
       ...m,
       modules: { auth: [moduleRecord("better-auth")] },
-      regions: { [BUTTON]: { "exports[./x]": "auth/better-auth" } },
+      regions: { [BUTTON]: { "imports[react]": "auth/better-auth" } },
     }));
     const report = await runDoctor(root);
     expect(codes(report, "regions")).toEqual([]);
