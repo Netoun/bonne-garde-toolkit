@@ -62,6 +62,8 @@ For every copied file, `bg.json` records the owner and the SHA-256 of what was w
 | differs              | user-modified   | see the conflict policy: `add` fails, `upgrade` keeps |
 | file absent          | deleted by user | report in `doctor`; re-create only on explicit `add`  |
 
+**A file with recorded regions is checked region by region.** A patch rewrites a file whose tier-1 sha `bg.json` recorded, so the whole-file sha no longer matches and says nothing about a user edit. `doctor` skips the sha check for that file and reports its regions instead ([Region ownership](#region-ownership)). The conflict policy below classifies it by region too: the sha rows apply to a file without recorded regions.
+
 ## Patch outcomes
 
 A patch result is `applied`, `skipped`, or `failed` with a reason. Recorded in `bg.json` alongside the module.
@@ -76,17 +78,17 @@ A patch result is `applied`, `skipped`, or `failed` with a reason. Recorded in `
 
 ## Conflict policy
 
-| Situation                                        | Default                                                          |
-| ------------------------------------------------ | ---------------------------------------------------------------- |
-| Target file missing                              | create                                                           |
-| Target file identical to recorded sha            | keep, report `skipped`                                           |
-| Target file differs from recorded sha, `add`     | error listing every path; `--force` overwrites                   |
-| Target file differs from recorded sha, `upgrade` | keep, report; `--force` overwrites                               |
-| Target file recorded for another owner           | error naming both owners; `--force` takes it over and reports it |
-| Region present and equal                         | `skipped`                                                        |
-| Region present and differing                     | error; `--force` overwrites                                      |
-| Region owned by another module                   | error always — `--force` does not bypass                         |
-| Category already filled (`cardinality: one`)     | error always — use `bg replace`                                  |
+| Situation                                                        | Default                                                          |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Target file missing                                              | create                                                           |
+| Target file identical to recorded sha                            | keep, report `skipped`                                           |
+| Target file without regions differs from recorded sha, `add`     | error listing every path; `--force` overwrites                   |
+| Target file without regions differs from recorded sha, `upgrade` | keep, report; `--force` overwrites                               |
+| Target file recorded for another owner                           | error naming both owners; `--force` takes it over and reports it |
+| Region present and equal                                         | `skipped`                                                        |
+| Region present and differing                                     | error; `--force` overwrites                                      |
+| Region owned by another module                                   | error always — `--force` does not bypass                         |
+| Category already filled (`cardinality: one`)                     | error always — use `bg replace`                                  |
 
 `add` and `upgrade` differ on a user-modified file on purpose. `add` is a request to install a module whole: keeping the user's file would record the module as installed without that file, so it fails and names the paths. `upgrade` moves an installed project forward: it keeps the user's edit and reports it.
 

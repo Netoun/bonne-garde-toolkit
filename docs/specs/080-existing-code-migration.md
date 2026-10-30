@@ -6,26 +6,28 @@ Extract the legacy monorepo — and fold in the `bonne-garde-registry` POC — i
 
 ## Sources
 
-| Source                                       | Fate                                                                         |
-| -------------------------------------------- | ---------------------------------------------------------------------------- |
-| Legacy `apps/*`, `packages/*` in this repo   | Extracted into modules, then deleted per item                                |
-| POC `bonne-garde-registry`                   | Folded in: `template/` trees, patch catalog, `PROMPT.md` → intents, `doctor` |
-| Current `registry/` (shadcn `meta.bg` items) | UI items keep their files; `meta.bg` dropped; app/lib items become modules   |
+| Source                                       | Fate                                                                                               |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Legacy `apps/*`, `packages/*` in this repo   | Extracted into modules, or into feature items ([030](./030-ui-registry.md)), then deleted per item |
+| POC `bonne-garde-registry`                   | Folded in: `template/` trees, patch catalog, `PROMPT.md` → intents, `doctor`                       |
+| Current `registry/` (shadcn `meta.bg` items) | UI items keep their files; `meta.bg` dropped; app/lib items become modules                         |
 
 The POC's patch implementation (`jsonc-parser` + `ts-morph`) is the **starting point** for the tier-2 catalog, not a second implementation to reconcile later.
 
 ## Order (MUST)
 
-1. `tooling` module + base template alignment
+1. `tooling` module + base template alignment, then `config` (the branding constants every shell imports)
 2. `ui` module (host package) + UI items, `meta.bg` removed
 3. App shells: `api`, then `web` (spa / ssr / static)
 4. `db` + `orm`, then `auth`
 5. `email`, `queue`, `storage`
 6. Delete a legacy app/package **only** after the generated playground is green for the module that replaces it
 
+`web/ssr` declares `peers.provider: ["cloudflare"]` (step 3). A `dockerfile` project has no SSR shell, and a second SSR variant is a new feature, not part of this extraction.
+
 ## Category assignment
 
-Every extracted piece MUST be assigned a category from [035](./035-module-registry.md) before extraction starts. A piece that fits no category is a signal the category table is wrong — fix the table, do not invent a field.
+Every extracted piece MUST be assigned a category from [035](./035-module-registry.md), or an item kind from [030](./030-ui-registry.md) (UI or feature), before extraction starts. A piece that fits neither is a signal the table is wrong — fix the table, do not invent a field.
 
 ## Rules
 

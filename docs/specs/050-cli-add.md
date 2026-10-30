@@ -38,7 +38,7 @@ bg doctor [--json] [--strict]
 **Normative:**
 
 - Steps 1–13 MUST be fully deterministic. A plan with zero pending intents MUST complete with no agent in the loop and no TTY.
-- Dependencies MUST be written into the workspace `package.json` generated from the variant — never duplicated in a hand-authored file.
+- Dependencies MUST come from the variant and nowhere else: written into the workspace `package.json` generated from it, or merged into the module's vendored `package.json`, which carries no dependency maps of its own ([035](./035-module-registry.md)).
 - `--yes` MUST be honoured: it selects defaults for every `option` and never prompts. It is not a no-op flag.
 - MUST support `local:` sources for monorepo development and `github:owner/repo@ref` for consumers, with the same UX for both, for **install** and not only for index fetch.
 
@@ -46,14 +46,14 @@ bg doctor [--json] [--strict]
 
 Reads `bg.json` and the tree, no network. Reports:
 
-| Check      | Signal                                                        |
-| ---------- | ------------------------------------------------------------- |
-| Manifest   | Schema version, module and item counts                        |
-| Files      | Missing, user-modified (sha mismatch), untracked-but-expected |
-| Regions    | Present / missing / owned by another module / foreign edit    |
-| Patches    | Recorded `failed` outcomes                                    |
-| Intentions | Pending (staged, unresolved), applied, skipped                |
-| Peers      | A module whose peer category is now empty                     |
+| Check      | Signal                                                                                                                       |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Manifest   | Schema version, module and item counts                                                                                       |
+| Files      | Missing, user-modified (sha mismatch), untracked-but-expected. A file with recorded regions is checked by region, not by sha |
+| Regions    | Present / missing / owned by another module / foreign edit                                                                   |
+| Patches    | Recorded `failed` outcomes                                                                                                   |
+| Intentions | Pending (staged, unresolved), applied, skipped                                                                               |
+| Peers      | A module whose peer category is now empty                                                                                    |
 
 `--strict` exits non-zero on warning or error, for CI.
 

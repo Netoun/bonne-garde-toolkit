@@ -4,33 +4,35 @@
 
 Define the native Bonne Garde format for full-stack modules: category-typed units installed into their own workspace package, composing by peers rather than by hand-written conflict lists.
 
-The shadcn schema stays for UI items ([030](./030-ui-registry.md)). It cannot express categories, peers, variants, or patches — modules MUST NOT be squeezed into it.
+The shadcn schema stays for UI and feature items ([030](./030-ui-registry.md)). It cannot express categories, peers, variants, or patches — modules MUST NOT be squeezed into it.
 
 ## Categories (normative)
 
 A module fills exactly one category. The category carries **cardinality** and **home**; nothing else declares conflicts.
 
-| id         | cardinality | home                        | Notes                                                                          |
-| ---------- | ----------- | --------------------------- | ------------------------------------------------------------------------------ |
-| `provider` | one         | repo                        | Runtime and deploy target; the peer every runtime-touching category matches on |
-| `tooling`  | one         | repo                        | fmt / lint / check / hooks                                                     |
-| `api`      | one         | app `apps/api`              | Elysia app shell                                                               |
-| `db`       | one         | package `packages/db`       | Binding + client; provider-matched                                             |
-| `orm`      | one         | package `packages/db`       | Shares the `db` directory                                                      |
-| `auth`     | one         | package `packages/auth`     |                                                                                |
-| `ui`       | one         | package `packages/ui`       | Host package for shadcn items                                                  |
-| `email`    | one         | package `packages/email`    |                                                                                |
-| `queue`    | one         | package `packages/queue`    |                                                                                |
-| `storage`  | one         | package `packages/storage`  |                                                                                |
-| `payments` | one         | package `packages/payments` |                                                                                |
-| `web`      | many        | app `apps/<id>`             | SPA / SSR / static shells                                                      |
-| `testing`  | many        | app                         |                                                                                |
-| `deploy`   | many        | repo                        | CI / deploy pipeline                                                           |
+| id         | cardinality | home                        | Notes                                                                                                                                                           |
+| ---------- | ----------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `provider` | one         | repo                        | Runtime and deploy target; the peer every runtime-touching category matches on; owns the runtime seam packages other categories import (`packages/api-runtime`) |
+| `tooling`  | one         | repo                        | fmt / lint / check / hooks                                                                                                                                      |
+| `config`   | one         | package `packages/config`   | Branding constants and assets every app imports; installed after `tooling`                                                                                      |
+| `api`      | one         | app `apps/api`              | Elysia app shell                                                                                                                                                |
+| `db`       | one         | package `packages/db`       | Binding + client; provider-matched                                                                                                                              |
+| `orm`      | one         | package `packages/db`       | Shares the `db` directory                                                                                                                                       |
+| `auth`     | one         | package `packages/auth`     |                                                                                                                                                                 |
+| `ui`       | one         | package `packages/ui`       | Host package for shadcn items                                                                                                                                   |
+| `email`    | one         | package `packages/email`    |                                                                                                                                                                 |
+| `queue`    | one         | package `packages/queue`    |                                                                                                                                                                 |
+| `storage`  | one         | package `packages/storage`  |                                                                                                                                                                 |
+| `payments` | one         | package `packages/payments` |                                                                                                                                                                 |
+| `web`      | many        | app `apps/<id>`             | SPA / SSR / static shells                                                                                                                                       |
+| `testing`  | many        | app                         |                                                                                                                                                                 |
+| `deploy`   | many        | repo                        | CI / deploy pipeline                                                                                                                                            |
+| `dev`      | many        | repo                        | Local developer launchers, for example named HTTPS URLs; never on the runtime path                                                                              |
 
 **Rules:**
 
 - Order is topological: a category appears after every category it may peer on; `many` categories come last.
-- `provider` is first: it peers on nothing, and `api`, `db`, `storage` and `deploy` MUST declare
+- `provider` is first: it peers on nothing, and `api`, `db`, `storage`, `web` and `deploy` MUST declare
   `peers.provider` and ship one variant per provider they support. A category's `home` and
   cardinality are provider-independent; only variant payloads differ.
 - A category Note MUST NOT name a provider's technology. `D1`, `R2`, `wrangler` and `Worker`
@@ -43,7 +45,8 @@ A module fills exactly one category. The category carries **cardinality** and **
 - A module with a `package` home MUST write only inside its own package, plus tier-2 patches on known seams.
 - Application code MUST consume a module through its package export, never through paths internal to it.
 - MUST NOT write module source directly into `apps/*/src` — that is what makes swap and revert impossible.
-- The one exception: an app-homed module MAY write a thin entry under `apps/<id>/src` whose only content is imports and one call into the module's package; anything else belongs in the package.
+- The one exception for a module: an app-homed module MAY write a thin entry under `apps/<id>/src` whose only content is imports and one call into the module's package; anything else belongs in the package.
+- Feature _items_ ([030](./030-ui-registry.md)) are the exception for items: they copy into `apps/<web>/src/features/**`. The rule above protects swap and revert of module source. A feature item is a tier-1 copy the consumer owns, not swappable module source, so that reason does not apply to it.
 
 ## Module document
 
@@ -134,7 +137,8 @@ The combinatorial explosion is data, not branching code. A module ships one vari
 **Normative:**
 
 - `template/` MUST mirror the target tree — no per-file `target` mapping. The path _is_ the destination.
-- A variant MUST NOT declare a dependency both in `dependencies` and in a vendored `package.json`. The workspace `package.json` is generated from `dependencies`; it is not authored by hand.
+- A dependency is declared once, in the variant's `dependencies` / `devDependencies`. A vendored `package.json` MAY carry `exports` and `scripts` but no dependency maps; the planner merges the variant's maps into it. Without a vendored `package.json`, the workspace one is generated from the variant.
+- A variant selects among files at distinct paths. A file every provider ships but that differs per provider belongs to the provider module, or to one module per implementation (`db/d1`, `db/libsql`) with a `peers.provider` allow-list.
 - A module MUST declare peers by category, never by capability string.
 
 ## Errors
