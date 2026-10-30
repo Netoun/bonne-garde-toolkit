@@ -6,17 +6,17 @@ Audit of the three sibling repos, the conventions skill and slop-sweep, plus two
 Produced 2026-10-29. **Items 0–3, 5, 6, 8, 10 and seven of 8b's nine rows are applied** — 0–3
 committed, the rest uncommitted. `bun run verify` exits 0; the repo went from 57 to 110 tests.
 
-| File                                               | Content                                                                                                                                              |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [01-consumers.md](./01-consumers.md)               | What batch / treashunt / keeper have that the boilerplate does not, and the nine keeper defects this tree still carries                              |
-| [02-conventions-slop.md](./02-conventions-slop.md) | State of the conventions skill + slop-sweep, and what to do about them                                                                               |
-| [03-backport-plan.md](./03-backport-plan.md)       | The backport plan, each item routed to a tier (root / template / module / patch / intention)                                                         |
-| [04-deps-plan.md](./04-deps-plan.md)               | Dependency plan in five PRs, Elysia 2 verdict included                                                                                               |
-| [05-lonestone.md](./05-lonestone.md)               | Boilerstone harvest — the field lessons, not the design                                                                                              |
-| [06-platform-gaps.md](./06-platform-gaps.md)       | What the backport framing missed: white-label providers (`cloudflare` / `dockerfile`), the CLI, the front layout decision, `packages/ui`, impeccable |
-| [07-handoff.md](./07-handoff.md)                   | Where to pick up: branch state, the ordered remainder, what is already settled                                                                       |
-| [08-plan.md](./08-plan.md)                         | The ordered execution plan: two prerequisites, two tracks, acceptance criteria per step                                                              |
-| [09-dissolution.md](./09-dissolution.md)           | The legacy apps into modules: every piece mapped to a 035 category, the couplings to settle, the stages in 080's order, the open questions           |
+| File                                               | Content                                                                                                                                                 |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [01-consumers.md](./01-consumers.md)               | What batch / treashunt / keeper have that the boilerplate does not, and the nine keeper defects this tree still carries                                 |
+| [02-conventions-slop.md](./02-conventions-slop.md) | State of the conventions skill + slop-sweep, and what to do about them                                                                                  |
+| [03-backport-plan.md](./03-backport-plan.md)       | The backport plan, each item routed to a tier (root / template / module / patch / intention)                                                            |
+| [04-deps-plan.md](./04-deps-plan.md)               | Dependency plan in five PRs, Elysia 2 verdict included                                                                                                  |
+| [05-lonestone.md](./05-lonestone.md)               | Boilerstone harvest — the field lessons, not the design                                                                                                 |
+| [06-platform-gaps.md](./06-platform-gaps.md)       | What the backport framing missed: white-label providers (`cloudflare` / `dockerfile`), the CLI, the front layout decision, `packages/ui`, impeccable    |
+| [07-handoff.md](./07-handoff.md)                   | Where to pick up: branch state, the ordered remainder, what is already settled                                                                          |
+| [08-plan.md](./08-plan.md)                         | The ordered execution plan: two prerequisites, two tracks, acceptance criteria per step                                                                 |
+| [09-dissolution.md](./09-dissolution.md)           | The legacy apps into modules: every piece mapped to a 035 category, the couplings to settle, the stages in 080's order, the questions and their answers |
 
 ## Verdicts up front
 

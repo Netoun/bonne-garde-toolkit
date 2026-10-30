@@ -23,7 +23,7 @@ So `apps/ssr` and `apps/static` go first (stage 3), `apps/spa` next (stage 6), t
 `packages/*`. 080 step 6 ("delete only after the playground is green for the module that replaces
 it") is necessary and not sufficient: a tree with a remaining in-tree consumer stays.
 
-Stage 1 depends on none of the questions at the end. Each later stage names the ones it waits for.
+The seven questions at the end were answered on 2026-10-30, and the specs say what was decided, so no stage waits for the user.
 
 ## 1. Every piece, one category
 
@@ -31,28 +31,28 @@ Stage 1 depends on none of the questions at the end. Each later stage names the 
 ids are `<category>/<id>`. Two item names retire (`api-elysia`, `spa-react-router`); nothing
 consumes the platform yet (`git tag` is empty), so that costs nothing.
 
-| #   | Piece                                                                                                                                                                                                       | 035 category                     | Module id                                                              | Home                       | Replaces                                              | Stage         |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | ---------------------------------------------------------------------- | -------------------------- | ----------------------------------------------------- | ------------- |
-| 1   | Root `vite.config.ts` (lint rules, fmt, `staged`), `.husky/pre-commit`                                                                                                                                      | `tooling`                        | `tooling/vite-plus`                                                    | repo                       | the stub `vite.config.ts` in `templates/base`         | 1             |
-| 2   | Host half of `packages/ui`: `package.json`, `tsconfig.json`, `components.json`, `src/styles/*`; and the `package.json` + `tsconfig.json` that item `utils` ships today                                      | `ui`                             | `ui/shadcn`                                                            | package `packages/ui`      | those two files in `utils`                            | 2             |
-| 3   | `registry/ui`: `utils`, `button`, `badge`, `card`                                                                                                                                                           | none: UI items (030)             | stay items                                                             | —                          | their `meta.bg`                                       | 2             |
-| 4   | The other 26 `packages/ui/src/components/*`, `lib/animations.ts`, `hooks/use-mobile.ts`                                                                                                                     | none: UI items (030)             | new items                                                              | —                          | `packages/ui`                                         | 2             |
-| 5   | `registry/lib/config`, `packages/config` (6 tests), root `branding.json`, `scripts/gen-branding.ts`, `assets/favicons`                                                                                      | **none fits**: proposed `config` | `config/branding`                                                      | package `packages/config`  | all of those                                          | 3, first (Q1) |
-| 6   | `registry/modules/provider/cloudflare` (exists), `packages/api-runtime` (6 tests)                                                                                                                           | `provider`                       | `provider/cloudflare`                                                  | repo                       | `packages/api-runtime`; its `apps/api/wrangler.jsonc` | 3             |
-| 7   | `registry/modules/provider/dockerfile` (exists)                                                                                                                                                             | `provider`                       | `provider/dockerfile`                                                  | repo                       | — (fixed, not replaced)                               | 3             |
-| 8   | Item `api-elysia`, and the shell of `apps/api`: `index.ts`, `app.ts`, `lib/{app.config,env,origins,logger,eden,slug}`, `modules/test/*`, their tests, `bunfig.toml`, `tsconfig*`                            | `api`                            | `api/elysia`                                                           | app `apps/api`             | item `api-elysia`                                     | 3             |
-| 9   | Item `spa-react-router`, and what of `apps/spa` needs neither auth nor a feature: `root.tsx`, `routes.ts`, `lib/{api,utils}.ts`, `providers`, `stores`, `components`, `hooks/{use-init-theme,use-load-app}` | `web`                            | `web/spa`                                                              | app `apps/spa`             | item `spa-react-router`                               | 3             |
-| 10  | `apps/ssr` (20 files, 4 tests)                                                                                                                                                                              | `web`                            | `web/ssr` (`peers.provider: ["cloudflare"]`, Q7)                       | app `apps/ssr`             | `apps/ssr`                                            | 3             |
-| 11  | `apps/static` (18 files, 1 test)                                                                                                                                                                            | `web`                            | `web/static`                                                           | app `apps/static`          | `apps/static`                                         | 3             |
-| 12  | `apps/api/src/modules/db/db.{client,service,module}.ts`, the `DB` binding in `lib/env.ts`                                                                                                                   | `db`                             | `db/d1` (`peers.provider: ["cloudflare"]`)                             | package `packages/db`      | —                                                     | 4             |
-| 13  | `db.config.ts`, `schemas/db.core-schema.ts`, `migrations/`, `drizzle/seed.sql`, `db.seed.ts`, `tests/helpers/db.helpers.ts`                                                                                 | `orm`                            | `orm/drizzle`                                                          | package `packages/db`      | —                                                     | 4             |
-| 14  | `apps/api/src/modules/auth/*`, `lib/crypto/password.ts`, generated `db.auth-schema.ts`                                                                                                                      | `auth`                           | `auth/better-auth`                                                     | package `packages/auth`    | —                                                     | 4             |
-| 15  | `lib/r2.ts`, `modules/media/*` (9 files), the `medias` table                                                                                                                                                | `storage`                        | `storage/r2` (`peers.provider: ["cloudflare"]`, `peers.db`)            | package `packages/storage` | —                                                     | 5             |
-| 16  | `packages/emails` (12 files, 2 tests), `apps/api/src/lib/email.ts`                                                                                                                                          | `email`                          | `email/resend`                                                         | package `packages/email`   | `packages/emails` (035 says `email`, no `s`)          | 5             |
-| 17  | `apps/spa/src/features/*` (33 files), `lib/auth.ts`, `hooks/{use-auth-redirect,use-session}.ts` (36 of the 57 files of `apps/spa`)                                                                          | **none fits**: Q3                | items in `registry/features`                                           | —                          | `apps/spa`                                            | 6             |
-| 18  | `.github/workflows/deploy.yml`                                                                                                                                                                              | `deploy`                         | `deploy/cloudflare-actions` (`peers.provider: ["cloudflare"]`)         | repo                       | —                                                     | 6             |
-| 19  | `registry/tooling/portless`                                                                                                                                                                                 | **none fits**: proposed `dev`    | `dev/portless`                                                         | repo                       | the item                                              | 6 (Q2)        |
-| 20  | `queue`, `payments`                                                                                                                                                                                         | —                                | nothing in the legacy tree to extract; 080 step 5 names `queue` anyway | —                          | —                                                     | —             |
+| #   | Piece                                                                                                                                                                                                       | 035 category             | Module id                                                              | Home                       | Replaces                                              | Stage         |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------- | -------------------------- | ----------------------------------------------------- | ------------- |
+| 1   | Root `vite.config.ts` (lint rules, fmt, `staged`), `.husky/pre-commit`                                                                                                                                      | `tooling`                | `tooling/vite-plus`                                                    | repo                       | the stub `vite.config.ts` in `templates/base`         | 1             |
+| 2   | Host half of `packages/ui`: `package.json`, `tsconfig.json`, `components.json`, `src/styles/*`; and the `package.json` + `tsconfig.json` that item `utils` ships today                                      | `ui`                     | `ui/shadcn`                                                            | package `packages/ui`      | those two files in `utils`                            | 2             |
+| 3   | `registry/ui`: `utils`, `button`, `badge`, `card`                                                                                                                                                           | none: UI items (030)     | stay items                                                             | —                          | their `meta.bg`                                       | 2             |
+| 4   | The other 26 `packages/ui/src/components/*`, `lib/animations.ts`, `hooks/use-mobile.ts`                                                                                                                     | none: UI items (030)     | new items                                                              | —                          | `packages/ui`                                         | 2             |
+| 5   | `registry/lib/config`, `packages/config` (6 tests), root `branding.json`, `scripts/gen-branding.ts`, `assets/favicons`                                                                                      | `config`, added by Q1    | `config/branding`                                                      | package `packages/config`  | all of those                                          | 3, first (Q1) |
+| 6   | `registry/modules/provider/cloudflare` (exists), `packages/api-runtime` (6 tests)                                                                                                                           | `provider`               | `provider/cloudflare`                                                  | repo                       | `packages/api-runtime`; its `apps/api/wrangler.jsonc` | 3             |
+| 7   | `registry/modules/provider/dockerfile` (exists)                                                                                                                                                             | `provider`               | `provider/dockerfile`                                                  | repo                       | — (fixed, not replaced)                               | 3             |
+| 8   | Item `api-elysia`, and the shell of `apps/api`: `index.ts`, `app.ts`, `lib/{app.config,env,origins,logger,eden,slug}`, `modules/test/*`, their tests, `bunfig.toml`, `tsconfig*`                            | `api`                    | `api/elysia`                                                           | app `apps/api`             | item `api-elysia`                                     | 3             |
+| 9   | Item `spa-react-router`, and what of `apps/spa` needs neither auth nor a feature: `root.tsx`, `routes.ts`, `lib/{api,utils}.ts`, `providers`, `stores`, `components`, `hooks/{use-init-theme,use-load-app}` | `web`                    | `web/spa`                                                              | app `apps/spa`             | item `spa-react-router`                               | 3             |
+| 10  | `apps/ssr` (20 files, 4 tests)                                                                                                                                                                              | `web`                    | `web/ssr` (`peers.provider: ["cloudflare"]`, Q7)                       | app `apps/ssr`             | `apps/ssr`                                            | 3             |
+| 11  | `apps/static` (18 files, 1 test)                                                                                                                                                                            | `web`                    | `web/static`                                                           | app `apps/static`          | `apps/static`                                         | 3             |
+| 12  | `apps/api/src/modules/db/db.{client,service,module}.ts`, the `DB` binding in `lib/env.ts`                                                                                                                   | `db`                     | `db/d1` (`peers.provider: ["cloudflare"]`)                             | package `packages/db`      | —                                                     | 4             |
+| 13  | `db.config.ts`, `schemas/db.core-schema.ts`, `migrations/`, `drizzle/seed.sql`, `db.seed.ts`, `tests/helpers/db.helpers.ts`                                                                                 | `orm`                    | `orm/drizzle`                                                          | package `packages/db`      | —                                                     | 4             |
+| 14  | `apps/api/src/modules/auth/*`, `lib/crypto/password.ts`, generated `db.auth-schema.ts`                                                                                                                      | `auth`                   | `auth/better-auth`                                                     | package `packages/auth`    | —                                                     | 4             |
+| 15  | `lib/r2.ts`, `modules/media/*` (9 files), the `medias` table                                                                                                                                                | `storage`                | `storage/r2` (`peers.provider: ["cloudflare"]`, `peers.db`)            | package `packages/storage` | —                                                     | 5             |
+| 16  | `packages/emails` (12 files, 2 tests), `apps/api/src/lib/email.ts`                                                                                                                                          | `email`                  | `email/resend`                                                         | package `packages/email`   | `packages/emails` (035 says `email`, no `s`)          | 5             |
+| 17  | `apps/spa/src/features/*` (33 files), `lib/auth.ts`, `hooks/{use-auth-redirect,use-session}.ts` (36 of the 57 files of `apps/spa`)                                                                          | none: feature items (Q3) | items in `registry/features`                                           | —                          | `apps/spa`                                            | 6             |
+| 18  | `.github/workflows/deploy.yml`                                                                                                                                                                              | `deploy`                 | `deploy/cloudflare-actions` (`peers.provider: ["cloudflare"]`)         | repo                       | —                                                     | 6             |
+| 19  | `registry/tooling/portless`                                                                                                                                                                                 | `dev`, added by Q2       | `dev/portless`                                                         | repo                       | the item                                              | 6 (Q2)        |
+| 20  | `queue`, `payments`                                                                                                                                                                                         | —                        | nothing in the legacy tree to extract; 080 step 5 names `queue` anyway | —                          | —                                                     | —             |
 
 Notes on rows that are not obvious:
 
@@ -64,8 +64,8 @@ Notes on rows that are not obvious:
   no row: each `web` module ships the setup it needs (`frontend.setup.ts`, `matchers.d.ts`; `server.ts`
   only for `ssr`). `testing` is app-homed, `testing/` is repo-level, and three small copies are
   cheaper than a rule.
-- Row 17 is 36 of the 57 files of `apps/spa`; `lib/auth.ts` and the two hooks import the auth client, so they wait for `auth`. 035 forbids module source in `apps/*/src`, and 030 points items at
-  `packages/ui`, so neither catalog fits.
+- Row 17 is 36 of the 57 files of `apps/spa`; `lib/auth.ts` and the two hooks import the auth client, so they wait for `auth`. 035 forbade module source in `apps/*/src`, and 030 pointed items at
+  `packages/ui`, so neither catalog fitted; Q3 added feature items to both.
 
 What is **deleted, not extracted**, so it has no category: `scripts/init.ts` and
 `.bonnegarde-init.json` (010 forbids init leftovers; `bg create` + `bg add` + the modules' `env`
@@ -86,7 +86,7 @@ config (lint rules, fmt options, `staged`) and the git hook that runs it.
 by `api`, `emails` and every front. `portless` is a dev launcher hard-wired to four app keys
 (`AppKey = "api" | "spa" | "ssr" | "static"`). `tooling` is `one`, so `bg add portless` after
 `bg add tooling` would be refused with "use `bg replace`", which is the wrong answer. Each gets a
-proposed category in the questions (Q1, Q2). `tooling/vite-plus` is new, extracted from the root files.
+category of its own, added to 035 by Q1 and Q2. `tooling/vite-plus` is new, extracted from the root files.
 
 **The shape is forced by "no `--force`".** `create` leaves base's `vite.config.ts` on disk and
 unrecorded in `bg.json`, and `stageModules` calls an existing, unrecorded, differing file a
@@ -173,7 +173,7 @@ already works.
   which `add` only prints (050 step 15).
 
 Cost: a repo-homed provider writes a package under `packages/`. 035's seam rule binds only
-package-homed modules, so it is allowed, but a sentence should say so (Q4).
+package-homed modules, so it is allowed, and 035's `provider` Note now says so (Q4).
 
 ### (d) Provider files inside app-homed items
 
@@ -211,7 +211,7 @@ fails golden at typecheck, and a generated `packages/ui/package.json` would drop
 the variant's `dependencies` / `devDependencies` into it instead of refusing.** It satisfies both
 sentences of 035 (a dependency is declared once; the maps come from the variant, not from a hand-written
 file) with one planner change in `packages/registry/src/module-plan.ts`. It is the first commit of
-stage 2, because `ui/shadcn` is the first module that needs it. Q4 states the 035 sentence.
+stage 2, because `ui/shadcn` is the first module that needs it. 035 now states it (Q4).
 
 ## 3. Stages, in 080's order
 
@@ -238,7 +238,7 @@ verify` exits 0 at every commit, and legacy tests keep running until their tree 
 templates/base | grep vite.config` prints nothing; `bg list --items` prints what it printed before.
 - **Size:** about 12 files.
 
-### Stage 2: `ui` and the UI items (080 step 2). Waits for Q4 (e) and Q6.
+### Stage 2: `ui` and the UI items (080 step 2).
 
 - **Scope, in commits:** (1) the planner merges variant dependencies into a vendored `package.json`
   (e); (2) `registry/modules/ui/shadcn/` with `packages/ui/{package.json,tsconfig.json,components.json}`
@@ -259,10 +259,10 @@ templates/base | grep vite.config` prints nothing; `bg list --items` prints what
   `registry-contract.test.ts` pins it.
 - **Size:** about 50 files in four commits: module 9, items 27, the `meta.bg` change 9, planner 3.
 
-### Stage 3: app shells, `api` then `web` (080 step 3). Waits for Q1, Q4, Q5, Q7.
+### Stage 3: app shells, `api` then `web` (080 step 3).
 
 - **Scope, in commits:**
-  1. `config/branding` (Q1). If Q1 is refused, the shells cannot be modules: a module cannot require an item.
+  1. `config/branding` (Q1). The shells need it: a module cannot require an item.
   2. `scripts.merge`, the first patch (`jsonc-parser`, idempotency test, first `regions`), with
      the answer to Q5.
   3. The providers per (c) and (d): `provider/cloudflare` gains `packages/api-runtime` and loses
@@ -315,7 +315,7 @@ orm/drizzle auth/better-auth storage/r2 email/resend`) with no `--force`, and ty
   and `doctor --strict` are green; the media route tests run in golden.
 - **Size:** about 32 files: `storage` 14, `email` 16, wiring 2.
 
-### Stage 6: what 080 does not list, then the deletions. Waits for Q2, Q3.
+### Stage 6: what 080 does not list, then the deletions.
 
 - **Scope:** the feature items (row 17); `deploy/cloudflare-actions` (row 18); `dev/portless` (row 19).
 - **Deletes, in this order, each after golden is green for its replacement and `git grep` shows no
@@ -340,7 +340,7 @@ orm/drizzle auth/better-auth storage/r2 email/resend`) with no `--force`, and ty
   they run. Each stage's Accept pins the count; do not delete a legacy test file before golden runs
   its copy.
 - **The first patch changes what `files` means.** After `scripts.merge` edits a file a module
-  vendored, its recorded sha256 no longer matches and `doctor` reports it modified. 060 is silent (Q5).
+  vendored, its recorded sha256 no longer matches and `doctor` reports it modified. 060 now says a file with recorded regions is checked by region, and `doctor` skips its sha check (Q5).
 - **Six months out,** the `api` module and the providers are the part that rots: the `api` thin
   entry, the provider's `api-runtime` and the `wrangler.jsonc` of the `api` variant have to move
   together, and only golden notices when they do not.
@@ -351,31 +351,33 @@ orm/drizzle auth/better-auth storage/r2 email/resend`) with no `--force`, and ty
    `publicOrigin`, `supportEmail`, `legalName`) imported by `api`, `emails` and every front, plus the
    favicons. Recommend: add `config` to 035, `one`, home package `packages/config`, no peers, ordered
    after `tooling`. The alternative is dissolving it into `{{DISPLAY_NAME}}` at render time, which
-   needs four more fields in `bg.json` and breaks 080's "no feature rewrites". **Blocks stage 3.**
+   needs four more fields in `bg.json` and breaks 080's "no feature rewrites". **Answered 2026-10-30: recommendation accepted.** Specs `627dc3e`: 035's table, 080 step 1.
 2. **`portless` has no category.** `tooling` is `one` and is the gate, not a launcher. Recommend:
    add `dev`, `many`, home repo. The alternative is deleting the item, which is a feature removal
-   and hard-wired to four app keys anyway. **Blocks stage 6 only.**
+   and hard-wired to four app keys anyway. **Answered 2026-10-30: recommendation accepted.** Specs `627dc3e`: 035's table.
 3. **The 33 front feature files fit neither catalog.** Recommend: `registry/features` (it exists,
    empty, and the root registry already includes it) holds tier-1 items targeting
    `apps/<web>/src/features/**`; amend 030 to allow it, and fail without the `auth` module exactly as
-   a UI item fails without `ui`. The alternative is shipping shells with no backoffice pages. **Blocks
-   stage 6 only.**
+   a UI item fails without `ui`. The alternative is shipping shells with no backoffice pages. **Answered 2026-10-30: recommendation accepted.**
+   Specs `627dc3e`: 030 (item kinds, the `auth` rule), 035's seam rule, 080's category assignment.
 4. **Four sentences in 035.** Recommend all of them; each is one line.
    (i) A vendored `package.json` MAY carry `exports` and `scripts` but no dependency maps; the planner
-   merges the variant's maps (e). **Blocks stage 2.**
+   merges the variant's maps (e).
    (ii) A variant selects among files at distinct paths; a file every provider ships but that differs
    per provider belongs to the provider module, or to one module per implementation (`db/d1`,
    `db/libsql`) with a `peers.provider` allow-list (c).
    (iii) The `provider` Note adds "owns the runtime seam packages other categories import" (c).
    (iv) `web` joins `api`, `db`, `storage`, `deploy` in "MUST declare `peers.provider`" (d).
-   **(ii) to (iv) block stage 3.**
+   **Answered 2026-10-30: recommendation accepted.** Specs `627dc3e`: 035 (the vendored `package.json` bullet and the variant bullet, the `provider`
+   Note, the `peers.provider` rule), 050's dependency bullet.
 5. **A patched file and its sha256.** Recommend: a file with recorded regions is checked by region,
-   and `doctor` skips the sha check for it. **Blocks stage 3** (first `scripts.merge`).
+   and `doctor` skips the sha check for it. **Answered 2026-10-30: recommendation accepted.** Specs `627dc3e`: 060 (Checksums, conflict
+   policy), 050 (`doctor`).
 6. **06 §4 says restructure `packages/ui` at step 2** (`primitives/`, `layouts/`, `patterns/`).
    Recommend not: it rewrites paths in the 20 legacy files that import `@acme/ui` and in the shipped
    `web/spa` shell for no behaviour change, and a `components.json` alias makes it a one-line registry
-   change afterwards. **Blocks stage 2.**
+   change afterwards. **Answered 2026-10-30: recommendation accepted.** Specs `627dc3e`: nothing to amend, no spec asks for the restructure.
 7. **`web/ssr` declares `peers.provider: ["cloudflare"]`.** It carries `workers/app.ts`,
    `cloudflare-context.ts` and `@cloudflare/vite-plugin`, so a `dockerfile` project has no SSR shell.
    Recommend accepting that: 06 left "the SSR app as its own service" undecided, and a second SSR
-   variant is a new feature. **Blocks stage 3.**
+   variant is a new feature. **Answered 2026-10-30: recommendation accepted.** Specs `627dc3e`: 080 step 3.

@@ -20,8 +20,8 @@ the detail; in this order:
 3. **Installing from a `github:` source.** **Done** (`2eea6a5`, `6a86bc0`); the user put it ahead
    of the dissolution. A real consumer still needs a tagged release; see the loose ends.
 4. **The legacy dissolution, in 080's order, not smallest-first.** The plan is
-   [09-dissolution.md](./09-dissolution.md). **Next action: answer the questions at its end, then
-   start at its stage 1 (`tooling`).** Stage 1 depends on none of them.
+   [09-dissolution.md](./09-dissolution.md). **Next action: start at its stage 1 (`tooling`).** The
+   questions at its end are answered; see the settled list below.
 
 The diagnosis this file first gave for P1 was wrong. It blamed the Bun version for
 `error: lockfile had changes, but lockfile is frozen`; in fact `--frozen-lockfile` failed under
@@ -182,8 +182,7 @@ so the module path of `bg add` is covered by unit tests alone. 09 adds modules t
 
 ## Decisions waiting on the user
 
-Only the seven questions at the end of [09](./09-dissolution.md). Everything 07 used to list here was
-decided by the user on 2026-10-30 and moved to the list below.
+None.
 
 ## Things already settled — do not re-litigate
 
@@ -210,6 +209,7 @@ decided by the user on 2026-10-30 and moved to the list below.
 - **`--force` takes over a file another owner recorded**, and reports it as `tookOver` (2026-10-30,
   `ee1dbac`). It is explicit and reported.
 - **Installing from `github:` came before the dissolution** (2026-10-30, `2eea6a5`, `6a86bc0`).
+- **The seven questions of [09](./09-dissolution.md) §5 are answered: every recommendation accepted as written** (2026-10-30, specs `627dc3e`). `config` and `dev` are 035 categories; feature items live in `registry/features` and need `auth`; four 035 rules: a vendored `package.json` carries no dependency maps and the planner merges the variant's, a variant selects among files at distinct paths (per-provider content at one path goes to the provider or to one module per implementation), the provider owns `packages/api-runtime`, and `web` declares `peers.provider`; a file with recorded regions is checked by region, not by sha; `packages/ui` is not restructured at step 2; `web/ssr` needs the `cloudflare` provider.
 
 - **`bg doctor` checks only the paths `bg.json` records.** A file `bg.json` does not record is the
   consumer's own code, not drift. This settles 06's unresolved question 1, decided in B3
