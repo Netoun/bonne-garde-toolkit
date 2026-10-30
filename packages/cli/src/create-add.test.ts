@@ -362,6 +362,54 @@ describe("bg create + add", () => {
     });
   });
 
+  test("derives the name, scope and title from the basename of an absolute path", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "bg-cli-abs-"));
+    dirs.push(parent);
+    const elsewhere = await mkdtemp(join(tmpdir(), "bg-cli-elsewhere-"));
+    dirs.push(elsewhere);
+
+    const target = await createProject({
+      name: join(parent, "my-app"),
+      cwd: elsewhere,
+      git: false,
+      install: false,
+      registry: repoRegistry(),
+    });
+
+    expect(target).toBe(join(parent, "my-app"));
+    const pkg = JSON.parse(await readFile(join(target, "package.json"), "utf8")) as {
+      name: string;
+    };
+    expect(pkg.name).toBe("my-app");
+    const { manifest } = readProjectManifest(
+      JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as unknown,
+    );
+    expect(manifest.scope).toBe("@my-app");
+    expect(await readFile(join(target, "README.md"), "utf8")).toStartWith("# my-app\n");
+    expect(await readFile(join(target, "CONTEXT.md"), "utf8")).toStartWith("# my-app\n");
+  });
+
+  test("`bg create .` names the project after the current directory", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "bg-cli-dot-"));
+    dirs.push(parent);
+    const here = join(parent, "dot-app");
+    await mkdir(here);
+
+    const target = await createProject({
+      name: ".",
+      cwd: here,
+      git: false,
+      install: false,
+      registry: repoRegistry(),
+    });
+
+    expect(target).toBe(here);
+    const pkg = JSON.parse(await readFile(join(target, "package.json"), "utf8")) as {
+      name: string;
+    };
+    expect(pkg.name).toBe("dot-app");
+  });
+
   test("refuses non-empty target", async () => {
     const parent = await mkdtemp(join(tmpdir(), "bg-cli-busy-"));
     dirs.push(parent);

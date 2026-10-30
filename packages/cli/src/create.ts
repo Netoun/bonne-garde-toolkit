@@ -1,5 +1,5 @@
 import { cp, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { createEmptyProjectManifest, DEFAULT_PLATFORM_REMOTE } from "@bonne-garde/schema";
 import { defaultRegistrySource, platformPackageVersion, templateBaseDir } from "./paths";
 
@@ -56,17 +56,19 @@ async function replaceInFile(path: string, replacements: Record<string, string>)
 
 export async function createProject(options: CreateOptions): Promise<string> {
   const cwd = options.cwd ?? process.cwd();
-  const slug = slugify(options.name);
+  // The project is named after the directory it lands in, never after the path that led there:
+  // `bg create /tmp/work/my-app` is `my-app`, and `bg create .` is the current directory's name.
+  const target = resolve(cwd, options.name);
+  const displayName = basename(target);
+  const slug = slugify(displayName);
   if (!slug) {
     throw new Error("invalid project name");
   }
-  const target = resolve(cwd, options.name === "." ? "." : options.name);
   await assertEmptyTarget(target);
   await mkdir(target, { recursive: true });
 
   const scope = options.scope ?? deriveScope(slug);
   const registry = options.registry ?? defaultRegistrySource();
-  const displayName = options.name === "." ? slug : options.name;
 
   await cp(templateBaseDir(), target, { recursive: true });
 
