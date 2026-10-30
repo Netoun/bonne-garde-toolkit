@@ -69,63 +69,25 @@ toolkit's Drizzle dialect off sqlite.
 
 ## What runs, and what does not
 
-Observed on 2026-10-30 (Bun 1.4.2, Docker 29.8.2 on arm64), from a clean `git archive` of commit
-`284f500` with this module's template written over it, as in the recipe below.
+Observed on 2026-10-30 (Bun 1.4.2, Docker 29.8.2 on arm64), on the project golden makes for its
+`dockerfile` configuration: `provider/dockerfile`, `tooling/vite-plus`, `config/branding`,
+`ui/shadcn`, `api/elysia` and `web/spa`. `docker build` completes, and the container, run with a
+volume on `/data` and its port published on `127.0.0.1`, answers:
 
-**Runs**
+- `GET /health`: 200 `application/json`, `{"status":"ok","timestamp":…}`.
+- `GET /`: 200 `text/html`, the `index.html` of the `web/spa` build. Its route manifest lists the
+  `root` route and the index route `routes/home`.
+- A hashed asset of that page, `/assets/manifest-<hash>.js`: 200 `text/javascript`.
+- A path no file matches, `/golden/unknown-client-route`, asked for with `Accept: text/html`: 200,
+  and the same `index.html` as `GET /`.
 
-- `docker build` completes: install, SPA prerender and the runtime stage. The image is 1.44 GB,
-  because the runtime stage keeps the whole workspace with its dev dependencies.
-- `docker compose up -d` and `docker run` reach `healthy` within 5 s. `GET /health` answers
-  `{"status":"ok","timestamp":…}`.
-- `GET /` answers 200 `text/html` (3,500 bytes), byte for byte the built `index.html`. Built assets
-  answer 200 with their type (`/assets/entry.client-….js` as `text/javascript`, the CSS as
-  `text/css`). A real browser loads the SPA to its login page with no page error and nothing in the
-  console, also when it opens a deep link such as `/organizations/q/members`. The one failed
-  request is the manifest icon `/android-chrome-192x192.png`, which is not in the SPA build.
-- A browser navigation to a client route (`/dashboard`, `/auth/login`, `/auth/register`,
-  `/auth/reset-password?token=x`) gets `index.html`. The same paths asked for as JSON keep their 404.
-- Origins: with the three URLs equal to `APP_URL`, `Origin: http://localhost:5172` is echoed in
-  `Access-Control-Allow-Origin` and `Origin: http://evil.test` gets no such header. `origins.ts`
-  and the env schema needed no change.
-- `GET /auth/get-session` answers 200 `null`, and `GET /openapi` answers 200.
-- `BETTER_AUTH_SECRET` is generated on the first start (43 characters, mode 0600, owned by `bun`)
-  and is the same after `docker restart`.
-- `docker stop` takes 0.12 s and exits 0. Without the signal handler in `serve` it took 10.26 s
-  and exited 137: Bun is PID 1, and the kernel gives PID 1 no default action for SIGTERM.
+`bun run golden` makes these four requests after `docker build` and `docker run`. It fails when one
+answers another status or media type, or when the client route answers something other than
+`GET /`. It skips them, and says so, when `docker` is not on PATH or its daemon does not answer
+`docker info`.
 
-**Does not run**
-
-- **Database.** `db.client.ts` is `drizzle-orm/d1` and the container has no `DB` binding, so
-  `config.DB` is `undefined`. Nothing fails at start and `/health` never touches it; the first
-  query fails with `TypeError: undefined is not an object (evaluating 'this.client.prepare')`.
-  `POST /auth/sign-up/email` and `POST /auth/sign-in/email` answer 500, so no user can exist and
-  there is no session. The missing piece is a libsql driver behind a `db` module matched on the
-  provider; `@libsql/client` is already a dependency of `apps/api`.
-- **Media.** `/v1/media/*` answers 500 `{"code":"BUCKET_NOT_CONFIGURED"}`: `r2.ts` takes an
-  `R2Bucket` and there is no filesystem storage behind it.
-- **Email.** `apps/api` requires `RESEND_API_KEY`, so the container exits at start without it and
-  `compose.yaml` refuses to start. It was run with the placeholder `re_placeholder`. No email was
-  sent, so nothing is known about Resend beyond the fact that the key is read.
-- **`/auth` is claimed twice.** The SPA has pages under `/auth/*` and Better Auth's `basePath` is
-  `/auth`; with one origin both answer there. The login and reset-password pages reach the SPA
-  because Better Auth answers 404 and the fallback takes over. `GET /auth/verify-email?token=abc`
-  from a browser answers 401 JSON from Better Auth, and the verification email links to
-  `${SPA_URL}/auth/verify-email?token=…`, which is that URL. `SPA_URL = API_URL = APP_URL` is
-  enough for origins but not for paths. Fixing it means another `basePath` for Better Auth or other
-  SPA routes, a change to `apps/`, not to this module.
-- **Rate limiting.** Better Auth logs that it "could not determine a client IP" and falls back to
-  a single shared per-path bucket. Bun passes no client address to `app.fetch`, so every client
-  shares one bucket per path, which matters for `/auth/sign-in/email`.
-- **A different public URL needs a rebuild.** Vite bakes `VITE_API_URL` into the SPA bundle. Built
-  without it, the bundle loads and the login page renders, but the organization settings route
-  throws `Failed to construct 'URL': Invalid URL`; React Router reloads the page, 101 times in the
-  run observed, until Better Auth answers 429. `compose.yaml` passes `APP_URL` as the build arg; for
-  `docker build` it is `--build-arg VITE_API_URL=https://…`, and it must equal the `APP_URL` the
-  container runs with.
-
-Not looked at: HTTP caching headers (none are set), `HEAD` requests (not served from the built
-files), and anything behind a reverse proxy.
+The `api/elysia` shell wires no database, authentication, object storage or email, so the container
+has none of them.
 
 ## Building and running the image
 
@@ -143,12 +105,13 @@ docker rm -f -v my-app                # -v: `VOLUME /data` made an anonymous vol
 ```
 
 Observed on 2026-10-30 (Bun 1.4.2, Docker 29.8.2 on arm64) on a project made that way with
-`provider/dockerfile`, `tooling/vite-plus`, `config/branding` and `api/elysia`, which is golden's
-`dockerfile` configuration: `docker build` completes, the container is `healthy`, `GET /health` answers
-`{"status":"ok",…}`, `GET /openapi` answers 200, and `Origin: http://localhost:5172` is echoed in
-`Access-Control-Allow-Origin`. `docker stop` exits 0 in under a second. Before this module wrote the
-`package.json` of `packages/api-runtime` and the `Dockerfile` stopped naming the SPA,
-`bun run --filter '@scope/spa' build` failed with "No workspace packages matched" on such a project.
+`provider/dockerfile`, `tooling/vite-plus`, `config/branding` and `api/elysia`, which was golden's
+`dockerfile` configuration before it gained `ui/shadcn` and `web/spa`: `docker build` completes, the
+container is `healthy`, `GET /health` answers `{"status":"ok",…}`, `GET /openapi` answers 200, and
+`Origin: http://localhost:5172` is echoed in `Access-Control-Allow-Origin`. `docker stop` exits 0 in
+under a second. Before this module wrote the `package.json` of `packages/api-runtime` and the
+`Dockerfile` stopped naming the SPA, `bun run --filter '@scope/spa' build` failed with "No workspace
+packages matched" on such a project.
 
 `compose.yaml` still refuses to start without `RESEND_API_KEY`, which the API shell no longer reads:
 the `email` module will own it.
