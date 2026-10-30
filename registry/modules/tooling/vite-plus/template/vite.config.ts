@@ -57,8 +57,9 @@ export default defineConfig({
         },
       },
       {
-        // `api` is server code and `portless` writes `scripts/dev-portless.ts`.
-        files: ["apps/api/**", "scripts/**"],
+        // `api` is server code, `portless` writes `scripts/dev-portless.ts` and `config/branding`
+        // writes `packages/config/scripts/gen-branding.ts`: all three print.
+        files: ["apps/api/**", "scripts/**", "packages/config/scripts/**"],
         rules: {
           "no-console": "off",
         },

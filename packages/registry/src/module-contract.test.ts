@@ -8,6 +8,7 @@ import {
   renderBrandingModule,
 } from "../../../registry/modules/config/branding/template/packages/config/src/gen-branding";
 import { loadLocalRegistry } from "./load-registry";
+import { plannedPatches } from "./patch-plan";
 
 const ROOT = join(import.meta.dir, "../../..");
 const MODULES = join(ROOT, "registry/modules");
@@ -129,7 +130,8 @@ describe("module contract", () => {
       expect(react?.rules).toMatchObject({ "react/jsx-key": "error" });
     }
 
-    for (const home of ["apps/api/**", "scripts/**"]) {
+    // `config/branding` ships a generator script at 035's fixed home for that package, and it prints.
+    for (const home of ["apps/api/**", "scripts/**", "packages/config/scripts/**"]) {
       const [server, ...others] = named(home);
       expect(others).toEqual([]);
       expect(server?.rules).toEqual({ "no-console": "off" });
@@ -362,6 +364,20 @@ describe("module contract", () => {
       }
     });
 
+    test("it adds `gen:branding` to the root package.json with scripts.merge, and the script runs a file the module copies", async () => {
+      const { manifest, variant } = await brandingModule();
+
+      expect(variant.patch).toEqual([
+        {
+          type: "scripts.merge",
+          file: "package.json",
+          scripts: { "gen:branding": "bun packages/config/scripts/gen-branding.ts" },
+        },
+      ]);
+      expect(variant.copy).toContain("packages/config/scripts/gen-branding.ts");
+      expect(manifest.checks).toContain("bun run gen:branding");
+    });
+
     test("a package-homed module writes only inside its package (035 seam)", async () => {
       const homes: Partial<Record<string, string>> = {
         config: "packages/config",
@@ -475,6 +491,23 @@ describe("module contract", () => {
         include: ["src/**/*.ts", "scripts/**/*.ts"],
       });
     });
+  });
+
+  test("every patch a variant declares is one the CLI applies, with arguments it accepts", async () => {
+    const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+    const refused: string[] = [];
+
+    for (const { manifest } of catalog.modules) {
+      for (const variant of manifest.variants) {
+        try {
+          plannedPatches(`${manifest.category}/${manifest.id}`, variant);
+        } catch (error) {
+          refused.push(error instanceof Error ? error.message : String(error));
+        }
+      }
+    }
+
+    expect(refused).toEqual([]);
   });
 
   test("every copy glob of every variant matches a file under template/", async () => {

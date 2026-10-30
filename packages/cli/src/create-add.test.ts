@@ -348,7 +348,7 @@ describe("bg create + add", () => {
       expect(manifest.files["packages/ui/src/components/button.tsx"]?.owner).toBe("button");
       expect(manifest.files["packages/ui/src/lib/utils.ts"]?.owner).toBe("utils");
       expect(manifest.files["packages/ui/package.json"]?.owner).toBe("ui/shadcn");
-      // The engine applies no patch yet, so there is nothing to record under `regions`.
+      // Neither `ui/shadcn` nor an item declares a patch or an env key, so nothing is recorded under `regions`.
       expect(manifest.regions).toEqual({});
     });
 

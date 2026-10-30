@@ -3,14 +3,18 @@ import { join, resolve } from "node:path";
 import { loadLocalRegistry } from "../packages/registry/src/index";
 import {
   addArguments,
+  diffTrees,
   EXCLUDED,
   EXCLUDED_MODULES,
+  expectPatches,
   expectRefusal,
   MODULES,
+  PATCHED,
   readAddedModules,
   SCOPE,
   selectItems,
   selectModules,
+  type AddedModule,
 } from "./golden-project";
 
 const LISTING = [
@@ -140,8 +144,8 @@ describe("readAddedModules", () => {
 
   test("reads each module's key and its checks, none when it declares none", () => {
     expect(readAddedModules(output, ["tooling/vite-plus"])).toEqual([
-      { module: "tooling/vite-plus", checks: ["bun run check"] },
-      { module: "provider/cloudflare", checks: [] },
+      { module: "tooling/vite-plus", checks: ["bun run check"], patches: [] },
+      { module: "provider/cloudflare", checks: [], patches: [] },
     ]);
   });
 
@@ -240,5 +244,166 @@ describe("expectRefusal", () => {
     expect(() =>
       expectRefusal({ code: 1, stderr: "unknown name: button\n" }, "button", "ui/shadcn"),
     ).toThrow(/bg add ui\/shadcn button.*unknown name: button/s);
+  });
+});
+
+describe("readAddedModules: patches", () => {
+  const patch = {
+    type: "scripts.merge",
+    file: "package.json",
+    status: "applied",
+    regions: [{ region: "scripts.gen:branding", status: "applied" }],
+  };
+
+  test("reads each patch with its status, reason and regions", () => {
+    const output = JSON.stringify({
+      modules: [
+        { module: "config/branding", checks: [], patches: [patch] },
+        {
+          module: "x/y",
+          patches: [{ ...patch, status: "failed", reason: "no file", regions: [] }],
+        },
+      ],
+    });
+
+    expect(readAddedModules(output, []).map(({ patches }) => patches)).toEqual([
+      [patch],
+      [
+        {
+          type: "scripts.merge",
+          file: "package.json",
+          status: "failed",
+          reason: "no file",
+          regions: [],
+        },
+      ],
+    ]);
+  });
+
+  test("fails on a patch that is not what `bg add` prints", () => {
+    expect(() =>
+      readAddedModules(
+        JSON.stringify({ modules: [{ module: "a/b", patches: [{ type: 1 }] }] }),
+        [],
+      ),
+    ).toThrow(/patch/);
+    expect(() =>
+      readAddedModules(JSON.stringify({ modules: [{ module: "a/b", patches: "none" }] }), []),
+    ).toThrow(/patches/);
+  });
+});
+
+describe("expectPatches (060: a failed patch is never silent, and a re-add skips every one)", () => {
+  const module = (
+    status: string,
+    regions: string[],
+    more: Partial<AddedModule["patches"][number]> = {},
+  ) => ({
+    module: "config/branding",
+    checks: [],
+    patches: [
+      {
+        type: "scripts.merge",
+        file: "package.json",
+        status,
+        regions: regions.map((region) => ({ region, status })),
+        ...more,
+      },
+    ],
+  });
+  const expected = { "config/branding": ["scripts.gen:branding"] };
+
+  test("passes when each module's patch did `status` to the regions golden expects", () => {
+    expect(() =>
+      expectPatches([module("applied", ["scripts.gen:branding"])], "applied", expected),
+    ).not.toThrow();
+    expect(() =>
+      expectPatches([module("skipped", ["scripts.gen:branding"])], "skipped", expected),
+    ).not.toThrow();
+  });
+
+  test("fails on a failed patch, with its reason", () => {
+    expect(() =>
+      expectPatches(
+        [module("failed", [], { reason: "package.json does not exist" })],
+        "applied",
+        expected,
+      ),
+    ).toThrow(/failed.*package\.json does not exist/s);
+  });
+
+  test("fails when the status is not the one asked for, as an `applied` on a re-add", () => {
+    expect(() =>
+      expectPatches([module("applied", ["scripts.gen:branding"])], "skipped", expected),
+    ).toThrow(/config\/branding.*applied.*skipped/s);
+  });
+
+  test("fails when a module that should patch reports none, or other regions", () => {
+    expect(() =>
+      expectPatches([{ module: "config/branding", checks: [], patches: [] }], "applied", expected),
+    ).toThrow(/config\/branding.*scripts\.gen:branding/s);
+    expect(() =>
+      expectPatches([module("applied", ["scripts.other"])], "applied", expected),
+    ).toThrow(/scripts\.other/);
+  });
+
+  test("fails on a patch from a module golden does not know patches", () => {
+    expect(() =>
+      expectPatches([module("applied", ["scripts.gen:branding"])], "applied", {}),
+    ).toThrow(/config\/branding.*not.*PATCHED/s);
+  });
+});
+
+describe("the golden project and patches", () => {
+  test("PATCHED names exactly the modules whose variants declare a patch", async () => {
+    const catalog = await loadLocalRegistry(
+      join(resolve(import.meta.dir, ".."), "registry/registry.json"),
+    );
+    const patching = catalog.modules
+      .filter(({ manifest }) =>
+        manifest.variants.some((variant) => (variant.patch ?? []).length > 0),
+      )
+      .map(({ manifest }) => `${manifest.category}/${manifest.id}`);
+
+    // A module that gains a patch is a decision made in golden, as a module that is not installed is.
+    expect(Object.keys(PATCHED).sort()).toEqual(
+      patching.filter((key) => MODULES.includes(key)).sort(),
+    );
+    expect(PATCHED).toEqual({ "config/branding": ["scripts.gen:branding"] });
+  });
+});
+
+describe("diffTrees (a re-add leaves the project the same bytes)", () => {
+  const manifest = (installedAt: string, status: string) =>
+    `{\n  "installedAt": "${installedAt}",\n  "patches": [{ "status": "${status}" }]\n}\n`;
+
+  test("is empty for equal trees, and for a bg.json that moved only installedAt", () => {
+    const before = { "a.ts": "x", "bg.json": manifest("2026-01-01T00:00:00.000Z", "applied") };
+    const after = { "a.ts": "x", "bg.json": manifest("2026-01-02T00:00:00.000Z", "applied") };
+
+    expect(diffTrees(before, after)).toEqual([]);
+  });
+
+  test("names a bg.json whose recorded patch status moved: a re-add must not flip it", () => {
+    const before = { "bg.json": manifest("2026-01-01T00:00:00.000Z", "applied") };
+    const after = { "bg.json": manifest("2026-01-01T00:00:00.000Z", "skipped") };
+
+    expect(diffTrees(before, after)).toEqual(["bg.json changed"]);
+  });
+
+  test("names a changed, an added and a removed file", () => {
+    expect(diffTrees({ a: "1", b: "1", c: "1" }, { a: "2", b: "1", d: "1" })).toEqual([
+      "a changed",
+      "c removed",
+      "d added",
+    ]);
+  });
+
+  test("names a bg.json that changed in anything else", () => {
+    const before = { "bg.json": '{ "files": {} }' };
+
+    expect(diffTrees(before, { "bg.json": '{ "files": { "a": 1 } }' })).toEqual([
+      "bg.json changed",
+    ]);
   });
 });

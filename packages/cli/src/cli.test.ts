@@ -366,7 +366,17 @@ type ModuleOutput = {
     files: string[];
     env: { name: string; required: boolean; status: string }[];
     checks: string[];
+    patches: PatchOutput[];
   }[];
+  failedPatches: (PatchOutput & { module: string })[];
+};
+
+type PatchOutput = {
+  type: string;
+  file: string;
+  status: string;
+  reason?: string;
+  regions: { region: string; status: string; replaced?: string | null }[];
 };
 
 describe("bg add <module>", () => {
@@ -602,5 +612,213 @@ describe("bg add <module>", () => {
       expect(result.code).toBe(1);
       expect(result.stderr).toContain(`bg ${command} is not supported yet`);
     }
+  });
+});
+
+describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", () => {
+  const SCRIPT = "bun packages/config/scripts/gen-branding.ts";
+  const REGION = "scripts.gen:branding";
+
+  async function rootScripts(target: string): Promise<Record<string, string>> {
+    const body = JSON.parse(await readFile(join(target, "package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    return body.scripts;
+  }
+
+  test("adds the root script, and the JSON says per module and per region what the patch did", async () => {
+    const target = await freshProject("bg-cli-patch-");
+    const before = await readFile(join(target, "package.json"), "utf8");
+
+    const { stdout, stderr, code } = await runBg(
+      target,
+      "add",
+      "config/branding",
+      "--yes",
+      "--no-install",
+    );
+
+    expect(code).toBe(0);
+    expect(stderr).toContain("checks were not run");
+    const out = JSON.parse(stdout) as ModuleOutput;
+    expect(out.modules[0]?.patches).toEqual([
+      {
+        type: "scripts.merge",
+        file: "package.json",
+        status: "applied",
+        regions: [{ region: REGION, status: "applied" }],
+      },
+    ]);
+    expect(out.failedPatches).toEqual([]);
+    // The file the patch edited is not one the module wrote.
+    expect(out.written).not.toContain("package.json");
+
+    expect((await rootScripts(target))["gen:branding"]).toBe(SCRIPT);
+    expect(await readFile(join(target, "package.json"), "utf8")).toBe(
+      before.replace(
+        '    "prepare": "husky"\n',
+        `    "prepare": "husky",\n    "gen:branding": "${SCRIPT}"\n`,
+      ),
+    );
+    const bg = JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as {
+      regions: Record<string, Record<string, string>>;
+      modules: { config: { patches: unknown[] }[] };
+    };
+    expect(bg.regions["package.json"]).toEqual({ [REGION]: "config/branding" });
+    expect(bg.modules.config[0]?.patches).toEqual([
+      { type: "scripts.merge", file: "package.json", status: "applied" },
+    ]);
+    const doctor = await runBg(target, "doctor", "--strict");
+    expect(doctor.code).toBe(0);
+  });
+
+  test("the same add again reports the patch skipped, and the project is the same bytes", async () => {
+    const target = await freshProject("bg-cli-patch-twice-");
+    await runBg(target, "add", "config/branding", "--yes", "--no-install");
+    const before = await snapshot(target);
+
+    const { stdout, code } = await runBg(target, "add", "config/branding", "--yes", "--no-install");
+
+    expect(code).toBe(0);
+    const out = JSON.parse(stdout) as ModuleOutput;
+    expect(out.modules[0]?.patches).toEqual([
+      {
+        type: "scripts.merge",
+        file: "package.json",
+        status: "skipped",
+        regions: [{ region: REGION, status: "skipped" }],
+      },
+    ]);
+    expect(out.written).toEqual([]);
+    // `installedAt` is the one thing a re-add moves in bg.json: the record keeps `applied`.
+    const settled = (tree: Record<string, string>) => ({
+      ...tree,
+      "bg.json": (tree["bg.json"] ?? "").replace(/"installedAt": "[^"]*"/g, '"installedAt": "-"'),
+    });
+    expect(settled(await snapshot(target))).toEqual(settled(before));
+  });
+
+  test("a hand-edited script is refused, naming the region and --force, and --force puts it back", async () => {
+    const target = await freshProject("bg-cli-patch-edit-");
+    await runBg(target, "add", "config/branding", "--yes", "--no-install");
+    const clean = await readFile(join(target, "package.json"), "utf8");
+    await writeFile(join(target, "package.json"), clean.replace(SCRIPT, "bun my-own.ts"));
+    const edited = await snapshot(target);
+
+    const refused = await runBg(target, "add", "config/branding", "--yes", "--no-install");
+
+    expect(refused.code).toBe(1);
+    expect(refused.stderr).toContain(`${REGION} of package.json is "bun my-own.ts"`);
+    expect(refused.stderr).toContain("--force");
+    expect(await snapshot(target)).toEqual(edited);
+
+    const forced = await runBg(
+      target,
+      "add",
+      "config/branding",
+      "--yes",
+      "--no-install",
+      "--force",
+    );
+
+    expect(forced.code).toBe(0);
+    expect((JSON.parse(forced.stdout) as ModuleOutput).modules[0]?.patches[0]?.regions).toEqual([
+      { region: REGION, status: "applied", replaced: "bun my-own.ts" },
+    ]);
+    expect(await readFile(join(target, "package.json"), "utf8")).toBe(clean);
+  });
+
+  test("a patch that cannot apply is failed, loudly, and the install and doctor carry it", async () => {
+    const target = await freshProject("bg-cli-patch-failed-");
+    const root = JSON.parse(await readFile(join(target, "package.json"), "utf8")) as Record<
+      string,
+      unknown
+    >;
+    await writeFile(
+      join(target, "package.json"),
+      `${JSON.stringify({ ...root, scripts: "nope" }, null, 2)}\n`,
+    );
+
+    const { stdout, stderr, code } = await runBg(
+      target,
+      "add",
+      "config/branding",
+      "--yes",
+      "--no-install",
+    );
+
+    // The install completes: 060 says a failed patch never aborts it.
+    expect(code).toBe(0);
+    expect(await readFile(join(target, "packages/config/src/index.ts"), "utf8")).toContain(
+      "branding",
+    );
+    const out = JSON.parse(stdout) as ModuleOutput;
+    const failed = {
+      module: "config/branding",
+      type: "scripts.merge",
+      file: "package.json",
+      status: "failed",
+      reason: 'package.json: "scripts" is a string, not an object',
+      regions: [],
+    };
+    expect(out.modules[0]?.patches).toEqual([
+      {
+        type: "scripts.merge",
+        file: "package.json",
+        status: "failed",
+        reason: failed.reason,
+        regions: [],
+      },
+    ]);
+    expect(out.failedPatches).toEqual([failed]);
+    // Never silent, and honest about what is missing: the conversion into a pending intention (060) is not built.
+    expect(stderr).toContain("bg: PATCH FAILED scripts.merge on package.json (config/branding)");
+    expect(stderr).toContain(failed.reason);
+    expect(stderr).toContain("not implemented");
+
+    const doctor = await runBg(target, "doctor", "--strict");
+    expect(doctor.code).toBe(1);
+    expect(doctor.stdout).toContain("patch-failed");
+    expect(doctor.stdout).toContain(failed.reason);
+    expect((await runBg(target, "doctor")).code).toBe(0);
+  });
+
+  test("--dry-run prints the patch and writes nothing", async () => {
+    const target = await freshProject("bg-cli-patch-dry-");
+    const before = await snapshot(target);
+
+    const { stdout, code } = await runBg(
+      target,
+      "add",
+      "config/branding",
+      "--dry-run",
+      "--yes",
+      "--no-install",
+    );
+
+    expect(code).toBe(0);
+    const out = JSON.parse(stdout) as ModuleOutput;
+    expect(out.dryRun).toBe(true);
+    expect(out.modules[0]?.patches[0]).toMatchObject({
+      type: "scripts.merge",
+      status: "applied",
+      regions: [{ region: REGION, status: "applied" }],
+    });
+    expect(await snapshot(target)).toEqual(before);
+  });
+
+  test("a module without a patch prints an empty list, and nothing on stderr about patches", async () => {
+    const target = await freshProject("bg-cli-patch-none-");
+
+    const { stdout, stderr } = await runBg(
+      target,
+      "add",
+      "provider/cloudflare",
+      "--yes",
+      "--no-install",
+    );
+
+    expect((JSON.parse(stdout) as ModuleOutput).modules[0]?.patches).toEqual([]);
+    expect(stderr).not.toContain("PATCH");
   });
 });

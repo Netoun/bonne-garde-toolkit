@@ -163,6 +163,16 @@ export async function runCli(argv: string[]): Promise<number> {
     for (const { path, from, by } of result.tookOver) {
       console.error(`bg: ${path} was owned by ${from}; ${by} now owns it`);
     }
+    // Spec 060: a failed patch never aborts the install and is never silent. It becomes a pending
+    // tier-3 intention there; staging intentions is not built, so this says so and doctor keeps it.
+    const failedPatches = result.patches.filter((patch) => patch.status === "failed");
+    for (const { type, file, module, reason } of failedPatches) {
+      console.error(
+        `bg: PATCH FAILED ${type} on ${file} (${module}): ${reason}. ` +
+          "Spec 060 turns a failed patch into a pending tier-3 intention; that conversion is not implemented, " +
+          "so make the edit by hand. It is recorded in bg.json and bg doctor reports it.",
+      );
+    }
     const unrun = modulePlans.filter((module) => module.checks.length > 0);
     if (unrun.length > 0) {
       console.error(
@@ -192,7 +202,11 @@ export async function runCli(argv: string[]): Promise<number> {
             devDependencies: module.devDependencies,
             workspace: module.workspace,
             checks: module.checks,
+            patches: result.patches
+              .filter((patch) => patch.module === module.key)
+              .map(({ module: _module, ...patch }) => patch),
           })),
+          failedPatches,
           written: result.written,
           skippedIdentical: result.skippedIdentical,
           tookOver: result.tookOver,

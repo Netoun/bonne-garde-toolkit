@@ -3,8 +3,8 @@
  * The golden project: what a consumer does, end to end, in a fresh directory.
  *
  *   bg create → bg add of a UI item, refused → bg add of every module and every item in one call
- *   → bun install → typecheck → test → build → bg doctor --strict → bun run check
- *   → the `checks` of every installed module
+ *   → the same bg add again, which must skip every patch and change nothing → bun install
+ *   → typecheck → test → build → bg doctor --strict → bun run check → the `checks` of every installed module
  *
  * Any non-zero exit fails the run and names the phase. It needs a real `bun install` against npm,
  * so it is not part of `verify`; CI runs it as its own step.
@@ -141,8 +141,26 @@ export function selectModules(
   };
 }
 
-/** A module `bg add` reported, with the commands it declares to validate itself (spec 050 step 15). */
-export type AddedModule = { module: string; checks: string[] };
+/**
+ * The modules of `MODULES` whose variants declare a tier-2 patch, with the regions each one's patches
+ * write. Golden checks that `bg add` reports exactly these as `applied` and, run again, as `skipped`:
+ * a module that gains or loses a patch is a decision made here, as a module that is not installed is.
+ */
+export const PATCHED: Readonly<Record<string, readonly string[]>> = {
+  "config/branding": ["scripts.gen:branding"],
+};
+
+/** One patch of a module, as `bg add` prints it (spec 060): its outcome and, per region, what it did. */
+export type AddedPatch = {
+  type: string;
+  file: string;
+  status: string;
+  reason?: string;
+  regions: { region: string; status: string }[];
+};
+
+/** A module `bg add` reported, with the commands it declares to validate itself (spec 050 step 15) and its patches. */
+export type AddedModule = { module: string; checks: string[]; patches: AddedPatch[] };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -150,6 +168,35 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function readPatch(module: string, patch: unknown): AddedPatch {
+  if (
+    !isRecord(patch) ||
+    typeof patch.type !== "string" ||
+    typeof patch.file !== "string" ||
+    typeof patch.status !== "string" ||
+    !Array.isArray(patch.regions)
+  ) {
+    throw new Error(`bg add printed a patch of ${module} without type, file, status and regions`);
+  }
+  const regions = patch.regions.map((region: unknown) => {
+    if (
+      !isRecord(region) ||
+      typeof region.region !== "string" ||
+      typeof region.status !== "string"
+    ) {
+      throw new Error(`bg add printed a region of a patch of ${module} without region and status`);
+    }
+    return { region: region.region, status: region.status };
+  });
+  return {
+    type: patch.type,
+    file: patch.file,
+    status: patch.status,
+    ...(typeof patch.reason === "string" ? { reason: patch.reason } : {}),
+    regions,
+  };
 }
 
 /**
@@ -175,13 +222,95 @@ export function readAddedModules(stdout: string, expected: readonly string[]): A
     if (!isStringArray(checks)) {
       throw new Error(`bg add printed \`checks\` of ${entry.module} that is not a list of strings`);
     }
-    return { module: entry.module, checks };
+    const patches = entry.patches ?? [];
+    if (!Array.isArray(patches)) {
+      throw new Error(`bg add printed \`patches\` of ${entry.module} that is not a list`);
+    }
+    const { module } = entry;
+    return { module, checks, patches: patches.map((patch) => readPatch(module, patch)) };
   });
   const missing = expected.filter((name) => !added.some(({ module }) => module === name));
   if (missing.length > 0) {
     throw new Error(`bg add did not report ${missing.join(", ")}`);
   }
   return added;
+}
+
+/**
+ * Spec 060: a failed patch is never silent, and a re-add finds every region present and equal.
+ * Checks every patch `bg add` reported against `status`, and the regions of each module against
+ * `expected`, which is where golden says which modules patch what.
+ */
+export function expectPatches(
+  added: readonly AddedModule[],
+  status: "applied" | "skipped",
+  expected: Readonly<Record<string, readonly string[]>>,
+): void {
+  for (const { module, patches } of added) {
+    for (const patch of patches) {
+      if (patch.status === "failed") {
+        throw new Error(
+          `${module}: patch ${patch.type} on ${patch.file} failed: ${patch.reason ?? "no reason given"}`,
+        );
+      }
+      if (patch.status !== status || patch.regions.some((region) => region.status !== status)) {
+        throw new Error(
+          `${module}: patch ${patch.type} on ${patch.file} was ${patch.status} (regions: ${patch.regions.map((region) => `${region.region} ${region.status}`).join(", ") || "none"}), expected ${status}`,
+        );
+      }
+    }
+    if (patches.length > 0 && !Object.hasOwn(expected, module)) {
+      throw new Error(`${module} patches files but is not in PATCHED: say what golden should see`);
+    }
+  }
+  for (const [module, regions] of Object.entries(expected)) {
+    const reported = added
+      .filter((entry) => entry.module === module)
+      .flatMap(({ patches }) =>
+        patches.flatMap((patch) => patch.regions.map(({ region }) => region)),
+      );
+    if (JSON.stringify([...reported].sort()) !== JSON.stringify([...regions].sort())) {
+      throw new Error(
+        `${module} reported regions [${reported.join(", ")}], golden expects [${regions.join(", ")}]`,
+      );
+    }
+  }
+}
+
+/**
+ * What differs between two snapshots of a project, as `<path> changed|added|removed`. `bg.json` is
+ * compared without `installedAt`, the one thing a re-add moves in it. Any other change in it is
+ * reported, the recorded status of a patch included.
+ */
+export function diffTrees(
+  before: Readonly<Record<string, string>>,
+  after: Readonly<Record<string, string>>,
+): string[] {
+  const settled = (path: string, text: string) =>
+    path === "bg.json" ? text.replace(/"installedAt": "[^"]*"/g, '"installedAt": "-"') : text;
+  const paths = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
+  return paths.flatMap((path) => {
+    const was = before[path];
+    const now = after[path];
+    if (was === undefined) {
+      return [`${path} added`];
+    }
+    if (now === undefined) {
+      return [`${path} removed`];
+    }
+    return settled(path, was) === settled(path, now) ? [] : [`${path} changed`];
+  });
+}
+
+/** Every file of a project with its text, `node_modules` and `.git` left out. */
+async function snapshot(root: string): Promise<Record<string, string>> {
+  const tree: Record<string, string> = {};
+  for await (const path of new Bun.Glob("**/*").scan({ cwd: root, dot: true, onlyFiles: true })) {
+    if (!/^(?:node_modules|\.git)\//.test(path)) {
+      tree[path] = await Bun.file(join(root, path)).text();
+    }
+  }
+  return tree;
 }
 
 /**
@@ -278,6 +407,9 @@ async function golden(work: string, timings: Timing[]): Promise<void> {
   await phase(timings, "pack", async () => {
     await run([BUN, "run", "pack:cli"], ROOT);
     await cp(PACKED_CLI, cli, { recursive: true });
+    // What `bunx create-bonne-garde` does first: the packed package has dependencies of its own,
+    // and this copy sits in a temp directory with no node_modules to find them in.
+    await run([BUN, "install"], cli);
   });
 
   const { items, modules, excluded } = await phase(timings, "list", async () => {
@@ -335,7 +467,19 @@ async function golden(work: string, timings: Timing[]): Promise<void> {
   const added = await phase(timings, "add", async () => {
     const stdout = await capture(bg(...addArguments(modules, items)), project);
     process.stdout.write(stdout);
-    return readAddedModules(stdout, modules);
+    const reported = readAddedModules(stdout, modules);
+    expectPatches(reported, "applied", PATCHED);
+    return reported;
+  });
+  // Before `bun install`, so that node_modules and the lockfile are not in the comparison.
+  await phase(timings, "re-add", async () => {
+    const before = await snapshot(project);
+    const stdout = await capture(bg(...addArguments(modules, items)), project);
+    expectPatches(readAddedModules(stdout, modules), "skipped", PATCHED);
+    const changed = diffTrees(before, await snapshot(project));
+    if (changed.length > 0) {
+      throw new Error(`the same \`bg add\` again changed the project: ${changed.join(", ")}`);
+    }
   });
   await phase(timings, "install", () => run([BUN, "install"], project));
   await phase(timings, "typecheck", () => run([BUN, "run", "typecheck"], project));
