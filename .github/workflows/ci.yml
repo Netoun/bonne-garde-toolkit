@@ -30,3 +30,6 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run verify
       - run: bun run golden
+        env:
+          # The image phases skip when docker is unavailable; in CI that has to fail the run.
+          GOLDEN_REQUIRE_DOCKER: "1"

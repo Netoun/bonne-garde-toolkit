@@ -7,6 +7,7 @@ import {
   buildsImage,
   CONFIGURATIONS,
   diffTrees,
+  dockerDecision,
   dockerName,
   dockerSkipReason,
   EXCLUDED,
@@ -19,6 +20,7 @@ import {
   PATCHED,
   publishedPort,
   readAddedModules,
+  requiresDocker,
   SCOPE,
   selectItems,
   selectModules,
@@ -549,6 +551,44 @@ describe("dockerSkipReason (only the absence of docker skips the image; a failin
   test("skips, and says why, when the daemon does not answer `docker info`", () => {
     expect(dockerSkipReason({ code: 1, stderr: "Cannot connect to the Docker daemon" })).toBe(
       "docker unavailable: `docker info` exited with 1",
+    );
+  });
+});
+
+describe("requiresDocker (GOLDEN_REQUIRE_DOCKER: CI must not skip the image phases without anyone noticing)", () => {
+  test("is off when the variable is unset, empty, 0 or false, so a local run is unchanged", () => {
+    for (const value of [undefined, "", "0", "false"]) {
+      expect(requiresDocker(value)).toBe(false);
+    }
+  });
+
+  test("is on for any other value, so a spelling like `true` or `yes` does not quietly turn it off", () => {
+    for (const value of ["1", "true", "yes"]) {
+      expect(requiresDocker(value)).toBe(true);
+    }
+  });
+});
+
+describe("dockerDecision (skip when docker is unavailable, or fail when it is required)", () => {
+  const up = { code: 0, stderr: "" };
+  const down = { code: 1, stderr: "Cannot connect to the Docker daemon" };
+
+  test("runs when docker is available, required or not", () => {
+    expect(dockerDecision(up, false)).toBeNull();
+    expect(dockerDecision(up, true)).toBeNull();
+  });
+
+  test("skips with the reason when docker is unavailable and not required", () => {
+    expect(dockerDecision(null, false)).toBe("docker unavailable: not on PATH");
+    expect(dockerDecision(down, false)).toBe("docker unavailable: `docker info` exited with 1");
+  });
+
+  test("fails, naming the reason and the variable, when docker is unavailable and required", () => {
+    expect(() => dockerDecision(null, true)).toThrow(
+      /docker unavailable: not on PATH.*GOLDEN_REQUIRE_DOCKER/s,
+    );
+    expect(() => dockerDecision(down, true)).toThrow(
+      /`docker info` exited with 1.*GOLDEN_REQUIRE_DOCKER/s,
     );
   });
 });

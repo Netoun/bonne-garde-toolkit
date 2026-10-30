@@ -82,7 +82,7 @@ bun run dev                               # all apps in parallel
 bun run typecheck && bun run test         # full verification
 bun run check                             # vp check (fmt + lint via Vite+)
 bun run verify                            # check + typecheck + all tests + all builds (CI gate)
-bun run golden                            # fresh project: create → add modules + items → install → typecheck → test → build → doctor --strict → check → each module's checks → dockerfile configuration: docker build + run (skipped without docker) (needs npm)
+bun run golden                            # fresh project: create → add modules + items → install → typecheck → test → build → doctor --strict → check → each module's checks → dockerfile configuration: docker build + run (skipped without docker, a failure when GOLDEN_REQUIRE_DOCKER is set) (needs npm)
 
 bun run --filter @acme/api dev
 bun run --filter @acme/spa dev

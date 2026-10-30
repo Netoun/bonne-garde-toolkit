@@ -14,6 +14,7 @@
  *
  * The image phases need a docker daemon. With no `docker` on PATH, or none that answers `docker info`,
  * golden says so, in the timing table too, and still exits 0: every other failure of them fails the run.
+ * CI sets `GOLDEN_REQUIRE_DOCKER=1`, under which an unavailable docker fails the run instead.
  * What they create is named `bg-golden-<pid>` (image, container, volume) and removed by that name.
  *
  * Any non-zero exit fails the run and names the phase. It needs a real `bun install` against npm,
@@ -459,6 +460,29 @@ export function dockerSkipReason(probe: Attempt | null): string | null {
   return probe.code === 0 ? null : `docker unavailable: \`docker info\` exited with ${probe.code}`;
 }
 
+/** The environment variable that turns a skipped image phase into a failed run: CI sets it. */
+export const DOCKER_REQUIRED = "GOLDEN_REQUIRE_DOCKER";
+
+/**
+ * Whether the variable asks for docker: unset, empty, `0` and `false` do not, anything else does, so
+ * a spelling nobody planned (`yes`) fails safe, as a run that requires docker, and not as one that skips.
+ */
+export function requiresDocker(value: string | undefined): boolean {
+  return value !== undefined && value !== "" && value !== "0" && value !== "false";
+}
+
+/**
+ * What to do about the image phases: null to run them, the reason to skip them, and a throw when
+ * `required` and docker is unavailable, so that CI cannot go green without having built the image.
+ */
+export function dockerDecision(probe: Attempt | null, required: boolean): string | null {
+  const reason = dockerSkipReason(probe);
+  if (reason !== null && required) {
+    throw new Error(`${reason}, and ${DOCKER_REQUIRED} is set`);
+  }
+  return reason;
+}
+
 /** The name of the image, the container and the volume of one run: unique to this process. */
 export function dockerName(pid: number): string {
   return `bg-golden-${pid}`;
@@ -703,7 +727,13 @@ async function imaged(project: string, timings: Timing[], name: string): Promise
   const label = `${name}: docker`;
   const probe =
     Bun.which("docker") === null ? null : await attempt(["docker", "info"], project, 20_000);
-  const skipped = dockerSkipReason(probe);
+  let skipped: string | null;
+  try {
+    skipped = dockerDecision(probe, requiresDocker(process.env[DOCKER_REQUIRED]));
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`phase "${label}" failed: ${reason}`);
+  }
   if (skipped !== null) {
     console.log(`\n${label}  skipped (${skipped})`);
     timings.push({ phase: label, ms: 0, note: `skipped (${skipped})` });

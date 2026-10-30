@@ -12,7 +12,7 @@
 | `apps/spa` | Vite+ (Vitest) + RTL | `jsdom`                | MSW            | `bun run test`         |
 | `scripts`  | `bun:test`           | Temporary directories  | None           | `bun run test:scripts` |
 
-From root: `bun run test` runs scripts first, then all workspace test scripts in parallel. `bun run verify` is the repo gate (check, typecheck, test, build); CI then runs `bun run golden`, which scaffolds a fresh project from the packed CLI, installs its modules and items, and runs the quality gate (`bun run check`, then each module's `checks`) in it; for the `dockerfile` configuration it then builds the image, runs the container and asks it for `/health`, `/`, a hashed asset and a client route, and says so when `docker` is unavailable and skips it; it needs npm.
+From root: `bun run test` runs scripts first, then all workspace test scripts in parallel. `bun run verify` is the repo gate (check, typecheck, test, build); CI then runs `bun run golden`, which scaffolds a fresh project from the packed CLI, installs its modules and items, and runs the quality gate (`bun run check`, then each module's `checks`) in it; for the `dockerfile` configuration it then builds the image, runs the container and asks it for `/health`, `/`, a hashed asset and a client route, and says so when `docker` is unavailable and skips it, unless `GOLDEN_REQUIRE_DOCKER` is set, as in CI, where an unavailable `docker` fails the run; it needs npm.
 
 ---
 

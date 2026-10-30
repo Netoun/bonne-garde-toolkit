@@ -84,7 +84,7 @@ volume on `/data` and its port published on `127.0.0.1`, answers:
 `bun run golden` makes these four requests after `docker build` and `docker run`. It fails when one
 answers another status or media type, or when the client route answers something other than
 `GET /`. It skips them, and says so, when `docker` is not on PATH or its daemon does not answer
-`docker info`.
+`docker info`, unless `GOLDEN_REQUIRE_DOCKER` is set: CI sets it, and then that is a failed run.
 
 The `api/elysia` shell wires no database, authentication, object storage or email, so the container
 has none of them.
