@@ -111,7 +111,7 @@ async function golden(work: string, timings: Timing[]): Promise<void> {
   });
 
   const { items, excluded } = await phase(timings, "list", async () =>
-    selectItems(await capture(bg("list", "--source", registry), work), EXCLUDED),
+    selectItems(await capture(bg("list", "--items", "--source", registry), work), EXCLUDED),
   );
   for (const { name, reason } of excluded) {
     console.log(`golden: leaving out ${name}: ${reason}`);
