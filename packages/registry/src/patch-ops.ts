@@ -1,4 +1,5 @@
 import { inspectJsonc, jsonRegion, jsoncLeaves, setJsoncLeaves } from "./jsonc-merge";
+import { dependencyEntries, dependencyRegion, setDependencies } from "./package-dependencies";
 import type { PlannedPatch } from "./patch-plan";
 import type { RegionState } from "./region-state";
 import { inspectScripts, scriptRegion, setScripts } from "./scripts-merge";
@@ -41,6 +42,11 @@ export function patchRegions(patch: PlannedPatch): RegionDeclaration[] {
       return jsoncLeaves(patch.value).map(({ path, value }) => ({
         region: jsonRegion(path),
         declared: JSON.stringify(value),
+      }));
+    case "package.dependencies":
+      return dependencyEntries(patch).map((entry) => ({
+        region: dependencyRegion(entry),
+        declared: JSON.stringify(entry.version),
       }));
     case "ts.addImport":
       return [
@@ -91,6 +97,15 @@ export function inspectPatch(text: string, patch: PlannedPatch): PatchInspection
     }
     case "jsonc.merge":
       return inspectJsonc(text, jsoncLeaves(patch.value));
+    case "package.dependencies":
+      // The same regions as `jsonc.merge` names for these leaves, and the same three states.
+      return inspectJsonc(
+        text,
+        dependencyEntries(patch).map(({ map, name, version }) => ({
+          path: [map, name],
+          value: version,
+        })),
+      );
     case "ts.addImport":
     case "ts.addNamedExport": {
       const inspected =
@@ -145,6 +160,11 @@ export function writePatch(
       return setJsoncLeaves(
         text,
         jsoncLeaves(patch.value).filter(({ path }) => regions.has(jsonRegion(path))),
+      );
+    case "package.dependencies":
+      return setDependencies(
+        text,
+        dependencyEntries(patch).filter((entry) => regions.has(dependencyRegion(entry))),
       );
     case "ts.addImport":
       return regions.has(importRegion(patch.moduleSpecifier))

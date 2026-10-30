@@ -967,6 +967,170 @@ describe("resolveModulePlans: jsonc.merge (060)", () => {
   });
 });
 
+describe("resolveModulePlans: package.dependencies (060)", () => {
+  const plan = async (patch: unknown[], scope = "@demo") => {
+    const catalog = await registry([
+      {
+        category: "orm",
+        id: "drizzle",
+        json: { variants: [{ key: "default", match: {}, patch }] },
+      },
+    ]);
+    const [first] = await resolveModulePlans(
+      catalog,
+      [{ category: "orm", id: "drizzle" }],
+      project({}, scope),
+    );
+    return first;
+  };
+
+  test("is planned with both maps, `{{SCOPE}}` rendered in a name and a version left as written", async () => {
+    const planned = await plan([
+      {
+        type: "package.dependencies",
+        file: "apps/api/package.json",
+        dependencies: { "{{SCOPE}}/db": "workspace:*", elysia: "1.4.29" },
+      },
+      {
+        type: "package.dependencies",
+        file: "packages/db/package.json",
+        devDependencies: { "drizzle-kit": "0.31.10" },
+      },
+    ]);
+
+    expect(planned?.patches).toEqual([
+      {
+        type: "package.dependencies",
+        file: "apps/api/package.json",
+        dependencies: { "@demo/db": "workspace:*", elysia: "1.4.29" },
+        devDependencies: {},
+      },
+      {
+        type: "package.dependencies",
+        file: "packages/db/package.json",
+        dependencies: {},
+        devDependencies: { "drizzle-kit": "0.31.10" },
+      },
+    ]);
+  });
+
+  test("renders the scope of the project, whatever its length", async () => {
+    const planned = await plan(
+      [
+        {
+          type: "package.dependencies",
+          file: "package.json",
+          dependencies: { "{{SCOPE}}/db": "workspace:*" },
+        },
+      ],
+      "@a-rather-long-scope",
+    );
+
+    expect(planned?.patches[0]).toMatchObject({
+      dependencies: { "@a-rather-long-scope/db": "workspace:*" },
+    });
+  });
+
+  test("carries the module's own `intent` for the pending intention it may become", async () => {
+    const planned = await plan([
+      {
+        type: "package.dependencies",
+        file: "package.json",
+        dependencies: { a: "1.0.0" },
+        intent: "Declare a",
+      },
+    ]);
+
+    expect(planned?.patches[0]).toMatchObject({ intent: "Declare a" });
+  });
+
+  test.each([
+    [
+      "declares no dependency",
+      { type: "package.dependencies", file: "package.json" },
+      /it declares no dependency/,
+    ],
+    [
+      "declares two empty maps",
+      { type: "package.dependencies", file: "package.json", dependencies: {}, devDependencies: {} },
+      /it declares no dependency/,
+    ],
+    [
+      "has a map that is not an object",
+      { type: "package.dependencies", file: "package.json", dependencies: ["a"] },
+      /dependencies must be an object of package names to versions/,
+    ],
+    [
+      "has a version that is not a string",
+      { type: "package.dependencies", file: "package.json", dependencies: { a: 1 } },
+      /dependencies\.a must be a non-empty version string/,
+    ],
+    [
+      "has an empty version",
+      { type: "package.dependencies", file: "package.json", devDependencies: { a: "" } },
+      /devDependencies\.a must be a non-empty version string/,
+    ],
+    [
+      "has an empty name",
+      { type: "package.dependencies", file: "package.json", dependencies: { "": "1.0.0" } },
+      /dependencies has an empty package name/,
+    ],
+    [
+      "carries a scope placeholder in a version, which only a name is rendered with",
+      {
+        type: "package.dependencies",
+        file: "package.json",
+        dependencies: { a: "npm:{{SCOPE}}/b@1.0.0" },
+      },
+      /dependencies\.a holds \{\{SCOPE\}\} in its version: only a package name is rendered/,
+    ],
+    [
+      "names one package twice once the scope is rendered",
+      {
+        type: "package.dependencies",
+        file: "package.json",
+        dependencies: { "{{SCOPE}}/db": "workspace:*", "@demo/db": "workspace:*" },
+      },
+      /dependencies names @demo\/db twice/,
+    ],
+    [
+      "names a package in both maps",
+      {
+        type: "package.dependencies",
+        file: "package.json",
+        dependencies: { a: "1.0.0" },
+        devDependencies: { a: "1.0.0" },
+      },
+      /a is in dependencies and in devDependencies/,
+    ],
+    [
+      "targets a file that is not a package.json",
+      { type: "package.dependencies", file: "tsconfig.json", dependencies: { a: "1.0.0" } },
+      /file must be a package\.json, got: tsconfig\.json/,
+    ],
+    [
+      "targets a path outside the project",
+      { type: "package.dependencies", file: "../package.json", dependencies: { a: "1.0.0" } },
+      /file must be a repo-relative path without '\.\.'/,
+    ],
+    [
+      "has an argument it does not know",
+      {
+        type: "package.dependencies",
+        file: "package.json",
+        dependencies: { a: "1.0.0" },
+        scripts: {},
+      },
+      /has an argument it does not know: scripts/,
+    ],
+  ])("a patch that %s is refused as a registry authoring error", async (_, patch, message) => {
+    await expect(plan([patch])).rejects.toThrow(message);
+    await expect(plan([patch])).rejects.toThrow(
+      /orm\/drizzle declares patch package\.dependencies/,
+    );
+  });
+});
+
 describe("resolveModulePlans: ts.addImport and ts.addNamedExport (060)", () => {
   const plan = async (patch: unknown[], scope = "@demo") => {
     const catalog = await registry([

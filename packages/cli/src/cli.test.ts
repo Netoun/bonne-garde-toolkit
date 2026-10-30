@@ -1108,3 +1108,209 @@ describe("bg add api/elysia: a module that vendors a file and patches it (035, 0
     expect(await readdir(join(target, "apps"))).toEqual([".gitkeep"]);
   });
 });
+
+describe("bg add: package.dependencies (060)", () => {
+  /** A registry of one module, `dev/wiring`, that adds the entries a module declares to the root package.json. */
+  async function wiringRegistry(): Promise<string> {
+    const root = await mkdtemp(join(tmpdir(), "bg-cli-deps-reg-"));
+    dirs.push(root);
+    await mkdir(join(root, "registry/modules/dev/wiring"), { recursive: true });
+    await writeFile(join(root, "registry/registry.json"), JSON.stringify({ name: "t", items: [] }));
+    await writeFile(
+      join(root, "registry/modules/dev/wiring/module.json"),
+      JSON.stringify({
+        id: "wiring",
+        category: "dev",
+        title: "Wiring",
+        description: "Declares dependencies on the root package.json.",
+        variants: [
+          {
+            key: "default",
+            match: {},
+            patch: [
+              {
+                type: "package.dependencies",
+                file: "package.json",
+                dependencies: { "{{SCOPE}}/db": "workspace:*", zod: "4.0.0" },
+                devDependencies: { "drizzle-kit": "0.31.10" },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    return `local:${join(root, "registry")}`;
+  }
+
+  async function projectWithWiring(prefix: string): Promise<string> {
+    const parent = await mkdtemp(join(tmpdir(), prefix));
+    dirs.push(parent);
+    return createProject({
+      name: "cli-app",
+      cwd: parent,
+      git: false,
+      install: false,
+      registry: await wiringRegistry(),
+    });
+  }
+
+  const REGIONS = [
+    { region: "dependencies.@cli-app/db", status: "applied" },
+    { region: "dependencies.zod", status: "applied" },
+    { region: "devDependencies.drizzle-kit", status: "applied" },
+  ];
+
+  test("each entry lands where the formatter sorts it, and the JSON says per region what the patch did", async () => {
+    const target = await projectWithWiring("bg-cli-deps-");
+    const before = JSON.parse(await readFile(join(target, "package.json"), "utf8")) as {
+      devDependencies: Record<string, string>;
+    };
+
+    const { stdout, code } = await runBg(target, "add", "dev/wiring", "--yes", "--no-install");
+
+    expect(code).toBe(0);
+    const out = JSON.parse(stdout) as ModuleOutput;
+    expect(out.modules[0]?.patches).toEqual([
+      {
+        type: "package.dependencies",
+        file: "package.json",
+        status: "applied",
+        regions: REGIONS,
+      },
+    ]);
+    expect(out.failedPatches).toEqual([]);
+    expect(out.written).not.toContain("package.json");
+
+    const text = await readFile(join(target, "package.json"), "utf8");
+    const after = JSON.parse(text) as {
+      dependencies: Record<string, string>;
+      devDependencies: Record<string, string>;
+    };
+    // `{{SCOPE}}` is rendered in the name; the new `dependencies` map sits after `scripts`, and
+    // `drizzle-kit` between `@types/bun` and `husky`, which is where `vp fmt` has it.
+    expect(after.dependencies).toEqual({ "@cli-app/db": "workspace:*", zod: "4.0.0" });
+    expect(Object.keys(JSON.parse(text) as object).slice(-4)).toEqual([
+      "scripts",
+      "dependencies",
+      "devDependencies",
+      "packageManager",
+    ]);
+    expect(Object.keys(after.devDependencies)).toEqual([
+      "@types/bun",
+      "drizzle-kit",
+      "husky",
+      "typescript",
+      "vite-plus",
+    ]);
+    expect(after.devDependencies).toMatchObject(before.devDependencies);
+
+    const bg = JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as {
+      regions: Record<string, Record<string, string>>;
+    };
+    expect(bg.regions["package.json"]).toEqual({
+      "dependencies.@cli-app/db": "dev/wiring",
+      "dependencies.zod": "dev/wiring",
+      "devDependencies.drizzle-kit": "dev/wiring",
+    });
+    const doctor = await runBg(target, "doctor", "--strict");
+    expect(doctor.code).toBe(0);
+  });
+
+  test("the same add again reports every region skipped, and the project is the same bytes", async () => {
+    const target = await projectWithWiring("bg-cli-deps-twice-");
+    await runBg(target, "add", "dev/wiring", "--yes", "--no-install");
+    const before = await snapshot(target);
+
+    const { stdout, code } = await runBg(target, "add", "dev/wiring", "--yes", "--no-install");
+
+    expect(code).toBe(0);
+    expect((JSON.parse(stdout) as ModuleOutput).modules[0]?.patches).toEqual([
+      {
+        type: "package.dependencies",
+        file: "package.json",
+        status: "skipped",
+        regions: REGIONS.map(({ region }) => ({ region, status: "skipped" })),
+      },
+    ]);
+    const settled = (tree: Record<string, string>) => ({
+      ...tree,
+      "bg.json": (tree["bg.json"] ?? "").replace(/"installedAt": "[^"]*"/g, '"installedAt": "-"'),
+    });
+    expect(settled(await snapshot(target))).toEqual(settled(before));
+  });
+
+  test("a version the project changed is refused naming the region and --force, doctor warns, and --force puts it back", async () => {
+    const target = await projectWithWiring("bg-cli-deps-edit-");
+    await runBg(target, "add", "dev/wiring", "--yes", "--no-install");
+    const clean = await readFile(join(target, "package.json"), "utf8");
+    await writeFile(
+      join(target, "package.json"),
+      clean.replace('"zod": "4.0.0"', '"zod": "4.1.0"'),
+    );
+    const edited = await snapshot(target);
+
+    const doctor = await runBg(target, "doctor", "--strict");
+    expect(doctor.code).toBe(1);
+    expect(doctor.stdout).toContain("region-foreign-edit");
+    expect(doctor.stdout).toContain('dependencies.zod of package.json is "4.1.0"');
+
+    const refused = await runBg(target, "add", "dev/wiring", "--yes", "--no-install");
+    expect(refused.code).toBe(1);
+    expect(refused.stderr).toContain(
+      'dependencies.zod of package.json is "4.1.0", which differs from what dev/wiring declares ("4.0.0")',
+    );
+    expect(refused.stderr).toContain("--force");
+    expect(await snapshot(target)).toEqual(edited);
+
+    const forced = await runBg(target, "add", "dev/wiring", "--yes", "--no-install", "--force");
+
+    expect(forced.code).toBe(0);
+    expect((JSON.parse(forced.stdout) as ModuleOutput).modules[0]?.patches[0]).toEqual({
+      type: "package.dependencies",
+      file: "package.json",
+      status: "applied",
+      regions: [
+        { region: "dependencies.@cli-app/db", status: "skipped" },
+        { region: "dependencies.zod", status: "applied", replaced: '"4.1.0"' },
+        { region: "devDependencies.drizzle-kit", status: "skipped" },
+      ],
+    });
+    expect(await readFile(join(target, "package.json"), "utf8")).toBe(clean);
+  });
+
+  test("a package.json that cannot hold the entries is a failed patch and a pending intention, and the install completes", async () => {
+    const target = await projectWithWiring("bg-cli-deps-failed-");
+    const root = JSON.parse(await readFile(join(target, "package.json"), "utf8")) as Record<
+      string,
+      unknown
+    >;
+    await writeFile(
+      join(target, "package.json"),
+      `${JSON.stringify({ ...root, dependencies: ["zod"] }, null, 2)}\n`,
+    );
+
+    const { stdout, stderr, code } = await runBg(
+      target,
+      "add",
+      "dev/wiring",
+      "--yes",
+      "--no-install",
+    );
+
+    expect(code).toBe(0);
+    const id = "dev/wiring/patch-package-dependencies-package-json-dependencies-cli-app-db";
+    const out = JSON.parse(stdout) as ModuleOutput;
+    expect(out.modules[0]?.patches).toEqual([
+      {
+        type: "package.dependencies",
+        file: "package.json",
+        status: "failed",
+        reason: 'package.json: "dependencies" is an array, not an object',
+        intention: id,
+        regions: [],
+      },
+    ]);
+    expect(out.pendingIntentions.map((pending) => pending.id)).toEqual([id]);
+    expect(stderr).toContain("bg: PATCH FAILED package.dependencies on package.json (dev/wiring)");
+  });
+});

@@ -33,6 +33,7 @@ export {
   type AddNamedExportPatch,
   type ElysiaUsePatch,
   type JsoncMergePatch,
+  type PackageDependenciesPatch,
   type PlannedPatch,
   type ScriptsMergePatch,
 } from "./patch-plan";

@@ -814,6 +814,325 @@ describe("applyInstallPlan: jsonc.merge (060)", () => {
   });
 });
 
+describe("applyInstallPlan: package.dependencies (060)", () => {
+  const FILE = "apps/api/package.json";
+  const API = `{
+  "name": "@demo/api",
+  "scripts": {
+    "dev": "bun run dev"
+  },
+  "dependencies": {
+    "@elysiajs/cors": "1.4.2",
+    "elysia": "1.4.29"
+  }
+}
+`;
+  const entries = (
+    dependencies: Record<string, string>,
+    devDependencies: Record<string, string> = {},
+    file = FILE,
+  ) =>
+    ({ type: "package.dependencies", file, dependencies, devDependencies }) satisfies PlannedPatch;
+  const DB = { "@demo/db": "workspace:*" };
+  const orm = (patches: PlannedPatch[] = [entries(DB)]) =>
+    modulePlan({ category: "orm", id: "drizzle", key: "orm/drizzle", patches });
+  const project = () => freshProject({ [FILE]: API, "package.json": ROOT_PACKAGE });
+
+  test("writes each entry where the formatter sorts it, records a region per entry and the outcome", async () => {
+    const { projectRoot, manifest } = await project();
+
+    const result = await install(projectRoot, manifest, [
+      orm([entries({ "@demo/db": "workspace:*", zod: "4.0.0" }, { typescript: "7.0.2" })]),
+    ]);
+
+    expect(await read(projectRoot, FILE)).toBe(`{
+  "name": "@demo/api",
+  "scripts": {
+    "dev": "bun run dev"
+  },
+  "dependencies": {
+    "@demo/db": "workspace:*",
+    "@elysiajs/cors": "1.4.2",
+    "elysia": "1.4.29",
+    "zod": "4.0.0"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}
+`);
+    expect(result.patches).toEqual([
+      {
+        module: "orm/drizzle",
+        type: "package.dependencies",
+        file: FILE,
+        status: "applied",
+        regions: [
+          { region: "dependencies.@demo/db", status: "applied" },
+          { region: "dependencies.zod", status: "applied" },
+          { region: "devDependencies.typescript", status: "applied" },
+        ],
+      },
+    ]);
+    expect(result.manifest.regions).toEqual({
+      [FILE]: {
+        "dependencies.@demo/db": "orm/drizzle",
+        "dependencies.zod": "orm/drizzle",
+        "devDependencies.typescript": "orm/drizzle",
+      },
+    });
+    expect(result.manifest.modules.orm?.[0]?.patches).toEqual([
+      { type: "package.dependencies", file: FILE, status: "applied" },
+    ]);
+    // The file belongs to the project, not to the module.
+    expect(result.manifest.files).toEqual({});
+  });
+
+  test("the same install again skips every region, and the tree is the same bytes", async () => {
+    const { projectRoot, manifest } = await project();
+    const first = await install(projectRoot, manifest, [orm()]);
+    const { "bg.json": _first, ...tree } = await snapshot(projectRoot);
+
+    const second = await install(projectRoot, first.manifest, [orm()]);
+
+    expect(second.patches[0]).toMatchObject({
+      status: "skipped",
+      regions: [{ region: "dependencies.@demo/db", status: "skipped" }],
+    });
+    expect(second.manifest.regions).toEqual(first.manifest.regions);
+    // A patch recorded `applied` stays so: the record describes the state, not the run.
+    expect(second.manifest.modules.orm?.[0]?.patches[0]?.status).toBe("applied");
+    const { "bg.json": _second, ...again } = await snapshot(projectRoot);
+    expect(again).toEqual(tree);
+  });
+
+  test("some entries present and equal and others absent: applied, region by region", async () => {
+    const { projectRoot, manifest } = await project();
+
+    const result = await install(projectRoot, manifest, [
+      orm([entries({ elysia: "1.4.29", zod: "4.0.0" })]),
+    ]);
+
+    expect(result.patches[0]).toMatchObject({
+      status: "applied",
+      regions: [
+        { region: "dependencies.elysia", status: "skipped" },
+        { region: "dependencies.zod", status: "applied" },
+      ],
+    });
+    expect(result.manifest.regions[FILE]).toEqual({
+      "dependencies.elysia": "orm/drizzle",
+      "dependencies.zod": "orm/drizzle",
+    });
+  });
+
+  test("a version that differs is user-owned: the install fails naming it, --force replaces it and reports what it replaced", async () => {
+    const { projectRoot, manifest } = await project();
+    const first = await install(projectRoot, manifest, [orm()]);
+    const edited = (await read(projectRoot, FILE)).replace("workspace:*", "workspace:^1.0.0");
+    await writeFile(join(projectRoot, FILE), edited);
+    const before = await snapshot(projectRoot);
+
+    await expect(install(projectRoot, first.manifest, [orm()])).rejects.toThrow(
+      /nothing was written.*in the way \(use --force to overwrite\):\n {2}dependencies\.@demo\/db of apps\/api\/package\.json is "workspace:\^1\.0\.0", which differs from what orm\/drizzle declares \("workspace:\*"\)/s,
+    );
+    expect(await snapshot(projectRoot)).toEqual(before);
+
+    const forced = await install(projectRoot, first.manifest, [orm()], { force: true });
+
+    expect(await read(projectRoot, FILE)).toBe(edited.replace("workspace:^1.0.0", "workspace:*"));
+    expect(forced.patches[0]?.regions).toEqual([
+      { region: "dependencies.@demo/db", status: "applied", replaced: '"workspace:^1.0.0"' },
+    ]);
+  });
+
+  test("an entry the project wrote itself, with no region recorded, is user-owned too, and equal is claimed", async () => {
+    const { projectRoot, manifest } = await freshProject({ [FILE]: API });
+
+    await expect(
+      install(projectRoot, manifest, [orm([entries({ elysia: "1.5.0" })])]),
+    ).rejects.toThrow(
+      /dependencies\.elysia of apps\/api\/package\.json is "1\.4\.29", which differs/,
+    );
+
+    const result = await install(projectRoot, manifest, [orm([entries({ elysia: "1.4.29" })])]);
+
+    expect(result.patches[0]).toMatchObject({
+      status: "skipped",
+      regions: [{ region: "dependencies.elysia", status: "skipped" }],
+    });
+    expect(result.manifest.regions[FILE]).toEqual({ "dependencies.elysia": "orm/drizzle" });
+  });
+
+  test("an entry in the other map is another region: the same name in devDependencies is not in the way", async () => {
+    const { projectRoot, manifest } = await project();
+
+    const result = await install(projectRoot, manifest, [orm([entries({}, { elysia: "1.4.29" })])]);
+
+    expect(result.patches[0]?.status).toBe("applied");
+    expect(JSON.parse(await read(projectRoot, FILE))).toMatchObject({
+      dependencies: { elysia: "1.4.29" },
+      devDependencies: { elysia: "1.4.29" },
+    });
+  });
+
+  test("a region of another module fails always, whichever patch type wrote it, and --force does not bypass it", async () => {
+    const { projectRoot, manifest } = await project();
+    const first = await install(projectRoot, manifest, [
+      modulePlan({
+        category: "dev",
+        id: "other",
+        key: "dev/other",
+        patches: [{ type: "jsonc.merge", file: FILE, value: { dependencies: { zod: "4.0.0" } } }],
+      }),
+    ]);
+    const before = await snapshot(projectRoot);
+
+    for (const force of [false, true]) {
+      await expect(
+        install(projectRoot, first.manifest, [orm([entries({ zod: "4.0.0" })])], { force }),
+      ).rejects.toThrow(
+        /nothing was written; --force does not change this:\n {2}dependencies\.zod of apps\/api\/package\.json is owned by dev\/other, and orm\/drizzle would write it/,
+      );
+    }
+    expect(await snapshot(projectRoot)).toEqual(before);
+  });
+
+  test("two modules naming one entry in the same call fail, whoever comes first", async () => {
+    const { projectRoot, manifest } = await project();
+
+    await expect(
+      install(projectRoot, manifest, [
+        orm(),
+        modulePlan({
+          category: "auth",
+          id: "better-auth",
+          key: "auth/better-auth",
+          patches: [entries(DB)],
+        }),
+      ]),
+    ).rejects.toThrow(
+      /dependencies\.@demo\/db of apps\/api\/package\.json is named by both orm\/drizzle and auth\/better-auth/,
+    );
+  });
+
+  test("lands in a file the same call writes, as the template's own entries would", async () => {
+    const { projectRoot, manifest } = await freshProject({});
+    const vendored = modulePlan({
+      category: "db",
+      id: "d1",
+      key: "db/d1",
+      files: [
+        {
+          target: "packages/db/package.json",
+          content: `{
+  "name": "@demo/db",
+  "dependencies": {
+    "@demo/api-runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.0.0",
+    "miniflare": "5.0.0"
+  }
+}
+`,
+        },
+      ],
+      patches: [],
+    });
+
+    await install(projectRoot, manifest, [
+      vendored,
+      orm([
+        entries(
+          { "drizzle-orm": "0.45.2", elysia: "1.4.29" },
+          { "drizzle-kit": "0.31.10" },
+          "packages/db/package.json",
+        ),
+      ]),
+    ]);
+
+    expect(JSON.parse(await read(projectRoot, "packages/db/package.json"))).toEqual({
+      name: "@demo/db",
+      dependencies: {
+        "@demo/api-runtime": "workspace:*",
+        "drizzle-orm": "0.45.2",
+        elysia: "1.4.29",
+      },
+      devDependencies: {
+        "@cloudflare/workers-types": "5.0.0",
+        "drizzle-kit": "0.31.10",
+        miniflare: "5.0.0",
+      },
+    });
+    expect(
+      Object.keys(
+        (
+          JSON.parse(await read(projectRoot, "packages/db/package.json")) as {
+            devDependencies: object;
+          }
+        ).devDependencies,
+      ),
+    ).toEqual(["@cloudflare/workers-types", "drizzle-kit", "miniflare"]);
+  });
+
+  describe("a patch that cannot apply is `failed`, recorded, and becomes a pending intention", () => {
+    test.each([
+      ["a target that does not exist", undefined, /^apps\/api\/package\.json does not exist$/],
+      [
+        "a target that is not JSON",
+        '{\n  "a": \n}\n',
+        /^apps\/api\/package\.json: not valid JSON \(.* at line 3\)$/,
+      ],
+    ])("%s", async (_, text, reason) => {
+      const { projectRoot, manifest } = await freshProject(
+        text === undefined ? {} : { [FILE]: text },
+      );
+
+      const result = await install(projectRoot, manifest, [orm()]);
+
+      expect(result.patches[0]?.status).toBe("failed");
+      expect(result.patches[0]?.reason).toMatch(reason);
+      expect(result.patches[0]?.regions).toEqual([]);
+      expect(result.pending.map(({ id }) => id)).toEqual([
+        "orm/drizzle/patch-package-dependencies-apps-api-package-json-dependencies-demo-db",
+      ]);
+      expect(result.manifest.regions).toEqual({});
+      expect(result.manifest.modules.orm?.[0]?.patches[0]).toMatchObject({ status: "failed" });
+      if (text !== undefined) {
+        expect(await read(projectRoot, FILE)).toBe(text);
+      }
+    });
+
+    test("a map that is not an object", async () => {
+      const { projectRoot, manifest } = await freshProject({
+        [FILE]: '{ "dependencies": ["a"] }\n',
+      });
+
+      const result = await install(projectRoot, manifest, [orm()]);
+
+      expect(result.patches[0]).toMatchObject({
+        status: "failed",
+        reason: `${FILE}: "dependencies" is an array, not an object`,
+      });
+      expect(result.pending[0]?.intent).toBe(
+        'The package.dependencies patch of orm/drizzle makes apps/api/package.json hold: dependencies.@demo/db = "workspace:*".',
+      );
+    });
+  });
+
+  test("--dry-run computes the patch, reports it and writes nothing", async () => {
+    const { projectRoot, manifest } = await project();
+    await writeFile(join(projectRoot, "bg.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+    const before = await snapshot(projectRoot);
+
+    const result = await install(projectRoot, manifest, [orm()], { dryRun: true });
+
+    expect(result.patches[0]?.status).toBe("applied");
+    expect(await snapshot(projectRoot)).toEqual(before);
+  });
+});
+
 describe("applyInstallPlan: ts.addImport and ts.addNamedExport (060)", () => {
   const APP = 'import { Elysia } from "elysia";\n\nexport const app = new Elysia();\n';
   const FILE = "apps/api/src/app.ts";

@@ -11,6 +11,7 @@ import {
   type ProjectManifest,
 } from "@bonne-garde/schema";
 import { FETCH_CONCURRENCY, RegistryFileNotFoundError } from "./github-source";
+import { byName } from "./package-dependencies";
 import { plannedPatches, type PlannedPatch } from "./patch-plan";
 import { mapLimit } from "./pool";
 import { PlanError, searchCatalog } from "./resolve-plan";
@@ -348,7 +349,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function sortedMap(map: Record<string, string>): Record<string, string> {
-  return Object.fromEntries(Object.entries(map).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  return Object.fromEntries(Object.entries(map).sort(([a], [b]) => byName(a, b)));
 }
 
 /**

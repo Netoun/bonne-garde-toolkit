@@ -1,4 +1,5 @@
 import { isRepoRelative, type ModulePatch, type ModuleVariant } from "@bonne-garde/schema";
+import { DEPENDENCY_MAPS, type DependencyMap } from "./package-dependencies";
 import { PlanError } from "./resolve-plan";
 
 /**
@@ -20,6 +21,18 @@ export type JsoncMergePatch = {
   intent?: string;
   /** The leaves to merge: an object is walked, anything else (an array too) is a leaf written whole. */
   value: Record<string, unknown>;
+};
+
+export type PackageDependenciesPatch = {
+  type: "package.dependencies";
+  file: string;
+  intent?: string;
+  /**
+   * The entries to add, name to version, either map possibly empty and not both. A name has `{{SCOPE}}`
+   * rendered, and is the key of the region `bg.json` records (`dependencies.<name>`); a version is as written.
+   */
+  dependencies: Record<string, string>;
+  devDependencies: Record<string, string>;
 };
 
 export type AddImportPatch = {
@@ -54,6 +67,7 @@ export type ElysiaUsePatch = {
 export type PlannedPatch =
   | ScriptsMergePatch
   | JsoncMergePatch
+  | PackageDependenciesPatch
   | AddImportPatch
   | AddNamedExportPatch
   | ElysiaUsePatch;
@@ -61,6 +75,7 @@ export type PlannedPatch =
 const APPLIED = [
   "scripts.merge",
   "jsonc.merge",
+  "package.dependencies",
   "ts.addImport",
   "ts.addNamedExport",
   "ts.elysiaUse",
@@ -156,6 +171,66 @@ function parseJsoncMerge(refuse: Refuse, patch: ModulePatch): JsoncMergePatch {
   }
   checkJsoncValue(refuse, value, "value");
   return { type: "jsonc.merge", file, value };
+}
+
+/** The entries of one dependency map, names rendered with the scope: each a non-empty version, each name once. */
+function parseDependencyMap(
+  refuse: Refuse,
+  patch: ModulePatch,
+  map: DependencyMap,
+  scope: string,
+): Record<string, string> {
+  const declared = patch[map];
+  if (declared === undefined) {
+    return {};
+  }
+  if (!isRecord(declared)) {
+    return refuse(`${map} must be an object of package names to versions`);
+  }
+  const written: Record<string, string> = {};
+  for (const [declaredName, version] of Object.entries(declared)) {
+    const name = declaredName.replaceAll("{{SCOPE}}", scope);
+    if (name.length === 0) {
+      return refuse(`${map} has an empty package name`);
+    }
+    if (typeof version !== "string" || version.length === 0) {
+      return refuse(`${map}.${declaredName} must be a non-empty version string`);
+    }
+    if (version.includes("{{SCOPE}}")) {
+      return refuse(
+        `${map}.${declaredName} holds {{SCOPE}} in its version: only a package name is rendered with the scope`,
+      );
+    }
+    if (Object.hasOwn(written, name)) {
+      return refuse(`${map} names ${name} twice`);
+    }
+    written[name] = version;
+  }
+  return written;
+}
+
+function parsePackageDependencies(
+  refuse: Refuse,
+  patch: ModulePatch,
+  scope: string,
+): PackageDependenciesPatch {
+  checkArguments(refuse, patch, ["file", ...DEPENDENCY_MAPS]);
+  const file = checkFile(refuse, patch);
+  if (file.split("/").at(-1) !== "package.json") {
+    return refuse(`file must be a package.json, got: ${file}`);
+  }
+  const dependencies = parseDependencyMap(refuse, patch, "dependencies", scope);
+  const devDependencies = parseDependencyMap(refuse, patch, "devDependencies", scope);
+  if (Object.keys(dependencies).length + Object.keys(devDependencies).length === 0) {
+    return refuse(
+      "it declares no dependency: dependencies and devDependencies are missing or empty",
+    );
+  }
+  const both = Object.keys(dependencies).find((name) => Object.hasOwn(devDependencies, name));
+  if (both !== undefined) {
+    return refuse(`${both} is in dependencies and in devDependencies`);
+  }
+  return { type: "package.dependencies", file, dependencies, devDependencies };
 }
 
 const TS_FILE = /\.(?:[cm]?ts|tsx)$/;
@@ -261,6 +336,8 @@ export function plannedPatches(key: string, variant: ModuleVariant, scope: strin
         return withIntent(parseScriptsMerge(refuse, patch));
       case "jsonc.merge":
         return withIntent(parseJsoncMerge(refuse, patch));
+      case "package.dependencies":
+        return withIntent(parsePackageDependencies(refuse, patch, scope));
       case "ts.addImport":
         return withIntent(parseAddImport(refuse, patch, scope));
       case "ts.addNamedExport":
