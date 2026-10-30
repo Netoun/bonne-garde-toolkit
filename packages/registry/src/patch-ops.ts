@@ -2,6 +2,7 @@ import { inspectJsonc, jsonRegion, jsoncLeaves, setJsoncLeaves } from "./jsonc-m
 import type { PlannedPatch } from "./patch-plan";
 import type { RegionState } from "./region-state";
 import { inspectScripts, scriptRegion, setScripts } from "./scripts-merge";
+import { addElysiaUse, elysiaRegion, inspectElysiaUse } from "./ts-elysia";
 import {
   addImport,
   addNamedExport,
@@ -55,6 +56,13 @@ export function patchRegions(patch: PlannedPatch): RegionDeclaration[] {
           declared: `{ ${patch.exports.join(", ")} }`,
         },
       ];
+    case "ts.elysiaUse":
+      return [
+        {
+          region: elysiaRegion(patch.targetName, patch.argument),
+          declared: `.use(${patch.argument})`,
+        },
+      ];
   }
 }
 
@@ -103,6 +111,15 @@ export function inspectPatch(text: string, patch: PlannedPatch): PatchInspection
           }
         : inspected;
     }
+    case "ts.elysiaUse": {
+      const inspected = inspectElysiaUse(patch.file, text, patch.targetName, patch.argument);
+      return inspected.ok
+        ? {
+            ok: true,
+            states: new Map([[elysiaRegion(patch.targetName, patch.argument), inspected.state]]),
+          }
+        : inspected;
+    }
   }
 }
 
@@ -136,6 +153,10 @@ export function writePatch(
     case "ts.addNamedExport":
       return regions.has(exportRegion(patch.moduleSpecifier))
         ? addNamedExport(patch.file, text, patch.moduleSpecifier, patch.exports)
+        : text;
+    case "ts.elysiaUse":
+      return regions.has(elysiaRegion(patch.targetName, patch.argument))
+        ? addElysiaUse(patch.file, text, patch.targetName, patch.argument)
         : text;
   }
 }

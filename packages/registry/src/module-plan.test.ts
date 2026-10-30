@@ -1067,6 +1067,67 @@ describe("resolveModulePlans: ts.addImport and ts.addNamedExport (060)", () => {
   );
 });
 
+describe("resolveModulePlans: ts.elysiaUse (060)", () => {
+  const plan = async (patch: unknown[]) => {
+    const catalog = await registry([
+      {
+        category: "auth",
+        id: "better-auth",
+        json: { variants: [{ key: "default", match: {}, patch }] },
+      },
+    ]);
+    const [first] = await resolveModulePlans(
+      catalog,
+      [{ category: "auth", id: "better-auth" }],
+      project(),
+    );
+    return first;
+  };
+  const use = {
+    type: "ts.elysiaUse",
+    file: "apps/api/src/app.ts",
+    targetName: "app",
+    argument: "authModule",
+  };
+
+  test("is planned with its file, target and argument", async () => {
+    const patches: unknown = (await plan([use]))?.patches;
+
+    expect(patches).toEqual([use]);
+  });
+
+  test.each([
+    [
+      "has no targetName",
+      { ...use, targetName: undefined },
+      /targetName must be an identifier, got: undefined/,
+    ],
+    [
+      "has a targetName that is not an identifier",
+      { ...use, targetName: "my app" },
+      /targetName must be an identifier, got: "my app"/,
+    ],
+    [
+      "has an argument that is a call",
+      { ...use, argument: "auth()" },
+      /argument must be an identifier, got: "auth\(\)"/,
+    ],
+    [
+      "targets a file that is not TypeScript",
+      { ...use, file: "apps/api/src/app.js" },
+      /file must be a \.ts or \.tsx file/,
+    ],
+    [
+      "has an argument it does not know",
+      { ...use, moduleSpecifier: "x" },
+      /has an argument it does not know: moduleSpecifier/,
+    ],
+  ])("a patch that %s is refused as a registry authoring error", async (_, patch, message) => {
+    await expect(plan([patch])).rejects.toThrow(message);
+    await expect(plan([patch])).rejects.toThrow(/auth\/better-auth declares patch ts\.elysiaUse/);
+  });
+});
+
 describe("resolveModulePlans: what is not supported yet fails loudly", () => {
   const withVariant = (extra: Record<string, unknown>) =>
     registry([

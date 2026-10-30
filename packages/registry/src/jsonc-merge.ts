@@ -7,7 +7,8 @@ import {
   type Edit,
   type Node,
 } from "jsonc-parser";
-import { layoutOf, lineIndent, ownLineIndent, treeOf } from "./json-tree";
+import { layoutOf, treeOf } from "./json-tree";
+import { lineIndent, ownLineIndent } from "./text-layout";
 import type { RegionState } from "./region-state";
 
 /**

@@ -973,6 +973,152 @@ describe("applyInstallPlan: ts.addImport and ts.addNamedExport (060)", () => {
   });
 });
 
+describe("applyInstallPlan: ts.elysiaUse (060)", () => {
+  const FILE = "apps/api/src/app.ts";
+  const SEAM = `import { Elysia } from "elysia";
+import { cors } from "@elysiajs/cors";
+
+export const app = new Elysia()
+  .use(cors())
+  // Insertion point for the modules that plug into the API.
+  .get("/health", () => ({ status: "ok" }));
+
+export type App = typeof app;
+`;
+  const wiring = (module: string, specifier: string): PlannedPatch[] => [
+    { type: "ts.addImport", file: FILE, moduleSpecifier: specifier, namedImports: [module] },
+    { type: "ts.elysiaUse", file: FILE, targetName: "app", argument: module },
+  ];
+  const moduleOf = (category: "auth" | "db", id: string, patches: PlannedPatch[]): ModulePlan =>
+    modulePlan({ category, id, key: `${category}/${id}`, patches });
+  const auth = () => moduleOf("auth", "better-auth", wiring("authModule", "@demo/auth"));
+  const shell = () =>
+    modulePlan({
+      category: "api",
+      id: "elysia",
+      key: "api/elysia",
+      files: [{ target: FILE, content: SEAM }],
+      patches: [],
+    });
+  const WIRED = SEAM.replace(
+    'import { cors } from "@elysiajs/cors";\n',
+    'import { cors } from "@elysiajs/cors";\nimport { authModule } from "@demo/auth";\n',
+  ).replace("  .use(cors())\n", "  .use(cors())\n  .use(authModule)\n");
+
+  test("inserts the .use above the routes and records the region, the import beside it", async () => {
+    const { projectRoot, manifest } = await freshProject({ [FILE]: SEAM });
+
+    const result = await install(projectRoot, manifest, [auth()]);
+
+    expect(await read(projectRoot, FILE)).toBe(WIRED);
+    expect(result.patches.map(({ type, status }) => [type, status])).toEqual([
+      ["ts.addImport", "applied"],
+      ["ts.elysiaUse", "applied"],
+    ]);
+    expect(result.patches[1]?.regions).toEqual([
+      { region: "elysia[app].use[authModule]", status: "applied" },
+    ]);
+    expect(result.manifest.regions[FILE]).toEqual({
+      "imports[@demo/auth]": "auth/better-auth",
+      "elysia[app].use[authModule]": "auth/better-auth",
+    });
+  });
+
+  test("the same install again skips both, and the tree is the same bytes", async () => {
+    const { projectRoot, manifest } = await freshProject({ [FILE]: SEAM });
+    const first = await install(projectRoot, manifest, [auth()]);
+    const tree = await snapshot(projectRoot);
+
+    const second = await install(projectRoot, first.manifest, [auth()]);
+
+    expect(second.patches.map(({ status }) => status)).toEqual(["skipped", "skipped"]);
+    const { "bg.json": _bg, ...files } = await snapshot(projectRoot);
+    const { "bg.json": _first, ...firstFiles } = tree;
+    expect(files).toEqual(firstFiles);
+  });
+
+  test("two modules plugging in one argument fail, whoever comes first, and --force does not bypass it", async () => {
+    const { projectRoot, manifest } = await freshProject({ [FILE]: SEAM });
+    const first = await install(projectRoot, manifest, [auth()]);
+    const rival = moduleOf("db", "d1", [wiring("authModule", "@demo/other")[1]!]);
+
+    for (const force of [false, true]) {
+      await expect(install(projectRoot, first.manifest, [rival], { force })).rejects.toThrow(
+        /elysia\[app\]\.use\[authModule\] of apps\/api\/src\/app\.ts is owned by auth\/better-auth, and db\/d1 would write it/,
+      );
+    }
+  });
+
+  test("a seam that is not there fails the patch, not the install: the module is recorded and the region is not", async () => {
+    for (const [text, reason] of [
+      [undefined, /^apps\/api\/src\/app\.ts does not exist$/],
+      ["export const other = new Elysia();\n", /^apps\/api\/src\/app\.ts: no exported const app$/],
+      [
+        "export const app = createApp();\n",
+        /^apps\/api\/src\/app\.ts: app is not a chain of calls rooted at new Elysia\(\.\.\.\)$/,
+      ],
+    ] as const) {
+      const { projectRoot, manifest } = await freshProject(
+        text === undefined ? {} : { [FILE]: text },
+      );
+
+      const result = await install(projectRoot, manifest, [auth()]);
+
+      const use = result.patches.find(({ type }) => type === "ts.elysiaUse");
+      expect(use?.status).toBe("failed");
+      expect(use?.reason).toMatch(reason);
+      expect(result.manifest.modules.auth?.[0]?.patches.map(({ status }) => status)).toContain(
+        "failed",
+      );
+      expect(Object.keys(result.manifest.regions[FILE] ?? {})).not.toContain(
+        "elysia[app].use[authModule]",
+      );
+    }
+  });
+
+  describe("on the file the api module vendors (the seam)", () => {
+    test("the shell and a module that plugs into it, in one call, land as one file", async () => {
+      const { projectRoot, manifest } = await freshProject({});
+
+      const result = await install(projectRoot, manifest, [shell(), auth()]);
+
+      const landed = await read(projectRoot, FILE);
+      expect(landed).toBe(WIRED);
+      expect(result.manifest.files[FILE]).toEqual({
+        owner: "api/elysia",
+        sha256: sha256Hex(landed),
+      });
+    });
+
+    test("the project adds its own route; another module still plugs in, and the shell asked again keeps the file", async () => {
+      const { projectRoot, manifest } = await freshProject({});
+      const first = await install(projectRoot, manifest, [shell(), auth()]);
+      const mine = (await read(projectRoot, FILE)).replace(
+        '  .get("/health"',
+        '  .get("/mine", () => 1)\n  .get("/health"',
+      );
+      await writeFile(join(projectRoot, FILE), mine);
+
+      const db = moduleOf("db", "d1", wiring("dbModule", "@demo/db"));
+      const second = await install(projectRoot, first.manifest, [db]);
+
+      const expected = mine
+        .replace(
+          'import { authModule } from "@demo/auth";\n',
+          'import { authModule } from "@demo/auth";\nimport { dbModule } from "@demo/db";\n',
+        )
+        .replace("  .use(authModule)\n", "  .use(authModule)\n  .use(dbModule)\n");
+      expect(await read(projectRoot, FILE)).toBe(expected);
+
+      const again = await install(projectRoot, second.manifest, [shell()]);
+
+      expect(again.kept).toEqual([FILE]);
+      expect(again.written).toEqual([]);
+      expect(await read(projectRoot, FILE)).toBe(expected);
+    });
+  });
+});
+
 describe("a module record keeps only what 020 names", () => {
   test("patches carry type, file, status and a reason when failed, no per-region detail", async () => {
     const { projectRoot, manifest } = await freshProject();

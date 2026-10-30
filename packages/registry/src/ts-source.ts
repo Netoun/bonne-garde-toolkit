@@ -1,4 +1,4 @@
-import { Project, type SourceFile } from "ts-morph";
+import { Project, type Node, type SourceFile } from "ts-morph";
 
 /**
  * Reads one TypeScript file for a tier-2 patch (spec 060). The file is parsed alone, in memory: no
@@ -10,11 +10,6 @@ import { Project, type SourceFile } from "ts-morph";
 let project: Project | undefined;
 
 export type ParsedSource = { ok: true; source: SourceFile } | { ok: false; reason: string };
-
-/** The line ending of the file itself, so an insertion looks like its neighbours. */
-export function eolOf(text: string): string {
-  return text.includes("\r\n") ? "\r\n" : "\n";
-}
 
 /** `file` picks the dialect by its extension (`.tsx` is parsed as TSX), and nothing else about it is read. */
 export function parseTypeScript(file: string, text: string): ParsedSource {
@@ -33,4 +28,9 @@ export function parseTypeScript(file: string, text: string): ParsedSource {
     };
   }
   return { ok: true, source };
+}
+
+/** Where a statement's line of text ends: after the statement and a comment that trails it on the line. */
+export function endWithComments(node: Node): number {
+  return Math.max(node.getEnd(), ...node.getTrailingCommentRanges().map((range) => range.getEnd()));
 }

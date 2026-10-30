@@ -6,7 +6,8 @@ import {
   type SourceFile,
 } from "ts-morph";
 import type { RegionState } from "./region-state";
-import { eolOf, parseTypeScript } from "./ts-source";
+import { eolOf } from "./text-layout";
+import { endWithComments, parseTypeScript } from "./ts-source";
 
 /**
  * `ts.addImport` and `ts.addNamedExport` (spec 060). ts-morph finds the node, the edit is text put
@@ -106,11 +107,6 @@ function declarationText(kind: Kind, names: string[], specifier: string, eol: st
   return oneLine.length <= PRINT_WIDTH
     ? oneLine
     : `${kind} {${eol}${names.map((name) => `  ${name},${eol}`).join("")}${tail}`;
-}
-
-/** The end of a statement's line of text: after the statement and a comment that trails it. */
-function endWithComments(node: Node): number {
-  return Math.max(node.getEnd(), ...node.getTrailingCommentRanges().map((range) => range.getEnd()));
 }
 
 type Edit = { offset: number; length: number; content: string };

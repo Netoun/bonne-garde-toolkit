@@ -35,14 +35,30 @@ export type AddNamedExportPatch = {
   exports: string[];
 };
 
+export type ElysiaUsePatch = {
+  type: "ts.elysiaUse";
+  file: string;
+  /** The exported `const` whose chain gains the `.use`. */
+  targetName: string;
+  /** The identifier passed to `.use(...)`; importing it is a `ts.addImport` of its own. */
+  argument: string;
+};
+
 /** Every patch the engine applies. The union grows with each patch type; the refusal below names what is missing. */
 export type PlannedPatch =
   | ScriptsMergePatch
   | JsoncMergePatch
   | AddImportPatch
-  | AddNamedExportPatch;
+  | AddNamedExportPatch
+  | ElysiaUsePatch;
 
-const APPLIED = ["scripts.merge", "jsonc.merge", "ts.addImport", "ts.addNamedExport"] as const;
+const APPLIED = [
+  "scripts.merge",
+  "jsonc.merge",
+  "ts.addImport",
+  "ts.addNamedExport",
+  "ts.elysiaUse",
+] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -202,6 +218,24 @@ function parseAddNamedExport(
   };
 }
 
+function checkIdentifier(refuse: Refuse, patch: ModulePatch, argument: string): string {
+  const value = patch[argument];
+  if (typeof value !== "string" || !IDENTIFIER.test(value)) {
+    return refuse(`${argument} must be an identifier, got: ${JSON.stringify(value)}`);
+  }
+  return value;
+}
+
+function parseElysiaUse(refuse: Refuse, patch: ModulePatch): ElysiaUsePatch {
+  checkArguments(refuse, patch, ["file", "targetName", "argument"]);
+  return {
+    type: "ts.elysiaUse",
+    file: checkTsFile(refuse, patch),
+    targetName: checkIdentifier(refuse, patch, "targetName"),
+    argument: checkIdentifier(refuse, patch, "argument"),
+  };
+}
+
 /**
  * The patches of the selected variant, checked. A type this CLI does not apply fails the install
  * before anything is written, and so does a malformed argument: both are registry authoring errors.
@@ -220,6 +254,8 @@ export function plannedPatches(key: string, variant: ModuleVariant, scope: strin
         return parseAddImport(refuse, patch, scope);
       case "ts.addNamedExport":
         return parseAddNamedExport(refuse, patch, scope);
+      case "ts.elysiaUse":
+        return parseElysiaUse(refuse, patch);
       default: {
         const file = typeof patch.file === "string" ? ` on ${patch.file}` : "";
         throw new PlanError(

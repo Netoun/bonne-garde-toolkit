@@ -1,5 +1,6 @@
 import { applyEdits, findNodeAtLocation, modify, type Edit, type Node } from "jsonc-parser";
-import { layoutOf, lineIndent, ownLineIndent, treeOf } from "./json-tree";
+import { layoutOf, treeOf } from "./json-tree";
+import { lineIndent, ownLineIndent } from "./text-layout";
 import { jsonRegion } from "./jsonc-merge";
 
 /**

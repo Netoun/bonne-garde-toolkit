@@ -1,4 +1,5 @@
 import { parseJsonRegion, readJsonPath } from "./jsonc-merge";
+import { parseElysiaRegion, readElysiaRegion } from "./ts-elysia";
 import { parseTsRegion, readTsRegion } from "./ts-patches";
 
 /**
@@ -21,7 +22,7 @@ const isTsFile = (file: string): boolean => /\.(?:[cm]?ts|tsx)$/.test(file);
 export function isReadableRegion(file: string, region: string): boolean {
   return (
     (isJsonFile(file) && parseJsonRegion(region) !== null) ||
-    (isTsFile(file) && parseTsRegion(region) !== null)
+    (isTsFile(file) && (parseTsRegion(region) !== null || parseElysiaRegion(region) !== null))
   );
 }
 
@@ -29,12 +30,15 @@ export function isReadableRegion(file: string, region: string): boolean {
 export function regionPresence(file: string, text: string, region: string): RegionPresence {
   const path = isJsonFile(file) ? parseJsonRegion(region) : null;
   const typescript = isTsFile(file) ? parseTsRegion(region) : null;
+  const elysia = isTsFile(file) ? parseElysiaRegion(region) : null;
   const read =
     path !== null
       ? readJsonPath(text, path)
       : typescript !== null
         ? readTsRegion(file, text, typescript)
-        : null;
+        : elysia !== null
+          ? readElysiaRegion(file, text, elysia)
+          : null;
   if (read === null) {
     return { kind: "missing" };
   }

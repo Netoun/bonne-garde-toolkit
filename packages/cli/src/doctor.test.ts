@@ -336,7 +336,7 @@ describe("runDoctor: a file with recorded regions is checked by region, not by s
     );
   });
 
-  test("an import or an export of a TypeScript file is read: present is checked, gone is an error", async () => {
+  test("an import, an export or a .use of a TypeScript file is read: present is checked, gone is an error", async () => {
     const root = await projectWithButton();
     await editManifest(root, (m) => ({
       ...m,
@@ -346,6 +346,7 @@ describe("runDoctor: a file with recorded regions is checked by region, not by s
           "imports[motion/react]": "button",
           "imports[@app/auth]": "button",
           "exports[./x]": "button",
+          "elysia[app].use[authModule]": "button",
         },
       },
     }));
@@ -354,10 +355,18 @@ describe("runDoctor: a file with recorded regions is checked by region, not by s
 
     expect(report.checks.regions.details).toMatchObject({
       checked: [`${BUTTON}#imports[react]`, `${BUTTON}#imports[motion/react]`],
-      missing: [`${BUTTON}#imports[@app/auth]`, `${BUTTON}#exports[./x]`],
+      missing: [
+        `${BUTTON}#imports[@app/auth]`,
+        `${BUTTON}#exports[./x]`,
+        `${BUTTON}#elysia[app].use[authModule]`,
+      ],
       unchecked: [],
     });
-    expect(codes(report, "regions")).toEqual(["region-missing", "region-missing"]);
+    expect(codes(report, "regions")).toEqual([
+      "region-missing",
+      "region-missing",
+      "region-missing",
+    ]);
   });
 
   test("a region of a kind doctor cannot resolve is listed as unchecked, not as an error", async () => {
