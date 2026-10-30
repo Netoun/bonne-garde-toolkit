@@ -274,10 +274,8 @@ None.
 - **`db:studio` is broken:** `drizzle-kit studio` runs without `--config`, looks for
   `drizzle.config.json`, and exits 1. It needs `--config ./src/modules/db/db.config.ts` and
   credentials for the local D1 file.
-- **`auth:generate` is still destructive.** `organization.deletedAt` and `organization.settings`
-  are hand-written in the generated `db.auth-schema.ts` while `organization()` declares no `schema`
-  or `additionalFields`, so a regeneration drops both columns — and `auth.config.ts` and
-  `auth.macro.ts` depend on them. treashunt has the same hole.
+- **`auth:generate` is fixed** (`68f0c03`..`706da15`). `organization()` declares `deletedAt` and `settings` (`input: false`, so clients cannot soft-delete), the CLI is pinned to `auth@1.6.26` and runs from `auth.cli.ts`, `authSchema` is `import * as`, and tests pin the resolved schema, column nullability and the `created_at` DB defaults. One hand edit stays in legacy: `organization.slug`'s `uniqueIndex` (the generator emits `.unique()`, a rename migration nobody needs before stage 6); the 4c module ships pure generator output. The script runs on `node` through the CLI's shebang: under `bunx --bun` the generator drops every `created_at` default (it tests `toString()` of a function, which Bun prints differently). treashunt has the same `deletedAt`/`settings` hole.
+- **For 4c, found while fixing it:** Better Auth's rate limit reads only `x-forwarded-for`, so without it every user shares one bucket (sign-in capped at 10/min for everyone); set the IP header per provider (`cf-connecting-ip` on Workers). `basePath: "/auth"` collides with the SPA's `/auth/*` pages on one origin (dockerfile). The `/forget-password` rule matches nothing in 1.6.26 (`/request-password-reset`). Better Auth's own organization endpoints do not filter `deletedAt`.
 - **`apps/spa/src/hooks/use-session.ts`** is a three-line pass-through. Keep or delete.
 - **`@testing-library/user-event`** is declared in the root `package.json` and imported nowhere.
 - **035 says a filled category points at `--replace`; 050 says `bg replace`.** The code follows 050.
