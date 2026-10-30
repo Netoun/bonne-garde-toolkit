@@ -246,6 +246,19 @@ describe("module contract", () => {
     }
   });
 
+  test("tooling/vite-plus leaves the migrations drizzle-kit generates alone: `vp fmt` would rewrite the JSON it writes", async () => {
+    const config: unknown = (
+      await import(join(MODULES, "tooling/vite-plus/template/vite.config.ts"))
+    ).default;
+    const fmt = isRecord(config) ? config.fmt : undefined;
+    const ignored = isRecord(fmt) && Array.isArray(fmt.ignorePatterns) ? fmt.ignorePatterns : [];
+
+    // `orm/drizzle` runs `drizzle-kit generate` into `packages/db/migrations` (035's home for `orm`).
+    // It rewrites `meta/_journal.json` and the snapshot each time, in its own layout, so a project
+    // that formats them fails `bun run check` right after its first `bun run db:generate`.
+    expect(ignored).toContain("packages/db/migrations/");
+  });
+
   test("every dependency a variant declares is an exact version (035: exact version maps)", async () => {
     const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
     const loose: string[] = [];

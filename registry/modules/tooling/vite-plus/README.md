@@ -39,10 +39,15 @@ The root `vite.config.ts` stops that, which is part of why the module exists.
 ## Extracted from this repo's root `vite.config.ts`
 
 The lint rules, the plugins, the `es2022` and `node` env, the fmt options and `staged` are the root
-config's, unchanged. Two things differ:
+config's, unchanged. Three things differ:
 
 - **Added:** `.bg/`, the scratch root of the intentions ([065](../../../../docs/specs/065-intentions.md)),
   in both ignore lists. The base template's stub carried it; the root config has no use for it.
+- **Added:** `packages/db/migrations/` in the fmt ignore list. `orm/drizzle`'s `bun run db:generate`
+  writes `meta/_journal.json` and a snapshot there in drizzle-kit's own layout, and rewrites them on every
+  run, so a formatted copy would be undone by the next generation and `bun run check` would fail until
+  someone formatted it again. The directory is 035's home for `orm`, which is why a module that
+  precedes it can name it, as it names `.wrangler/`.
 - **Re-keyed:** the three `lint.overrides`. The root config names the legacy apps; this one names the
   homes [035](../../../../docs/specs/035-module-registry.md) fixes, because that is where generated
   code lands whatever the app ids are.

@@ -74,6 +74,7 @@ export default defineConfig({
       ".wrangler/",
       ".react-router/",
       ".bg/",
+      "packages/db/migrations/",
       "coverage/",
       ".agents/skills/",
       ".claude/skills/",
