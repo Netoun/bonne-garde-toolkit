@@ -124,8 +124,22 @@ files), and anything behind a reverse proxy.
 
 ## Building and running the image
 
-`bg add` cannot install a `module.json` module yet, so "a generated project" is built by hand: a
-clean export of this repo with the module's `template/` written over it. From the repo root:
+`bg add provider/dockerfile` installs this module's files into a project made with `bg create`, but
+that project is not one this image can be built from. Observed after `bg create`, `bg add
+api-elysia`, `bg add provider/dockerfile`, `bun install`:
+
+- `packages/api-runtime` holds `src/index.ts` and `src/index.test.ts` and no `package.json`, so it
+  is not a workspace: `bun install` does not link it, and `typecheck` and `test` skip it (a root
+  `bun test` does pick the test file up).
+- Nothing imports it. `api-elysia`'s `apps/api/src/index.ts` is `export default { fetch }`, so
+  `bun apps/api/src/index.ts` with `PORT` set answers `/health` and 404s on `/`: no origins, no
+  generated secret, no SPA.
+- The `Dockerfile` runs `bun run --filter '@scope/spa' build`, which exits 1 ("No workspace packages
+  matched") when the project has no SPA workspace, so `docker build` stops there.
+
+So "a generated project" is still built by hand here: a clean export of this repo, which has the
+`@acme/api-runtime` workspace and the SPA, with the module's `template/` written over it. From the
+repo root:
 
 ```bash
 S=$(mktemp -d) T=registry/modules/provider/dockerfile/template

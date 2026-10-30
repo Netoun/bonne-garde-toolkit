@@ -22,6 +22,15 @@ Nothing here is new work — it names what `apps/api` already does, so that the 
 None. `provider` is first in spec 035's topological order: it peers on nothing, and `api`, `db`,
 `storage` and `deploy` peer on it.
 
+## Installing it
+
+`bg add provider/cloudflare` writes `apps/api/wrangler.jsonc` and merges `BETTER_AUTH_SECRET` and
+`RESEND_API_KEY` into `.env.example`. The `api-elysia` item also vendors an `apps/api/wrangler.jsonc`
+(a minimal one), so after `bg add api-elysia` the install stops on that path, naming `api-elysia`
+as its owner; `--force` replaces it and records this module as the owner. In one call the two
+conflict whatever the flags. The file carries the legacy app's names (`my-app-*`) and its D1 id, to
+be replaced by hand.
+
 ## Known gap
 
 The template carries `apps/api/wrangler.jsonc` and nothing else. The runtime-specific code it
