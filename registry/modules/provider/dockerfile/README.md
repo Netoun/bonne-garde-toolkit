@@ -40,14 +40,13 @@ toolkit's Drizzle dialect off sqlite.
 
 ## This module does not run yet
 
-The `Dockerfile` ends in `CMD ["bun", "apps/api/src/index.ts"]`, and in this repo that file is
-`export default { fetch }` behind `CloudflareAdapter`. It never listens on a port, so the
-container starts and serves nothing.
+The `Dockerfile` ends in `CMD ["bun", "apps/api/src/index.ts"]`. In this repo that file is
+`export default serve(app)`, with `serve` from `packages/api-runtime` — whose contents are the
+Workers variant: a `{ fetch }` object behind `CloudflareAdapter`.
 
-Making it run needs an `api` module whose `dockerfile` variant produces a listening entrypoint —
-and that entrypoint lives in `apps/api/src`, which spec 035's package-dedicated seam rule forbids
-a module to write. So the order is: lift the API entrypoint and the runtime-env read into a
-package, then this module becomes installable.
+Bun serves a default-exported `{ fetch }` on `PORT` by itself: outside Docker,
+`NODE_ENV=test PORT=5198 bun apps/api/src/index.ts` answers `GET /health` with 200. The container
+itself has not been run, so this section stays until it has.
 
 ## Building the image
 

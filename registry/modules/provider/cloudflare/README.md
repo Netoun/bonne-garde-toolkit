@@ -25,7 +25,6 @@ None. `provider` is first in spec 035's topological order: it peers on nothing, 
 ## Known gap
 
 The template carries `apps/api/wrangler.jsonc` and nothing else. The runtime-specific code it
-would need to own — the adapter choice in `apps/api/src/app.ts` and the environment read in
-`apps/api/src/lib/runtime-env.ts` — sits inside an app's `src`, which spec 035's
-package-dedicated seam rule forbids a module to write. Those move into a package before this
-module can claim to install a whole provider.
+would need to own — the adapter choice, the environment read and the entry — now lives in
+`packages/api-runtime` in this repo, but the module does not ship that package yet, so it cannot
+claim to install a whole provider.

@@ -1,7 +1,7 @@
+import { readRuntimeEnv } from "@acme/api-runtime";
 import Type from "typebox";
 import { Default, Check } from "typebox/value";
 import type { Env } from "./env";
-import { readRuntimeEnv } from "./runtime-env";
 
 // Only string vars and secrets — bindings (DB, BUCKET) are injected at request time by the
 // runtime and must NOT be checked when this module loads.

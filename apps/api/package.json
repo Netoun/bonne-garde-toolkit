@@ -45,6 +45,7 @@
     "db:seed:data": "bun run src/modules/db/db.seed.ts"
   },
   "dependencies": {
+    "@acme/api-runtime": "workspace:*",
     "@acme/config": "workspace:*",
     "@acme/emails": "workspace:*",
     "@better-auth/drizzle-adapter": "1.6.26",
