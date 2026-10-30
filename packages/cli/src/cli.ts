@@ -16,6 +16,8 @@ Usage:
   bg view <item> [--source <source>]
   bg add <name...> [--dry-run] [--force] [--no-install] [--yes] [--source <source>]
       <name> is an item, a module id, or <category>/<id> (provider/cloudflare)
+      <source> is local:<path> or github:owner/repo[@ref]; a github source reads raw.githubusercontent.com
+      (set GITHUB_TOKEN to lift the rate limit); with no @ref it reads the tag v<platform.version> of bg.json
   bg record <intention-id> [--skip "<reason>"]
   bg doctor [--json] [--strict]
   bg intentions lint [--dir <migrations-dir>]
