@@ -20,7 +20,7 @@ the detail; in this order:
 3. **Installing from a `github:` source.** **Done** (`2eea6a5`, `6a86bc0`); the user put it ahead
    of the dissolution. A real consumer still needs a tagged release; see the loose ends.
 4. **The legacy dissolution, in 080's order, not smallest-first.** The plan is
-   [09-dissolution.md](./09-dissolution.md). **Stage 1 (`tooling`) is done (`0c862a2`); stage 2 (`ui`) is next.** `config` moved to the start of stage 3 in 080: an item cannot depend on a module, and `spa-react-router` pulls `config` until `web/spa` replaces it. The
+   [09-dissolution.md](./09-dissolution.md). **Stages 1 (`tooling`, `0c862a2`) and 2 (`ui`, `daf604f`) are done.** Before stage 3, the scope-dependent formatting bug in the loose ends is being fixed. `config` moved to the start of stage 3 in 080: an item cannot depend on a module, and `spa-react-router` pulls `config` until `web/spa` replaces it. The
    questions at its end are answered; see the settled list below.
 
 The diagnosis this file first gave for P1 was wrong. It blamed the Bun version for
@@ -237,6 +237,9 @@ None.
 
 ## Loose ends worth one line each
 
+- **Vendored files are formatted for `@acme`.** `bg add` rewrites the scope at copy time, which changes line lengths, so with a scope of another length (`@app`) the first `bun run check` fails on `packages/ui/src/components/empty-state.tsx`; golden is green only because `@golden-app` wraps like `@acme`. Being fixed on `track/scope-format` before stage 3.
+- **`ui/shadcn` details.** Its `checks` (`bun run typecheck`) run every workspace, not only `packages/ui`. Its theme names the `Urbanist Variable` and `Faustina Variable` fonts, which it does not install. Item `dependencies` are informational (printed, never written): the module installs the whole union until 030's per-item merge has a patch. A v1 project whose old `utils` wrote `packages/ui/package.json` cannot adopt `ui/shadcn` without `--force`.
+- **This repo's own root `vite.config.ts`** has the same no-op React override stage 2 fixed in `tooling/vite-plus`: adding the plugin enables no rule.
 - **CI on #16 is green.** The 2 `media.routes.test.ts` failures ("Unhandled error between tests",
   empty body) were seen only under Bun 1.3.11 and pass on 1.4.2. Auto-fix stays **off**.
 - **`add` produces module records and `regions` for env keys, and nothing else of tier 2.** It

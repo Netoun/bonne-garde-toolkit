@@ -242,6 +242,8 @@ templates/base | grep vite.config` prints nothing; `bg list --items` prints what
 
 ### Stage 2: `ui` and the UI items (080 step 2).
 
+**Done 2026-10-30** (`a180d67`, `dfe1d1e`, `c0cd840`, `08f3fbc`, `fe7992a`, `391a8d6`, `daf604f`). Golden installs `tooling/vite-plus`, `ui/shadcn` and all 32 items in one `bg add` with no `--force`, after a `refuse` phase that proves `bg add button` alone fails with `bg add ui/shadcn button` (total about 17–21s). Where the plan below was wrong: `button`, `badge` and `card` were MVP stubs, not the legacy files, and the other 26 components did not typecheck against them (`size="icon-sm"`), so they were replaced by the legacy files byte for byte, with `lib/animations` landing beside them; the dependency union also needed `react`, `react-dom` and `@types/react`; the host package needed `./hooks/*` in `exports`, the `DOM` lib, and one `src/env.d.ts` so `tsc` has a file. The re-added React lint override names five `react/*` rules at `error`: adding the plugin alone enables none, so the old root override (still in this repo's own `vite.config.ts`) was a no-op.
+
 - **Scope, in commits:** (1) the planner merges variant dependencies into a vendored `package.json`
   (e); (2) `registry/modules/ui/shadcn/` with `packages/ui/{package.json,tsconfig.json,components.json}`
   and `src/styles/*`; (3) `meta.bg` out of the catalog, the `modules.ui` check in, `utils` stops
