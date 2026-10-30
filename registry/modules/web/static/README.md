@@ -57,6 +57,7 @@ Each file is the legacy one with `@acme` rendered as `{{SCOPE}}`, except:
 - The dependency maps come from the variant: what the code imports, and the toolchain. The legacy
   `@react-router/node` entry is not carried: the build's default entry resolves without it.
 
-`wrangler.jsonc` keeps the legacy placeholders (`my-app-static`, `*.my-app.com`), replaced by hand,
-and its `pages_build_output_dir` of `dist`, which is not where `react-router build` writes
-(`build/client`): the `deploy` script names the directory itself, so it does not read the value.
+`wrangler.jsonc` keeps the legacy placeholders (`my-app-static`, `*.my-app.com`), replaced by hand.
+Its `pages_build_output_dir` is `build/client`, where `react-router build` writes, and the `deploy`
+script deploys the same directory; the legacy `apps/static` said `dist`, which the build never
+writes. The contract test ties the three.

@@ -929,6 +929,32 @@ describe("module contract", () => {
       }
     });
 
+    test("a Pages module's pages_build_output_dir is where react-router build writes, and its deploy script deploys that directory", async () => {
+      const pages: string[] = [];
+      for (const module of await webModules()) {
+        const { manifest } = module;
+        const config = await read(module, `apps/${manifest.id}/react-router.config.ts`);
+        const wrangler = await read(module, `apps/${manifest.id}/wrangler.jsonc`);
+        // JSONC with trailing commas, which JSON.parse refuses: read the one key.
+        const output = /"pages_build_output_dir"\s*:\s*"([^"]*)"/.exec(wrangler)?.[1];
+        if (!/\bssr:\s*false\b/.test(config)) {
+          // A Worker serves its assets itself: it has no Pages output directory.
+          expect(output).toBeUndefined();
+          continue;
+        }
+        // A client-only build writes `<buildDirectory>/client`, and `buildDirectory` defaults to `build`.
+        expect(config).not.toContain("buildDirectory");
+        expect(output).toBe("build/client");
+        const cloudflare = manifest.variants.find((variant) => variant.key === "cloudflare");
+        const deploy = (cloudflare?.patch ?? []).flatMap((patch) =>
+          isRecord(patch.scripts) ? [patch.scripts.deploy] : [],
+        );
+        expect(deploy).toEqual([`wrangler pages deploy ${output}`]);
+        pages.push(manifest.id);
+      }
+      expect(pages.sort()).toEqual(["spa", "static"]);
+    });
+
     test("every package a template imports is declared by the variant, or is the project's own", async () => {
       const missing: string[] = [];
       for (const module of await webModules()) {
