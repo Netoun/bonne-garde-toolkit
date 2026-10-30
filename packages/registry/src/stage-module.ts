@@ -243,7 +243,11 @@ export async function stageModules(options: {
 
   for (const [target, content] of contents) {
     const owner = owners.get(target) ?? "";
-    const sha256 = sha256Hex(content);
+    // What the module wrote, not what the patches made of it: a patch rewrites the file whether it
+    // runs in this call or a later one, and the record has to be the same either way. Recorded
+    // after the patches, the file would count as untouched the next time the owner is added alone,
+    // and a project's edit would be overwritten (or the add refused, for the regions of others).
+    const sha256 = sha256Hex(templates.get(target) ?? content);
     const disk = await readDisk(join(projectRoot, target));
     const stage = () => {
       staging.staged.push({ path: join(projectRoot, target), content });

@@ -506,7 +506,7 @@ describe("applyInstallPlan: scripts.merge (060)", () => {
         patches: [patch({ dev: "wrangler dev" }, "apps/api/package.json")],
       });
 
-    test("is written once, patched, with the sha256 of what landed", async () => {
+    test("is written once, patched, with the sha256 of what the module wrote and not of what the patch made of it", async () => {
       const { projectRoot, manifest } = await freshProject({});
 
       const result = await install(projectRoot, manifest, [plan()]);
@@ -517,7 +517,7 @@ describe("applyInstallPlan: scripts.merge (060)", () => {
       });
       expect(result.manifest.files["apps/api/package.json"]).toEqual({
         owner: "api/elysia",
-        sha256: sha256Hex(landed),
+        sha256: sha256Hex(vendored),
       });
       expect(result.manifest.regions["apps/api/package.json"]).toEqual({
         "scripts.dev": "api/elysia",
@@ -1275,7 +1275,7 @@ describe("applyInstallPlan: ts.addImport and ts.addNamedExport (060)", () => {
     },
   );
 
-  test("a file the same call writes is patched in the virtual tree, once, with the sha of what landed", async () => {
+  test("a file the same call writes is patched in the virtual tree, once, with the sha of what the module wrote", async () => {
     const { projectRoot, manifest } = await freshProject({});
     const shell = modulePlan({
       category: "api",
@@ -1289,7 +1289,7 @@ describe("applyInstallPlan: ts.addImport and ts.addNamedExport (060)", () => {
 
     const landed = await read(projectRoot, FILE);
     expect(landed).toContain('import { authModule } from "@demo/auth";');
-    expect(result.manifest.files[FILE]).toEqual({ owner: "api/elysia", sha256: sha256Hex(landed) });
+    expect(result.manifest.files[FILE]).toEqual({ owner: "api/elysia", sha256: sha256Hex(APP) });
     expect(result.written).toEqual([FILE]);
   });
 });
@@ -1407,7 +1407,7 @@ export type App = typeof app;
       expect(landed).toBe(WIRED);
       expect(result.manifest.files[FILE]).toEqual({
         owner: "api/elysia",
-        sha256: sha256Hex(landed),
+        sha256: sha256Hex(SEAM),
       });
     });
 
@@ -1437,6 +1437,192 @@ export type App = typeof app;
       expect(again.written).toEqual([]);
       expect(await read(projectRoot, FILE)).toBe(expected);
     });
+  });
+});
+
+describe("applyInstallPlan: a module asked for again after a call that composed it with others (060)", () => {
+  const PACKAGE = "packages/db/package.json";
+  const VENDORED = `{
+  "name": "@demo/db",
+  "exports": {
+    "./d1": "./src/d1.ts"
+  },
+  "scripts": {
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@demo/api-runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.0.0",
+    "miniflare": "5.0.0"
+  }
+}
+`;
+  /** `db/d1`: vendors the package.json of `packages/db`, and its own scripts go to a file it does not write. */
+  const d1 = () =>
+    modulePlan({
+      category: "db",
+      id: "d1",
+      key: "db/d1",
+      files: [
+        { target: PACKAGE, content: VENDORED },
+        { target: "packages/db/src/d1.ts", content: "export const D1 = 1;\n" },
+      ],
+      patches: [
+        patch(
+          { "db:migrate:local": "wrangler d1 migrations apply DB --local" },
+          "apps/api/package.json",
+        ),
+      ],
+    });
+  /** `orm/drizzle`: adds to the package.json `db/d1` vendors, with three kinds of patch. */
+  const drizzle = () =>
+    modulePlan({
+      category: "orm",
+      id: "drizzle",
+      key: "orm/drizzle",
+      files: [{ target: "packages/db/src/client.ts", content: "export const client = 1;\n" }],
+      patches: [
+        {
+          type: "jsonc.merge",
+          file: PACKAGE,
+          value: { exports: { ".": "./src/index.ts" } },
+        },
+        patch({ "db:generate": "drizzle-kit generate" }, PACKAGE),
+        {
+          type: "package.dependencies",
+          file: PACKAGE,
+          dependencies: { "drizzle-orm": "0.45.2" },
+          devDependencies: { "drizzle-kit": "0.31.10" },
+        },
+      ],
+    });
+  const API = `{
+  "name": "@demo/api",
+  "scripts": {
+    "dev": "bun run dev"
+  }
+}
+`;
+  const files = () => ({ "apps/api/package.json": API, "package.json": ROOT_PACKAGE });
+  /** What a re-add may move: the manifest's `installedAt`, nothing else. */
+  const settled = (tree: Record<string, string>) => ({
+    ...tree,
+    "bg.json": (tree["bg.json"] ?? "").replace(/"installedAt": "[^"]*"/g, '"installedAt": "-"'),
+  });
+  const onDisk = async (projectRoot: string, manifest: ProjectManifest) => {
+    await writeFile(join(projectRoot, "bg.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+    return settled(await snapshot(projectRoot));
+  };
+
+  test("each module asked for alone after a one-call install skips every patch and changes nothing", async () => {
+    const { projectRoot, manifest } = await freshProject(files());
+    const first = await install(projectRoot, manifest, [d1(), drizzle()]);
+    const tree = await onDisk(projectRoot, first.manifest);
+
+    for (const module of [d1(), drizzle()]) {
+      const again = await install(projectRoot, first.manifest, [module]);
+
+      expect(again.patches.map(({ status }) => status)).toEqual(
+        module.key === "db/d1" ? ["skipped"] : ["skipped", "skipped", "skipped"],
+      );
+      expect(again.written).toEqual([]);
+      expect(await onDisk(projectRoot, again.manifest)).toEqual(tree);
+    }
+  });
+
+  test("the record of a one-call install is the one two calls leave: what the module wrote, not what the patches made of it", async () => {
+    const oneCall = await freshProject(files());
+    const together = await install(oneCall.projectRoot, oneCall.manifest, [d1(), drizzle()]);
+    const twoCalls = await freshProject(files());
+    const first = await install(twoCalls.projectRoot, twoCalls.manifest, [d1()]);
+    const second = await install(twoCalls.projectRoot, first.manifest, [drizzle()]);
+
+    expect(together.manifest.files).toEqual(second.manifest.files);
+    expect(together.manifest.files[PACKAGE]).toEqual({
+      owner: "db/d1",
+      sha256: sha256Hex(VENDORED),
+    });
+    expect(together.manifest.regions).toEqual(second.manifest.regions);
+    expect(await read(oneCall.projectRoot, PACKAGE)).toBe(
+      await read(twoCalls.projectRoot, PACKAGE),
+    );
+  });
+
+  test("the shell asked for alone, after it was composed with a module that plugs into it in one call, keeps its file", async () => {
+    const FILE = "apps/api/src/app.ts";
+    const SEAM = `import { Elysia } from "elysia";
+
+export const app = new Elysia()
+  .get("/health", () => ({ status: "ok" }));
+`;
+    const shell = () =>
+      modulePlan({
+        category: "api",
+        id: "elysia",
+        key: "api/elysia",
+        files: [{ target: FILE, content: SEAM }],
+        patches: [],
+      });
+    const auth = () =>
+      modulePlan({
+        category: "auth",
+        id: "better-auth",
+        key: "auth/better-auth",
+        patches: [
+          {
+            type: "ts.addImport",
+            file: FILE,
+            moduleSpecifier: "@demo/auth",
+            namedImports: ["authModule"],
+          },
+          { type: "ts.elysiaUse", file: FILE, targetName: "app", argument: "authModule" },
+        ],
+      });
+    const { projectRoot, manifest } = await freshProject({});
+    const first = await install(projectRoot, manifest, [shell(), auth()]);
+    const tree = await onDisk(projectRoot, first.manifest);
+
+    const again = await install(projectRoot, first.manifest, [shell()]);
+
+    expect(again.kept).toEqual([FILE]);
+    expect(await onDisk(projectRoot, again.manifest)).toEqual(tree);
+  });
+
+  test("a vendored file the project edited and whose region it deleted gets the region back, and is still the project's afterwards", async () => {
+    const own = () =>
+      modulePlan({
+        category: "dev",
+        id: "tool",
+        key: "dev/tool",
+        files: [
+          {
+            target: "tools/package.json",
+            content: '{\n  "name": "tools",\n  "scripts": {\n    "a": "1"\n  }\n}\n',
+          },
+        ],
+        patches: [patch({ b: "2" }, "tools/package.json")],
+      });
+    const { projectRoot, manifest } = await freshProject({});
+    const first = await install(projectRoot, manifest, [own()]);
+    // The project adds a script of its own and removes the one the module's patch wrote.
+    const mine = '{\n  "name": "tools",\n  "scripts": {\n    "a": "1",\n    "mine": "3"\n  }\n}\n';
+    await writeFile(join(projectRoot, "tools/package.json"), mine);
+
+    const second = await install(projectRoot, first.manifest, [own()]);
+    expect(JSON.parse(await read(projectRoot, "tools/package.json"))).toMatchObject({
+      scripts: { a: "1", mine: "3", b: "2" },
+    });
+    const restored = await read(projectRoot, "tools/package.json");
+    const third = await install(projectRoot, second.manifest, [own()]);
+
+    // The third add finds the file the project's, as the second did: nothing is overwritten.
+    expect(await read(projectRoot, "tools/package.json")).toBe(restored);
+    expect(third.written).toEqual([]);
+    expect(third.manifest.files["tools/package.json"]?.sha256).toBe(
+      first.manifest.files["tools/package.json"]?.sha256,
+    );
   });
 });
 

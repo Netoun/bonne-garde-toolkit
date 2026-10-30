@@ -3,7 +3,8 @@
  * The golden project: what a consumer does, end to end, in a fresh directory, once per configuration.
  *
  *   bg create → bg add of a UI item, refused → bg add of the configuration's modules and every item in
- *   one call → the same bg add again, which must skip every patch and change nothing → bun install
+ *   one call → the same bg add again, which must skip every patch and change nothing, and each module
+ *   again on its own, which must too → bun install
  *   → typecheck → test → build → bg doctor --strict
  *   → for a configuration with a database: a table added to the schema barrel, `bun run db:generate`,
  *     the migration applied to a local D1 (`wrangler`, no network, no account), and what D1 holds read back
@@ -856,6 +857,23 @@ async function configured(
     const changed = diffTrees(before, await snapshot(project));
     if (changed.length > 0) {
       throw new Error(`the same \`bg add\` again changed the project: ${changed.join(", ")}`);
+    }
+  });
+  // Each module on its own, after the whole set was installed in one call: a file one module vendors
+  // and another patched (db/d1's package.json, api/elysia's app.ts) is the project's by then, and the
+  // owner asked for alone has to keep it, skip its patches and change nothing.
+  await step("re-add alone", async () => {
+    for (const module of modules) {
+      const before = await snapshot(project);
+      const stdout = await capture(bg(...addArguments([module], [])), project);
+      const expected = Object.fromEntries(
+        Object.entries(patched).filter(([name]) => name === module),
+      );
+      expectPatches(readAddedModules(stdout, [module]), "skipped", expected);
+      const changed = diffTrees(before, await snapshot(project));
+      if (changed.length > 0) {
+        throw new Error(`\`bg add ${module}\` alone changed the project: ${changed.join(", ")}`);
+      }
     }
   });
   await step("install", () => run([BUN, "install"], project));
