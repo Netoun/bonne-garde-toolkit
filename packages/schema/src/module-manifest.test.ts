@@ -1,4 +1,6 @@
 import { describe, it, expect } from "bun:test";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import {
   MODULE_CATEGORIES,
   ModuleManifestError,
@@ -224,8 +226,43 @@ describe("the category table", () => {
 
   it("agrees with spec 035 on cardinality", () => {
     expect(categoryCardinality("provider")).toBe("one");
+    expect(categoryCardinality("config")).toBe("one");
     expect(categoryCardinality("api")).toBe("one");
     expect(categoryCardinality("web")).toBe("many");
     expect(categoryCardinality("deploy")).toBe("many");
+    expect(categoryCardinality("dev")).toBe("many");
+  });
+
+  it("is spec 035's table, in its order: config right after tooling, dev last", () => {
+    expect([...MODULE_CATEGORIES]).toEqual([
+      "provider",
+      "tooling",
+      "config",
+      "api",
+      "db",
+      "orm",
+      "auth",
+      "ui",
+      "email",
+      "queue",
+      "storage",
+      "payments",
+      "web",
+      "testing",
+      "deploy",
+      "dev",
+    ]);
+  });
+
+  it("is the same list project.schema.json allows as a key of `modules`", async () => {
+    const schema: unknown = JSON.parse(
+      await readFile(join(import.meta.dir, "../project.schema.json"), "utf8"),
+    );
+    const modules =
+      typeof schema === "object" && schema !== null && "properties" in schema
+        ? (schema.properties as { modules?: { propertyNames?: { enum?: unknown } } }).modules
+        : undefined;
+
+    expect(modules?.propertyNames?.enum).toEqual([...MODULE_CATEGORIES]);
   });
 });

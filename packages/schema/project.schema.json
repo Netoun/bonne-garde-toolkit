@@ -80,6 +80,7 @@
         "enum": [
           "provider",
           "tooling",
+          "config",
           "api",
           "db",
           "orm",
@@ -91,7 +92,8 @@
           "payments",
           "web",
           "testing",
-          "deploy"
+          "deploy",
+          "dev"
         ]
       },
       "additionalProperties": {

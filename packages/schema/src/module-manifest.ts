@@ -12,6 +12,7 @@ import { isRepoRelative } from "./repo-path";
 export const MODULE_CATEGORIES = [
   "provider",
   "tooling",
+  "config",
   "api",
   "db",
   "orm",
@@ -24,6 +25,7 @@ export const MODULE_CATEGORIES = [
   "web",
   "testing",
   "deploy",
+  "dev",
 ] as const;
 
 export type ModuleCategory = (typeof MODULE_CATEGORIES)[number];
@@ -32,6 +34,7 @@ export type ModuleCategory = (typeof MODULE_CATEGORIES)[number];
 const SINGLE_CATEGORIES = new Set<ModuleCategory>([
   "provider",
   "tooling",
+  "config",
   "api",
   "db",
   "orm",
