@@ -19,7 +19,18 @@ import { findRepoRoot } from "./paths";
 /** The scopes the report names: the shortest legal one, the authoring scope, and a long one. */
 const NAMED_SCOPES = ["@a", "@app", "@acme", "@golden-app", "@a-much-longer-company-scope"];
 /** The modules a single project holds; each other module is installed alone, as it fills a category `one`. */
-const SHARED_MODULES = ["tooling/vite-plus", "config/branding", "ui/shadcn"];
+const SHARED_MODULES = [
+  "tooling/vite-plus",
+  "config/branding",
+  "ui/shadcn",
+  "provider/cloudflare",
+  "api/elysia",
+];
+/**
+ * The project on the other provider. `provider` admits one module, and the variant of `api/elysia`
+ * that is selected depends on it, so the files of the other variant need a tree of their own.
+ */
+const OTHER_PROVIDER_STACK = ["config/branding", "provider/dockerfile", "api/elysia"];
 
 const dirs: string[] = [];
 
@@ -101,7 +112,9 @@ describe("scope rendering and the formatter", () => {
     const catalog = await loadLocalRegistry(join(root, "registry/registry.json"));
     const itemNames = catalog.items.map((item) => item.name);
     const keys = catalog.modules.map(({ manifest }) => `${manifest.category}/${manifest.id}`);
-    const unknown = SHARED_MODULES.filter((key) => !keys.includes(key));
+    const unknown = [...SHARED_MODULES, ...OTHER_PROVIDER_STACK].filter(
+      (key) => !keys.includes(key),
+    );
     expect(unknown).toEqual([]);
     const alone = keys.filter((key) => !SHARED_MODULES.includes(key));
 
@@ -123,6 +136,7 @@ describe("scope rendering and the formatter", () => {
     for (const [index, scope] of scopeMatrix().entries()) {
       const installs = [
         { suffix: "all", names: [...SHARED_MODULES, ...itemNames] },
+        { suffix: "other-provider", names: OTHER_PROVIDER_STACK },
         ...alone.map((key) => ({ suffix: key.replace("/", "-"), names: [key] })),
       ];
       for (const { suffix, names } of installs) {

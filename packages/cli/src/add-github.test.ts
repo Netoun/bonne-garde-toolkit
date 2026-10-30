@@ -121,18 +121,24 @@ describe("bg add from a github source", () => {
     expect(await snapshot(root)).toEqual(before);
   });
 
-  test("replaces @acme in what it fetched, as a local install does", async () => {
+  test("renders the scope in what it fetched, as a local install does, in a file a patch then edits", async () => {
     const raw = serve();
     const root = await project(SOURCE);
     await addItems({
       projectRoot: root,
-      items: ["api-elysia"],
+      items: ["config/branding", "provider/cloudflare", "api/elysia"],
       install: false,
       github: { baseUrl: raw.baseUrl },
     });
     const manifest = await readFile(join(root, "apps/api/package.json"), "utf8");
-    expect(manifest).toContain("@gh/");
+    expect(manifest).toContain('"name": "@gh/api"');
+    expect(manifest).toContain('"@gh/api-runtime": "workspace:*"');
+    expect(manifest).toContain('"dev": "wrangler dev --port 5172"');
+    expect(manifest).not.toContain("{{SCOPE}}");
     expect(manifest).not.toContain("@acme");
+    expect(await readFile(join(root, "apps/api/src/index.ts"), "utf8")).toContain(
+      'from "@gh/api-runtime"',
+    );
   });
 
   test("installs a module by its qualified name and by its bare name", async () => {
@@ -164,9 +170,7 @@ describe("bg add from a github source", () => {
     const github = { baseUrl: raw.baseUrl };
 
     const listed = await listItems(root, undefined, github);
-    expect(listed.map((item) => item.name)).toEqual(
-      expect.arrayContaining(["button", "utils", "api-elysia"]),
-    );
+    expect(listed.map((item) => item.name)).toEqual(expect.arrayContaining(["button", "utils"]));
     expect((await searchItems(root, "button", undefined, github)).map((i) => i.name)).toContain(
       "button",
     );
@@ -179,6 +183,8 @@ describe("bg add from a github source", () => {
       ["ui/shadcn", "config/branding", ...everyItem],
       ["provider/cloudflare"],
       ["provider/dockerfile"],
+      ["config/branding", "provider/cloudflare", "api/elysia"],
+      ["config/branding", "provider/dockerfile", "api/elysia"],
       ["ui/shadcn"],
     ]) {
       const raw = serve();
@@ -253,7 +259,7 @@ describe("bg add from a github source", () => {
     );
     expect(raw.requested).toContain("modules/ui/shadcn/template/packages/ui/package.json");
     expect(raw.requested).not.toContain("ui/card.tsx");
-    expect(raw.requested).not.toContain("apps/api-elysia/src/app.ts");
+    expect(raw.requested).not.toContain("modules/api/elysia/template/apps/api/src/app.ts");
   });
 
   test("an unknown ref names the ref and carries no stack trace", async () => {

@@ -10,6 +10,7 @@
  *   so that is what this variant returns; the `dockerfile` variant returns `{ port, fetch }`, which
  *   Bun serves by itself when that file is the entry.
  */
+/// <reference types="@cloudflare/workers-types" />
 import type { ElysiaConfig } from "elysia";
 import { CloudflareAdapter } from "elysia/adapter/cloudflare-worker";
 

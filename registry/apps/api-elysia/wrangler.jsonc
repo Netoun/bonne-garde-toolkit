@@ -1,9 +1,0 @@
-{
-  "name": "acme-api",
-  "main": "src/index.ts",
-  "compatibility_date": "2025-06-01",
-  "compatibility_flags": ["nodejs_compat"],
-  "vars": {
-    "API_URL": "http://localhost:5172",
-  },
-}

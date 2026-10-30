@@ -29,7 +29,14 @@ await createProject({
 
 await addItems({
   projectRoot: target,
-  items: ["tooling/vite-plus", "ui/shadcn", "config/branding", "api-elysia", "button"],
+  items: [
+    "tooling/vite-plus",
+    "ui/shadcn",
+    "config/branding",
+    "provider/cloudflare",
+    "api/elysia",
+    "button",
+  ],
   install: true,
 });
 

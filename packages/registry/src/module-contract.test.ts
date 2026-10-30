@@ -35,6 +35,28 @@ async function findModuleManifests(): Promise<[string, string, string][]> {
   return found.sort((a, b) => a[2].localeCompare(b[2]));
 }
 
+/** The packages a file imports from, as `react`, `@base-ui/react`, `motion`: subpaths folded away. */
+const packagesImportedBy = (source: string): string[] =>
+  [...source.matchAll(/from\s+"([^".][^"]*)"/g)].flatMap(([, specifier]) => {
+    if (specifier === undefined) {
+      return [];
+    }
+    const [scope, name] = specifier.split("/");
+    return [
+      specifier.startsWith("@") || specifier.startsWith("{")
+        ? `${scope}/${name}`
+        : (scope ?? specifier),
+    ];
+  });
+
+/** Whether `subpath` (`./lib/eden`) is served by the `exports` key `pattern` (`./lib/*`). */
+const exportMatches = (pattern: string, subpath: string): boolean => {
+  const star = pattern.indexOf("*");
+  return star === -1
+    ? pattern === subpath
+    : subpath.startsWith(pattern.slice(0, star)) && subpath.endsWith(pattern.slice(star + 1));
+};
+
 describe("module contract", () => {
   test("every module.json parses, and its path agrees with its contents", async () => {
     const manifests = await findModuleManifests();
@@ -53,16 +75,27 @@ describe("module contract", () => {
     }
   });
 
-  test("a module's copy globs stay out of an app's src", async () => {
+  test("a module's copy globs stay out of an app's src, unless the module is that app", async () => {
     // Spec 035, package-dedicated seam: "MUST NOT write module source directly into apps/*/src".
-    for (const [, id, path] of await findModuleManifests()) {
+    // An app-homed module is the app it fills (`api` is `apps/api`, `web/<id>` is `apps/<id>`): its
+    // source lives there, and it writes nowhere else. Every other module stays out of every app.
+    const appHome = (category: string, id: string): string | null =>
+      category === "api" ? "apps/api" : category === "web" ? `apps/${id}` : null;
+    const offending: string[] = [];
+    for (const [category, id, path] of await findModuleManifests()) {
       const manifest = parseModuleManifest(JSON.parse(await readFile(path, "utf8")));
+      const home = appHome(category, id);
       for (const variant of manifest.variants) {
         for (const glob of variant.copy ?? []) {
-          expect(`${id}:${glob}`).not.toMatch(/^.*:apps\/[^/]+\/src\//);
+          const outside =
+            home === null ? /^apps\/[^/]+\/src\//.test(glob) : !glob.startsWith(`${home}/`);
+          if (outside) {
+            offending.push(`${category}/${id} ${variant.key}: ${glob}`);
+          }
         }
       }
     }
+    expect(offending).toEqual([]);
   });
 
   test("both providers exist and peer on nothing", async () => {
@@ -221,7 +254,9 @@ describe("module contract", () => {
       for (const variant of manifest.variants) {
         for (const map of [variant.dependencies ?? {}, variant.devDependencies ?? {}]) {
           for (const [name, version] of Object.entries(map)) {
-            if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version)) {
+            // `workspace:*` is how a module names a sibling package of the project (`{{SCOPE}}/<name>`).
+            const sibling = name.startsWith("{{SCOPE}}/") && version === "workspace:*";
+            if (!sibling && !/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version)) {
               loose.push(`${manifest.category}/${manifest.id} ${variant.key}: ${name}@${version}`);
             }
           }
@@ -248,26 +283,9 @@ describe("module contract", () => {
       return { ...found, variant };
     };
 
-    /** The packages a file imports from, as `react`, `@base-ui/react`, `motion`: subpaths folded away. */
-    const packagesImportedBy = (source: string): string[] =>
-      [...source.matchAll(/from\s+"([^".][^"]*)"/g)].flatMap(([, specifier]) => {
-        if (specifier === undefined) {
-          return [];
-        }
-        const [scope, name] = specifier.split("/");
-        return [specifier.startsWith("@") ? `${scope}/${name}` : (scope ?? specifier)];
-      });
-
     /** 030: the rule is keyed on where the files land, not on a field. */
     const landsInPackagesUi = (item: { files?: { target?: string }[] }): boolean =>
       (item.files ?? []).some((file) => file.target?.startsWith("packages/ui/") === true);
-
-    const exportMatches = (pattern: string, subpath: string): boolean => {
-      const star = pattern.indexOf("*");
-      return star === -1
-        ? pattern === subpath
-        : subpath.startsWith(pattern.slice(0, star)) && subpath.endsWith(pattern.slice(star + 1));
-    };
 
     test("it writes packages/ui from explicit paths, and `{{SCOPE}}/ui` is its workspace", async () => {
       const { manifest, variant } = await uiModule();
@@ -565,6 +583,210 @@ describe("module contract", () => {
         compilerOptions: { types: ["bun"] },
         include: ["src/**/*.ts", "scripts/**/*.ts"],
       });
+    });
+  });
+
+  describe("api/elysia is the API shell, one variant per provider (035, 060)", () => {
+    const TEMPLATE = join(MODULES, "api/elysia/template");
+    const text = (path: string): Promise<string> => readFile(join(TEMPLATE, path), "utf8");
+    const apiModule = async () => {
+      const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+      const found = catalog.modules.find(
+        ({ manifest }) => manifest.category === "api" && manifest.id === "elysia",
+      );
+      if (!found) {
+        throw new Error("registry/modules/api/elysia is missing");
+      }
+      const providers = catalog.modules
+        .filter(({ manifest }) => manifest.category === "provider")
+        .map(({ manifest }) => manifest.id);
+      const variants = new Map(found.manifest.variants.map((variant) => [variant.key, variant]));
+      return { ...found, variants, providers };
+    };
+    const WRANGLER = "apps/api/wrangler.jsonc";
+    /** The sources a variant writes under `apps/api/src`, which is what its imports are read from. */
+    const sources = async (copy: string[]): Promise<[string, string][]> =>
+      Promise.all(
+        copy
+          .filter((path) => /^apps\/api\/src\/.+\.ts$/.test(path))
+          .map(async (path): Promise<[string, string]> => [path, await text(path)]),
+      );
+
+    test("it peers on a provider and on the config, and ships one variant per provider the registry has", async () => {
+      const { manifest, variants, providers } = await apiModule();
+
+      expect(manifest.peers).toEqual({ provider: [], config: ["branding"] });
+      expect([...variants.keys()].sort()).toEqual([...providers].sort());
+      for (const [key, variant] of variants) {
+        expect(variant.match).toEqual({ provider: key });
+        expect(variant.workspace).toEqual({ name: "{{SCOPE}}/api", path: "apps/api" });
+        expect(variant.copy?.filter((path) => /[*?[\]{}]/.test(path))).toEqual([]);
+      }
+    });
+
+    test("the variants differ by the paths they list: wrangler.jsonc is the cloudflare variant's alone", async () => {
+      const { variants } = await apiModule();
+      const cloudflare = variants.get("cloudflare")?.copy ?? [];
+      const dockerfile = variants.get("dockerfile")?.copy ?? [];
+
+      expect(cloudflare).toContain(WRANGLER);
+      expect(dockerfile).not.toContain(WRANGLER);
+      expect(cloudflare.filter((path) => path !== WRANGLER)).toEqual(dockerfile);
+      for (const path of cloudflare) {
+        expect(existsSync(join(TEMPLATE, path))).toBe(true);
+      }
+    });
+
+    test("a provider-specific script is a scripts.merge patch of its variant, and the vendored package.json carries none", async () => {
+      const { variants } = await apiModule();
+      const body: unknown = JSON.parse(await text("apps/api/package.json"));
+      const scripts = isRecord(body) && isRecord(body.scripts) ? body.scripts : {};
+
+      // On a vendored file a patch is computed on the template: a script it already holds would
+      // make the first install see the region as present and equal, and report it `skipped`.
+      expect(Object.keys(scripts)).not.toContain("dev");
+      expect(Object.keys(scripts)).not.toContain("deploy");
+      expect(variants.get("cloudflare")?.patch).toEqual([
+        {
+          type: "scripts.merge",
+          file: "apps/api/package.json",
+          scripts: { dev: "wrangler dev --port 5172", deploy: "wrangler deploy" },
+        },
+      ]);
+      expect(variants.get("cloudflare")?.devDependencies).toEqual({ wrangler: "4.119.0" });
+      expect(variants.get("dockerfile")?.patch).toEqual([
+        {
+          type: "scripts.merge",
+          file: "apps/api/package.json",
+          scripts: { dev: "bun --watch src/index.ts" },
+        },
+      ]);
+      expect(variants.get("dockerfile")?.devDependencies ?? {}).toEqual({});
+    });
+
+    test("both variants depend on the runtime package and the config as workspaces, and pin the rest identically", async () => {
+      const { variants } = await apiModule();
+      const [cloudflare, dockerfile] = [variants.get("cloudflare"), variants.get("dockerfile")];
+
+      expect(cloudflare?.dependencies).toEqual(dockerfile?.dependencies);
+      expect(cloudflare?.dependencies).toMatchObject({
+        "{{SCOPE}}/api-runtime": "workspace:*",
+        "{{SCOPE}}/config": "workspace:*",
+        // One copy of elysia: the `app` handed to `serve()` has the type the runtime package expects.
+        elysia: "1.4.29",
+      });
+    });
+
+    test("its package.json carries exports and scripts and no dependency map, and exposes what the fronts import", async () => {
+      const body: unknown = JSON.parse(await text("apps/api/package.json"));
+
+      expect(body).toMatchObject({
+        name: "{{SCOPE}}/api",
+        exports: { ".": "./src/index.ts", "./app": "./src/app.ts", "./lib/*": "./src/lib/*.ts" },
+        scripts: { typecheck: expect.any(String), test: expect.any(String) },
+      });
+      for (const map of ["dependencies", "devDependencies", "peerDependencies"]) {
+        expect(isRecord(body) && map in body ? map : null).toBeNull();
+      }
+      // The fronts reach the API through `type App` and `lib/eden`: a subpath missing here is not
+      // seen by the fronts' tsconfig `paths` in this repo, and breaks their typecheck in a project.
+      const exports = isRecord(body) && isRecord(body.exports) ? body.exports : {};
+      for (const subpath of ["./app", "./lib/eden"]) {
+        const pattern = Object.keys(exports).find((key) => exportMatches(key, subpath));
+        expect(pattern).toBeDefined();
+        const target = String(exports[pattern ?? ""]).replace(
+          "*",
+          subpath.split("/").slice(2).join("/"),
+        );
+        expect(existsSync(join(TEMPLATE, "apps/api", target))).toBe(true);
+      }
+    });
+
+    test("every `{{SCOPE}}/api/<subpath>` the template imports is an export of the package", async () => {
+      const { variants } = await apiModule();
+      const body: unknown = JSON.parse(await text("apps/api/package.json"));
+      const exports = isRecord(body) && isRecord(body.exports) ? Object.keys(body.exports) : [];
+      const unreachable: string[] = [];
+
+      for (const [path, source] of await sources(variants.get("cloudflare")?.copy ?? [])) {
+        for (const [, subpath] of source.matchAll(/from\s+"\{\{SCOPE\}\}\/api\/([^"]+)"/g)) {
+          const target = `./${subpath}`;
+          const matched = exports.find((pattern) => exportMatches(pattern, target));
+          // The wildcard serves a file that exists: `./lib/*` is `./src/lib/*.ts`.
+          const file = matched === undefined ? null : `apps/api/src/${subpath}.ts`;
+          if (file === null || !existsSync(join(TEMPLATE, file))) {
+            unreachable.push(`${path}: {{SCOPE}}/api/${subpath}`);
+          }
+        }
+      }
+
+      expect(unreachable).toEqual([]);
+    });
+
+    test("every package the template imports is declared by the variant, or is the project's own", async () => {
+      const { variants } = await apiModule();
+      const missing: string[] = [];
+
+      for (const [key, variant] of variants) {
+        const declared = new Set([
+          ...Object.keys(variant.dependencies ?? {}),
+          ...Object.keys(variant.devDependencies ?? {}),
+          // The module's own package, which it reaches through `exports`.
+          "{{SCOPE}}/api",
+        ]);
+        for (const [path, source] of await sources(variant.copy ?? [])) {
+          for (const name of packagesImportedBy(source)) {
+            // `bun:test` and `node:*` are the runtime's; the rest has to be in a dependency map.
+            if (!name.includes(":") && !declared.has(name)) {
+              missing.push(`${key} ${path}: ${name}`);
+            }
+          }
+        }
+      }
+
+      expect(missing).toEqual([]);
+    });
+
+    test("the entry is the thin one, and app.ts keeps `app` under that name with a place for modules to plug in", async () => {
+      // 035: the one thing an app-homed module may write under apps/<id>/src is imports and one call.
+      expect(await text("apps/api/src/index.ts")).toBe(
+        'import { serve } from "{{SCOPE}}/api-runtime";\nimport { app } from "./app";\n\nexport default serve(app);\n',
+      );
+
+      const app = await text("apps/api/src/app.ts");
+      expect(app).toContain("export const app = new Elysia(runtimeOptions)");
+      expect(app).toContain("export type App = typeof app;");
+      const lastUse = app.lastIndexOf("\n  .use(");
+      const insertion = app.indexOf("Insertion point for the modules");
+      const firstRoute = app.indexOf("\n  .get(");
+      expect(lastUse).toBeGreaterThan(-1);
+      expect(insertion).toBeGreaterThan(lastUse);
+      expect(firstRoute).toBeGreaterThan(insertion);
+    });
+
+    test("the shell has no database, auth, storage or email: those arrive as modules of their own", async () => {
+      const { variants } = await apiModule();
+      const offending: string[] = [];
+
+      for (const [path, source] of await sources(variants.get("cloudflare")?.copy ?? [])) {
+        for (const word of [
+          "D1Database",
+          "R2Bucket",
+          "BETTER_AUTH",
+          "RESEND",
+          "dbModule",
+          "authModule",
+          "mediaModule",
+        ]) {
+          if (source.includes(word)) {
+            offending.push(`${path}: ${word}`);
+          }
+        }
+      }
+      expect(offending).toEqual([]);
+      expect(Object.keys(variants.get("cloudflare")?.dependencies ?? {})).not.toContain(
+        "drizzle-orm",
+      );
     });
   });
 

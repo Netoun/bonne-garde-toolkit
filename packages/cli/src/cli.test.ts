@@ -366,6 +366,9 @@ type ModuleOutput = {
     files: string[];
     env: { name: string; required: boolean; status: string }[];
     checks: string[];
+    workspace: string | null;
+    dependencies: Record<string, string>;
+    devDependencies: Record<string, string>;
     patches: PatchOutput[];
   }[];
   failedPatches: (PatchOutput & { module: string })[];
@@ -574,7 +577,7 @@ describe("bg add <module>", () => {
     const { stdout, code } = await runBg(
       target,
       "add",
-      "api-elysia",
+      "portless",
       "dockerfile",
       "--yes",
       "--no-install",
@@ -582,7 +585,7 @@ describe("bg add <module>", () => {
 
     expect(code).toBe(0);
     const out = JSON.parse(stdout) as ModuleOutput & { items: string[] };
-    expect(out.items).toEqual(["api-elysia"]);
+    expect(out.items).toEqual(["portless"]);
     expect(out.modules.map((m) => m.module)).toEqual(["provider/dockerfile"]);
   });
 
@@ -816,5 +819,192 @@ describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", 
 
     expect((JSON.parse(stdout) as ModuleOutput).modules[0]?.patches).toEqual([]);
     expect(stderr).not.toContain("PATCH");
+  });
+});
+
+describe("bg add api/elysia: a module that vendors a file and patches it (035, 060)", () => {
+  const FILE = "apps/api/package.json";
+  const DEV_CLOUDFLARE = "wrangler dev --port 5172";
+
+  async function installed(prefix: string, provider: "cloudflare" | "dockerfile") {
+    const target = await freshProject(prefix);
+    const first = await runBg(
+      target,
+      "add",
+      "config/branding",
+      `provider/${provider}`,
+      "api/elysia",
+      "--yes",
+      "--no-install",
+    );
+    expect(first.code).toBe(0);
+    return { target, out: JSON.parse(first.stdout) as ModuleOutput };
+  }
+
+  async function scriptsOf(target: string): Promise<Record<string, string>> {
+    const body = JSON.parse(await readFile(join(target, FILE), "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    return body.scripts;
+  }
+
+  test("the cloudflare variant writes wrangler.jsonc and patches dev and deploy, with no --force", async () => {
+    const { target, out } = await installed("bg-cli-api-cf-", "cloudflare");
+
+    const api = out.modules.find((module) => module.module === "api/elysia");
+    expect(api?.variant).toBe("cloudflare");
+    expect(api?.files).toContain("apps/api/wrangler.jsonc");
+    expect(api?.patches).toEqual([
+      {
+        type: "scripts.merge",
+        file: FILE,
+        status: "applied",
+        regions: [
+          { region: "scripts.dev", status: "applied" },
+          { region: "scripts.deploy", status: "applied" },
+        ],
+      },
+    ]);
+    expect(out.failedPatches).toEqual([]);
+    // A file the module wrote and the patch then edited is in `written`, once.
+    expect(out.written.filter((path) => path === FILE)).toEqual([FILE]);
+    expect(await scriptsOf(target)).toMatchObject({
+      dev: DEV_CLOUDFLARE,
+      deploy: "wrangler deploy",
+    });
+    const bg = JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as {
+      regions: Record<string, Record<string, string>>;
+      files: Record<string, { owner: string }>;
+    };
+    expect(bg.regions[FILE]).toEqual({
+      "scripts.dev": "api/elysia",
+      "scripts.deploy": "api/elysia",
+    });
+    expect(bg.files[FILE]?.owner).toBe("api/elysia");
+    expect(bg.files["apps/api/wrangler.jsonc"]?.owner).toBe("api/elysia");
+    // The provider owns the runtime package, and nothing it wrote is under apps/.
+    expect(bg.files["packages/api-runtime/src/index.ts"]?.owner).toBe("provider/cloudflare");
+    expect(
+      Object.entries(bg.files).filter(
+        ([path, { owner }]) => owner === "provider/cloudflare" && path.startsWith("apps/"),
+      ),
+    ).toEqual([]);
+    const doctor = await runBg(target, "doctor", "--strict");
+    expect(doctor.code).toBe(0);
+  });
+
+  test("the dockerfile variant writes no wrangler.jsonc, and a dev script that runs on Bun", async () => {
+    const { target, out } = await installed("bg-cli-api-docker-", "dockerfile");
+
+    const api = out.modules.find((module) => module.module === "api/elysia");
+    expect(api?.variant).toBe("dockerfile");
+    expect(api?.files).not.toContain("apps/api/wrangler.jsonc");
+    expect(api?.devDependencies).toEqual({});
+    expect(api?.patches[0]?.regions).toEqual([{ region: "scripts.dev", status: "applied" }]);
+    const scripts = await scriptsOf(target);
+    expect(scripts.dev).toBe("bun --watch src/index.ts");
+    expect(scripts).not.toHaveProperty("deploy");
+    expect((await runBg(target, "doctor", "--strict")).code).toBe(0);
+  });
+
+  test("the same add again reports every patch skipped, and the project is the same bytes", async () => {
+    const { target } = await installed("bg-cli-api-twice-", "cloudflare");
+    const before = await snapshot(target);
+
+    const again = await runBg(target, "add", "api/elysia", "--yes", "--no-install");
+
+    expect(again.code).toBe(0);
+    const out = JSON.parse(again.stdout) as ModuleOutput;
+    expect(out.modules[0]?.patches).toEqual([
+      {
+        type: "scripts.merge",
+        file: FILE,
+        status: "skipped",
+        regions: [
+          { region: "scripts.dev", status: "skipped" },
+          { region: "scripts.deploy", status: "skipped" },
+        ],
+      },
+    ]);
+    expect(out.written).toEqual([]);
+    const settled = (tree: Record<string, string>) => ({
+      ...tree,
+      "bg.json": (tree["bg.json"] ?? "").replace(/"installedAt": "[^"]*"/g, '"installedAt": "-"'),
+    });
+    expect(settled(await snapshot(target))).toEqual(settled(before));
+  });
+
+  test("a hand-edited region is user-owned: the re-add names it and writes nothing, and --force puts it back", async () => {
+    const { target } = await installed("bg-cli-api-edit-", "cloudflare");
+    const clean = await readFile(join(target, FILE), "utf8");
+    await writeFile(join(target, FILE), clean.replace(DEV_CLOUDFLARE, "bun my-own-dev.ts"));
+    const edited = await snapshot(target);
+
+    const refused = await runBg(target, "add", "api/elysia", "--yes", "--no-install");
+
+    expect(refused.code).toBe(1);
+    // The region, as for a file the module only patches: not "apps/api/package.json was modified".
+    expect(refused.stderr).toContain(
+      `scripts.dev of ${FILE} is "bun my-own-dev.ts", which differs from what api/elysia declares ("${DEV_CLOUDFLARE}")`,
+    );
+    expect(refused.stderr).toContain("--force");
+    expect(refused.stderr).not.toContain("was modified");
+    expect(await snapshot(target)).toEqual(edited);
+
+    const forced = await runBg(target, "add", "api/elysia", "--yes", "--no-install", "--force");
+
+    expect(forced.code).toBe(0);
+    const regions = (JSON.parse(forced.stdout) as ModuleOutput).modules[0]?.patches[0]?.regions;
+    expect(regions).toContainEqual({
+      region: "scripts.dev",
+      status: "applied",
+      replaced: "bun my-own-dev.ts",
+    });
+    expect(await readFile(join(target, FILE), "utf8")).toBe(clean);
+  });
+
+  test("an edit outside the regions is a modified file: the re-add fails naming the file, and --force overwrites it", async () => {
+    const { target } = await installed("bg-cli-api-file-", "cloudflare");
+    const clean = await readFile(join(target, FILE), "utf8");
+    const body = JSON.parse(clean) as Record<string, unknown>;
+    await writeFile(
+      join(target, FILE),
+      `${JSON.stringify({ ...body, license: "MIT" }, null, 2)}\n`,
+    );
+    const edited = await snapshot(target);
+
+    const refused = await runBg(target, "add", "api/elysia", "--yes", "--no-install");
+
+    expect(refused.code).toBe(1);
+    expect(refused.stderr).toContain(`${FILE} was modified since api/elysia wrote it`);
+    expect(await snapshot(target)).toEqual(edited);
+
+    const forced = await runBg(target, "add", "api/elysia", "--yes", "--no-install", "--force");
+
+    expect(forced.code).toBe(0);
+    expect(await readFile(join(target, FILE), "utf8")).toBe(clean);
+  });
+
+  test("without a provider it fails naming the category, and without the config module it names that", async () => {
+    const target = await freshProject("bg-cli-api-peers-");
+
+    const noProvider = await runBg(target, "add", "config/branding", "api/elysia", "--no-install");
+    expect(noProvider.code).toBe(1);
+    expect(noProvider.stderr).toContain(
+      "api/elysia needs a module in category provider (any) and none is installed",
+    );
+
+    const noConfig = await runBg(
+      target,
+      "add",
+      "provider/cloudflare",
+      "api/elysia",
+      "--no-install",
+    );
+    expect(noConfig.code).toBe(1);
+    expect(noConfig.stderr).toContain(
+      "api/elysia needs a module in category config (branding) and none is installed",
+    );
+    expect(await readdir(join(target, "apps"))).toEqual([".gitkeep"]);
   });
 });

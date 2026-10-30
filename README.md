@@ -7,7 +7,7 @@ Ce dépôt contient encore le monorepo applicatif historique (`apps/api`, `apps/
 ```bash
 bun run bg -- create my-app --yes --no-git --registry local:./registry
 cd my-app
-bun run --filter @bonne-garde/cli start -- add api-elysia button config
+bun run --filter @bonne-garde/cli start -- add ui/shadcn button config/branding provider/cloudflare api/elysia
 ```
 
 Dans ce monorepo (développement local) :

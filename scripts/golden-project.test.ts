@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { loadLocalRegistry } from "../packages/registry/src/index";
 import {
   addArguments,
+  CONFIGURATIONS,
   diffTrees,
   EXCLUDED,
   EXCLUDED_MODULES,
@@ -21,21 +22,21 @@ import {
 const LISTING = [
   "utils\tregistry:lib\tcn() helper for className merging.",
   "button\tregistry:ui\tPrimary button component.",
-  "api-elysia\tregistry:block\tMinimal Cloudflare Workers API shell with Elysia health route.",
+  "portless\tregistry:lib\tNamed local HTTPS URLs.",
   "",
 ].join("\n");
 
 describe("selectItems", () => {
   test("takes the first tab-separated column of every line", () => {
     expect(selectItems(LISTING, {})).toEqual({
-      items: ["utils", "button", "api-elysia"],
+      items: ["utils", "button", "portless"],
       excluded: [],
     });
   });
 
   test("keeps an excluded item out of the install list and reports why", () => {
     const { items, excluded } = selectItems(LISTING, { button: "needs a consumer app" });
-    expect(items).toEqual(["utils", "api-elysia"]);
+    expect(items).toEqual(["utils", "portless"]);
     expect(excluded).toEqual([{ name: "button", reason: "needs a consumer app" }]);
   });
 
@@ -179,12 +180,35 @@ describe("the golden project and modules", () => {
       "tooling/vite-plus",
       "config/branding",
       "ui/shadcn",
+      "api/elysia",
+      "provider/dockerfile",
     ]);
   });
 
-  test("installs one provider, cloudflare: a project has one, and the other is left out with a reason", () => {
-    expect(MODULES.filter((name) => name.startsWith("provider/"))).toEqual(["provider/cloudflare"]);
-    expect(Object.keys(EXCLUDED_MODULES)).toEqual(["provider/dockerfile"]);
+  test("each configuration has one provider, and every provider the registry has is a configuration", async () => {
+    const catalog = await loadLocalRegistry(
+      join(resolve(import.meta.dir, ".."), "registry/registry.json"),
+    );
+    const providers = catalog.modules
+      .filter(({ manifest }) => manifest.category === "provider")
+      .map(({ manifest }) => `provider/${manifest.id}`);
+
+    const used = CONFIGURATIONS.map(({ modules }) =>
+      modules.filter((name) => name.startsWith("provider/")),
+    );
+    expect(used.every((names) => names.length === 1)).toBe(true);
+    expect(used.flat().sort()).toEqual([...providers].sort());
+    expect(Object.keys(EXCLUDED_MODULES)).toEqual([]);
+  });
+
+  test("only the configuration with a ui module installs items, which land in packages/ui", () => {
+    for (const { modules, items } of CONFIGURATIONS) {
+      if (items) {
+        expect(modules).toContain("ui/shadcn");
+      }
+    }
+    // The dockerfile configuration is a project with no SPA, which the Dockerfile has to build.
+    expect(CONFIGURATIONS.find(({ name }) => name === "dockerfile")?.items).toBe(false);
   });
 });
 
@@ -210,9 +234,18 @@ describe("addArguments", () => {
     expect(() => addArguments(["ui/shadcn"], ["ui/shadcn"])).toThrow(/ui\/shadcn/);
   });
 
-  test("fails with nothing to install, so an empty `bg list` is not a green run", () => {
+  test("fails with no module, so an empty `bg list` is not a green run", () => {
     expect(() => addArguments([], ["button"])).toThrow(/no modules/);
-    expect(() => addArguments(["ui/shadcn"], [])).toThrow(/no items/);
+  });
+
+  test("takes no items, for a configuration that installs modules only; selectItems refuses an empty `bg list`", () => {
+    expect(addArguments(["api/elysia"], [])).toEqual([
+      "add",
+      "api/elysia",
+      "--yes",
+      "--no-install",
+    ]);
+    expect(() => selectItems("", {})).toThrow(/no items/);
   });
 
   test("golden installs the ui module that every UI item needs, in the same call as the items", async () => {
@@ -221,7 +254,10 @@ describe("addArguments", () => {
     );
     const listing = catalog.items.map((item) => `${item.name}\t${item.type}`).join("\n");
 
-    const argv = addArguments(MODULES, selectItems(listing, EXCLUDED).items);
+    const argv = addArguments(
+      CONFIGURATIONS[0]?.modules ?? [],
+      selectItems(listing, EXCLUDED).items,
+    );
 
     expect(argv).toContain("ui/shadcn");
     expect(argv).toContain("button");
@@ -358,21 +394,50 @@ describe("expectPatches (060: a failed patch is never silent, and a re-add skips
 });
 
 describe("the golden project and patches", () => {
-  test("PATCHED names exactly the modules whose variants declare a patch", async () => {
+  test("PATCHED names, per configuration, the modules whose selected variant declares a patch, and the regions it writes", async () => {
     const catalog = await loadLocalRegistry(
       join(resolve(import.meta.dir, ".."), "registry/registry.json"),
     );
-    const patching = catalog.modules
-      .filter(({ manifest }) =>
-        manifest.variants.some((variant) => (variant.patch ?? []).length > 0),
-      )
-      .map(({ manifest }) => `${manifest.category}/${manifest.id}`);
 
-    // A module that gains a patch is a decision made in golden, as a module that is not installed is.
-    expect(Object.keys(PATCHED).sort()).toEqual(
-      patching.filter((key) => MODULES.includes(key)).sort(),
-    );
-    expect(PATCHED).toEqual({ "config/branding": ["scripts.gen:branding"] });
+    for (const { name, modules } of CONFIGURATIONS) {
+      // What `bg add` does: among the variants whose `match` the configuration satisfies, the most specific.
+      const regions: Record<string, string[]> = {};
+      for (const { manifest } of catalog.modules) {
+        if (!modules.includes(`${manifest.category}/${manifest.id}`)) {
+          continue;
+        }
+        const satisfied = manifest.variants.filter((variant) =>
+          Object.entries(variant.match).every(([category, id]) =>
+            modules.includes(`${category}/${id}`),
+          ),
+        );
+        const [variant] = satisfied.sort(
+          (a, b) => Object.keys(b.match).length - Object.keys(a.match).length,
+        );
+        const written = (variant?.patch ?? []).flatMap((patch) =>
+          Object.keys((patch.scripts as Record<string, string> | undefined) ?? {}).map(
+            (script) => `scripts.${script}`,
+          ),
+        );
+        if ((variant?.patch ?? []).length > 0) {
+          regions[`${manifest.category}/${manifest.id}`] = written.sort();
+        }
+      }
+
+      // A module that gains a patch is a decision made in golden, as a module that is not installed is.
+      expect({ [name]: PATCHED[name] }).toEqual({ [name]: regions });
+    }
+    expect(Object.keys(PATCHED).sort()).toEqual(CONFIGURATIONS.map(({ name }) => name).sort());
+    expect(PATCHED).toEqual({
+      cloudflare: {
+        "config/branding": ["scripts.gen:branding"],
+        "api/elysia": ["scripts.deploy", "scripts.dev"],
+      },
+      dockerfile: {
+        "config/branding": ["scripts.gen:branding"],
+        "api/elysia": ["scripts.dev"],
+      },
+    });
   });
 });
 

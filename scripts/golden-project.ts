@@ -1,10 +1,15 @@
 #!/usr/bin/env bun
 /**
- * The golden project: what a consumer does, end to end, in a fresh directory.
+ * The golden project: what a consumer does, end to end, in a fresh directory, once per configuration.
  *
- *   bg create → bg add of a UI item, refused → bg add of every module and every item in one call
- *   → the same bg add again, which must skip every patch and change nothing → bun install
+ *   bg create → bg add of a UI item, refused → bg add of the configuration's modules and every item in
+ *   one call → the same bg add again, which must skip every patch and change nothing → bun install
  *   → typecheck → test → build → bg doctor --strict → bun run check → the `checks` of every installed module
+ *
+ * A configuration is a set of modules that fit in one project. `provider` admits one module and the
+ * `api` module ships a variant per provider, so each provider is a configuration of its own: the
+ * `cloudflare` one installs every item too, the `dockerfile` one only modules, a project with no SPA.
+ * Packing and the refusal run once.
  *
  * Any non-zero exit fails the run and names the phase. It needs a real `bun install` against npm,
  * so it is not part of `verify`; CI runs it as its own step.
@@ -73,17 +78,42 @@ export function selectItems(
   };
 }
 
+/** One project golden builds: the modules `bg add` installs in one call, and whether every item comes with them. */
+export type Configuration = {
+  name: string;
+  /** `<category>/<id>`, in the order they are given to `bg add`. */
+  modules: readonly string[];
+  /** Also install every item `bg list --items` shows. Items land in `packages/ui` and need the `ui` module. */
+  items: boolean;
+};
+
 /**
- * The modules golden installs with the items, as `<category>/<id>`, in one `bg add`. An explicit
- * list and not "every module `bg list` shows", because `provider` admits one module: installing
- * them all would fail on cardinality. A module that is in neither this list nor `EXCLUDED_MODULES`
- * fails the run, so a new module is a decision made here and not a silent gap.
+ * The projects golden builds. A module that is in none of them, and not in `EXCLUDED_MODULES`, fails
+ * the run, so a new module is a decision made here and not a silent gap. `provider` admits one module,
+ * and a variant of `api` is selected on it, which is why each provider has a configuration.
  */
+export const CONFIGURATIONS: readonly Configuration[] = [
+  {
+    name: "cloudflare",
+    modules: [
+      "provider/cloudflare",
+      "tooling/vite-plus",
+      "config/branding",
+      "ui/shadcn",
+      "api/elysia",
+    ],
+    items: true,
+  },
+  {
+    name: "dockerfile",
+    modules: ["provider/dockerfile", "tooling/vite-plus", "config/branding", "api/elysia"],
+    items: false,
+  },
+];
+
+/** The modules of every configuration, each once, in the order they first appear. */
 export const MODULES: readonly string[] = [
-  "provider/cloudflare",
-  "tooling/vite-plus",
-  "config/branding",
-  "ui/shadcn",
+  ...new Set(CONFIGURATIONS.flatMap((configuration) => configuration.modules)),
 ];
 
 /** The item `refuse` tries with no ui module, and the module its refusal has to name. */
@@ -91,18 +121,15 @@ const REFUSED_ITEM = "button";
 const REFUSED_MODULE = "ui/shadcn";
 
 /**
- * Modules `bg list` shows that stay out of the golden project, each with its reason. An entry for
- * a module the registry no longer lists fails the run, as for `EXCLUDED`.
+ * Modules `bg list` shows that stay out of every configuration, each with its reason. An entry for
+ * a module the registry no longer lists fails the run, as for `EXCLUDED`. Empty on purpose.
  */
-export const EXCLUDED_MODULES: Readonly<Record<string, string>> = {
-  "provider/dockerfile":
-    "a project has one provider, and cloudflare is the one installed here; the api module's commit gives dockerfile a configuration of its own",
-};
+export const EXCLUDED_MODULES: Readonly<Record<string, string>> = {};
 
 /**
  * The module ids to `bg add`, read from the `module` lines of `bg list` output
- * (`<category>/<id><TAB>module<TAB>description`). `installed` is what golden installs, in that order;
- * every other listed module must be in `exclusions`.
+ * (`<category>/<id><TAB>module<TAB>description`). `installed` is what golden installs, in that order,
+ * over all configurations; every other listed module must be in `exclusions`.
  */
 export function selectModules(
   listing: string,
@@ -145,12 +172,21 @@ export function selectModules(
 }
 
 /**
- * The modules of `MODULES` whose variants declare a tier-2 patch, with the regions each one's patches
- * write. Golden checks that `bg add` reports exactly these as `applied` and, run again, as `skipped`:
- * a module that gains or loses a patch is a decision made here, as a module that is not installed is.
+ * The modules of each configuration whose variants declare a tier-2 patch, with the regions each
+ * one's patches write there. Variants patch differently (`api/elysia` writes `dev` and `deploy` for
+ * `wrangler` and only `dev` for the container), so this is per configuration. Golden checks that
+ * `bg add` reports exactly these as `applied` and, run again, as `skipped`: a module that gains or
+ * loses a patch is a decision made here, as a module that is not installed is.
  */
-export const PATCHED: Readonly<Record<string, readonly string[]>> = {
-  "config/branding": ["scripts.gen:branding"],
+export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
+  cloudflare: {
+    "config/branding": ["scripts.gen:branding"],
+    "api/elysia": ["scripts.deploy", "scripts.dev"],
+  },
+  dockerfile: {
+    "config/branding": ["scripts.gen:branding"],
+    "api/elysia": ["scripts.dev"],
+  },
 };
 
 /** One patch of a module, as `bg add` prints it (spec 060): its outcome and, per region, what it did. */
@@ -341,17 +377,15 @@ async function snapshot(root: string): Promise<Record<string, string>> {
 }
 
 /**
- * The argv of the one `bg add` golden runs: every module, then every item. One call, so a module
- * and the items that need it are planned together, and never `--force`: two installs that write
- * the same file have to fail here and not be settled by an overwrite. A name given twice, and an
- * empty side, fail, so a broken `bg list` is not a green run.
+ * The argv of the one `bg add` golden runs per configuration: every module, then every item the
+ * configuration has. One call, so a module and the items that need it are planned together, and never
+ * `--force`: two installs that write the same file have to fail here and not be settled by an
+ * overwrite. A name given twice, and no module, fail, so a broken `bg list` is not a green run (an
+ * empty item list is `selectItems`'s to refuse: a configuration may have none).
  */
 export function addArguments(modules: readonly string[], items: readonly string[]): string[] {
   if (modules.length === 0) {
     throw new Error("no modules to add");
-  }
-  if (items.length === 0) {
-    throw new Error("no items to add");
   }
   const names = [...modules, ...items];
   const twice = names.filter((name, index) => names.indexOf(name) !== index);
@@ -429,7 +463,6 @@ async function golden(work: string, timings: Timing[]): Promise<void> {
   const cli = join(work, "cli");
   const bg = (...args: string[]) => [BUN, join(cli, "src/bin.ts"), ...args];
   const registry = `local:${join(ROOT, "registry")}`;
-  const project = join(work, "golden-app");
 
   await phase(timings, "pack", async () => {
     await run([BUN, "run", "pack:cli"], ROOT);
@@ -439,7 +472,7 @@ async function golden(work: string, timings: Timing[]): Promise<void> {
     await run([BUN, "install"], cli);
   });
 
-  const { items, modules, excluded } = await phase(timings, "list", async () => {
+  const { items, excluded } = await phase(timings, "list", async () => {
     const fromItems = selectItems(
       await capture(bg("list", "--items", "--source", registry), work),
       EXCLUDED,
@@ -449,17 +482,39 @@ async function golden(work: string, timings: Timing[]): Promise<void> {
       MODULES,
       EXCLUDED_MODULES,
     );
-    return {
-      items: fromItems.items,
-      modules: fromModules.modules,
-      excluded: [...fromItems.excluded, ...fromModules.excluded],
-    };
+    return { items: fromItems.items, excluded: [...fromItems.excluded, ...fromModules.excluded] };
   });
   for (const { name, reason } of excluded) {
     console.log(`golden: leaving out ${name}: ${reason}`);
   }
 
-  await phase(timings, "create", () =>
+  for (const [index, configuration] of CONFIGURATIONS.entries()) {
+    await configured(work, timings, { bg, registry, items, configuration, first: index === 0 });
+  }
+}
+
+/** One configuration, from `bg create` to the modules' `checks`. */
+async function configured(
+  work: string,
+  timings: Timing[],
+  options: {
+    bg: (...args: string[]) => string[];
+    registry: string;
+    items: readonly string[];
+    configuration: Configuration;
+    first: boolean;
+  },
+): Promise<void> {
+  const { bg, registry, configuration, first } = options;
+  const { name, modules } = configuration;
+  const installed = configuration.items ? options.items : [];
+  const patched = PATCHED[name] ?? {};
+  const project = join(work, `golden-${name}`);
+  const step = <T>(label: string, body: () => Promise<T>) =>
+    phase(timings, `${name}: ${label}`, body);
+
+  console.log(`\ngolden: configuration ${name}: ${modules.join(" ")}`);
+  await step("create", () =>
     run(
       bg(
         "create",
@@ -475,48 +530,51 @@ async function golden(work: string, timings: Timing[]): Promise<void> {
       work,
     ),
   );
-  await phase(timings, "refuse", async () => {
-    if (!items.includes(REFUSED_ITEM) || !modules.includes(REFUSED_MODULE)) {
-      throw new Error(
-        `the refusal check needs ${REFUSED_ITEM} and ${REFUSED_MODULE} in the install`,
+  // The refusal does not depend on the provider: once is enough.
+  if (first) {
+    await step("refuse", async () => {
+      if (!options.items.includes(REFUSED_ITEM) || !modules.includes(REFUSED_MODULE)) {
+        throw new Error(
+          `the refusal check needs ${REFUSED_ITEM} and ${REFUSED_MODULE} in the install`,
+        );
+      }
+      const manifest = await Bun.file(join(project, "bg.json")).text();
+      expectRefusal(
+        await attempt(bg("add", REFUSED_ITEM, "--yes", "--no-install"), project),
+        REFUSED_ITEM,
+        REFUSED_MODULE,
       );
-    }
-    const manifest = await Bun.file(join(project, "bg.json")).text();
-    expectRefusal(
-      await attempt(bg("add", REFUSED_ITEM, "--yes", "--no-install"), project),
-      REFUSED_ITEM,
-      REFUSED_MODULE,
-    );
-    if ((await Bun.file(join(project, "bg.json")).text()) !== manifest) {
-      throw new Error(`the refused \`bg add ${REFUSED_ITEM}\` changed bg.json`);
-    }
-  });
-  const added = await phase(timings, "add", async () => {
-    const stdout = await capture(bg(...addArguments(modules, items)), project);
+      if ((await Bun.file(join(project, "bg.json")).text()) !== manifest) {
+        throw new Error(`the refused \`bg add ${REFUSED_ITEM}\` changed bg.json`);
+      }
+    });
+  }
+  const added = await step("add", async () => {
+    const stdout = await capture(bg(...addArguments(modules, installed)), project);
     process.stdout.write(stdout);
     const reported = readAddedModules(stdout, modules);
-    expectPatches(reported, "applied", PATCHED);
+    expectPatches(reported, "applied", patched);
     expectRegionsRecorded(JSON.parse(await Bun.file(join(project, "bg.json")).text()), reported);
     return reported;
   });
   // Before `bun install`, so that node_modules and the lockfile are not in the comparison.
-  await phase(timings, "re-add", async () => {
+  await step("re-add", async () => {
     const before = await snapshot(project);
-    const stdout = await capture(bg(...addArguments(modules, items)), project);
-    expectPatches(readAddedModules(stdout, modules), "skipped", PATCHED);
+    const stdout = await capture(bg(...addArguments(modules, installed)), project);
+    expectPatches(readAddedModules(stdout, modules), "skipped", patched);
     const changed = diffTrees(before, await snapshot(project));
     if (changed.length > 0) {
       throw new Error(`the same \`bg add\` again changed the project: ${changed.join(", ")}`);
     }
   });
-  await phase(timings, "install", () => run([BUN, "install"], project));
-  await phase(timings, "typecheck", () => run([BUN, "run", "typecheck"], project));
-  await phase(timings, "test", () => run([BUN, "run", "test"], project));
-  await phase(timings, "build", () => run([BUN, "run", "build"], project));
-  await phase(timings, "doctor", () => run(bg("doctor", "--strict"), project));
-  await phase(timings, "check", () => run([BUN, "run", "check"], project));
+  await step("install", () => run([BUN, "install"], project));
+  await step("typecheck", () => run([BUN, "run", "typecheck"], project));
+  await step("test", () => run([BUN, "run", "test"], project));
+  await step("build", () => run([BUN, "run", "build"], project));
+  await step("doctor", () => run(bg("doctor", "--strict"), project));
+  await step("check", () => run([BUN, "run", "check"], project));
   for (const { module, checks } of added.filter(({ checks }) => checks.length > 0)) {
-    await phase(timings, `checks:${module}`, async () => {
+    await step(`checks:${module}`, async () => {
       for (const command of checks) {
         await run(["sh", "-c", command], project);
       }

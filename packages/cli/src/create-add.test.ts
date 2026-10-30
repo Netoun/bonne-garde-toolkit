@@ -53,7 +53,8 @@ describe("bg create + add", () => {
 
     const listed = await listItems(target);
     expect(listed.some((i) => i.name === "button")).toBe(true);
-    expect(listed.some((i) => i.name === "api-elysia")).toBe(true);
+    // The API shell is the `api/elysia` module now, and `bg list --items` shows items only.
+    expect(listed.some((i) => i.name === "api-elysia")).toBe(false);
 
     // 030: an item that lands in packages/ui needs the ui module, and the error says which command to run.
     const bgBefore = await readFile(join(target, "bg.json"), "utf8");
@@ -106,7 +107,7 @@ describe("bg create + add", () => {
     expect(again.result.skippedIdentical.length).toBeGreaterThan(0);
   });
 
-  test("adds api-elysia shell", async () => {
+  test("adds the api/elysia shell on the cloudflare provider, with no --force", async () => {
     const parent = await mkdtemp(join(tmpdir(), "bg-cli-api-"));
     dirs.push(parent);
     const target = await createProject({
@@ -119,12 +120,15 @@ describe("bg create + add", () => {
 
     await addItems({
       projectRoot: target,
-      items: ["api-elysia"],
+      items: ["config/branding", "provider/cloudflare", "api/elysia"],
       install: false,
     });
 
     const app = await readFile(join(target, "apps/api/src/app.ts"), "utf8");
     expect(app).toContain("/health");
+    expect(await readFile(join(target, "apps/api/src/index.ts"), "utf8")).toBe(
+      'import { serve } from "@api-demo/api-runtime";\nimport { app } from "./app";\n\nexport default serve(app);\n',
+    );
   });
 
   test("creates the spec 010 scratch root and check tooling", async () => {

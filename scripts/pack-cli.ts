@@ -170,7 +170,7 @@ bunx create-bonne-garde my-app --yes
 
 \`\`\`bash
 cd my-app
-bunx bg add api-elysia button --source github:Netoun/bonne-garde-toolkit
+bunx bg add config/branding provider/cloudflare api/elysia ui/shadcn button --source github:Netoun/bonne-garde-toolkit
 \`\`\`
 
 Requires [Bun](https://bun.sh).

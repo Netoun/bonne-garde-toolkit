@@ -129,50 +129,31 @@ files), and anything behind a reverse proxy.
 
 ## Building and running the image
 
-`bg add provider/dockerfile` installs this module's files into a project made with `bg create`, but
-that project is not one this image can be built from. Observed after `bg create`, `bg add
-api-elysia`, `bg add provider/dockerfile`, `bun install`:
-
-- `packages/api-runtime` holds `src/index.ts` and `src/index.test.ts` and no `package.json`, so it
-  is not a workspace: `bun install` does not link it, and `typecheck` and `test` skip it (a root
-  `bun test` does pick the test file up).
-- Nothing imports it. `api-elysia`'s `apps/api/src/index.ts` is `export default { fetch }`, so
-  `bun apps/api/src/index.ts` with `PORT` set answers `/health` and 404s on `/`: no origins, no
-  generated secret, no SPA.
-- The `Dockerfile` runs `bun run --filter '@scope/spa' build`, which exits 1 ("No workspace packages
-  matched") when the project has no SPA workspace, so `docker build` stops there.
-
-So "a generated project" is still built by hand here: a clean export of this repo, which has the
-`@acme/api-runtime` workspace and the SPA, with the module's `template/` written over it. From the
-repo root:
+A project made with `bg create` builds this image once it has the modules the container runs. It
+needs no SPA: the `Dockerfile` builds with the root `build` script, which builds whichever apps the
+project has, and `serve` answers 404 for `GET /` when `apps/spa/build/client` is missing.
 
 ```bash
-S=$(mktemp -d) T=registry/modules/provider/dockerfile/template
-git archive HEAD | tar -x -C "$S"             # clean export: nothing untracked reaches the context
-cp -R "$T"/. "$S"/                            # Dockerfile, .dockerignore, compose.yaml, api-runtime
-sed 's/{{SCOPE}}/@acme/g' "$T/Dockerfile" > "$S/Dockerfile"
-docker build -t bg-dockerfile "$S"
-```
-
-The `.dockerignore` has to sit at the context root, beside the `Dockerfile`; `cp -R "$T"/.` carries
-it, and the two files under `packages/api-runtime/src` replace the Workers variant of that
-package in the export. `index.test.ts` is one of them: left behind, the Workers one asserts
-`aot === false` against code that now says `true`.
-
-Then, with any non-empty key (it is only checked for presence):
-
-```bash
-docker run -d --name bg -p 5172:5172 -e RESEND_API_KEY=re_placeholder bg-dockerfile
+bunx bg create my-app --yes --no-git && cd my-app
+bunx bg add config/branding provider/dockerfile api/elysia     # `add` runs `bun install`: the image needs bun.lock
+docker build -t my-app .
+docker run -d --name my-app -p 5172:5172 my-app
 curl -s localhost:5172/health
-docker rm -f -v bg                    # -v: `VOLUME /data` made an anonymous volume
-
-# or, from the export: compose builds the image and needs the key in its environment
-cd "$S" && RESEND_API_KEY=re_placeholder docker compose up -d
-RESEND_API_KEY=re_placeholder docker compose ps
-RESEND_API_KEY=re_placeholder docker compose down -v --rmi local
+docker rm -f -v my-app                # -v: `VOLUME /data` made an anonymous volume
 ```
 
-It took two fixes to get the image to build, neither of them where the first diagnosis put it:
+Observed on 2026-10-30 (Bun 1.4.2, Docker 29.8.2 on arm64) on a project made that way with
+`provider/dockerfile`, `tooling/vite-plus`, `config/branding` and `api/elysia`, which is golden's
+`dockerfile` configuration: `docker build` completes, the container is `healthy`, `GET /health` answers
+`{"status":"ok",…}`, `GET /openapi` answers 200, and `Origin: http://localhost:5172` is echoed in
+`Access-Control-Allow-Origin`. `docker stop` exits 0 in under a second. Before this module wrote the
+`package.json` of `packages/api-runtime` and the `Dockerfile` stopped naming the SPA,
+`bun run --filter '@scope/spa' build` failed with "No workspace packages matched" on such a project.
+
+`compose.yaml` still refuses to start without `RESEND_API_KEY`, which the API shell no longer reads:
+the `email` module will own it.
+
+Two fixes were needed to get the image to build at all, neither of them where the first diagnosis put it:
 
 - **`bun install --frozen-lockfile` failed** because `bun.lock` was stale — the `apps/cli` →
   `packages/cli` move had never been re-locked — not because of the Bun version. Once re-locked,
