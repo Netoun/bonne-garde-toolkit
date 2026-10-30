@@ -7,5 +7,4 @@ build
 .DS_Store
 *.log
 .turbo
-.acme-init.json
-bg.upgrade/
+.bg/

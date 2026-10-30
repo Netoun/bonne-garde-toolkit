@@ -104,6 +104,40 @@ describe("bg create + add", () => {
     expect(app).toContain("/health");
   });
 
+  test("creates the spec 010 scratch root and check tooling", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "bg-cli-base-"));
+    dirs.push(parent);
+    const target = await createProject({
+      name: "base-demo",
+      cwd: parent,
+      git: false,
+      install: false,
+      registry: repoRegistry(),
+    });
+
+    const gitignore = (await readFile(join(target, ".gitignore"), "utf8")).split("\n");
+    expect(gitignore).toContain(".bg/");
+    expect(gitignore).not.toContain("bg.upgrade/");
+    expect(gitignore).not.toContain(".acme-init.json");
+
+    const pkg = JSON.parse(await readFile(join(target, "package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    for (const script of ["fmt", "lint", "check"]) {
+      expect(pkg.scripts[script]).toStartWith("vp ");
+    }
+
+    // Spec 010: typecheck and test succeed on the empty workspace.
+    for (const script of ["typecheck", "test"]) {
+      const proc = Bun.spawn(["bun", "run", script], {
+        cwd: target,
+        stdout: "ignore",
+        stderr: "pipe",
+      });
+      expect(await proc.exited).toBe(0);
+    }
+  });
+
   test("refuses non-empty target", async () => {
     const parent = await mkdtemp(join(tmpdir(), "bg-cli-busy-"));
     dirs.push(parent);

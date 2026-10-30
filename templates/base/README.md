@@ -8,6 +8,7 @@ bunx bg add api-elysia button
 
 ## Scripts
 
+- `bun run check` — format + lint (Vite+)
 - `bun run typecheck`
 - `bun run test`
 - `bun run dev`

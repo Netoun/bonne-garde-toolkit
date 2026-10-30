@@ -8,15 +8,18 @@
   ],
   "type": "module",
   "scripts": {
-    "dev": "bun run --parallel --filter '*' dev",
-    "build": "bun run --parallel --filter '*' build",
-    "typecheck": "bun run --parallel --filter '*' typecheck",
-    "test": "bun run --parallel --filter '*' test",
-    "check": "echo \"no check configured yet\""
+    "dev": "bun run --parallel --filter '*' --if-present dev",
+    "build": "bun run --parallel --filter '*' --if-present build",
+    "typecheck": "bun run --parallel --filter '*' --if-present typecheck",
+    "test": "bun run --parallel --filter '*' --if-present test",
+    "fmt": "vp fmt --write",
+    "lint": "vp lint",
+    "check": "vp check"
   },
   "devDependencies": {
     "@types/bun": "1.3.14",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "vite-plus": "0.2.8"
   },
   "packageManager": "bun@1.4.2"
 }
