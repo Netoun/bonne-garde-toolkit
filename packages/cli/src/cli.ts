@@ -16,6 +16,15 @@ Usage:
 `;
 }
 
+/** Spec 020: a v1 `bg.json` is rewritten as v2 on the next write, and that is stated, not silent. */
+function manifestMigrationNotice(dryRun: boolean): string {
+  const changes =
+    '"installed" becomes "items", "capabilities" is dropped, and "files" and "regions" start empty';
+  return dryRun
+    ? `bg: bg.json is version 1; a real run will rewrite it as version 2 (${changes}). Not written: --dry-run.`
+    : `bg: rewrote bg.json from version 1 to version 2 (${changes}). Files already in the project are user-owned until re-added.`;
+}
+
 function takeFlag(args: string[], name: string): boolean {
   const index = args.indexOf(name);
   if (index === -1) {
@@ -114,13 +123,16 @@ export async function runCli(argv: string[]): Promise<number> {
     if (args.length === 0) {
       throw new Error("add requires at least one item");
     }
-    const { plan, result } = await addItems({
+    const { plan, result, migratedFrom } = await addItems({
       items: args,
       source,
       dryRun,
       force,
       install: !noInstall,
     });
+    if (migratedFrom !== null) {
+      console.error(manifestMigrationNotice(dryRun));
+    }
     console.log(
       JSON.stringify(
         {

@@ -6,11 +6,16 @@ import {
   resolveInstallPlan,
   searchCatalog,
 } from "@bonne-garde/registry";
-import { parseProjectManifest, type ProjectManifest } from "@bonne-garde/schema";
+import {
+  readProjectManifest,
+  type ProjectManifest,
+  type ProjectManifestRead,
+} from "@bonne-garde/schema";
 
-async function loadManifest(projectRoot: string): Promise<ProjectManifest> {
+/** Reads any supported `bg.json` version as v2; the file on disk is not touched here. */
+async function loadManifest(projectRoot: string): Promise<ProjectManifestRead> {
   const raw = JSON.parse(await readFile(join(projectRoot, "bg.json"), "utf8")) as unknown;
-  return parseProjectManifest(raw);
+  return readProjectManifest(raw);
 }
 
 function defaultSource(manifest: ProjectManifest): string {
@@ -21,7 +26,7 @@ async function resolveSource(projectRoot: string, source?: string): Promise<stri
   if (source) {
     return source;
   }
-  const manifest = await loadManifest(projectRoot);
+  const { manifest } = await loadManifest(projectRoot);
   const fromManifest = defaultSource(manifest);
   if (!fromManifest) {
     throw new Error("no registry configured in bg.json (pass --source)");
@@ -61,7 +66,7 @@ export type AddOptions = {
 
 export async function addItems(options: AddOptions) {
   const projectRoot = resolve(options.projectRoot ?? process.cwd());
-  const manifest = await loadManifest(projectRoot);
+  const { manifest, migratedFrom } = await loadManifest(projectRoot);
   const source = options.source ?? defaultSource(manifest);
   if (!source) {
     throw new Error("no registry configured in bg.json");
@@ -99,7 +104,7 @@ export async function addItems(options: AddOptions) {
     }
   }
 
-  return { plan, result };
+  return { plan, result, migratedFrom };
 }
 
 function parseRegistryIsGithub(source: string): boolean {

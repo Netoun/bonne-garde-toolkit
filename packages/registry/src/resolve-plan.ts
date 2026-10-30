@@ -47,7 +47,7 @@ export function resolveInstallPlan(
       return;
     }
     // Skip already-installed transitive deps; re-include explicitly requested items for idempotent checks.
-    if (manifest.installed[name] && !rootRequested.has(name)) {
+    if (manifest.items[name] && !rootRequested.has(name)) {
       return;
     }
     if (visiting.has(name)) {
@@ -70,8 +70,13 @@ export function resolveInstallPlan(
     visit(name);
   }
 
-  const existingCaps = new Set(manifest.capabilities ?? []);
-  const plannedCaps = new Set(existingCaps);
+  // bg.json stores no capabilities (spec 020), so what is already satisfied is derived: the
+  // `provides` of the catalog entries for the items the manifest records as installed.
+  const plannedCaps = new Set(
+    catalog.items
+      .filter((item) => manifest.items[item.name])
+      .flatMap((item) => itemCapabilities(item).provides),
+  );
   const transforms: string[] = [];
   const npmDependencies = new Set<string>();
   const npmDevDependencies = new Set<string>();

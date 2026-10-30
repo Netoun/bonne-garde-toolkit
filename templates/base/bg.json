@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "scope": "@acme",
   "platform": {
     "version": "0.0.0",
@@ -12,6 +12,9 @@
   "registries": {
     "@bg": "local:./registry"
   },
-  "installed": {},
-  "capabilities": []
+  "apps": [],
+  "modules": {},
+  "items": {},
+  "files": {},
+  "regions": {}
 }

@@ -73,9 +73,9 @@ export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResu
   }
 
   const installedAt = (options.now ?? (() => new Date().toISOString()))();
-  const nextInstalled = { ...options.manifest.installed };
+  const nextItems = { ...options.manifest.items };
   for (const item of options.plan.items) {
-    nextInstalled[item.name] = {
+    nextItems[item.name] = {
       source: `${options.sourceLabel}/${item.name}`,
       version: options.manifest.platform.version,
       installedAt,
@@ -83,8 +83,7 @@ export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResu
   }
   const nextManifest = parseProjectManifest({
     ...options.manifest,
-    installed: nextInstalled,
-    capabilities: options.plan.capabilities,
+    items: nextItems,
   });
 
   if (options.dryRun) {

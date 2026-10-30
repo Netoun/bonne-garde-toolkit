@@ -45,7 +45,7 @@ describe("pack-cli", () => {
     expect(stderr).toBe("");
 
     const bg = await Bun.file(join(parent, "packed-app/bg.json")).json();
-    expect(bg.version).toBe(1);
+    expect(bg.version).toBe(2);
     expect(bg.scope).toBe("@packed-app");
   });
 });
