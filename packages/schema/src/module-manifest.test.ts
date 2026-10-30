@@ -255,14 +255,16 @@ describe("the category table", () => {
   });
 
   it("is the same list project.schema.json allows as a key of `modules`", async () => {
+    const isRecord = (value: unknown): value is Record<string, unknown> =>
+      typeof value === "object" && value !== null;
     const schema: unknown = JSON.parse(
       await readFile(join(import.meta.dir, "../project.schema.json"), "utf8"),
     );
     const modules =
-      typeof schema === "object" && schema !== null && "properties" in schema
-        ? (schema.properties as { modules?: { propertyNames?: { enum?: unknown } } }).modules
-        : undefined;
+      isRecord(schema) && isRecord(schema.properties) ? schema.properties.modules : null;
+    const names =
+      isRecord(modules) && isRecord(modules.propertyNames) ? modules.propertyNames.enum : null;
 
-    expect(modules?.propertyNames?.enum).toEqual([...MODULE_CATEGORIES]);
+    expect(names).toEqual([...MODULE_CATEGORIES]);
   });
 });
