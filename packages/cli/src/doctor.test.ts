@@ -184,6 +184,148 @@ describe("runDoctor: files", () => {
   });
 });
 
+describe("runDoctor: a file with recorded regions is checked by region, not by sha (060, Q5)", () => {
+  const SCRIPT = "bun packages/config/scripts/gen-branding.ts";
+
+  /** A project with `config/branding`, whose root package.json a patch edited. */
+  async function brandingProject(): Promise<string> {
+    const root = await emptyProject();
+    await addItems({ projectRoot: root, items: ["config/branding"], install: false });
+    return root;
+  }
+
+  /** Records the root package.json as a tier-1 file of the module, at the sha it had before the patch. */
+  async function recordRootAsTierOne(root: string, sha256: string): Promise<void> {
+    await editManifest(root, (m) => ({
+      ...m,
+      files: { ...m.files, "package.json": { owner: "config/branding", sha256 } },
+    }));
+  }
+
+  test("a patched file whose sha no longer matches is not user-modified: its regions say what is true", async () => {
+    const root = await brandingProject();
+    await recordRootAsTierOne(root, "a".repeat(64));
+
+    const report = await runDoctor(root);
+
+    expect(codes(report, "files")).toEqual([]);
+    expect(report.checks.files.details).toMatchObject({ byRegion: ["package.json"], modified: [] });
+    expect(report.status).toBe("ok");
+    expect(doctorExitCode(report, true)).toBe(0);
+  });
+
+  test("the same file without regions is user-modified", async () => {
+    const root = await brandingProject();
+    await recordRootAsTierOne(root, "a".repeat(64));
+    await editManifest(root, (m) => ({ ...m, regions: {} }));
+
+    const report = await runDoctor(root);
+
+    expect(codes(report, "files")).toEqual(["file-modified"]);
+  });
+
+  test("a recorded file that is gone is still missing, regions or not", async () => {
+    const root = await brandingProject();
+    await recordRootAsTierOne(root, "a".repeat(64));
+    await unlink(join(root, "package.json"));
+
+    const report = await runDoctor(root);
+
+    expect(codes(report, "files")).toEqual(["file-missing"]);
+  });
+
+  test("its regions are read: a script that was recorded and is still there is fine", async () => {
+    const report = await runDoctor(await brandingProject());
+
+    expect(report.checks.regions.status).toBe("ok");
+    expect(report.checks.regions.details).toMatchObject({
+      files: 1,
+      regions: 1,
+      checked: ["package.json#scripts.gen:branding"],
+      missing: [],
+      foreignEdit: [],
+    });
+  });
+
+  test("a recorded script that was deleted is an error", async () => {
+    const root = await brandingProject();
+    const text = await readFile(join(root, "package.json"), "utf8");
+    await writeFile(join(root, "package.json"), text.replace(/,\n\s*"gen:branding": "[^"]*"/, ""));
+
+    const report = await runDoctor(root);
+
+    expect(codes(report, "regions")).toEqual(["region-missing"]);
+    expect(report.checks.regions.findings[0]).toMatchObject({
+      severity: "error",
+      path: "package.json",
+    });
+    expect(report.checks.regions.findings[0]?.message).toContain("scripts.gen:branding");
+    expect(report.checks.regions.findings[0]?.message).toContain("config/branding");
+    expect(report.checks.regions.details).toMatchObject({
+      missing: ["package.json#scripts.gen:branding"],
+    });
+    expect(doctorExitCode(report, false)).toBe(1);
+  });
+
+  test("a recorded script someone edited is a foreign edit: a warning, so only --strict fails", async () => {
+    const root = await brandingProject();
+    const text = await readFile(join(root, "package.json"), "utf8");
+    await writeFile(join(root, "package.json"), text.replace(SCRIPT, "bun mine.ts"));
+
+    const report = await runDoctor(root);
+
+    expect(codes(report, "regions")).toEqual(["region-foreign-edit"]);
+    expect(report.checks.regions.findings[0]?.severity).toBe("warning");
+    expect(report.checks.regions.findings[0]?.message).toContain('"bun mine.ts"');
+    expect(report.checks.regions.findings[0]?.message).toContain(SCRIPT);
+    expect(report.checks.regions.details).toMatchObject({
+      foreignEdit: ["package.json#scripts.gen:branding"],
+    });
+    expect(doctorExitCode(report, false)).toBe(0);
+    expect(doctorExitCode(report, true)).toBe(1);
+  });
+
+  test("a file that is not JSON cannot hold its recorded regions: an error", async () => {
+    const root = await brandingProject();
+    await writeFile(join(root, "package.json"), "{ nope");
+
+    const report = await runDoctor(root);
+
+    expect(codes(report, "regions")).toEqual(["region-file-invalid"]);
+    expect(report.checks.regions.findings[0]?.severity).toBe("error");
+  });
+
+  test("with a registry doctor cannot read (offline: not a local path), presence is checked and the foreign edit is said to be unchecked", async () => {
+    const root = await brandingProject();
+    await editManifest(root, (m) => ({
+      ...m,
+      registries: { "@bg": "github:Netoun/bonne-garde-toolkit@v0.1.0" },
+    }));
+    const text = await readFile(join(root, "package.json"), "utf8");
+    await writeFile(join(root, "package.json"), text.replace(SCRIPT, "bun mine.ts"));
+
+    const report = await runDoctor(root);
+
+    expect(codes(report, "regions")).toEqual([]);
+    expect(report.checks.regions.notes.join(" ")).toMatch(
+      /foreign edit of config\/branding's regions not checked: .*not local/s,
+    );
+  });
+
+  test("a region of a kind doctor cannot resolve is listed as unchecked, not as an error", async () => {
+    const root = await projectWithButton();
+    await editManifest(root, (m) => ({
+      ...m,
+      regions: { [BUTTON]: { "exports[./x]": "button" } },
+    }));
+
+    const report = await runDoctor(root);
+
+    expect(report.checks.regions.status).toBe("ok");
+    expect(report.checks.regions.details).toMatchObject({ unchecked: [`${BUTTON}#exports[./x]`] });
+  });
+});
+
 describe("runDoctor: manifest", () => {
   test("a missing bg.json is one error, and the other checks are skipped", async () => {
     const root = await emptyProject();

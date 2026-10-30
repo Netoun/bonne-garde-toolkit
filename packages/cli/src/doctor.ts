@@ -1,7 +1,10 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  plannedPatches,
   readInstalledModuleManifest,
+  readScripts,
+  scriptRegion,
   sha256Hex,
   type ModuleManifestLookup,
 } from "@bonne-garde/registry";
@@ -59,10 +62,23 @@ export type FilesDetails = {
   modified: string[];
   missing: string[];
   unreadable: string[];
+  /** Present, and not sha-checked: a patch edits a file with recorded regions, so its regions are read instead. */
+  byRegion: string[];
   /** Always empty: unrecorded files are the consumer's own code. See the note on the check. */
   untrackedButExpected: string[];
 };
-export type RegionsDetails = { files: number; regions: number };
+export type RegionsDetails = {
+  files: number;
+  regions: number;
+  /** `<file>#<region>`, for every region read in its file. */
+  checked: string[];
+  /** Recorded, and gone from the file. */
+  missing: string[];
+  /** Present, and not what the owning module declares. */
+  foreignEdit: string[];
+  /** Of a kind doctor cannot resolve yet: nothing was compared. */
+  unchecked: string[];
+};
 export type PatchesDetails = { applied: number; skipped: number; failed: number };
 export type IntentionsDetails = {
   applied: string[];
@@ -218,6 +234,7 @@ async function checkFiles(
     modified: [],
     missing: [],
     unreadable: [],
+    byRegion: [],
     untrackedButExpected: [],
   };
   const findings: Finding[] = [];
@@ -247,7 +264,11 @@ async function checkFiles(
       }
       continue;
     }
-    if (sha256Hex(bytes) === record.sha256) {
+    if (Object.keys(manifest.regions[path] ?? {}).length > 0) {
+      // A patch rewrote the file `bg.json` recorded the sha256 of, so the sha says nothing about an
+      // edit by the user (060 Checksums): the regions check reads what the patches wrote instead.
+      details.byRegion.push(path);
+    } else if (sha256Hex(bytes) === record.sha256) {
       details.intact += 1;
     } else {
       details.modified.push(path);
@@ -264,6 +285,7 @@ async function checkFiles(
     details.modified.length > 0 ? `${details.modified.length} user-modified` : null,
     details.missing.length > 0 ? `${details.missing.length} missing` : null,
     details.unreadable.length > 0 ? `${details.unreadable.length} unreadable` : null,
+    details.byRegion.length > 0 ? `${details.byRegion.length} checked by region` : null,
   ].filter((part) => part !== null);
   return report(
     `${details.tracked} tracked: ${[`${details.intact} intact`, ...problems].join(", ")}`,
@@ -285,18 +307,73 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
+/** `scripts.<name>` in a `package.json`: the one kind of region a patch writes today. */
+function scriptName(file: string, region: string): string | null {
+  const name = region.startsWith(scriptRegion("")) ? region.slice(scriptRegion("").length) : null;
+  return name !== null && name.length > 0 && file.split("/").at(-1) === "package.json"
+    ? name
+    : null;
+}
+
+/** What a module's `module.json` says its scripts are, by file, for the variant `bg.json` recorded. */
+type DeclaredScripts =
+  | { ok: true; byFile: Map<string, Record<string, string>> }
+  | { ok: false; reason: string };
+
+async function declaredScripts(
+  projectRoot: string,
+  manifest: ProjectManifest,
+  installed: InstalledModule & { category: ModuleCategory },
+): Promise<DeclaredScripts> {
+  const source = defaultSource(manifest);
+  const lookup: ModuleManifestLookup = source
+    ? await readInstalledModuleManifest(
+        source,
+        projectRoot,
+        installed.category,
+        installed.record.id,
+      )
+    : { found: false, reason: "bg.json declares no registry" };
+  if (!lookup.found) {
+    return { ok: false, reason: lookup.reason };
+  }
+  const variant = lookup.manifest.variants.find(({ key }) => key === installed.record.variant);
+  if (variant === undefined) {
+    return { ok: false, reason: `module.json has no variant ${installed.record.variant}` };
+  }
+  const byFile = new Map<string, Record<string, string>>();
+  try {
+    for (const patch of plannedPatches(installed.key, variant)) {
+      byFile.set(patch.file, { ...byFile.get(patch.file), ...patch.scripts });
+    }
+  } catch (error) {
+    return { ok: false, reason: reasonOf(error) };
+  }
+  return { ok: true, byFile };
+}
+
 async function checkRegions(
   projectRoot: string,
   manifest: ProjectManifest,
 ): Promise<CheckReport<RegionsDetails>> {
-  const details: RegionsDetails = { files: 0, regions: 0 };
+  const details: RegionsDetails = {
+    files: 0,
+    regions: 0,
+    checked: [],
+    missing: [],
+    foreignEdit: [],
+    unchecked: [],
+  };
   const findings: Finding[] = [];
+  const notes: string[] = [];
+  const declared = new Map<string, DeclaredScripts>();
 
   for (const [file, owned] of Object.entries(manifest.regions)) {
     const entries = Object.entries(owned);
     details.files += 1;
     details.regions += entries.length;
-    if (!(await pathExists(join(projectRoot, file)))) {
+    const exists = await pathExists(join(projectRoot, file));
+    if (!exists) {
       findings.push({
         severity: "error",
         code: "region-file-missing",
@@ -313,16 +390,83 @@ async function checkRegions(
           message: `region ${region} of ${file} is owned by ${owner}, which is neither an installed item nor an installed module`,
         });
       }
+      if (scriptName(file, region) === null) {
+        details.unchecked.push(`${file}#${region}`);
+      }
+    }
+
+    const scriptRegions = entries.filter(([region]) => scriptName(file, region) !== null);
+    if (!exists || scriptRegions.length === 0) {
+      continue;
+    }
+    let text: string;
+    try {
+      text = await readFile(join(projectRoot, file), "utf8");
+    } catch {
+      continue; // a directory or an unreadable file: `files` reports it when it is a recorded one
+    }
+    const scripts = readScripts(text);
+    if (!scripts.ok) {
+      findings.push({
+        severity: "error",
+        code: "region-file-invalid",
+        path: file,
+        message: `${file} cannot hold its recorded regions (${scripts.reason}): ${scriptRegions.map(([region]) => region).join(", ")}`,
+      });
+      continue;
+    }
+
+    for (const [region, owner] of scriptRegions) {
+      const name = scriptName(file, region) ?? "";
+      const id = `${file}#${region}`;
+      if (!Object.hasOwn(scripts.scripts, name)) {
+        details.missing.push(id);
+        findings.push({
+          severity: "error",
+          code: "region-missing",
+          path: file,
+          message: `${region} is gone from ${file}: recorded for ${owner}, and the file no longer has that script`,
+        });
+        continue;
+      }
+      details.checked.push(id);
+
+      const installed = installedModules(manifest).find(({ key }) => key === owner);
+      if (installed === undefined) {
+        continue; // owned by an item or by nothing installed: `region-owner-unknown` says so
+      }
+      let known = declared.get(owner);
+      if (known === undefined) {
+        known = await declaredScripts(projectRoot, manifest, installed);
+        declared.set(owner, known);
+        if (!known.ok) {
+          notes.push(`foreign edit of ${owner}'s regions not checked: ${known.reason}`);
+        }
+      }
+      const expected = known.ok ? known.byFile.get(file)?.[name] : undefined;
+      if (expected !== undefined && scripts.scripts[name] !== expected) {
+        details.foreignEdit.push(id);
+        findings.push({
+          severity: "warning",
+          code: "region-foreign-edit",
+          path: file,
+          message:
+            `${region} of ${file} is ${JSON.stringify(scripts.scripts[name])}, but ${owner} declares ${JSON.stringify(expected)}: ` +
+            "the project owns it now, and bg add will not overwrite it without --force",
+        });
+      }
     }
   }
 
   return report(
-    `${plural(details.regions, "region")} in ${plural(details.files, "file")}`,
+    `${plural(details.regions, "region")} in ${plural(details.files, "file")}, ${details.checked.length} read`,
     details,
     findings,
     [
-      "foreign edit is not checked: bg.json records who owns a region, not what the region " +
-        "contained, so there is nothing to compare the file against",
+      ...notes,
+      "foreign edit is checked for script regions, against the module.json of the registry bg.json names " +
+        "(bg.json records who owns a region, not what it contained); a region of another kind is listed " +
+        "as unchecked, and nothing was compared for it",
     ],
   );
 }
