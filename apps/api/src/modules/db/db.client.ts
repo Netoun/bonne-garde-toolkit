@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import { authSchema } from "./schemas/db.auth-schema";
+import * as authSchema from "./schemas/db.auth-schema";
 import { coreSchema } from "./schemas/db.core-schema";
 
 const schema = { ...authSchema, ...coreSchema };

@@ -94,13 +94,9 @@ export const organization = sqliteTable(
     slug: text("slug").notNull(),
     logo: text("logo"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
     metadata: text("metadata"),
-    settings: text("settings", { mode: "json" }).$type<{
-      description?: string;
-      primaryColor?: string;
-      secondaryColor?: string;
-    }>(),
+    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+    settings: text("settings", { mode: "json" }),
   },
   (table) => [uniqueIndex("organization_slug_uidx").on(table.slug)],
 );
@@ -195,19 +191,3 @@ export const invitationRelations = relations(invitation, ({ one }) => ({
     references: [user.id],
   }),
 }));
-
-export const authSchema = {
-  user,
-  session,
-  account,
-  verification,
-  organization,
-  member,
-  invitation,
-  userRelations,
-  sessionRelations,
-  accountRelations,
-  organizationRelations,
-  memberRelations,
-  invitationRelations,
-};

@@ -3,17 +3,15 @@ import { organization } from "better-auth/plugins";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { eq, and, isNull } from "drizzle-orm";
 import { createDB } from "@acme/api/modules/db/db.client";
-import {
-  authSchema,
-  member,
-  organization as orgTable,
-} from "@acme/api/modules/db/schemas/db.auth-schema";
+import * as authSchema from "@acme/api/modules/db/schemas/db.auth-schema";
 import { createResendClient, sendEmail } from "@acme/api/lib/email";
 import { VerifyEmailEmail, ResetPasswordEmail } from "@acme/emails";
 import { config } from "@acme/api/lib/app.config";
 import { allowedOrigins } from "@acme/api/lib/origins";
 import { logger } from "@acme/api/lib/logger";
 import { hashPassword, verifyPassword } from "@acme/api/lib/crypto/password";
+
+const { member, organization: orgTable } = authSchema;
 
 function generateSlug(name: string): string {
   const base = name

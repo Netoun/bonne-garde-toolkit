@@ -1,14 +1,14 @@
 import { describe, it, expect } from "bun:test";
-import { getTableColumns, getTableName, is } from "drizzle-orm";
+import { Relations, getTableColumns, getTableName, is } from "drizzle-orm";
 import { SQLiteTable } from "drizzle-orm/sqlite-core";
-import { authSchema } from "@acme/api/modules/db/schemas/db.auth-schema";
+import * as authSchema from "@acme/api/modules/db/schemas/db.auth-schema";
 import { createAuth } from "./auth.config";
 
 // `db.auth-schema.ts` is what `bun run auth:generate` rewrites, from the schema Better Auth
 // resolves out of the options in `auth.config.ts`. A column that exists in the Drizzle file but not
 // in that resolved schema is silently dropped by the next regeneration, and the migration that
 // follows deletes its data.
-describe("createAuth schema", () => {
+describe("auth schema", () => {
   it("declares organization.deletedAt and organization.settings, which the auth module reads", async () => {
     const { tables } = await createAuth().$context;
 
@@ -50,5 +50,15 @@ describe("createAuth schema", () => {
         ]);
       }
     }
+  });
+
+  it("keeps db.auth-schema.ts to what the generator emits, tables and relations", () => {
+    // Anything else in that file, such as an aggregate object, is overwritten by `auth:generate`
+    // while the modules that import it still expect it. Callers use `import * as authSchema`.
+    const handWritten = Object.entries(authSchema).filter(
+      ([, value]) => !is(value, SQLiteTable) && !is(value, Relations),
+    );
+
+    expect(handWritten.map(([name]) => name)).toEqual([]);
   });
 });
