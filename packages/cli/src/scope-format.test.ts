@@ -26,6 +26,7 @@ const SHARED_MODULES = [
   "provider/cloudflare",
   "api/elysia",
   "web/spa",
+  "web/ssr",
   "web/static",
 ];
 /**

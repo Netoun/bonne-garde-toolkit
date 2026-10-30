@@ -182,6 +182,7 @@ describe("the golden project and modules", () => {
       "ui/shadcn",
       "api/elysia",
       "web/spa",
+      "web/ssr",
       "web/static",
       "provider/dockerfile",
     ]);
@@ -435,6 +436,7 @@ describe("the golden project and patches", () => {
         "config/branding": ["scripts.gen:branding"],
         "api/elysia": ["scripts.deploy", "scripts.dev"],
         "web/spa": ["scripts.deploy", "scripts.dev"],
+        "web/ssr": ["scripts.deploy", "scripts.dev"],
         "web/static": ["scripts.deploy", "scripts.dev"],
       },
       dockerfile: {

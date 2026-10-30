@@ -799,7 +799,7 @@ describe("module contract", () => {
     const webModules = async (): Promise<WebModule[]> => {
       const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
       const found = catalog.modules.filter(({ manifest }) => manifest.category === "web");
-      expect(found.map(({ manifest }) => manifest.id).sort()).toEqual(["spa", "static"]);
+      expect(found.map(({ manifest }) => manifest.id).sort()).toEqual(["spa", "ssr", "static"]);
       return found;
     };
     const providerIds = async (): Promise<string[]> => {
