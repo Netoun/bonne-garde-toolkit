@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { join, resolve } from "node:path";
 import { loadLocalRegistry } from "../packages/registry/src/index";
-import { EXCLUDED, selectItems } from "./golden-project";
+import {
+  EXCLUDED,
+  EXCLUDED_MODULES,
+  MODULES,
+  readAddedModules,
+  selectItems,
+  selectModules,
+} from "./golden-project";
 
 const LISTING = [
   "utils\tregistry:lib\tcn() helper for className merging.",
@@ -49,5 +56,119 @@ describe("the golden project", () => {
     const listing = catalog.items.map((item) => `${item.name}\t${item.type}`).join("\n");
 
     expect(selectItems(listing, EXCLUDED).items).toContain("spa-react-router");
+  });
+});
+
+const FULL_LISTING = [
+  LISTING.trimEnd(),
+  "provider/cloudflare\tmodule\tWorkers runtime.",
+  "provider/dockerfile\tmodule\tOne Bun container.",
+  "tooling/vite-plus\tmodule\tVite+ lint and fmt.",
+  "",
+].join("\n");
+
+describe("selectModules", () => {
+  const exclusions = {
+    "provider/cloudflare": "collides with api-elysia",
+    "provider/dockerfile": "one provider per project",
+  };
+
+  test("takes the module lines of `bg list` and skips the items", () => {
+    expect(selectModules(FULL_LISTING, ["tooling/vite-plus"], exclusions)).toEqual({
+      modules: ["tooling/vite-plus"],
+      excluded: [
+        { name: "provider/cloudflare", reason: "collides with api-elysia" },
+        { name: "provider/dockerfile", reason: "one provider per project" },
+      ],
+    });
+  });
+
+  test("installs the modules in the order it was given, not the order `bg list` printed", () => {
+    const { modules } = selectModules(FULL_LISTING, ["tooling/vite-plus", "provider/cloudflare"], {
+      "provider/dockerfile": "one provider per project",
+    });
+    expect(modules).toEqual(["tooling/vite-plus", "provider/cloudflare"]);
+  });
+
+  test("fails on a module that is neither installed nor excluded, and says what to do", () => {
+    expect(() =>
+      selectModules(FULL_LISTING, ["tooling/vite-plus"], { "provider/cloudflare": "x" }),
+    ).toThrow(/provider\/dockerfile.*install.*exclude/s);
+  });
+
+  test("fails on an installed module that `bg list` does not show", () => {
+    expect(() =>
+      selectModules(FULL_LISTING, ["tooling/vite-plus", "tooling/ghost"], exclusions),
+    ).toThrow(/tooling\/ghost/);
+  });
+
+  test("fails on an exclusion for a module the registry no longer lists", () => {
+    expect(() =>
+      selectModules(FULL_LISTING, ["tooling/vite-plus"], { ...exclusions, "auth/ghost": "gone" }),
+    ).toThrow(/auth\/ghost/);
+  });
+
+  test("fails on a module that is both installed and excluded", () => {
+    expect(() =>
+      selectModules(FULL_LISTING, ["tooling/vite-plus", "provider/cloudflare"], exclusions),
+    ).toThrow(/provider\/cloudflare.*both/s);
+  });
+
+  test("fails when nothing is installed, so a broken `bg list` is not a green run", () => {
+    expect(() => selectModules(LISTING, [], {})).toThrow(/no modules/);
+  });
+});
+
+describe("readAddedModules", () => {
+  const output = JSON.stringify({
+    dryRun: false,
+    items: ["utils"],
+    modules: [
+      { module: "tooling/vite-plus", variant: "default", checks: ["bun run check"], files: [] },
+      { module: "provider/cloudflare", variant: "default", files: [] },
+    ],
+    written: [],
+  });
+
+  test("reads each module's key and its checks, none when it declares none", () => {
+    expect(readAddedModules(output, ["tooling/vite-plus"])).toEqual([
+      { module: "tooling/vite-plus", checks: ["bun run check"] },
+      { module: "provider/cloudflare", checks: [] },
+    ]);
+  });
+
+  test("fails when `bg add` did not report a module golden asked for", () => {
+    expect(() => readAddedModules(output, ["tooling/vite-plus", "db/d1"])).toThrow(/db\/d1/);
+  });
+
+  test("fails on output that is not the JSON `bg add` prints", () => {
+    expect(() => readAddedModules("not json", [])).toThrow(/bg add/);
+    expect(() => readAddedModules("{}", [])).toThrow(/modules/);
+    expect(() => readAddedModules('{"modules":[{"module":"a/b","checks":[1]}]}', [])).toThrow(
+      /checks/,
+    );
+  });
+});
+
+describe("the golden project and modules", () => {
+  test("every module the registry lists is installed or left out with a reason", async () => {
+    const catalog = await loadLocalRegistry(
+      join(resolve(import.meta.dir, ".."), "registry/registry.json"),
+    );
+    const listing = catalog.modules
+      .map(({ manifest }) => `${manifest.category}/${manifest.id}\tmodule\t${manifest.description}`)
+      .join("\n");
+
+    const { modules } = selectModules(listing, MODULES, EXCLUDED_MODULES);
+
+    expect(modules).toEqual(["tooling/vite-plus"]);
+  });
+
+  test("leaves every provider out until stage 3: cloudflare collides with api-elysia's wrangler.jsonc", () => {
+    expect(Object.keys(EXCLUDED_MODULES).sort()).toEqual([
+      "provider/cloudflare",
+      "provider/dockerfile",
+    ]);
+    expect(MODULES.some((name) => name.startsWith("provider/"))).toBe(false);
   });
 });

@@ -14,7 +14,7 @@
 | `apps/static` | Vite+ (Vitest) + RTL | `jsdom`                | MSW            | `bun run test`         |
 | `scripts`     | `bun:test`           | Temporary directories  | None           | `bun run test:scripts` |
 
-From root: `bun run test` runs scripts first, then all workspace test scripts in parallel. `bun run verify` is the repo gate (check, typecheck, test, build); CI then runs `bun run golden`, which scaffolds a fresh project from the packed CLI and needs npm.
+From root: `bun run test` runs scripts first, then all workspace test scripts in parallel. `bun run verify` is the repo gate (check, typecheck, test, build); CI then runs `bun run golden`, which scaffolds a fresh project from the packed CLI, installs its modules and items, and runs the quality gate (`bun run check`, then each module's `checks`) in it; it needs npm.
 
 ---
 
