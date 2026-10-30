@@ -2,7 +2,7 @@
 /**
  * The golden project: what a consumer does, end to end, in a fresh directory.
  *
- *   bg create → bg add → bun install → typecheck → test → bg doctor --strict
+ *   bg create → bg add → bun install → typecheck → test → build → bg doctor --strict
  *
  * Any non-zero exit fails the run and names the phase. It needs a real `bun install` against npm,
  * so it is not part of `verify`; CI runs it as its own step.
@@ -124,6 +124,7 @@ async function golden(work: string, timings: Timing[]): Promise<void> {
   await phase(timings, "install", () => run([BUN, "install"], project));
   await phase(timings, "typecheck", () => run([BUN, "run", "typecheck"], project));
   await phase(timings, "test", () => run([BUN, "run", "test"], project));
+  await phase(timings, "build", () => run([BUN, "run", "build"], project));
   await phase(timings, "doctor", () => run(bg("doctor", "--strict"), project));
 }
 

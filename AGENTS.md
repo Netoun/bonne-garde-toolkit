@@ -84,7 +84,7 @@ bun run dev                               # all apps in parallel
 bun run typecheck && bun run test         # full verification
 bun run check                             # vp check (fmt + lint via Vite+)
 bun run verify                            # check + typecheck + all tests + all builds (CI gate)
-bun run golden                            # fresh project: create → add → install → typecheck → test → doctor --strict (needs npm)
+bun run golden                            # fresh project: create → add → install → typecheck → test → build → doctor --strict (needs npm)
 
 bun run --filter @acme/api dev
 bun run --filter @acme/spa dev
