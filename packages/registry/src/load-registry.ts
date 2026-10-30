@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { loadModuleCatalog } from "./module-catalog";
 import type { RegistryCatalog, RegistryItem } from "./types";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -67,6 +68,7 @@ export async function loadLocalRegistry(registryJsonPath: string): Promise<Regis
     name: root.name,
     homepage: root.homepage,
     items,
+    modules: await loadModuleCatalog(rootDir),
     rootDir,
   };
 }
@@ -149,6 +151,7 @@ export async function loadRegistryFromSource(
     name: index.name,
     homepage: index.homepage,
     items: index.items,
+    modules: [],
     rootDir: `github:${parsed.value}`,
   };
 }

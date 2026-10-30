@@ -6,6 +6,7 @@ import type { RegistryCatalog } from "./types";
 const catalog: RegistryCatalog = {
   name: "bg",
   rootDir: "/tmp",
+  modules: [],
   items: [
     {
       name: "utils",

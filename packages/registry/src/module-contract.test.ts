@@ -3,6 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { isModuleCategory, parseModuleManifest } from "@bonne-garde/schema";
+import { loadLocalRegistry } from "./load-registry";
 
 const ROOT = join(import.meta.dir, "../../..");
 const MODULES = join(ROOT, "registry/modules");
@@ -66,5 +67,34 @@ describe("module contract", () => {
     }
 
     expect(ids).toEqual(new Set(["cloudflare", "dockerfile"]));
+  });
+
+  test("every copy glob of every variant matches a file under template/", async () => {
+    const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+    const unmatched: string[] = [];
+
+    for (const { manifest, dir } of catalog.modules) {
+      for (const variant of manifest.variants) {
+        for (const glob of variant.copy ?? []) {
+          const matches = await Array.fromAsync(
+            new Bun.Glob(glob).scan({ cwd: join(dir, "template"), dot: true, onlyFiles: true }),
+          );
+          if (matches.length === 0) {
+            unmatched.push(`${manifest.category}/${manifest.id} ${variant.key}: ${glob}`);
+          }
+        }
+      }
+    }
+
+    expect(unmatched).toEqual([]);
+  });
+
+  test("no module id is also an item name, since `bg add <name>` would be ambiguous", async () => {
+    const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+    const itemNames = new Set(catalog.items.map((item) => item.name));
+
+    expect(
+      catalog.modules.map(({ manifest }) => manifest.id).filter((id) => itemNames.has(id)),
+    ).toEqual([]);
   });
 });
