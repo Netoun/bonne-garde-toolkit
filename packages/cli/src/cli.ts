@@ -11,7 +11,7 @@ Usage:
   bg list [--source <source>]
   bg search <query> [--source <source>]
   bg view <item> [--source <source>]
-  bg add <item...> [--dry-run] [--force] [--no-install] [--source <source>]
+  bg add <item...> [--dry-run] [--force] [--no-install] [--yes] [--source <source>]
   bg intentions lint [--dir <migrations-dir>]
 `;
 }
@@ -119,6 +119,9 @@ export async function runCli(argv: string[]): Promise<number> {
     const dryRun = takeFlag(args, "--dry-run");
     const force = takeFlag(args, "--force");
     const noInstall = takeFlag(args, "--no-install");
+    // Spec 050: --yes selects option defaults and never prompts. `add` has no prompt today, so
+    // honouring it means accepting it; it becomes a real input when module options land.
+    takeFlag(args, "--yes");
     const source = takeOption(args, "--source");
     if (args.length === 0) {
       throw new Error("add requires at least one item");
