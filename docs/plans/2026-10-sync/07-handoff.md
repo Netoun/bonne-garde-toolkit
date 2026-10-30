@@ -17,7 +17,9 @@ the detail; in this order:
 2. **A module install path in `bg add`.** **Done** (`5aa660e`, `588aa53`, `befac8a`, `9e725ad`,
    `28296b5`, `833d2ef`). `bg add` installs a `module.json` module; see "What exists now". CI run
    41044930659 is green.
-3. **The legacy dissolution, in 080's order, not smallest-first.** The plan is
+3. **Installing from a `github:` source.** **Done** (`2eea6a5`, `6a86bc0`); the user put it ahead
+   of the dissolution. A real consumer still needs a tagged release; see the loose ends.
+4. **The legacy dissolution, in 080's order, not smallest-first.** The plan is
    [09-dissolution.md](./09-dissolution.md). **Next action: answer the questions at its end, then
    start at its stage 1 (`tooling`).** Stage 1 depends on none of them.
 
@@ -180,21 +182,34 @@ so the module path of `bg add` is covered by unit tests alone. 09 adds modules t
 
 ## Decisions waiting on the user
 
-- **The GitHub repo was renamed** to `Netoun/bonne-garde-toolkit` on 2026-10-30, and `origin` points
-  there (`git@github.com:Netoun/bonne-garde-toolkit.git`). The local folder is still
-  `bonne-garde-boilerplate`; renaming it orphans
-  `~/.claude/projects/-Users-nicolqs-Workspace-bonne-garde-boilerplate/`.
-- **The legacy apps.** Dissolving `apps/{api,spa,ssr,static}` into registry items is agreed in
-  principle. 06 argues the order must be `bg doctor` → one golden project → extract one item per
-  commit, smallest first, deleting each legacy source only once its item is green. `apps/api` last:
-  87 tests at `a47036e` and the most peers. Both prerequisites now exist (B3, C1); golden's limits
-  are in "What exists now", and Start here step 1 widens what it covers. Go given 2026-10-30; order
-  per 080, see [09](./09-dissolution.md).
-- **`docs/plans/`** — whether a dated audit belongs in git at all. It is committed because the
-  original request asked for a folder; it will go stale and nothing in it is normative.
-- **`EMAIL` binding.** AGENTS.md forbids Cloudflare proprietary APIs outside `DB` and `BUCKET`.
+Only the seven questions at the end of [09](./09-dissolution.md). Everything 07 used to list here was
+decided by the user on 2026-10-30 and moved to the list below.
 
 ## Things already settled — do not re-litigate
+
+- **The GitHub repo is `Netoun/bonne-garde-toolkit`** (renamed 2026-10-30), and `origin` points
+  there. The local folder is still `bonne-garde-boilerplate`; renaming it orphans
+  `~/.claude/projects/-Users-nicolqs-Workspace-bonne-garde-boilerplate/`.
+- **The legacy apps are dissolved into registry modules, in 080's order** (go given 2026-10-30), not
+  smallest-first. The plan is [09](./09-dissolution.md). A legacy source is deleted only once golden
+  is green for the module that replaces it; `apps/api` goes last.
+- **`docs/plans/` stays in git** (2026-10-30). 07 and 08 are how one session hands off to the next,
+  and this list keeps decisions from being re-litigated. None of it is normative. When the first
+  platform release is tagged, move what is still true into `docs/specs/` or `AGENTS.md`, then delete
+  the folder.
+- **No `EMAIL` binding** (2026-10-30). Email goes through Resend, which is plain HTTP and works under
+  both providers, so AGENTS.md's "no Cloudflare proprietary API outside `DB` / `BUCKET`" stands.
+  Cloudflare's `send_email`, which `batch` and `treashunt` use, would come back only as a variant of
+  a future `email` module with `peers.provider: ["cloudflare"]`, and would amend AGENTS.md in the
+  same change. This unblocks 09's stage 5.
+- **`bg record`, not `bg upgrade record`** (2026-10-30, `e4a94e1`). The command records install
+  intentions as well as release ones, so it is top-level.
+- **`add` fails on a user-modified file; `upgrade` keeps it** (2026-10-30, `ee1dbac`). `add`
+  installs a module whole, so keeping the user's file would record a module as installed without it.
+  060's conflict table now says so, matching 050's Errors table.
+- **`--force` takes over a file another owner recorded**, and reports it as `tookOver` (2026-10-30,
+  `ee1dbac`). It is explicit and reported.
+- **Installing from `github:` came before the dissolution** (2026-10-30, `2eea6a5`, `6a86bc0`).
 
 - **`bg doctor` checks only the paths `bg.json` records.** A file `bg.json` does not record is the
   consumer's own code, not drift. This settles 06's unresolved question 1, decided in B3
@@ -259,10 +274,6 @@ so the module path of `bg add` is covered by unit tests alone. 09 adds modules t
   `auth.macro.ts` depend on them. treashunt has the same hole.
 - **`apps/spa/src/hooks/use-session.ts`** is a three-line pass-through. Keep or delete.
 - **`@testing-library/user-event`** is declared in the root `package.json` and imported nowhere.
-- **050 "Errors" against 060's conflict table.** 050 says a collision with a user-modified file
-  **fails** (`--force` overwrites); 060 says **keep, report** (`--force` overwrites). `add` follows 050. Pending decision.
-- **`--force` takes over a file another owner recorded** and reports it as `tookOver`. 060 has no
-  row for a file owned by another owner. Pending decision.
 - **035 says a filled category points at `--replace`; 050 says `bg replace`.** The code follows 050.
 - **Env files.** 035 says `.dev.vars.example` / `.env.example` with no rule to choose; 060 lists
   `env.append` as a patch with `KEY` regions. The code uses the root `.env.example` only, and wrangler
@@ -275,9 +286,19 @@ so the module path of `bg add` is covered by unit tests alone. 09 adds modules t
   kind.
 - **050 `--set key=value` has no rule for which module a key addresses.** Not implemented.
 - **`bg list` shows items only**, because golden runs `bg add` on every line it prints.
-- **A `github:` registry source still refuses file installs** (`packages/cli/src/add.ts:64`).
-  `DEFAULT_PLATFORM_REMOTE` (`github:Netoun/bonne-garde-toolkit`) is a real repo now, so a project
-  created from the published CLI without `--registry local:` cannot `bg add` anything.
+- **`bg add` from a `github:` source works** (`2eea6a5`, `6a86bc0`): items and modules, read
+  file by file from `raw.githubusercontent.com/<owner>/<repo>/<ref>/registry/`. It was smoke-tested
+  against the real repo at `@feat/platform-cli-registry`, from `create` to `doctor --strict`. **A real
+  consumer is still broken**, though. With no `@ref`, the source resolves to `v<platform.version>`
+  (`v0.1.0`), and the repo has no tags while `main` has no `registry/`. That needs a tagged release
+  and a republished CLI.
+- **`github:` limits.** A `copy` glob is refused, because raw HTTP cannot list a directory; spec
+  035's `packages/auth/**` example needs a published file index. A bare name costs about 14 probe
+  requests. `doctor` does not check peers for a github source; it is offline, and leaves a note. A
+  bad `GITHUB_TOKEN` makes raw.githubusercontent.com answer 404 even for a public repo, and the
+  error now says so.
+- **Recorded `items.*.source`** is the source as given (`github:o/r@ref/button`), not 020's
+  `@bg/button`. With no ref, it loses the tag pin.
 - **`templates/base/_gitignore` does not ignore `.react-router/`.**
 - **The spa plan's `npmDependencies` lists `react` and `react@19.2.8` side by side**, with no dedupe.
 - **The SPA root `ErrorBoundary` shows "Unexpected error" on a 404**; `isRouteErrorResponse` would
