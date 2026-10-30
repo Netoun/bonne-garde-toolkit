@@ -860,6 +860,32 @@ describe("module contract", () => {
       }
     });
 
+    test("a peer other than the provider is declared exactly when a source imports its package", async () => {
+      const categoryOf: Record<string, string> = {
+        "{{SCOPE}}/api": "api",
+        "{{SCOPE}}/config": "config",
+        "{{SCOPE}}/ui": "ui",
+      };
+      for (const module of await webModules()) {
+        const imported = new Set<string>();
+        for (const variant of module.manifest.variants) {
+          for (const [, source] of await sourcesOf(module, variant.copy ?? [])) {
+            for (const specifier of specifiersOf(source)) {
+              const category = categoryOf[packageOf(specifier)];
+              if (category !== undefined) {
+                imported.add(category);
+              }
+            }
+          }
+        }
+        const declared = Object.keys(module.manifest.peers).filter((peer) => peer !== "provider");
+        expect([module.manifest.id, [...declared].sort()]).toEqual([
+          module.manifest.id,
+          [...imported].sort(),
+        ]);
+      }
+    });
+
     test("the vendored package.json carries scripts and no dependency map, and no script a variant patches in", async () => {
       for (const module of await webModules()) {
         const { manifest } = module;
