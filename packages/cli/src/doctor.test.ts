@@ -497,6 +497,93 @@ describe("runDoctor: regions", () => {
   });
 });
 
+describe("runDoctor: a failed patch that became a pending intention (060 Degradation)", () => {
+  const ID = "auth/better-auth/patch-ts-elysia-use-apps-api-src-app-ts-elysia-app-use-auth-module";
+  const failed = {
+    type: "ts.elysiaUse",
+    file: "apps/api/src/app.ts",
+    status: "failed" as const,
+    reason: "apps/api/src/app.ts does not exist",
+    intention: ID,
+  };
+
+  async function projectWithFailedPatch(
+    intentions: { applied: string[]; skipped: Record<string, string> } = {
+      applied: [],
+      skipped: {},
+    },
+  ): Promise<string> {
+    const root = await projectWithButton();
+    await editManifest(root, (m) => ({
+      ...m,
+      modules: { auth: [moduleRecord("better-auth", { patches: [failed], intentions })] },
+    }));
+    return root;
+  }
+
+  test("is one pending-intention warning, whether or not .bg/ still holds the file, and not a second one for the patch", async () => {
+    const unstaged = await runDoctor(await projectWithFailedPatch());
+
+    expect(codes(unstaged, "intentions")).toEqual(["intention-pending"]);
+    expect(codes(unstaged, "patches")).toEqual([]);
+    expect(unstaged.checks.intentions.findings[0]?.message).toContain(ID);
+    expect(unstaged.checks.intentions.findings[0]?.message).toContain(failed.reason);
+    expect(unstaged.checks.intentions.findings[0]?.message).toContain("not staged");
+    expect(unstaged.checks.intentions.details?.pending).toEqual([
+      {
+        id: ID,
+        file: null,
+        patch: { type: "ts.elysiaUse", file: failed.file, reason: failed.reason },
+      },
+    ]);
+    expect(doctorExitCode(unstaged, true)).toBe(1);
+    expect(doctorExitCode(unstaged, false)).toBe(0);
+
+    const root = await projectWithFailedPatch();
+    await stage(root, "add", `01-${ID.split("/")[2]}.md`, ID);
+    const staged = await runDoctor(root);
+
+    expect(codes(staged, "intentions")).toEqual(["intention-pending"]);
+    expect(codes(staged, "patches")).toEqual([]);
+    expect(staged.checks.intentions.findings[0]?.message).toContain(
+      `.bg/add/01-${ID.split("/")[2]}.md`,
+    );
+    expect(staged.checks.intentions.details?.pending).toHaveLength(1);
+  });
+
+  test("bg record closes it, applied or skipped: no finding, and --strict is green", async () => {
+    const outcomes: { applied: string[]; skipped: Record<string, string> }[] = [
+      { applied: [ID], skipped: {} },
+      { applied: [], skipped: { [ID]: "no API in this project" } },
+    ];
+    for (const intentions of outcomes) {
+      const root = await projectWithFailedPatch(intentions);
+      await stage(root, "add", `01-${ID.split("/")[2]}.md`, ID);
+
+      const report = await runDoctor(root);
+
+      expect(codes(report, "intentions")).toEqual([]);
+      expect(codes(report, "patches")).toEqual([]);
+      expect(report.checks.patches.details).toMatchObject({ failed: 1 });
+      expect(doctorExitCode(report, true)).toBe(0);
+    }
+  });
+
+  test("a failed patch with no intention, as bg.json recorded one before the conversion existed, is still a patch-failed warning", async () => {
+    const root = await projectWithButton();
+    const { intention: _intention, ...legacy } = failed;
+    await editManifest(root, (m) => ({
+      ...m,
+      modules: { auth: [moduleRecord("better-auth", { patches: [legacy] })] },
+    }));
+
+    const report = await runDoctor(root);
+
+    expect(codes(report, "patches")).toEqual(["patch-failed"]);
+    expect(codes(report, "intentions")).toEqual([]);
+  });
+});
+
 describe("runDoctor: patches", () => {
   test("a failed patch is a warning carrying its module, file and reason", async () => {
     const root = await projectWithButton();

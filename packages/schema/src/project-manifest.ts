@@ -31,12 +31,17 @@ export type AppRecord = {
 
 export type PatchStatus = "applied" | "skipped" | "failed";
 
-/** Outcome of one tier-2 patch (spec 060). `reason` is required when `status` is `failed`. */
+/**
+ * Outcome of one tier-2 patch (spec 060). `reason` is required when `status` is `failed`, and
+ * `intention` then names the pending intention the failure became (spec 065): `bg doctor` reads it
+ * back from here, since `.bg/` is disposable.
+ */
 export type PatchOutcome = {
   type: string;
   file: string;
   status: PatchStatus;
   reason?: string;
+  intention?: string;
 };
 
 /** Same shape as `PlatformIntentions`, with module-scoped ids (`<category>/<module-id>/<slug>`). */
@@ -246,7 +251,7 @@ function parsePatch(value: unknown, where: string): PatchOutcome {
   if (!isRecord(value)) {
     throw new ProjectManifestError(`${where} must be an object`);
   }
-  const { type, file, status, reason } = value;
+  const { type, file, status, reason, intention } = value;
   if (!isNonEmptyString(type)) {
     throw new ProjectManifestError(`${where}.type is required`);
   }
@@ -264,6 +269,17 @@ function parsePatch(value: unknown, where: string): PatchOutcome {
     patch.reason = reason;
   } else if (status === "failed") {
     throw new ProjectManifestError(`${where}.reason is required when status is failed`);
+  }
+  if (intention !== undefined) {
+    if (typeof intention !== "string" || !MODULE_INTENTION_ID_RE.test(intention)) {
+      throw new ProjectManifestError(
+        `${where}.intention must be a canonical intention id (<category>/<module-id>/<slug>)`,
+      );
+    }
+    if (status !== "failed") {
+      throw new ProjectManifestError(`${where}.intention is only recorded for a failed patch`);
+    }
+    patch.intention = intention;
   }
   return patch;
 }

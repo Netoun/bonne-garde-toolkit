@@ -64,8 +64,12 @@ export type ModuleOption = {
   values?: ModuleOptionValue[];
 };
 
-/** A tier-2 patch (spec 060), as declared. The catalog of types is the patch engine's, not the parser's. */
-export type ModulePatch = { type: string } & Record<string, unknown>;
+/**
+ * A tier-2 patch (spec 060), as declared. The catalog of types is the patch engine's, not the parser's.
+ * `intent` is the one field every type shares: the sentence a patch that fails carries into the
+ * pending intention it becomes. It is optional; the engine words one when a module does not.
+ */
+export type ModulePatch = { type: string; intent?: string } & Record<string, unknown>;
 
 export type ModuleVariant = {
   key: string;
@@ -212,6 +216,9 @@ function parsePatches(value: unknown, where: string): ModulePatch[] {
   return value.map((entry: unknown, index) => {
     if (!isRecord(entry) || typeof entry.type !== "string" || entry.type.length === 0) {
       throw new ModuleManifestError(`${where}[${index}].type is required`);
+    }
+    if (entry.intent !== undefined && (typeof entry.intent !== "string" || entry.intent === "")) {
+      throw new ModuleManifestError(`${where}[${index}].intent must be a non-empty string`);
     }
     return { ...entry, type: entry.type };
   });

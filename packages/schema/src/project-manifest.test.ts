@@ -212,6 +212,30 @@ describe("parseProjectManifest (v2)", () => {
     ).toBe("no seam");
   });
 
+  test("a failed patch may name the intention that tracks it, a canonical one, and no other patch may", () => {
+    const withPatch = (patch: Record<string, unknown>) =>
+      v2({ modules: { auth: [{ ...MODULE_RECORD, patches: [patch] }] } });
+    const failed = {
+      type: "ts.elysiaUse",
+      file: "a.ts",
+      status: "failed" as const,
+      reason: "no seam",
+    };
+    const id = "auth/better-auth/patch-ts-elysia-use-a-ts-elysia-app-use-auth-module";
+
+    expect(
+      parseProjectManifest(withPatch({ ...failed, intention: id })).modules.auth?.[0]?.patches[0],
+    ).toEqual({ ...failed, intention: id });
+    expect(() => parseProjectManifest(withPatch({ ...failed, intention: "v0.2.0/x" }))).toThrow(
+      /intention must be a canonical intention id/,
+    );
+    expect(() =>
+      parseProjectManifest(
+        withPatch({ type: "ts.elysiaUse", file: "a.ts", status: "applied", intention: id }),
+      ),
+    ).toThrow(/intention is only recorded for a failed patch/);
+  });
+
   test("rejects a module intention id that is not <category>/<module>/<slug>", () => {
     const bad = { ...MODULE_RECORD, intentions: { applied: ["v0.2.0/align"], skipped: {} } };
     expect(() => parseProjectManifest(v2({ modules: { auth: [bad] } }))).toThrow(/intention/);

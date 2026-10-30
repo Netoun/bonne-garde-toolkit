@@ -27,7 +27,16 @@ export {
   type RegionDeclaration,
   type RegionState,
 } from "./patch-ops";
-export { plannedPatches, type PlannedPatch, type ScriptsMergePatch } from "./patch-plan";
+export {
+  plannedPatches,
+  type AddImportPatch,
+  type AddNamedExportPatch,
+  type ElysiaUsePatch,
+  type JsoncMergePatch,
+  type PlannedPatch,
+  type ScriptsMergePatch,
+} from "./patch-plan";
+export { patchIntentId, patchIntentText, type PendingIntention } from "./pending-intentions";
 export { loadNamedModules, readPlanFiles } from "./remote-install";
 export { readInstalledModuleManifest, type ModuleManifestLookup } from "./read-module-manifest";
 export {

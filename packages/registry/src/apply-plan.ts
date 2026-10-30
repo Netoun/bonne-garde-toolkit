@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   categoryCardinality,
+  isModuleCategory,
   parseProjectManifest,
   type ModuleRecord,
   type ProjectManifest,
@@ -11,6 +12,7 @@ import type { ModulePlan } from "./module-plan";
 import { itemFileTarget, type InstallPlan } from "./resolve-plan";
 import { sha256Hex } from "./sha256";
 import { stageModules, type EnvResult, type TookOver } from "./stage-module";
+import type { PendingIntention } from "./pending-intentions";
 import type { PatchReport } from "./stage-patches";
 import { writeAllOrNothing, type StagedFile } from "./write-tree";
 
@@ -40,6 +42,11 @@ export type ApplyResult = {
   env: EnvResult | null;
   /** What each tier-2 patch did: `applied`, `skipped` or `failed` with its reason, and per region. */
   patches: PatchReport[];
+  /**
+   * The failed patches as pending tier-3 intentions (060 "Degradation", 050 step 11), minus the ones
+   * `bg.json` already records as applied or skipped. Staging them under `.bg/` is the caller's.
+   */
+  pending: PendingIntention[];
 };
 
 async function pathExists(path: string): Promise<boolean> {
@@ -62,7 +69,7 @@ function recordedPatches(
   reports: PatchReport[],
   previous: ModuleRecord | undefined,
 ): ModuleRecord["patches"] {
-  return reports.map(({ type, file, status, reason }, index) => {
+  return reports.map(({ type, file, status, reason, intention }, index) => {
     const before = previous?.patches[index];
     const kept =
       status === "skipped" &&
@@ -74,6 +81,7 @@ function recordedPatches(
       file,
       status: kept ? "applied" : status,
       ...(reason === undefined ? {} : { reason }),
+      ...(status === "failed" && intention !== undefined ? { intention } : {}),
     };
   });
 }
@@ -113,6 +121,17 @@ function withModules(
           : [...records, record];
   }
   return next;
+}
+
+/** An intention `bg.json` records as applied or skipped for its module is a decision, not a gap. */
+function isResolved(manifest: ProjectManifest, { id, module }: PendingIntention): boolean {
+  const [category, moduleId] = module.split("/");
+  const records = isModuleCategory(category) ? (manifest.modules[category] ?? []) : [];
+  const record = records.find((entry) => entry.id === moduleId);
+  return (
+    record !== undefined &&
+    (record.intentions.applied.includes(id) || id in record.intentions.skipped)
+  );
 }
 
 export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResult> {
@@ -190,6 +209,7 @@ export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResu
     tookOver: staging.tookOver,
     env: staging.env,
     patches: staging.patches,
+    pending: staging.pending.filter((intention) => !isResolved(options.manifest, intention)),
   };
 
   if (options.dryRun) {

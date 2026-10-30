@@ -19,7 +19,7 @@ import {
   type ModuleRecord,
   type ProjectManifest,
 } from "@bonne-garde/schema";
-import { readStagedIntentions, type StagedIntention } from "./intentions/staged";
+import { readStagedIntentions } from "./intentions/staged";
 import { defaultSource } from "./manifest-file";
 
 /**
@@ -84,10 +84,19 @@ export type RegionsDetails = {
   unchecked: string[];
 };
 export type PatchesDetails = { applied: number; skipped: number; failed: number };
+/**
+ * An intention that is not resolved: staged under `.bg/` (`file`), and/or the one a failed patch
+ * became, which `bg.json` records and so outlives `.bg/` (`patch`). `file` is `null` when `.bg/` no longer holds it.
+ */
+export type PendingIntention = {
+  id: string;
+  file: string | null;
+  patch?: { type: string; file: string; reason: string };
+};
 export type IntentionsDetails = {
   applied: string[];
   skipped: Record<string, string>;
-  pending: StagedIntention[];
+  pending: PendingIntention[];
 };
 export type PeersDetails = { checked: string[]; unchecked: string[] };
 
@@ -485,7 +494,9 @@ function checkPatches(manifest: ProjectManifest): CheckReport<PatchesDetails> {
   for (const { key, record } of installedModules(manifest)) {
     for (const patch of record.patches) {
       details[patch.status] += 1;
-      if (patch.status === "failed") {
+      // A failed patch that became an intention is reported, once, by the intentions check: pending
+      // there until `bg record` closes it. Only a failure `bg.json` has no intention for is reported here.
+      if (patch.status === "failed" && patch.intention === undefined) {
         findings.push({
           severity: "warning",
           code: "patch-failed",
@@ -521,17 +532,45 @@ async function checkIntentions(
   const resolved = new Set([...applied, ...Object.keys(skippedIntentions)]);
 
   const { staged, unreadable } = await readStagedIntentions(projectRoot);
-  const pending = staged.filter((intention) => !resolved.has(intention.id));
+  // What a failed patch became is in bg.json whether or not `.bg/` still has the file, so it is pending
+  // from there; a staged file whose id a failed patch names carries that patch's reason too.
+  const failures = new Map(
+    modules.flatMap(({ record }) =>
+      record.patches.flatMap(({ type, file, status, reason, intention }) =>
+        status === "failed" && intention !== undefined
+          ? [[intention, { type, file, reason: reason ?? "no reason recorded" }] as const]
+          : [],
+      ),
+    ),
+  );
+  const stagedUnresolved = staged.filter((intention) => !resolved.has(intention.id));
+  const pending: PendingIntention[] = [
+    ...stagedUnresolved.map(({ id, file }): PendingIntention => {
+      const patch = failures.get(id);
+      return patch === undefined ? { id, file } : { id, file, patch };
+    }),
+    ...[...failures]
+      .filter(([id]) => !resolved.has(id) && !stagedUnresolved.some((entry) => entry.id === id))
+      .map(([id, patch]): PendingIntention => ({ id, file: null, patch })),
+  ];
 
+  const record = (id: string) => `bg record ${id} (or bg record ${id} --skip "<reason>")`;
   const findings: Finding[] = [
-    ...pending.map(
-      ({ id, file }): Finding => ({
+    ...pending.map(({ id, file, patch }): Finding => {
+      const why =
+        patch === undefined
+          ? ""
+          : `, the intention of the failed patch ${patch.type} on ${patch.file} (${patch.reason})`;
+      return {
         severity: "warning",
         code: "intention-pending",
-        path: file,
-        message: `${id} is staged in ${file} and not recorded: apply it, then run bg record ${id} (or bg record ${id} --skip "<reason>")`,
-      }),
-    ),
+        ...(file === null ? (patch === undefined ? {} : { path: patch.file }) : { path: file }),
+        message:
+          file === null
+            ? `${id} is pending${why}, and not staged (.bg/ is disposable; bg add of its module stages it again): apply it, then run ${record(id)}`
+            : `${id} is staged in ${file}${why} and not recorded: apply it, then run ${record(id)}`,
+      };
+    }),
     ...unreadable.map(
       ({ file, reason }): Finding => ({
         severity: "warning",

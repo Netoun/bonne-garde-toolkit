@@ -76,6 +76,8 @@ A patch result is `applied`, `skipped`, or `failed` with a reason. Recorded in `
 
 **Degradation (normative):** a `failed` patch MUST NOT abort the whole install and MUST NOT be silently ignored. It is converted into a pending tier-3 intent carrying the patch's intent, target file, and failure reason. `doctor` reports it; the executor protocol of [065](./065-intentions.md) resolves it.
 
+The intention's id is `<category>/<module-id>/patch-<type>-<file>-<first region>` in kebab case (`auth/better-auth/patch-ts-elysia-use-apps-api-src-app-ts-elysia-app-use-auth-module`): the module whose patch failed, so `bg record` finds its record, and a slug made of what the patch is rather than its place in the list, so it is the same on every `add`. `bg.json` records it on the failed patch as `intention`, since `.bg/` is disposable. A patch may carry an optional `intent` sentence for it; the engine words one from the patch when it does not. `add` stages it as `.bg/add/NN-<slug>.md` beside `session.md`, the entry point of 065, and withholds the module's `checks`, which are its Validation, until nothing is pending. `doctor` reports it as pending until `bg record` closes it, applied or skipped.
+
 ## Staging
 
 - All tier-1 and tier-2 writes MUST be computed in a virtual tree before any disk write.

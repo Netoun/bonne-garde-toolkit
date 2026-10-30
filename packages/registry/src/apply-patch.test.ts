@@ -422,6 +422,7 @@ describe("applyInstallPlan: scripts.merge (060)", () => {
         file: "package.json",
         status: "failed",
         reason: "package.json does not exist",
+        intention: "config/branding/patch-scripts-merge-package-json-scripts-gen-branding",
         regions: [],
       });
       // The tier-1 file is installed, the module is recorded, and no region is claimed.
@@ -432,6 +433,7 @@ describe("applyInstallPlan: scripts.merge (060)", () => {
           file: "package.json",
           status: "failed",
           reason: "package.json does not exist",
+          intention: "config/branding/patch-scripts-merge-package-json-scripts-gen-branding",
         },
       ]);
       expect(result.manifest.regions).toEqual({});
@@ -1116,6 +1118,140 @@ export type App = typeof app;
       expect(again.written).toEqual([]);
       expect(await read(projectRoot, FILE)).toBe(expected);
     });
+  });
+});
+
+describe("applyInstallPlan: a failed patch becomes a pending intention (060 Degradation)", () => {
+  const FILE = "apps/api/src/app.ts";
+  const use = {
+    type: "ts.elysiaUse",
+    file: FILE,
+    targetName: "app",
+    argument: "authModule",
+  } satisfies PlannedPatch;
+  const ID = "auth/better-auth/patch-ts-elysia-use-apps-api-src-app-ts-elysia-app-use-auth-module";
+  const auth = (patches: PlannedPatch[] = [use], checks: string[] = ["bun run test"]) =>
+    modulePlan({ category: "auth", id: "better-auth", key: "auth/better-auth", patches, checks });
+  const REASON = "apps/api/src/app.ts does not exist";
+
+  test("a patch made to fail yields a pending intention, not a failed install", async () => {
+    const { projectRoot, manifest } = await freshProject({});
+
+    const result = await install(projectRoot, manifest, [auth()]);
+
+    expect(result.pending).toEqual([
+      {
+        id: ID,
+        module: "auth/better-auth",
+        type: "ts.elysiaUse",
+        file: FILE,
+        intent:
+          "The ts.elysiaUse patch of auth/better-auth makes apps/api/src/app.ts hold: elysia[app].use[authModule] = .use(authModule).",
+        reason: REASON,
+        gaps: ["elysia[app].use[authModule] of apps/api/src/app.ts is .use(authModule)"],
+        checks: ["bun run test"],
+      },
+    ]);
+    expect(result.patches[0]?.intention).toBe(ID);
+    // The failure and the intention that tracks it are what `bg.json` keeps: `.bg/` is disposable.
+    expect(result.manifest.modules.auth?.[0]?.patches).toEqual([
+      { type: "ts.elysiaUse", file: FILE, status: "failed", reason: REASON, intention: ID },
+    ]);
+  });
+
+  test("the module's own `intent` is the sentence the intention carries", async () => {
+    const { projectRoot, manifest } = await freshProject({});
+
+    const result = await install(projectRoot, manifest, [
+      auth([{ ...use, intent: "Register the auth plugin on the API, above its routes" }]),
+    ]);
+
+    expect(result.pending[0]?.intent).toBe("Register the auth plugin on the API, above its routes");
+  });
+
+  test("a patch that applies, or is skipped, leaves nothing pending and no intention in the record", async () => {
+    const { projectRoot, manifest } = await freshProject({
+      [FILE]: 'export const app = new Elysia()\n  .use(a)\n  .get("/", () => 1);\n',
+    });
+
+    const result = await install(projectRoot, manifest, [auth()]);
+    const again = await install(projectRoot, result.manifest, [auth()]);
+
+    expect([result.pending, again.pending]).toEqual([[], []]);
+    expect([result, again].map(({ manifest: next }) => next.modules.auth?.[0]?.patches[0])).toEqual(
+      [
+        { type: "ts.elysiaUse", file: FILE, status: "applied" },
+        { type: "ts.elysiaUse", file: FILE, status: "applied" },
+      ],
+    );
+  });
+
+  test("the same failure on the next add is the same id, and an intention already recorded is not pending again", async () => {
+    const { projectRoot, manifest } = await freshProject({});
+    const first = await install(projectRoot, manifest, [auth()]);
+
+    const second = await install(projectRoot, first.manifest, [auth()]);
+    expect(second.pending.map(({ id }) => id)).toEqual([ID]);
+
+    const outcomes: { applied: string[]; skipped: Record<string, string> }[] = [
+      { applied: [ID], skipped: {} },
+      { applied: [], skipped: { [ID]: "this project has no API" } },
+    ];
+    for (const outcome of outcomes) {
+      const resolved = parseProjectManifest({
+        ...first.manifest,
+        modules: {
+          auth: first.manifest.modules.auth?.map((record) => ({ ...record, intentions: outcome })),
+        },
+      });
+
+      const third = await install(projectRoot, resolved, [auth()]);
+
+      expect(third.pending).toEqual([]);
+      expect(third.manifest.modules.auth?.[0]?.patches[0]).toMatchObject({
+        status: "failed",
+        intention: ID,
+      });
+      expect(third.manifest.modules.auth?.[0]?.intentions).toEqual(outcome);
+    }
+  });
+
+  test("once the patch applies the failure and its intention leave the record, which `bg record` closed or not", async () => {
+    const { projectRoot, manifest } = await freshProject({});
+    const first = await install(projectRoot, manifest, [auth()]);
+    await mkdir(join(projectRoot, "apps/api/src"), { recursive: true });
+    await writeFile(join(projectRoot, FILE), "export const app = new Elysia();\n");
+
+    const fixed = await install(projectRoot, first.manifest, [auth()]);
+
+    expect(fixed.pending).toEqual([]);
+    expect(fixed.manifest.modules.auth?.[0]?.patches).toEqual([
+      { type: "ts.elysiaUse", file: FILE, status: "applied" },
+    ]);
+  });
+
+  test("--dry-run reports what would be pending and writes nothing", async () => {
+    const { projectRoot, manifest } = await freshProject({});
+    await writeFile(join(projectRoot, "bg.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+    const before = await snapshot(projectRoot);
+
+    const result = await install(projectRoot, manifest, [auth()], { dryRun: true });
+
+    expect(result.pending.map(({ id }) => id)).toEqual([ID]);
+    expect(await snapshot(projectRoot)).toEqual(before);
+  });
+
+  test("two failed patches of one module are two intentions, each its own id", async () => {
+    const { projectRoot, manifest } = await freshProject({});
+
+    const result = await install(projectRoot, manifest, [
+      auth([use, { ...use, argument: "dbModule" }]),
+    ]);
+
+    expect(result.pending.map(({ id }) => id)).toEqual([
+      ID,
+      "auth/better-auth/patch-ts-elysia-use-apps-api-src-app-ts-elysia-app-use-db-module",
+    ]);
   });
 });
 

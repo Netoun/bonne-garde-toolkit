@@ -4,17 +4,20 @@ import { PlanError } from "./resolve-plan";
 /**
  * Tier-2 patches as a variant declares them (spec 060), checked. Each type is applied by this CLI
  * or refused at planning time, never skipped: the catalog is closed, and a variant is never
- * installed with a patch it could not apply.
+ * installed with a patch it could not apply. Every type also takes an optional `intent`: the
+ * sentence a failed patch carries into the pending intention it becomes.
  */
 export type ScriptsMergePatch = {
   type: "scripts.merge";
   file: string;
+  intent?: string;
   scripts: Record<string, string>;
 };
 
 export type JsoncMergePatch = {
   type: "jsonc.merge";
   file: string;
+  intent?: string;
   /** The leaves to merge: an object is walked, anything else (an array too) is a leaf written whole. */
   value: Record<string, unknown>;
 };
@@ -22,6 +25,7 @@ export type JsoncMergePatch = {
 export type AddImportPatch = {
   type: "ts.addImport";
   file: string;
+  intent?: string;
   /** With `{{SCOPE}}` rendered: it is the key of the region `bg.json` records. */
   moduleSpecifier: string;
   namedImports: string[];
@@ -30,6 +34,7 @@ export type AddImportPatch = {
 export type AddNamedExportPatch = {
   type: "ts.addNamedExport";
   file: string;
+  intent?: string;
   /** With `{{SCOPE}}` rendered, as for `ts.addImport`. */
   moduleSpecifier: string;
   exports: string[];
@@ -38,6 +43,7 @@ export type AddNamedExportPatch = {
 export type ElysiaUsePatch = {
   type: "ts.elysiaUse";
   file: string;
+  intent?: string;
   /** The exported `const` whose chain gains the `.use`. */
   targetName: string;
   /** The identifier passed to `.use(...)`; importing it is a `ts.addImport` of its own. */
@@ -71,7 +77,9 @@ type Refuse = (why: string) => never;
 
 /** The arguments of a patch are its own: one this type does not know is an authoring error, not ignored. */
 function checkArguments(refuse: Refuse, patch: ModulePatch, known: readonly string[]): void {
-  const unknown = Object.keys(patch).filter((name) => name !== "type" && !known.includes(name));
+  const unknown = Object.keys(patch).filter(
+    (name) => name !== "type" && name !== "intent" && !known.includes(name),
+  );
   if (unknown.length > 0) {
     refuse(`it has an argument it does not know: ${unknown.join(", ")}`);
   }
@@ -245,17 +253,20 @@ export function plannedPatches(key: string, variant: ModuleVariant, scope: strin
     const refuse: Refuse = (why) => {
       throw new PlanError(`${key} declares patch ${patch.type}: ${why}`);
     };
+    const { intent } = patch;
+    const withIntent = <P extends PlannedPatch>(planned: P): P =>
+      intent === undefined ? planned : { ...planned, intent };
     switch (patch.type) {
       case "scripts.merge":
-        return parseScriptsMerge(refuse, patch);
+        return withIntent(parseScriptsMerge(refuse, patch));
       case "jsonc.merge":
-        return parseJsoncMerge(refuse, patch);
+        return withIntent(parseJsoncMerge(refuse, patch));
       case "ts.addImport":
-        return parseAddImport(refuse, patch, scope);
+        return withIntent(parseAddImport(refuse, patch, scope));
       case "ts.addNamedExport":
-        return parseAddNamedExport(refuse, patch, scope);
+        return withIntent(parseAddNamedExport(refuse, patch, scope));
       case "ts.elysiaUse":
-        return parseElysiaUse(refuse, patch);
+        return withIntent(parseElysiaUse(refuse, patch));
       default: {
         const file = typeof patch.file === "string" ? ` on ${patch.file}` : "";
         throw new PlanError(

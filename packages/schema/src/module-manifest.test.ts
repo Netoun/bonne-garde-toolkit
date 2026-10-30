@@ -140,6 +140,23 @@ describe("parseModuleManifest, the fields `bg add` acts on", () => {
     ]);
   });
 
+  it("keeps the `intent` of a patch, the sentence a failed patch carries into its pending intention, and rejects one that is not text", () => {
+    const manifest = parseModuleManifest(
+      variant({
+        patch: [
+          { type: "ts.elysiaUse", file: "a.ts", intent: "Register the auth plugin on the API" },
+        ],
+      }),
+    );
+
+    expect(manifest.variants[0]?.patch?.[0]?.intent).toBe("Register the auth plugin on the API");
+    for (const intent of ["", 3]) {
+      expect(() =>
+        parseModuleManifest(variant({ patch: [{ type: "ts.elysiaUse", intent }] })),
+      ).toThrow(/patch\[0\]\.intent must be a non-empty string/);
+    }
+  });
+
   it("rejects a patch with no type, and a patch that is not a list", () => {
     expect(() => parseModuleManifest(variant({ patch: [{ file: "a.ts" }] }))).toThrow(
       /patch\[0\]\.type is required/,

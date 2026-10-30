@@ -4,6 +4,7 @@ import { readDisk } from "./disk";
 import type { ModulePlan } from "./module-plan";
 import { inspectPatch, patchRegions, writePatch } from "./patch-ops";
 import type { PlannedPatch } from "./patch-plan";
+import { pendingIntention, type PendingIntention } from "./pending-intentions";
 
 /** What one region of a patch did. `replaced` is the text `--force` overwrote (`null`: it was not a string). */
 export type RegionReport = {
@@ -23,6 +24,8 @@ export type PatchReport = {
   status: PatchStatus;
   /** Why a `failed` patch did not apply. */
   reason?: string;
+  /** The id of the pending intention a `failed` patch became (spec 060 "Degradation"). */
+  intention?: string;
   regions: RegionReport[];
 };
 
@@ -32,6 +35,8 @@ export type PatchStaging = {
   regions: Record<string, Record<string, string>>;
   /** The patched files that no module writes in this call, with what they will hold. */
   patched: Map<string, string>;
+  /** The pending intentions the failed patches became, one per id. */
+  pending: PendingIntention[];
   /** Conflicts `--force` does not bypass. */
   refused: string[];
   /** Conflicts `--force` overwrites. */
@@ -66,6 +71,7 @@ export async function stagePatches(options: {
     reports: [],
     regions: {},
     patched: new Map(),
+    pending: [],
     refused: [],
     collisions: [],
   };
@@ -106,8 +112,13 @@ export async function stagePatches(options: {
       };
       staging.reports.push(report);
       const fail = (reason: string) => {
+        const intention = pendingIntention(plan.key, plan.checks, patch, reason);
         report.status = "failed";
         report.reason = reason;
+        report.intention = intention.id;
+        if (!staging.pending.some(({ id }) => id === intention.id)) {
+          staging.pending.push(intention);
+        }
       };
 
       const current = await currentText(file);

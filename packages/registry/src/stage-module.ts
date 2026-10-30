@@ -5,6 +5,7 @@ import { ApplyError } from "./apply-error";
 import { isMissing, readDisk } from "./disk";
 import type { ModulePlan } from "./module-plan";
 import { sha256Hex } from "./sha256";
+import type { PendingIntention } from "./pending-intentions";
 import { stagePatches, type PatchReport } from "./stage-patches";
 import type { StagedFile } from "./write-tree";
 
@@ -39,6 +40,8 @@ export type ModuleStaging = {
   env: EnvResult | null;
   /** What each tier-2 patch did, in plan order. */
   patches: PatchReport[];
+  /** The pending intentions the failed patches became (060 "Degradation"), resolved ones included. */
+  pending: PendingIntention[];
 };
 
 /** Workspace globs of the root `package.json`: the array form or `{ packages: [...] }`. */
@@ -178,6 +181,7 @@ export async function stageModules(options: {
     tookOver: [],
     env: null,
     patches: [],
+    pending: [],
   };
   const refused: string[] = [];
   const collisions: string[] = [];
@@ -232,6 +236,7 @@ export async function stageModules(options: {
     patches = await stagePatchesOn(contents);
   }
   staging.patches = patches.reports;
+  staging.pending = patches.pending;
   staging.regions = patches.regions;
   refused.push(...patches.refused);
   collisions.push(...patches.collisions);

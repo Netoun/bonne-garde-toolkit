@@ -10,6 +10,7 @@ import {
   searchCatalog,
   type GithubOptions,
 } from "@bonne-garde/registry";
+import { stagePendingIntentions, type StagedAdd } from "./intentions/stage-add";
 import { defaultSource, loadManifest } from "./manifest-file";
 
 /**
@@ -134,5 +135,19 @@ export async function addItems(options: AddOptions) {
     }
   }
 
-  return { plan, modulePlans, result, migratedFrom };
+  // 050 step 14: what the failed patches became is staged for whoever resolves it. `.bg/` is scratch,
+  // outside the all-or-nothing apply, and a dry run writes nothing.
+  const resolved = new Set(
+    Object.values(result.manifest.modules).flatMap((records) =>
+      records.flatMap(({ intentions }) => [
+        ...intentions.applied,
+        ...Object.keys(intentions.skipped),
+      ]),
+    ),
+  );
+  const staged: StagedAdd | null = dryRun
+    ? null
+    : await stagePendingIntentions(projectRoot, result.pending, resolved);
+
+  return { plan, modulePlans, result, migratedFrom, staged };
 }

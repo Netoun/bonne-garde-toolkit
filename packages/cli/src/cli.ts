@@ -1,5 +1,6 @@
 import type { IntentionOutcome } from "@bonne-garde/schema";
 import { addItems, searchItems, viewItem } from "./add";
+import { checksNotice } from "./checks-notice";
 import { createProject } from "./create";
 import { doctorExitCode, formatDoctor, runDoctor } from "./doctor";
 import { lintIntentions } from "./intentions/lint";
@@ -150,7 +151,7 @@ export async function runCli(argv: string[]): Promise<number> {
     if (args.length === 0) {
       throw new Error("add requires at least one item or module");
     }
-    const { plan, modulePlans, result, migratedFrom } = await addItems({
+    const { plan, modulePlans, result, migratedFrom, staged } = await addItems({
       items: args,
       source,
       dryRun,
@@ -163,23 +164,32 @@ export async function runCli(argv: string[]): Promise<number> {
     for (const { path, from, by } of result.tookOver) {
       console.error(`bg: ${path} was owned by ${from}; ${by} now owns it`);
     }
-    // Spec 060: a failed patch never aborts the install and is never silent. It becomes a pending
-    // tier-3 intention there; staging intentions is not built, so this says so and doctor keeps it.
+    // Spec 060: a failed patch never aborts the install and is never silent. It is a pending tier-3
+    // intention (050 steps 11 and 14), staged under .bg/add/ with the executor entry point.
     const failedPatches = result.patches.filter((patch) => patch.status === "failed");
-    for (const { type, file, module, reason } of failedPatches) {
+    const stagedAt = new Map((staged?.files ?? []).map(({ id, file }) => [id, file]));
+    for (const { type, file, module, reason, intention } of failedPatches) {
+      const where = intention === undefined ? undefined : stagedAt.get(intention);
+      const resolved =
+        intention !== undefined && !result.pending.some(({ id }) => id === intention);
       console.error(
         `bg: PATCH FAILED ${type} on ${file} (${module}): ${reason}. ` +
-          "Spec 060 turns a failed patch into a pending tier-3 intention; that conversion is not implemented, " +
-          "so make the edit by hand. It is recorded in bg.json and bg doctor reports it.",
+          (intention === undefined
+            ? "Make the edit by hand."
+            : resolved
+              ? `Its intention ${intention} is already recorded in bg.json.`
+              : `It is the pending intention ${intention}, ${where === undefined ? "dry run: nothing staged" : `staged in ${where}`}.`),
       );
     }
-    const unrun = modulePlans.filter((module) => module.checks.length > 0);
-    if (unrun.length > 0) {
+    if (staged !== null) {
       console.error(
-        `bg: checks were not run (spec 050 step 15 is not implemented): ${unrun
-          .map((module) => `${module.key}: ${module.checks.join("; ")}`)
-          .join(" | ")}`,
+        `bg: ${result.pending.length} pending intention${result.pending.length === 1 ? "" : "s"}: ` +
+          `read ${staged.session} and follow it (spec 065), then bg record <id> or bg record <id> --skip "<reason>".`,
       );
+    }
+    const notice = checksNotice(modulePlans, result.pending.length);
+    if (notice !== null) {
+      console.error(notice);
     }
     console.log(
       JSON.stringify(
@@ -207,6 +217,16 @@ export async function runCli(argv: string[]): Promise<number> {
               .map(({ module: _module, ...patch }) => patch),
           })),
           failedPatches,
+          pendingIntentions: result.pending.map(({ id, module, type, file, intent, reason }) => ({
+            id,
+            module,
+            type,
+            file,
+            intent,
+            reason,
+            staged: stagedAt.get(id) ?? null,
+          })),
+          session: staged?.session ?? null,
           written: result.written,
           skippedIdentical: result.skippedIdentical,
           kept: result.kept,

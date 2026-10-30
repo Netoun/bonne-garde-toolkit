@@ -373,6 +373,16 @@ type ModuleOutput = {
     patches: PatchOutput[];
   }[];
   failedPatches: (PatchOutput & { module: string })[];
+  pendingIntentions: {
+    id: string;
+    module: string;
+    type: string;
+    file: string;
+    intent: string;
+    reason: string;
+    staged: string | null;
+  }[];
+  session: string | null;
 };
 
 type PatchOutput = {
@@ -380,6 +390,7 @@ type PatchOutput = {
   file: string;
   status: string;
   reason?: string;
+  intention?: string;
   regions: { region: string; status: string; replaced?: string | null }[];
 };
 
@@ -729,7 +740,7 @@ describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", 
     expect(await readFile(join(target, "package.json"), "utf8")).toBe(clean);
   });
 
-  test("a patch that cannot apply is failed, loudly, and the install and doctor carry it", async () => {
+  test("a patch that cannot apply is a pending intention: staged, reported by doctor, closed by bg record, and the install completes", async () => {
     const target = await freshProject("bg-cli-patch-failed-");
     const root = JSON.parse(await readFile(join(target, "package.json"), "utf8")) as Record<
       string,
@@ -753,6 +764,7 @@ describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", 
     expect(await readFile(join(target, "packages/config/src/index.ts"), "utf8")).toContain(
       "branding",
     );
+    const id = "config/branding/patch-scripts-merge-package-json-scripts-gen-branding";
     const out = JSON.parse(stdout) as ModuleOutput;
     const failed = {
       module: "config/branding",
@@ -760,6 +772,7 @@ describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", 
       file: "package.json",
       status: "failed",
       reason: 'package.json: "scripts" is a string, not an object',
+      intention: id,
       regions: [],
     };
     expect(out.modules[0]?.patches).toEqual([
@@ -768,20 +781,108 @@ describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", 
         file: "package.json",
         status: "failed",
         reason: failed.reason,
+        intention: id,
         regions: [],
       },
     ]);
     expect(out.failedPatches).toEqual([failed]);
-    // Never silent, and honest about what is missing: the conversion into a pending intention (060) is not built.
+    expect(out.pendingIntentions).toEqual([
+      {
+        id,
+        module: "config/branding",
+        type: "scripts.merge",
+        file: "package.json",
+        intent:
+          'The scripts.merge patch of config/branding makes package.json hold: scripts.gen:branding = "bun packages/config/scripts/gen-branding.ts".',
+        reason: failed.reason,
+        staged: `.bg/add/01-${id.split("/")[2]}.md`,
+      },
+    ]);
+    expect(out.session).toBe(".bg/add/session.md");
+    // Never silent: the failure, the id, and where to start.
     expect(stderr).toContain("bg: PATCH FAILED scripts.merge on package.json (config/branding)");
     expect(stderr).toContain(failed.reason);
-    expect(stderr).toContain("not implemented");
+    expect(stderr).toContain(`pending intention ${id}`);
+    expect(stderr).toContain("read .bg/add/session.md");
+    expect(stderr).not.toContain("not implemented");
 
+    // The staged intention and the entry point are on disk, and what bg.json keeps is durable.
+    const staged = await readFile(join(target, out.pendingIntentions[0]?.staged ?? ""), "utf8");
+    expect(staged).toContain(`id: ${id}`);
+    expect(staged).toContain(failed.reason);
+    expect(await readFile(join(target, ".bg/add/session.md"), "utf8")).toContain(id);
+    const bg = JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as {
+      modules: { config: { patches: unknown[] }[] };
+    };
+    expect(bg.modules.config[0]?.patches).toEqual([
+      {
+        type: "scripts.merge",
+        file: "package.json",
+        status: "failed",
+        reason: failed.reason,
+        intention: id,
+      },
+    ]);
+
+    // doctor: one finding for the failure, pending, and --strict fails on it.
     const doctor = await runBg(target, "doctor", "--strict");
     expect(doctor.code).toBe(1);
-    expect(doctor.stdout).toContain("patch-failed");
+    expect(doctor.stdout).toContain("intention-pending");
+    expect(doctor.stdout).toContain(id);
     expect(doctor.stdout).toContain(failed.reason);
+    expect(doctor.stdout).not.toContain("patch-failed");
     expect((await runBg(target, "doctor")).code).toBe(0);
+
+    // The same add again is the same intention in the same file: nothing staged moves.
+    const staging = async () =>
+      (await snapshot(target))[out.pendingIntentions[0]?.staged ?? ""] ?? "missing";
+    const before = await staging();
+    const again = await runBg(target, "add", "config/branding", "--yes", "--no-install");
+    expect(again.code).toBe(0);
+    expect(await staging()).toBe(before);
+
+    // bg record closes it, and the failed patch it came from is no longer a finding.
+    const recorded = await runBg(target, "record", id, "--skip", "this project has no root script");
+    expect(recorded.code).toBe(0);
+    const closed = await runBg(target, "doctor", "--strict");
+    expect(closed.code).toBe(0);
+    expect(closed.stdout).not.toContain("intention-pending");
+    // A resolved intention is not pending again on the next add, though the patch still fails.
+    const last = await runBg(target, "add", "config/branding", "--yes", "--no-install");
+    expect(last.code).toBe(0);
+    expect((JSON.parse(last.stdout) as ModuleOutput).pendingIntentions).toEqual([]);
+    expect((JSON.parse(last.stdout) as ModuleOutput).failedPatches).toHaveLength(1);
+  });
+
+  test("--dry-run reports the intention a failing patch would become, and stages nothing", async () => {
+    const target = await freshProject("bg-cli-patch-dry-failed-");
+    const root = JSON.parse(await readFile(join(target, "package.json"), "utf8")) as Record<
+      string,
+      unknown
+    >;
+    await writeFile(
+      join(target, "package.json"),
+      `${JSON.stringify({ ...root, scripts: "nope" }, null, 2)}\n`,
+    );
+    const before = await snapshot(target);
+
+    const { stdout, stderr, code } = await runBg(
+      target,
+      "add",
+      "config/branding",
+      "--dry-run",
+      "--yes",
+      "--no-install",
+    );
+
+    expect(code).toBe(0);
+    const out = JSON.parse(stdout) as ModuleOutput;
+    expect(out.pendingIntentions.map(({ id, staged }) => [id, staged])).toEqual([
+      ["config/branding/patch-scripts-merge-package-json-scripts-gen-branding", null],
+    ]);
+    expect(out.session).toBeNull();
+    expect(stderr).toContain("dry run: nothing staged");
+    expect(await snapshot(target)).toEqual(before);
   });
 
   test("--dry-run prints the patch and writes nothing", async () => {

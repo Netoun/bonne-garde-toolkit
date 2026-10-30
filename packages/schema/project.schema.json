@@ -163,10 +163,12 @@
               "type": { "type": "string", "minLength": 1 },
               "file": { "$ref": "#/$defs/repoRelativePath" },
               "status": { "enum": ["applied", "skipped", "failed"] },
-              "reason": { "type": "string", "minLength": 1 }
+              "reason": { "type": "string", "minLength": 1 },
+              "intention": { "$ref": "#/$defs/moduleIntentionId" }
             },
             "if": { "properties": { "status": { "const": "failed" } } },
-            "then": { "required": ["reason"] }
+            "then": { "required": ["reason"] },
+            "else": { "not": { "required": ["intention"] } }
           }
         },
         "intentions": {
