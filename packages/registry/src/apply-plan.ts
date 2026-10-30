@@ -1,8 +1,9 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { parseProjectManifest, type ProjectManifest } from "@bonne-garde/schema";
 import type { InstallPlan } from "./resolve-plan";
 import { sha256Hex } from "./sha256";
+import { writeAllOrNothing, type StagedFile } from "./write-tree";
 
 export type ApplyOptions = {
   projectRoot: string;
@@ -50,7 +51,7 @@ async function pathExists(path: string): Promise<boolean> {
 export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResult> {
   const written: string[] = [];
   const skippedIdentical: string[] = [];
-  const staged: Array<{ abs: string; content: string }> = [];
+  const staged: StagedFile[] = [];
   const nextFiles = { ...options.manifest.files };
 
   for (const item of options.plan.items) {
@@ -73,7 +74,7 @@ export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResu
           throw new ApplyError(`collision at ${relTarget} (use --force to overwrite)`);
         }
       }
-      staged.push({ abs: absTarget, content });
+      staged.push({ path: absTarget, content });
       written.push(relTarget);
       nextFiles[relTarget] = { owner: item.name, sha256 };
     }
@@ -98,15 +99,14 @@ export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResu
     return { written, skippedIdentical, manifest: nextManifest };
   }
 
-  for (const file of staged) {
-    await mkdir(dirname(file.abs), { recursive: true });
-    await writeFile(file.abs, file.content, "utf8");
-  }
-  await writeFile(
-    join(options.projectRoot, "bg.json"),
-    `${JSON.stringify(nextManifest, null, 2)}\n`,
-    "utf8",
-  );
+  // `bg.json` goes last: a write that fails anywhere leaves the tree and the manifest as they were.
+  await writeAllOrNothing([
+    ...staged,
+    {
+      path: join(options.projectRoot, "bg.json"),
+      content: `${JSON.stringify(nextManifest, null, 2)}\n`,
+    },
+  ]);
 
   return { written, skippedIdentical, manifest: nextManifest };
 }

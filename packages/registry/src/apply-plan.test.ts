@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -293,6 +293,37 @@ describe("applyInstallPlan: files", () => {
     expect(await bgJson(projectRoot)).toBe(before);
     expect(await readFile(join(projectRoot, "src/a.ts"), "utf8")).toBe("edited by the user");
     await expect(stat(join(projectRoot, "src/new.ts"))).rejects.toThrow();
+  });
+
+  test("a write error midway leaves no new file, no new directory and bg.json as it was", async () => {
+    const { projectRoot, manifest } = await freshProject();
+    const first = await applyInstallPlan({
+      projectRoot,
+      manifest,
+      plan: planOf(libItem("a", { "src/a.ts": "mine" })),
+      sourceLabel: "@bg",
+    });
+    // `blocker` is a file, so `blocker/last.ts` cannot be created: the failure comes after the
+    // writes before it succeeded, which no check made before writing can see.
+    await writeFile(join(projectRoot, "blocker"), "a file in the way");
+    const before = await bgJson(projectRoot);
+
+    await expect(
+      applyInstallPlan({
+        projectRoot,
+        manifest: first.manifest,
+        plan: planOf(
+          libItem("b", { "src/b.ts": "b", "deep/er/c.ts": "c", "blocker/last.ts": "last" }),
+        ),
+        sourceLabel: "@bg",
+      }),
+    ).rejects.toThrow();
+
+    expect(await bgJson(projectRoot)).toBe(before);
+    await expect(stat(join(projectRoot, "src/b.ts"))).rejects.toThrow();
+    await expect(stat(join(projectRoot, "deep"))).rejects.toThrow();
+    expect(await readFile(join(projectRoot, "src/a.ts"), "utf8")).toBe("mine");
+    expect((await readdir(join(projectRoot, "src"))).sort()).toEqual(["a.ts"]);
   });
 
   test("a target that leaves the project is refused before anything is written", async () => {
