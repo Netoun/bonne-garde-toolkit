@@ -1,0 +1,17 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "vite-plus",
+  "category": "tooling",
+  "version": "0.1.0",
+  "title": "Vite+",
+  "description": "Vite+ lint and fmt rules, the staged-files check and its pre-commit hook.",
+  "peers": {},
+  "checks": ["bun run check"],
+  "variants": [
+    {
+      "key": "default",
+      "match": {},
+      "copy": ["vite.config.ts", ".husky/pre-commit"]
+    }
+  ]
+}

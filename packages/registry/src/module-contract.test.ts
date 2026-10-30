@@ -69,6 +69,34 @@ describe("module contract", () => {
     expect(ids).toEqual(new Set(["cloudflare", "dockerfile"]));
   });
 
+  test("tooling/vite-plus is the quality gate: the Vite+ config and the pre-commit hook, no dependencies", async () => {
+    const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+    const found = catalog.modules.find(
+      ({ manifest }) => manifest.category === "tooling" && manifest.id === "vite-plus",
+    );
+    if (!found) {
+      throw new Error("registry/modules/tooling/vite-plus is missing");
+    }
+    const { manifest } = found;
+
+    expect(manifest.peers).toEqual({});
+    expect(manifest.checks).toEqual(["bun run check"]);
+    expect(manifest.variants).toHaveLength(1);
+    const [variant] = manifest.variants;
+    expect(variant?.match).toEqual({});
+    expect(variant?.copy).toEqual(["vite.config.ts", ".husky/pre-commit"]);
+    // A repo-homed module needs an explicit `workspace` to declare dependencies, and `vite-plus` and
+    // `husky` already come with the base template, so there is nothing for it to write into.
+    expect(variant?.workspace).toBeUndefined();
+    expect(variant?.dependencies ?? {}).toEqual({});
+    expect(variant?.devDependencies ?? {}).toEqual({});
+    expect(variant?.patch ?? []).toEqual([]);
+
+    expect(await readFile(join(found.dir, "template/.husky/pre-commit"), "utf8")).toBe(
+      "bunx vp staged\n",
+    );
+  });
+
   test("every copy glob of every variant matches a file under template/", async () => {
     const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
     const unmatched: string[] = [];
