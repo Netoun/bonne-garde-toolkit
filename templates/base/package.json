@@ -13,11 +13,13 @@
     "typecheck": "bun run --parallel --filter '*' --if-present typecheck",
     "test": "bun run --parallel --filter '*' --if-present test",
     "fmt": "vp fmt --write",
-    "lint": "vp lint",
-    "check": "vp check"
+    "lint": "vp lint --no-error-on-unmatched-pattern",
+    "check": "vp check --no-error-on-unmatched-pattern",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@types/bun": "1.3.14",
+    "husky": "9.1.7",
     "typescript": "7.0.2",
     "vite-plus": "0.2.8"
   },
