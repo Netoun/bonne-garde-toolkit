@@ -70,6 +70,3 @@ dependency maps out of a vendored file, so they are ordinary dependencies here.
 
 - The theme names `Urbanist Variable` and `Faustina Variable`. A front loads them (`@fontsource-variable/*`);
   this module does not, and without them the theme falls back to `system-ui` and `Georgia`.
-- Vendored components are formatted with `@acme`. A scope of another length can change where `vp fmt`
-  wraps an import, so `bun run check` may report a vendored file as unformatted after the scope
-  rewrite; `bun run fmt` fixes it.

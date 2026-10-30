@@ -17,6 +17,8 @@ export function assertBranding(value: unknown): Branding {
   }
   const npmScope = record.npmScope as string;
   if (!npmScope.startsWith("@") || npmScope.includes("/")) {
+    // `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+    // oxfmt-ignore
     throw new Error('branding.npmScope must look like "@acme" (no slash)');
   }
   return {
