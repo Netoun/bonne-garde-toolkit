@@ -49,26 +49,29 @@ and that entrypoint lives in `apps/api/src`, which spec 035's package-dedicated 
 a module to write. So the order is: lift the API entrypoint and the runtime-env read into a
 package, then this module becomes installable.
 
-## The build fails today, and the reason is not in this module
+## Building the image
 
-`docker build` was run against this template. It gets through both base stages and dies on
-`bun install --frozen-lockfile`:
+From the repo root, on a clean export so nothing untracked reaches the context:
 
+```bash
+S=$(mktemp -d) T=registry/modules/provider/dockerfile/template
+git archive HEAD | tar -x -C "$S"
+sed 's/{{SCOPE}}/@acme/g' "$T/Dockerfile" > "$S/Dockerfile"
+cp "$T/.dockerignore" "$S/.dockerignore"
+docker build -t bg-dockerfile "$S"
 ```
-bun install v1.3.11
-error: lockfile had changes, but lockfile is frozen
-```
 
-The image pins Bun from the root `package.json` `packageManager`, which says `bun@1.3.11`, while
-`bun.lock` is written by Bun 1.4.2. Bun 1.3.11 resolves that lockfile differently, so a frozen
-install refuses it. This is the same version mismatch that hid the missing `exports` subpaths
-earlier (`bcf680e`'s predecessor `7e99cc2`) — there it only made a bug invisible locally; here it
-stops the build outright.
+The `.dockerignore` has to sit at the context root, beside the `Dockerfile`.
 
-So the first fix is one line in the root `package.json`: `packageManager` to `bun@1.4.2`, which
-also aligns CI, since the workflow takes its Bun version from that same field. It was not changed
-in the commit that added this module because it moves the whole repo's toolchain and deserves its
-own verified change.
+It took two fixes to get here, neither of them where the first diagnosis put it:
 
-Status, precisely: the template's stage layout is sound and harvested from a working image; the
-build has **not** completed; the container has **not** been observed serving traffic.
+- **`bun install --frozen-lockfile` failed** because `bun.lock` was stale — the `apps/cli` →
+  `packages/cli` move had never been re-locked — not because of the Bun version. Once re-locked,
+  1.3.11 accepts it too. The pin moved to 1.4.2 anyway, to match the version that writes the
+  lockfile.
+- **The SPA prerender failed with `ECONNREFUSED 127.0.0.1`.** Debian resolves `localhost` to `::1`
+  first; the build stage now sets `--dns-result-order=ipv4first`, explained in the `Dockerfile`.
+
+Status, precisely: `docker build` **completes** — install and SPA prerender both pass, observed
+2026-10-30 on Bun 1.4.2. The container has **not** been run; per the section above it would serve
+nothing.

@@ -9,7 +9,9 @@ FROM oven/bun:1.4.2 AS bun
 FROM node:24-slim AS build
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 WORKDIR /app
-ENV HUSKY=0
+# Debian resolves `localhost` to ::1 first, so the prerender's Vite preview server listens on ::1
+# while React Router fetches it on 127.0.0.1 and gets ECONNREFUSED. IPv4 first makes both agree.
+ENV HUSKY=0 NODE_OPTIONS=--dns-result-order=ipv4first
 COPY . .
 RUN bun install --frozen-lockfile
 RUN bun run --filter '{{SCOPE}}/spa' build
