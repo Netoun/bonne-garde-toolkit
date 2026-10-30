@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { selectItems } from "./golden-project";
+import { join, resolve } from "node:path";
+import { loadLocalRegistry } from "../packages/registry/src/index";
+import { EXCLUDED, selectItems } from "./golden-project";
 
 const LISTING = [
   "utils\tregistry:lib\tcn() helper for className merging.",
@@ -36,5 +38,16 @@ describe("selectItems", () => {
 
   test("fails when every listed item is excluded", () => {
     expect(() => selectItems("utils\tregistry:lib\tx\n", { utils: "nope" })).toThrow(/no items/);
+  });
+});
+
+describe("the golden project", () => {
+  test("installs every item the registry lists", async () => {
+    const catalog = await loadLocalRegistry(
+      join(resolve(import.meta.dir, ".."), "registry/registry.json"),
+    );
+    const listing = catalog.items.map((item) => `${item.name}\t${item.type}`).join("\n");
+
+    expect(selectItems(listing, EXCLUDED).items).toContain("spa-react-router");
   });
 });

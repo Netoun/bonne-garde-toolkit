@@ -28,12 +28,10 @@ const BUN = "bun";
 
 /**
  * Items `bg list` shows that stay out of the golden project, each with its reason. An entry for an
- * item the registry no longer lists fails the run, so this list cannot go stale.
+ * item the registry no longer lists fails the run, so this list cannot go stale. Empty on purpose:
+ * every item the registry ships is installed, and the test pins that.
  */
-const EXCLUDED: Readonly<Record<string, string>> = {
-  "spa-react-router":
-    "registry/apps/registry.json vendors 3 of the 8 files in the item directory (no src/root.tsx, react-router.config.ts, vite.config.ts), so `react-router typegen` finds no app/root.tsx",
-};
+export const EXCLUDED: Readonly<Record<string, string>> = {};
 
 export type Excluded = { name: string; reason: string };
 
