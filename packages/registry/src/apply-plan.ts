@@ -31,6 +31,8 @@ export type ApplyOptions = {
 export type ApplyResult = {
   written: string[];
   skippedIdentical: string[];
+  /** Files left as the project has them: they carry recorded regions (060), so only the regions were classified. */
+  kept: string[];
   manifest: ProjectManifest;
   /** Files whose recorded owner a module changed: replaced under `--force`, or re-created after a deletion. */
   tookOver: TookOver[];
@@ -183,6 +185,7 @@ export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResu
   const result: ApplyResult = {
     written,
     skippedIdentical,
+    kept: staging.kept,
     manifest: nextManifest,
     tookOver: staging.tookOver,
     env: staging.env,

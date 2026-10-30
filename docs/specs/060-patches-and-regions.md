@@ -86,10 +86,13 @@ A patch result is `applied`, `skipped`, or `failed` with a reason. Recorded in `
 | Target file without regions differs from recorded sha, `add`     | error listing every path; `--force` overwrites                   |
 | Target file without regions differs from recorded sha, `upgrade` | keep, report; `--force` overwrites                               |
 | Target file recorded for another owner                           | error naming both owners; `--force` takes it over and reports it |
+| Target file with regions, edited since written, `add`            | keep, report `kept`; classify its regions (below)                |
 | Region present and equal                                         | `skipped`                                                        |
 | Region present and differing                                     | error; `--force` overwrites                                      |
 | Region owned by another module                                   | error always — `--force` does not bypass                         |
 | Category already filled (`cardinality: one`)                     | error always — use `bg replace`                                  |
+
+A file with recorded regions is never rewritten whole by `add`: when its tier-1 owner asks again and the file changed since it was written, the file is kept and reported `kept`, the patches run on it as it is, and only the regions the call writes are classified, so an edit outside every region is not a conflict. `--force` overwrites a differing region, never the rest of the file. A module that is not the file's tier-1 owner and would write it whole is refused while the file carries another module's regions, as above.
 
 `add` and `upgrade` differ on a user-modified file on purpose. `add` is a request to install a module whole: keeping the user's file would record the module as installed without that file, so it fails and names the paths. `upgrade` moves an installed project forward: it keeps the user's edit and reports it.
 

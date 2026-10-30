@@ -5,7 +5,6 @@ import { ApplyError } from "./apply-error";
 import { isMissing, readDisk } from "./disk";
 import type { ModulePlan } from "./module-plan";
 import { sha256Hex } from "./sha256";
-import { inspectScripts, scriptRegion, setScripts } from "./scripts-merge";
 import { stagePatches, type PatchReport } from "./stage-patches";
 import type { StagedFile } from "./write-tree";
 
@@ -30,6 +29,8 @@ export type ModuleStaging = {
   staged: StagedFile[];
   written: string[];
   skippedIdentical: string[];
+  /** Tier-1 files left as the project has them: they carry recorded regions, so only their regions are classified. */
+  kept: string[];
   /** The `files` records to merge into the manifest. */
   files: Record<string, FileRecord>;
   /** The `regions` records to merge in: one per env key a module added, one per script a patch wrote or found. */
@@ -137,39 +138,6 @@ async function stageEnv(
   };
 }
 
-/** A region of a file the module both writes and patches, whose text on disk is not what its patch declares. */
-type RegionDrift = { region: string; current: string | null; declared: string };
-
-/**
- * For a file a module writes and its own patches then edit: the regions the project changed by hand,
- * when that is the only difference between the disk and what the call would write. The patch is
- * computed on the template there, so it always `applied`; the sha of the whole file says "modified"
- * and not where. `null` when the file differs anywhere else too, which stays a file-level collision.
- */
-function regionDrift(plan: ModulePlan, target: string, onDisk: string, planned: string) {
-  const declared: Record<string, string> = {};
-  for (const patch of plan.patches) {
-    if (patch.file === target) {
-      Object.assign(declared, patch.scripts);
-    }
-  }
-  const inspected = inspectScripts(onDisk, declared);
-  if (!inspected.ok || setScripts(onDisk, declared) !== planned) {
-    return null;
-  }
-  const drift: RegionDrift[] = [];
-  for (const [name, state] of Object.entries(inspected.states)) {
-    if (state.kind === "differs") {
-      drift.push({
-        region: scriptRegion(name),
-        current: state.current,
-        declared: declared[name] ?? "",
-      });
-    }
-  }
-  return drift.length > 0 ? drift : null;
-}
-
 /**
  * 050 steps 10-11 for modules: classify every target against `files` (spec 060), then stage the
  * writes. Nothing touches the disk here. A path the call cannot decide on fails for every module at
@@ -185,6 +153,9 @@ function regionDrift(plan: ModulePlan, target: string, onDisk: string, planned: 
  *   another module, so it follows the row for a file that differs from its recorded sha.
  * - differs and carries regions of another module: rewriting would drop them, so refused, `--force`
  *   or not (060: a region owned by another module is an error always).
+ * - recorded for this module, carrying recorded regions of any module, and changed since it was
+ *   written: kept. Patches are computed on the file as it is, so what is classified is the regions
+ *   this call writes and nothing else; `--force` overwrites a differing region, never the rest.
  * - named by an item and a module, or by two modules, in the same call, or not a regular file:
  *   refused, `--force` or not. Nothing says which of two claimants should win.
  */
@@ -201,6 +172,7 @@ export async function stageModules(options: {
     staged: [],
     written: [],
     skippedIdentical: [],
+    kept: [],
     files: {},
     regions: {},
     tookOver: [],
@@ -212,7 +184,7 @@ export async function stageModules(options: {
 
   // Who writes what, whole: a path two claimants name is refused, and every other target is kept.
   const owners = new Map<string, string>();
-  const contents = new Map<string, string>();
+  let contents = new Map<string, string>();
   for (const plan of plans) {
     await assertWorkspaceCovered(projectRoot, plan);
     for (const { target, content } of plan.files) {
@@ -227,14 +199,38 @@ export async function stageModules(options: {
     }
   }
 
-  const patches = await stagePatches({
-    projectRoot,
-    manifest,
-    plans,
-    tierOne: contents,
-    claimed,
-    force,
-  });
+  const templates = new Map(contents);
+  const stagePatchesOn = (tierOne: Map<string, string>) =>
+    stagePatches({ projectRoot, manifest, plans, tierOne, claimed, force });
+  let patches = await stagePatchesOn(contents);
+
+  // A tier-1 file that carries recorded regions and that the project changed since the module wrote
+  // it is the project's: it is not rewritten, and the patches run on it as it is. Whether it is such
+  // a file is only known against what the patches make of the template (a file that is already that
+  // is skipped), so the patches run a second time, on the project's text, when there is one.
+  const kept = new Map<string, string>();
+  for (const [target, content] of contents) {
+    const recorded = manifest.files[target];
+    if (
+      recorded === undefined ||
+      recorded.owner !== owners.get(target) ||
+      Object.keys(manifest.regions[target] ?? {}).length === 0
+    ) {
+      continue;
+    }
+    const disk = await readDisk(join(projectRoot, target));
+    if (
+      disk.kind === "file" &&
+      disk.content !== content &&
+      sha256Hex(disk.content) !== recorded.sha256
+    ) {
+      kept.set(target, disk.content);
+    }
+  }
+  if (kept.size > 0) {
+    contents = new Map([...templates, ...kept]);
+    patches = await stagePatchesOn(contents);
+  }
   staging.patches = patches.reports;
   staging.regions = patches.regions;
   refused.push(...patches.refused);
@@ -250,7 +246,13 @@ export async function stageModules(options: {
       staging.files[target] = { owner, sha256 };
     };
 
-    if (disk.kind === "other") {
+    if (kept.has(target)) {
+      if (kept.get(target) === content) {
+        staging.kept.push(target);
+      } else {
+        stage();
+      }
+    } else if (disk.kind === "other") {
       refused.push(`${target} exists and is not a regular file`);
     } else if (disk.kind === "absent") {
       const recorded = manifest.files[target];
@@ -266,11 +268,6 @@ export async function stageModules(options: {
         ([, regionOwner]) => regionOwner !== owner,
       );
       const recorded = manifest.files[target];
-      const plan = plans.find((candidate) => candidate.key === owner);
-      const drift =
-        plan !== undefined && recorded?.owner === owner
-          ? regionDrift(plan, target, disk.content, content)
-          : null;
       if (foreign.length > 0) {
         const names = foreign.map(([region]) => region).join(", ");
         const others = [...new Set(foreign.map(([, regionOwner]) => regionOwner))].join(", ");
@@ -283,24 +280,9 @@ export async function stageModules(options: {
         if (recorded !== undefined && recorded.owner !== owner) {
           staging.tookOver.push({ path: target, from: recorded.owner, by: owner });
         }
-        for (const { region, current } of drift ?? []) {
-          const report = staging.patches.find(
-            (entry) => entry.module === owner && entry.file === target,
-          );
-          const replaced = report?.regions.find((entry) => entry.region === region);
-          if (replaced) {
-            replaced.replaced = current;
-          }
-        }
         stage();
       } else if (recorded === undefined) {
         collisions.push(`${target} exists and is not recorded in bg.json`);
-      } else if (recorded.owner === owner && drift !== null) {
-        for (const { region, current, declared } of drift) {
-          collisions.push(
-            `${region} of ${target} is ${current === null ? "not a string" : JSON.stringify(current)}, which differs from what ${owner} declares (${JSON.stringify(declared)})`,
-          );
-        }
       } else if (recorded.owner === owner) {
         collisions.push(`${target} was modified since ${owner} wrote it`);
       } else {

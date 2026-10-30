@@ -359,6 +359,7 @@ type ModuleOutput = {
   dryRun: boolean;
   written: string[];
   skippedIdentical: string[];
+  kept: string[];
   tookOver: { path: string; from: string; by: string }[];
   modules: {
     module: string;
@@ -492,6 +493,7 @@ describe("bg add <module>", () => {
     const out = JSON.parse(stdout) as ModuleOutput;
     expect(out.written).toEqual([]);
     expect(out.skippedIdentical).toEqual(CLOUDFLARE_FILES);
+    expect(out.kept).toEqual([]);
     expect(out.modules[0]?.env.map((key) => key.status)).toEqual(["present", "present"]);
     const after = await snapshot(target);
     const withoutInstalledAt = (tree: Record<string, string>) =>
@@ -963,26 +965,23 @@ describe("bg add api/elysia: a module that vendors a file and patches it (035, 0
     expect(await readFile(join(target, FILE), "utf8")).toBe(clean);
   });
 
-  test("an edit outside the regions is a modified file: the re-add fails naming the file, and --force overwrites it", async () => {
+  test("an edit outside the regions is not a conflict: the re-add keeps the file and says so, --force or not", async () => {
     const { target } = await installed("bg-cli-api-file-", "cloudflare");
     const clean = await readFile(join(target, FILE), "utf8");
     const body = JSON.parse(clean) as Record<string, unknown>;
-    await writeFile(
-      join(target, FILE),
-      `${JSON.stringify({ ...body, license: "MIT" }, null, 2)}\n`,
-    );
-    const edited = await snapshot(target);
+    const edited = `${JSON.stringify({ ...body, license: "MIT" }, null, 2)}\n`;
+    await writeFile(join(target, FILE), edited);
 
-    const refused = await runBg(target, "add", "api/elysia", "--yes", "--no-install");
+    for (const flags of [[], ["--force"]]) {
+      const again = await runBg(target, "add", "api/elysia", "--yes", "--no-install", ...flags);
 
-    expect(refused.code).toBe(1);
-    expect(refused.stderr).toContain(`${FILE} was modified since api/elysia wrote it`);
-    expect(await snapshot(target)).toEqual(edited);
-
-    const forced = await runBg(target, "add", "api/elysia", "--yes", "--no-install", "--force");
-
-    expect(forced.code).toBe(0);
-    expect(await readFile(join(target, FILE), "utf8")).toBe(clean);
+      expect(again.code).toBe(0);
+      const out = JSON.parse(again.stdout) as ModuleOutput;
+      expect(out.kept).toEqual([FILE]);
+      expect(out.written).toEqual([]);
+      expect(out.modules[0]?.patches[0]?.status).toBe("skipped");
+      expect(await readFile(join(target, FILE), "utf8")).toBe(edited);
+    }
   });
 
   test("without a provider it fails naming the category, and without the config module it names that", async () => {

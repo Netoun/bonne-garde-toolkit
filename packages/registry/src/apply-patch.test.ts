@@ -257,24 +257,81 @@ describe("applyInstallPlan: scripts.merge (060)", () => {
       ]);
     });
 
-    test("an edit anywhere else in the file is a modified file, whether or not a region was edited too", async () => {
+    test("an edit outside every region is not a conflict: the file is kept, --force or not", async () => {
       const { projectRoot, manifest } = await freshProject({});
       const first = await install(projectRoot, manifest, [vendoring()]);
-      const clean = await read(projectRoot, FILE);
+      const edited = (await read(projectRoot, FILE)).replace(
+        '"name": "@demo/api"',
+        '"name": "@demo/api", "license": "MIT"',
+      );
+      await writeFile(join(projectRoot, FILE), edited);
+      const before = await snapshot(projectRoot);
 
-      for (const edited of [
-        clean.replace('"name": "@demo/api"', '"name": "@demo/api", "license": "MIT"'),
-        clean
-          .replace('"name": "@demo/api"', '"name": "@demo/api", "license": "MIT"')
-          .replace(DEV, "bun my-own-dev.ts"),
-      ]) {
-        await writeFile(join(projectRoot, FILE), edited);
+      for (const force of [false, true]) {
+        const again = await install(projectRoot, first.manifest, [vendoring()], { force });
 
-        await expect(install(projectRoot, first.manifest, [vendoring()])).rejects.toThrow(
-          /apps\/api\/package\.json was modified since api\/elysia wrote it/,
-        );
-        expect(await read(projectRoot, FILE)).toBe(edited);
+        expect(again.kept).toEqual([FILE]);
+        expect(again.written).toEqual([]);
+        expect(again.skippedIdentical).toEqual([]);
+        expect(again.patches[0]).toMatchObject({
+          status: "skipped",
+          regions: [{ region: "scripts.dev", status: "skipped" }],
+        });
+        expect(again.manifest.files).toEqual(first.manifest.files);
+        expect(await snapshot(projectRoot)).toEqual(before);
       }
+    });
+
+    test("an edit of a region is the conflict, named as the region, whatever else was edited", async () => {
+      const { projectRoot, manifest } = await freshProject({});
+      const first = await install(projectRoot, manifest, [vendoring()]);
+      const edited = (await read(projectRoot, FILE))
+        .replace('"name": "@demo/api"', '"name": "@demo/api", "license": "MIT"')
+        .replace(DEV, "bun my-own-dev.ts");
+      await writeFile(join(projectRoot, FILE), edited);
+
+      const failure = await install(projectRoot, first.manifest, [vendoring()]).then(
+        () => "",
+        (error: Error) => error.message,
+      );
+
+      expect(failure).toMatch(/scripts\.dev of apps\/api\/package\.json is "bun my-own-dev\.ts"/);
+      expect(failure).not.toMatch(/modified since/);
+      expect(await read(projectRoot, FILE)).toBe(edited);
+
+      await install(projectRoot, first.manifest, [vendoring()], { force: true });
+
+      // --force overwrites the region and nothing else: the project's own edit is still there.
+      expect(await read(projectRoot, FILE)).toBe(edited.replace("bun my-own-dev.ts", DEV));
+    });
+
+    test("a patch of another module is applied to the file as the project has it", async () => {
+      const { projectRoot, manifest } = await freshProject({});
+      const first = await install(projectRoot, manifest, [vendoring()]);
+      const edited = (await read(projectRoot, FILE)).replace(
+        '"name": "@demo/api"',
+        '"name": "@demo/api", "license": "MIT"',
+      );
+      await writeFile(join(projectRoot, FILE), edited);
+
+      const other = await install(projectRoot, first.manifest, [
+        modulePlan({
+          category: "dev",
+          id: "other",
+          key: "dev/other",
+          patches: [patch({ lint: "vp lint" }, FILE)],
+        }),
+      ]);
+
+      expect(JSON.parse(await read(projectRoot, FILE))).toEqual({
+        name: "@demo/api",
+        license: "MIT",
+        scripts: { test: "bun test", dev: DEV, lint: "vp lint" },
+      });
+      expect(other.manifest.regions[FILE]).toEqual({
+        "scripts.dev": "api/elysia",
+        "scripts.lint": "dev/other",
+      });
     });
 
     test("the same install again reports the patch skipped and writes nothing", async () => {
@@ -482,7 +539,7 @@ describe("applyInstallPlan: scripts.merge (060)", () => {
       expect(files).toEqual(firstFiles);
     });
 
-    test("a region of another module in that file makes a re-write refuse, --force or not", async () => {
+    test("a region of another module in that file keeps the owner's re-add from rewriting it, and makes any other writer refuse, --force or not", async () => {
       const { projectRoot, manifest } = await freshProject({});
       const first = await install(projectRoot, manifest, [plan()]);
       const other = await install(projectRoot, first.manifest, [
@@ -495,9 +552,26 @@ describe("applyInstallPlan: scripts.merge (060)", () => {
       ]);
       const before = await snapshot(projectRoot);
 
+      // The tier-1 owner asks again: the file is the project's now, and dev/other's script is in it.
       for (const force of [false, true]) {
-        await expect(install(projectRoot, other.manifest, [plan()], { force })).rejects.toThrow(
-          /apps\/api\/package\.json carries scripts\.lint, owned by dev\/other; writing api\/elysia's version would drop it/,
+        const again = await install(projectRoot, other.manifest, [plan()], { force });
+        expect(again.kept.concat(again.skippedIdentical)).toEqual(["apps/api/package.json"]);
+        expect(again.written).toEqual([]);
+      }
+      expect(await snapshot(projectRoot)).toEqual(before);
+
+      // Another module writing the whole file would drop dev/other's region: refused.
+      const intruder = () =>
+        modulePlan({
+          category: "dev",
+          id: "intruder",
+          key: "dev/intruder",
+          files: [{ target: "apps/api/package.json", content: vendored }],
+          patches: [],
+        });
+      for (const force of [false, true]) {
+        await expect(install(projectRoot, other.manifest, [intruder()], { force })).rejects.toThrow(
+          /apps\/api\/package\.json carries scripts\.dev, scripts\.lint, owned by api\/elysia, dev\/other; writing dev\/intruder's version would drop them/,
         );
       }
       expect(await snapshot(projectRoot)).toEqual(before);

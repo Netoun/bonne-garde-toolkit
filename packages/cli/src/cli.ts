@@ -209,6 +209,7 @@ export async function runCli(argv: string[]): Promise<number> {
           failedPatches,
           written: result.written,
           skippedIdentical: result.skippedIdentical,
+          kept: result.kept,
           tookOver: result.tookOver,
           envFile: result.env?.file ?? null,
           npmDependencies: plan.npmDependencies,
