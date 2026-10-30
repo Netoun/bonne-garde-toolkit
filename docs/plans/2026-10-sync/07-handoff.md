@@ -5,31 +5,23 @@ Written 2026-10-29 at `HEAD` of `feat/platform-cli-registry`. Read this, then
 
 ## Start here
 
-**One line, with evidence behind it: bump `packageManager` to `bun@1.4.2` in the root
-`package.json`.**
+**P1 is done (2026-10-30). Next: P2, then A1 or B1 — see [08-plan.md](./08-plan.md).**
 
-`bun.lock` is written by Bun 1.4.2 and `packageManager` says `bun@1.3.11`. A `docker build` of the
-new `provider/dockerfile` template proved what that costs:
+The diagnosis this file first gave for P1 was wrong. It blamed the Bun version for
+`error: lockfile had changes, but lockfile is frozen`; in fact `--frozen-lockfile` failed under
+1.4.2 as well, because `bun.lock` had never been re-locked after the `apps/cli` → `packages/cli`
+move. Bun 1.3.11 accepts the re-locked file. A second, unrelated cause then stopped the image in
+the SPA prerender (`ECONNREFUSED 127.0.0.1`, Debian's `::1`-first `localhost`). `docker build` of
+the dockerfile template now completes; the build recipe is in that module's README.
 
-```
-bun install v1.3.11
-error: lockfile had changes, but lockfile is frozen
-```
-
-The same mismatch already hid a real bug once: three `@acme/api/lib/*` subpaths were imported
-without being declared in `exports`, which Bun 1.4.x resolves by falling back to the file path and
-1.3.11 refuses. It was invisible locally and failed only in CI. Now it also stops any container
-build. CI takes its Bun version from that same field (`bun-version-file: package.json`), so the
-bump aligns local, CI and the image at once.
-
-Do it in its own commit, then re-run the Docker build to confirm (`docker info` worked on this
-machine; the materialised-template recipe is in the dockerfile module's README).
+Not yet observed: CI on #16 past the install step. The branch was not pushed with these commits.
 
 ## State of the branch
 
-Nine commits on top of the 2026-10 sync work. `bun run verify` exits **0** at `HEAD`: `vp check`,
-typecheck (platform + legacy), 130-odd tests, intentions lint, registry build and all four app
-builds.
+Nine commits on top of the 2026-10 sync work, plus P1's three. `bun install --frozen-lockfile &&
+bun run verify` exits **0** on a clean `git archive` export: `vp check`, typecheck (platform +
+legacy), 153 tests, intentions lint, registry build and all four app builds. Before the re-lock,
+`verify` was only green on a warm local `node_modules`; CI never got past install.
 
 | Commit    | What                                                                                                         |
 | --------- | ------------------------------------------------------------------------------------------------------------ |
@@ -40,7 +32,10 @@ builds.
 | `0728ef9` | Planned the providers and reordered 06 behind them                                                           |
 | `b53b499` | Added the `provider` category to spec 035                                                                    |
 | `bcf680e` | Lifted the runtime env read out of `app.config.ts`                                                           |
-| _this_    | `parseModuleManifest`, the module contract test, and the two provider modules                                |
+| `0252837` | `parseModuleManifest`, the module contract test, and the two provider modules                                |
+| `f7c17c1` | P1: re-locked `bun.lock` after the CLI move — the actual CI fix                                              |
+| `375c4dd` | P1: pinned Bun 1.4.2 at all four sites — alignment only                                                      |
+| `59b79fa` | P1: `ipv4first` in the dockerfile build stage; `docker build` completes                                      |
 
 ## What is left, and in what shape
 
@@ -51,7 +46,7 @@ The remainder is not one line. Two shared prerequisites, then two independent tr
 
 |             |                                                                                                                          |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------ |
-| **P1**      | Align the Bun pin to 1.4.2 (four sites). Proven necessary by a failed `docker build`.                                    |
+| **P1**      | **Done.** Re-locked `bun.lock` (the real CI fix), pinned Bun 1.4.2, and `docker build` completes.                        |
 | **P2**      | Bring `templates/base` up to spec 010, which it breaks in three places.                                                  |
 | **Track A** | Finish the providers: a package for the API entry, then make `provider/dockerfile` run, then verify it before saying so. |
 | **Track B** | `bg.json` v2 → `add` records `files`/`regions`/`modules` → `bg doctor` → `bg record`.                                    |
@@ -121,17 +116,20 @@ its `_gitignore` ignores `bg.upgrade/`, a name no spec uses any more (`.bg/` is 
 
 ## Loose ends worth one line each
 
-- **CI is red on #16** for 2 tests of 128, in `apps/api/src/modules/media/media.routes.test.ts`:
-  "Unhandled error between tests" with an empty body under Bun 1.3.11. Auto-fix was turned **off**
-  deliberately. The `packageManager` bump is the first thing to try.
+- **CI on #16:** the latest runs died at `bun install`, nine seconds in. The 2 failing tests in
+  `apps/api/src/modules/media/media.routes.test.ts` ("Unhandled error between tests", empty body,
+  Bun 1.3.11) came from older runs. The first push after P1 is the first run to reach them on 1.4.2.
+  Auto-fix was turned **off** deliberately.
 - **`bg create /absolute/path/my-app`** slugifies the whole path into the scope
   (`@private-tmp-...-my-app`). `slugify(options.name)` at `packages/cli/src/create.ts:59` should
   take `basename(resolve(...))`.
 - **`bun run gen:commands`** emits unformatted Markdown, so `verify` fails immediately after it
   runs. The generator wants a `vp fmt --write` at the end.
-- **`bun.lock` declares `"name": "treashunt"`** at the root. Harmless, and fixing it means
-  regenerating the lockfile, which prunes 94 lines including `better-sqlite3`, needed by
-  `drizzle-kit studio`.
+- **`bun.lock` declares `"name": "treashunt"`** at the root. Harmless. P1's re-lock did not rename
+  it. The prune it would cost has already happened (`f7c17c1`).
+- **`db:studio` is broken:** `drizzle-kit studio` runs without `--config`, looks for
+  `drizzle.config.json`, and exits 1. It needs `--config ./src/modules/db/db.config.ts` and
+  credentials for the local D1 file.
 - **`auth:generate` is still destructive.** `organization.deletedAt` and `organization.settings`
   are hand-written in the generated `db.auth-schema.ts` while `organization()` declares no `schema`
   or `additionalFields`, so a regeneration drops both columns — and `auth.config.ts` and

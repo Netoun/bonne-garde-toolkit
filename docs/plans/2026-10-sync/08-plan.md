@@ -27,10 +27,17 @@ this session's findings.
 
 ## P1 — Align the Bun pin
 
-**Why:** proven, not supposed. A `docker build` of `registry/modules/provider/dockerfile` dies on
-`bun install --frozen-lockfile` with `error: lockfile had changes` under Bun 1.3.11, because
-`bun.lock` is written by 1.4.2. The same mismatch hid three missing `exports` subpaths for a whole
-session — invisible locally, red in CI.
+**Done 2026-10-30 — and the premise below was wrong.** `bun install --frozen-lockfile` failed
+under 1.4.2 too: `bun.lock` was stale, because the `apps/cli` → `packages/cli` move and three
+`@types/bun` devDependencies were never re-locked. The re-lock was the CI fix, and Bun 1.3.11
+accepts the re-locked file. The pin moved to 1.4.2 anyway, for alignment. The image build then
+failed on a second, unrelated cause — the SPA prerender's `ECONNREFUSED 127.0.0.1` under Debian's
+`::1`-first `localhost` — fixed in the template. Details in the dockerfile module's README.
+
+**Why (as first written, kept for the record):** a `docker build` of
+`registry/modules/provider/dockerfile` dies on `bun install --frozen-lockfile` with
+`error: lockfile had changes` under Bun 1.3.11, because `bun.lock` is written by 1.4.2. The same
+mismatch hid three missing `exports` subpaths for a whole session — invisible locally, red in CI.
 
 **Touch:** `package.json` (`packageManager`), `templates/base/package.json` (`packageManager`), and
 the two `FROM oven/bun:1.3.11` lines in
@@ -40,7 +47,7 @@ the two `FROM oven/bun:1.3.11` lines in
 
 **Accept:**
 
-- `bun install --frozen-lockfile` exits 0 (it already does locally; the point is CI and the image).
+- `bun install --frozen-lockfile` exits 0 (it did **not** locally either; see above).
 - `docker build -f <materialised template> .` gets past `bun install` and through the SPA build.
   The recipe is in the dockerfile module's README; remember the `.dockerignore` has to sit beside
   the Dockerfile at the context root.
