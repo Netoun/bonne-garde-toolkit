@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import { Relations, getTableColumns, getTableName, is } from "drizzle-orm";
-import { SQLiteTable } from "drizzle-orm/sqlite-core";
+import { Relations, SQL, getTableColumns, getTableName, is, type Column } from "drizzle-orm";
+import { SQLiteSyncDialect, SQLiteTable } from "drizzle-orm/sqlite-core";
 import * as authSchema from "@acme/api/modules/db/schemas/db.auth-schema";
 import { createAuth } from "./auth.config";
 
@@ -60,5 +60,34 @@ describe("auth schema", () => {
     );
 
     expect(handWritten.map(([name]) => name)).toEqual([]);
+  });
+
+  it("keeps the SQLite default of every date column Better Auth defaults to now", async () => {
+    // The CLI emits `.default(sql\`(cast(unixepoch('subsecond') ...))\`)` only when
+    // `defaultValue.toString()` contains "new Date()", and Bun prints that function as
+    // `() => new Date`. Under `bunx --bun` it drops every one of these defaults without an error,
+    // and `db:generate` then rebuilds five tables without them. The script stays on `bunx`, which
+    // honors the CLI's node shebang.
+    const { tables } = await createAuth().$context;
+    const dialect = new SQLiteSyncDialect();
+    const checked: string[] = [];
+    const withoutDefault: string[] = [];
+
+    for (const table of Object.values(authSchema).filter((value) => is(value, SQLiteTable))) {
+      const model = getTableName(table);
+      const columns: Record<string, Column> = getTableColumns(table);
+
+      for (const [name, field] of Object.entries(tables[model]?.fields ?? {})) {
+        if (field.type !== "date" || typeof field.defaultValue !== "function") continue;
+
+        const column = columns[name]?.default;
+        const expression = is(column, SQL) ? dialect.sqlToQuery(column).sql : "";
+        checked.push(`${model}.${name}`);
+        if (!expression.includes("unixepoch('subsecond')")) withoutDefault.push(`${model}.${name}`);
+      }
+    }
+
+    expect(checked).toContain("user.createdAt");
+    expect(withoutDefault).toEqual([]);
   });
 });
