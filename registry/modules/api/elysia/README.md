@@ -54,10 +54,11 @@ modules import them, and the contract test pins the same two.
 
 `app.ts` has one marked place, between the last `.use()` and the routes, where a `ts.elysiaUse`
 patch (spec 060) adds `.use(<module>)` for `db`, `auth` and `storage` without reformatting the
-chain. The patch is built; the contract test pins the name `app`, the `new Elysia(runtimeOptions)`
-start and the place of the comment. No module uses it yet: `apps/api` has to depend on the package
-whose module is imported, no patch can write that dependency (060: `jsonc.merge` refuses
-`{{SCOPE}}`), and `orm/drizzle` explains what that leaves open.
+chain. The contract test pins the name `app`, the `new Elysia(runtimeOptions)` start and the place
+of the comment. `orm/drizzle` plugs `dbModule` in there: a `package.dependencies` patch declares
+`{{SCOPE}}/db` in this app's `package.json` (the import cannot resolve without it), `ts.addImport`
+adds the import and `ts.elysiaUse` the `.use`. Added after this module, in one call or later, it
+changes nothing in what this module wrote, and adding this module alone again keeps the file.
 
 ## Placeholders to replace
 

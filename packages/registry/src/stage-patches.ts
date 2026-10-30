@@ -46,6 +46,31 @@ export type PatchStaging = {
 type Text = { ok: true; text: string } | { ok: false; reason: string };
 
 /**
+ * A tier-1 file as its owner wrote it: `template` with the owner's own patches on that file and no
+ * other module's, each region it names written when absent. This is what `bg.json` records the
+ * sha256 of, so that the record is the same whether another module's patches land in the same call or
+ * in a later one, and a file nobody else touched still counts as untouched.
+ */
+export function ownVersion(plan: ModulePlan, target: string, template: string): string {
+  return plan.patches
+    .filter(({ file }) => file === target)
+    .reduce((text, patch) => {
+      const inspected = inspectPatch(text, patch);
+      if (!inspected.ok) {
+        return text;
+      }
+      const absent = new Set(
+        patchRegions(patch)
+          .map(({ region }) => region)
+          .filter(
+            (region) => (inspected.states.get(region) ?? { kind: "absent" }).kind === "absent",
+          ),
+      );
+      return absent.size > 0 ? writePatch(text, patch, absent) : text;
+    }, template);
+}
+
+/**
  * Spec 060 tier 2, in the virtual tree. `tierOne` holds what each module file of this call will
  * contain; a patch reads and rewrites that, or the file on disk, and a later patch on the same file
  * sees the earlier one. Nothing is written here. A patch that cannot apply is a `failed` report and

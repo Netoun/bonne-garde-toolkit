@@ -6,7 +6,7 @@ import { isMissing, readDisk } from "./disk";
 import type { ModulePlan } from "./module-plan";
 import { sha256Hex } from "./sha256";
 import type { PendingIntention } from "./pending-intentions";
-import { stagePatches, type PatchReport } from "./stage-patches";
+import { ownVersion, stagePatches, type PatchReport } from "./stage-patches";
 import type { StagedFile } from "./write-tree";
 
 /**
@@ -243,11 +243,15 @@ export async function stageModules(options: {
 
   for (const [target, content] of contents) {
     const owner = owners.get(target) ?? "";
-    // What the module wrote, not what the patches made of it: a patch rewrites the file whether it
-    // runs in this call or a later one, and the record has to be the same either way. Recorded
-    // after the patches, the file would count as untouched the next time the owner is added alone,
-    // and a project's edit would be overwritten (or the add refused, for the regions of others).
-    const sha256 = sha256Hex(templates.get(target) ?? content);
+    // What the owner wrote: the template and its own patches, and no other module's (`ownVersion`).
+    // A patch of another module rewrites the file whether it runs in this call or a later one, so
+    // the record has to be the same either way. Recorded after those patches, the file would count
+    // as untouched the next time the owner is added alone, and the add would be refused (the regions
+    // of others) or would overwrite a project's edit.
+    const plan = plans.find(({ key }) => key === owner);
+    const sha256 = sha256Hex(
+      plan === undefined ? content : ownVersion(plan, target, templates.get(target) ?? content),
+    );
     const disk = await readDisk(join(projectRoot, target));
     const stage = () => {
       staging.staged.push({ path: join(projectRoot, target), content });

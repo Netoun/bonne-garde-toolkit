@@ -71,7 +71,7 @@ For every copied file, `bg.json` records the owner and the SHA-256 of what was w
 | differs              | user-modified   | see the conflict policy: `add` fails, `upgrade` keeps |
 | file absent          | deleted by user | report in `doctor`; re-create only on explicit `add`  |
 
-**A file with recorded regions is checked region by region.** A patch rewrites a file whose tier-1 sha `bg.json` recorded, so the whole-file sha no longer matches and says nothing about a user edit. `doctor` skips the sha check for that file and reports its regions instead ([Region ownership](#region-ownership)). The conflict policy below classifies it by region too: the sha rows apply to a file without recorded regions. The sha recorded is that of the file as the module wrote it, before any patch, whether the patch runs in the same call or a later one, so the owner added alone again finds the file changed and keeps it.
+**A file with recorded regions is checked region by region.** A patch rewrites a file whose tier-1 sha `bg.json` recorded, so the whole-file sha no longer matches and says nothing about a user edit. `doctor` skips the sha check for that file and reports its regions instead ([Region ownership](#region-ownership)). The conflict policy below classifies it by region too: the sha rows apply to a file without recorded regions. The sha recorded is that of the file as its owner wrote it, the owner's own patches included and no other module's, whether those run in the same call or a later one, so the owner added alone again keeps a file another module patched and replaces one nobody touched.
 
 ## Patch outcomes
 

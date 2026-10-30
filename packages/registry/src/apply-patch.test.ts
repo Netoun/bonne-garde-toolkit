@@ -506,7 +506,7 @@ describe("applyInstallPlan: scripts.merge (060)", () => {
         patches: [patch({ dev: "wrangler dev" }, "apps/api/package.json")],
       });
 
-    test("is written once, patched, with the sha256 of what the module wrote and not of what the patch made of it", async () => {
+    test("is written once, patched, with the sha256 of what landed", async () => {
       const { projectRoot, manifest } = await freshProject({});
 
       const result = await install(projectRoot, manifest, [plan()]);
@@ -517,7 +517,7 @@ describe("applyInstallPlan: scripts.merge (060)", () => {
       });
       expect(result.manifest.files["apps/api/package.json"]).toEqual({
         owner: "api/elysia",
-        sha256: sha256Hex(vendored),
+        sha256: sha256Hex(landed),
       });
       expect(result.manifest.regions["apps/api/package.json"]).toEqual({
         "scripts.dev": "api/elysia",
@@ -1532,7 +1532,7 @@ describe("applyInstallPlan: a module asked for again after a call that composed 
     }
   });
 
-  test("the record of a one-call install is the one two calls leave: what the module wrote, not what the patches made of it", async () => {
+  test("the record of a one-call install is the one two calls leave: what the module wrote, not what another module's patches made of it", async () => {
     const oneCall = await freshProject(files());
     const together = await install(oneCall.projectRoot, oneCall.manifest, [d1(), drizzle()]);
     const twoCalls = await freshProject(files());
@@ -1588,6 +1588,34 @@ export const app = new Elysia()
 
     expect(again.kept).toEqual([FILE]);
     expect(await onDisk(projectRoot, again.manifest)).toEqual(tree);
+  });
+
+  test("a vendored file the module patches itself, which nobody else touched, is replaced when the module's template changes", async () => {
+    const V1 = '{\n  "name": "tools",\n  "scripts": {\n    "a": "1"\n  }\n}\n';
+    const V2 =
+      '{\n  "name": "tools",\n  "version": "2.0.0",\n  "scripts": {\n    "a": "1"\n  }\n}\n';
+    const tool = (content: string) =>
+      modulePlan({
+        category: "dev",
+        id: "tool",
+        key: "dev/tool",
+        files: [{ target: "tools/package.json", content }],
+        patches: [patch({ b: "2" }, "tools/package.json")],
+      });
+    const { projectRoot, manifest } = await freshProject({});
+    const first = await install(projectRoot, manifest, [tool(V1)]);
+
+    const second = await install(projectRoot, first.manifest, [tool(V2)]);
+
+    // The recorded sha is what the module wrote, its own patch included: the file is as it was left.
+    expect(second.written).toEqual(["tools/package.json"]);
+    expect(JSON.parse(await read(projectRoot, "tools/package.json"))).toMatchObject({
+      version: "2.0.0",
+      scripts: { a: "1", b: "2" },
+    });
+    const third = await install(projectRoot, second.manifest, [tool(V2)]);
+    expect(third.written).toEqual([]);
+    expect(third.skippedIdentical).toEqual(["tools/package.json"]);
   });
 
   test("a vendored file the project edited and whose region it deleted gets the region back, and is still the project's afterwards", async () => {
