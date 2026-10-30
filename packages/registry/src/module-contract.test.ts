@@ -1501,6 +1501,8 @@ describe("module contract", () => {
       });
     });
 
+    // This proves the text and its format. It does not prove the specifier resolves: `packages/db` has
+    // to depend on `@app/auth`, and no patch can write that (jsonc.merge refuses `{{SCOPE}}`).
     test("the schema barrel takes the patches `auth` and `storage` bring, and stays what the formatter writes", async () => {
       const file = "packages/db/src/schema/index.ts";
       const barrel = await ormText(file);

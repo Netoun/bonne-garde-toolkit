@@ -29,7 +29,7 @@ Everything in `packages/db`, which 035 gives to `db` and `orm` together:
 | `tsconfig.json`      | extends the project's; `bun` types, and the Workers types through `src/d1.ts`'s reference |
 | `tsconfig.test.json` | the same, with the tests                                                                  |
 | `src/d1.ts`          | `D1_BINDING`, `bindD1(env)` and `readD1()`                                                |
-| `src/d1.test.ts`     | five tests against a real D1                                                              |
+| `src/d1.test.ts`     | five tests: one against a real D1 (Miniflare), four on the path with no binding           |
 
 It declares `{{SCOPE}}/api-runtime` (`workspace:*`), and `@cloudflare/workers-types` and `miniflare`
 as dev dependencies, pinned. `miniflare` runs the tests' D1: workerd with an in-memory SQLite, the
