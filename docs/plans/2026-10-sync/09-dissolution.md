@@ -227,6 +227,8 @@ verify` exits 0 at every commit, and legacy tests keep running until their tree 
 
 ### Stage 1: `tooling` (080 step 1). Waits for nothing.
 
+**Done 2026-10-30** (`ff73081`, `c1c2b5b`, `0d5d7eb`, `d69f4d0`, `0c862a2`; CI run 41052607189). Golden installs `tooling/vite-plus` with no `--force`, then runs `bun run check` and the module's `checks` (total about 11s). Two things the plan below got wrong: an empty base fails `vp check` with "No files found to lint" once `vite.config.ts` is gone, so base's `lint` and `check` take `--no-error-on-unmatched-pattern`; and the three dropped `lint.overrides` are not legacy-only, since generated code lands at 035's homes, so stage 2 re-adds them keyed on those homes. `bg list` now prints modules (`<category>/<id>\tmodule\t…`), takes `--items` and `--category`, rejects unknown arguments, and lists no modules from a `github:` source (raw HTTP has no directory listing).
+
 - **Scope:** `registry/modules/tooling/vite-plus/` (`module.json`, README, `template/vite.config.ts`,
   `template/.husky/pre-commit`, `checks: ["bun run check"]`); base alignment per (a); `bg list` prints
   modules and takes `--items` and `--category` (050); golden takes modules from its list, then runs
@@ -302,11 +304,11 @@ templates/base | grep vite.config` prints nothing; `bg list --items` prints what
   it (035 acceptance).
 - **Size:** about 70 files: engine 12, `db` 14, `orm` 12, `auth` 22, tests that travel.
 
-### Stage 5: `email`, `queue`, `storage` (080 step 5). Waits for the `EMAIL` bullet in 07.
+### Stage 5: `email`, `queue`, `storage` (080 step 5). Waits for nothing new (no `EMAIL` binding, settled in 07).
 
 - **Scope:** `storage/r2` (row 15) and `email/resend` (row 16, renamed `emails` to `email`). `queue`
   has nothing to extract. The `cloudflare` email adapter is the `EMAIL` binding AGENTS.md forbids,
-  so it ships only if that decision goes the other way; the default is `memory` and Resend.
+  so it does not ship (settled in 07); the adapters are `memory` and Resend.
 - **Watch:** `email` comes after `auth` in 035's order, so it wires itself into `auth` (a patch on
   a known seam, else the first tier-3 intent), never the reverse.
 - **Deletes:** nothing yet, for the same reason as stage 4.

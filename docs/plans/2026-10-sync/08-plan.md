@@ -414,4 +414,4 @@ bun run golden                            # expect 0; packs the CLI, `bun instal
 gh pr checks 16 --repo Netoun/bonne-garde-toolkit
 ```
 
-Then [09](./09-dissolution.md): answer its questions, and start at stage 1, in its own commit.
+Then [09](./09-dissolution.md): its questions are answered and stage 1 is done; continue at the first stage not marked **Done**.
