@@ -25,6 +25,8 @@ const SHARED_MODULES = [
   "ui/shadcn",
   "provider/cloudflare",
   "api/elysia",
+  "db/d1",
+  "orm/drizzle",
   "web/spa",
   "web/ssr",
   "web/static",

@@ -199,6 +199,8 @@ describe("the golden project and modules", () => {
       "config/branding",
       "ui/shadcn",
       "api/elysia",
+      "db/d1",
+      "orm/drizzle",
       "web/spa",
       "web/ssr",
       "web/static",
@@ -459,6 +461,22 @@ describe("the golden project and patches", () => {
       cloudflare: {
         "config/branding": ["scripts.gen:branding"],
         "api/elysia": ["scripts.deploy", "scripts.dev"],
+        "db/d1": [
+          "d1_databases",
+          "env.production.d1_databases",
+          "scripts.db:migrate:local",
+          "scripts.db:migrate:remote",
+        ],
+        "orm/drizzle": [
+          "dependencies.drizzle-kit",
+          "dependencies.drizzle-orm",
+          "dependencies.elysia",
+          'exports."."',
+          'exports."./schema"',
+          'exports."./testing"',
+          "scripts.db:generate",
+          "scripts.db:studio",
+        ],
         "web/spa": ["scripts.deploy", "scripts.dev"],
         "web/ssr": ["scripts.deploy", "scripts.dev"],
         "web/static": ["scripts.deploy", "scripts.dev"],
@@ -719,6 +737,13 @@ describe("the database phases", () => {
       true,
     );
     expect(hasDatabase({ name: "b", modules: ["api/elysia", "db/d1"], items: false })).toBe(false);
+  });
+
+  test("only the cloudflare configuration has one: db/d1 peers on that provider, and no dockerfile database exists", () => {
+    expect(CONFIGURATIONS.filter(hasDatabase).map(({ name }) => name)).toEqual(["cloudflare"]);
+    expect(CONFIGURATIONS.find(({ name }) => name === "dockerfile")?.modules).not.toContain(
+      "db/d1",
+    );
   });
 
   test("the table golden adds is exported from the barrel the way a module's tables are", () => {

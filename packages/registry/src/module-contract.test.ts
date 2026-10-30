@@ -2,13 +2,20 @@ import { describe, expect, test } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, posix } from "node:path";
-import { isModuleCategory, parseModuleManifest } from "@bonne-garde/schema";
+import {
+  createEmptyProjectManifest,
+  isModuleCategory,
+  parseModuleManifest,
+} from "@bonne-garde/schema";
 import {
   assertBranding,
   renderBrandingModule,
 } from "../../../registry/modules/config/branding/template/packages/config/src/gen-branding";
+import { formatWithProjectFormatter } from "../test-support/project-formatter";
 import { loadLocalRegistry } from "./load-registry";
+import { resolveModulePlans } from "./module-plan";
 import { plannedPatches } from "./patch-plan";
+import { addNamedExport } from "./ts-patches";
 
 const ROOT = join(import.meta.dir, "../../..");
 const MODULES = join(ROOT, "registry/modules");
@@ -491,6 +498,8 @@ describe("module contract", () => {
     test("a package-homed module writes only inside its package (035 seam)", async () => {
       const homes: Partial<Record<string, string>> = {
         config: "packages/config",
+        db: "packages/db",
+        orm: "packages/db",
         ui: "packages/ui",
       };
       const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
@@ -1148,6 +1157,413 @@ describe("module contract", () => {
       }
       expect(mentioning).toEqual([]);
     });
+  });
+
+  describe("db/d1 and orm/drizzle share packages/db, and db/d1 owns the package (035, 060)", () => {
+    const D1 = join(MODULES, "db/d1/template");
+    const ORM = join(MODULES, "orm/drizzle/template");
+    const d1Text = (path: string): Promise<string> => readFile(join(D1, path), "utf8");
+    const ormText = (path: string): Promise<string> => readFile(join(ORM, path), "utf8");
+    const dbModules = async () => {
+      const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+      const find = (category: string, id: string) => {
+        const found = catalog.modules.find(
+          ({ manifest }) => manifest.category === category && manifest.id === id,
+        );
+        const [variant] = found?.manifest.variants ?? [];
+        if (!found || !variant) {
+          throw new Error(`registry/modules/${category}/${id} is missing or has no variant`);
+        }
+        return { ...found, variant };
+      };
+      return { catalog, d1: find("db", "d1"), orm: find("orm", "drizzle") };
+    };
+    /** The `value` of the one `jsonc.merge` patch of a variant on `file`. */
+    const mergedInto = (patches: { type: string; file?: unknown }[] | undefined, file: string) => {
+      const found = (patches ?? []).find(
+        (patch) => patch.type === "jsonc.merge" && patch.file === file,
+      );
+      return found !== undefined && "value" in found && isRecord(found.value) ? found.value : {};
+    };
+    /** Every file of a template, relative to it. */
+    const templateFiles = async (dir: string): Promise<string[]> =>
+      (
+        await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: dir, dot: true, onlyFiles: true }))
+      ).sort();
+    /** The packages a source names: its imports, and the `/// <reference types>` that stands for one. */
+    const packagesNamedBy = (source: string): string[] => [
+      ...packagesImportedBy(source),
+      ...[...source.matchAll(/<reference types="([^"]+)"/g)].flatMap(([, name]) =>
+        name === undefined ? [] : [name],
+      ),
+    ];
+    /** A source without its comment lines: a comment may quote an import it does not make. */
+    const code = (source: string): string =>
+      source
+        .split("\n")
+        .filter((line) => !/^\s*(?:\/\/(?!\/ <reference)|\/?\*)/.test(line))
+        .join("\n");
+    const SOURCE = /^packages\/db\/src\/.+\.ts$/;
+    const sourcesOf = async (): Promise<[string, string][]> => {
+      const { d1, orm } = await dbModules();
+      const all: [string, string][] = [];
+      for (const [module, read] of [
+        [d1, d1Text],
+        [orm, ormText],
+      ] as const) {
+        for (const path of module.variant.copy ?? []) {
+          if (SOURCE.test(path)) {
+            all.push([path, code(await read(path))]);
+          }
+        }
+      }
+      return all;
+    };
+
+    test("db/d1 peers on the cloudflare provider and ships that one variant, which owns the workspace", async () => {
+      const { catalog, d1 } = await dbModules();
+      const providers = catalog.modules
+        .filter(({ manifest }) => manifest.category === "provider")
+        .map(({ manifest }) => manifest.id);
+
+      expect(d1.manifest.peers).toEqual({ provider: ["cloudflare"] });
+      // 035: a `db` module ships one variant per provider it supports, and the allow-list says which.
+      expect(d1.manifest.variants.map((variant) => variant.key)).toEqual(
+        providers.filter((id) => d1.manifest.peers.provider?.includes(id)),
+      );
+      expect(d1.variant.key).toBe("cloudflare");
+      expect(d1.variant.match).toEqual({ provider: "cloudflare" });
+      expect(d1.variant.workspace).toEqual({ name: "{{SCOPE}}/db", path: "packages/db" });
+      expect(d1.variant.copy).toEqual([
+        "packages/db/package.json",
+        "packages/db/tsconfig.json",
+        "packages/db/tsconfig.test.json",
+        "packages/db/src/d1.ts",
+        "packages/db/src/d1.test.ts",
+      ]);
+      expect(d1.variant.intent ?? []).toEqual([]);
+    });
+
+    test("orm/drizzle peers on any db, has the one variant matched on d1, and writes into the package without owning it", async () => {
+      const { orm } = await dbModules();
+
+      expect(orm.manifest.peers).toEqual({ db: [] });
+      expect(orm.manifest.variants).toHaveLength(1);
+      expect(orm.variant.key).toBe("d1");
+      expect(orm.variant.match).toEqual({ db: "d1" });
+      // The package.json and its workspace are db/d1's: two claimants for one file are refused.
+      expect(orm.variant.workspace).toBeUndefined();
+      expect(orm.variant.dependencies ?? {}).toEqual({});
+      expect(orm.variant.devDependencies ?? {}).toEqual({});
+      expect(orm.variant.copy).toEqual([
+        "packages/db/src/client.ts",
+        "packages/db/src/client.test.ts",
+        "packages/db/src/drizzle.config.ts",
+        "packages/db/src/index.ts",
+        "packages/db/src/module.ts",
+        "packages/db/src/module.test.ts",
+        "packages/db/src/schema/index.ts",
+        "packages/db/src/testing.ts",
+        "packages/db/src/testing.test.ts",
+      ]);
+      expect(orm.variant.intent ?? []).toEqual([]);
+    });
+
+    test("the two modules write distinct files, every copy exists, and nothing is a glob", async () => {
+      const { d1, orm } = await dbModules();
+      const copies = [...(d1.variant.copy ?? []), ...(orm.variant.copy ?? [])];
+
+      expect(new Set(copies).size).toBe(copies.length);
+      expect(copies.filter((path) => /[*?[\]{}]/.test(path))).toEqual([]);
+      for (const path of d1.variant.copy ?? []) {
+        expect(existsSync(join(D1, path))).toBe(true);
+      }
+      for (const path of orm.variant.copy ?? []) {
+        expect(existsSync(join(ORM, path))).toBe(true);
+      }
+      // Nothing in a template that no variant copies.
+      expect(await templateFiles(D1)).toEqual([...(d1.variant.copy ?? [])].sort());
+      expect(await templateFiles(ORM)).toEqual([...(orm.variant.copy ?? [])].sort());
+    });
+
+    test("they ship schemas, not SQL: the project generates its migrations (09 stage 4 watch)", async () => {
+      const files = [...(await templateFiles(D1)), ...(await templateFiles(ORM))];
+
+      expect(files.filter((path) => /\.sql$|(?:^|\/)migrations\//.test(path))).toEqual([]);
+      // `bun run db:generate` writes where the D1 binding reads: drizzle-kit's `out`, relative to
+      // `packages/db`, is the `migrations_dir` of `apps/api/wrangler.jsonc`, relative to `apps/api`.
+      expect(await ormText("packages/db/src/drizzle.config.ts")).toContain('out: "./migrations"');
+      expect(await ormText("packages/db/src/drizzle.config.ts")).toContain(
+        'schema: "./src/schema/index.ts"',
+      );
+    });
+
+    test("package.json is vendored by db/d1 with its own subpath and scripts, and no dependency map", async () => {
+      const body: unknown = JSON.parse(await d1Text("packages/db/package.json"));
+
+      expect(body).toMatchObject({
+        name: "{{SCOPE}}/db",
+        exports: { "./d1": "./src/d1.ts" },
+        scripts: {
+          typecheck: expect.any(String),
+          "typecheck:test": expect.any(String),
+          test: "bun test",
+        },
+      });
+      for (const map of [
+        "dependencies",
+        "devDependencies",
+        "peerDependencies",
+        "optionalDependencies",
+      ]) {
+        expect(isRecord(body) && map in body ? map : null).toBeNull();
+      }
+      // What orm adds is a region each, so the vendored file holds none of it.
+      expect(JSON.stringify(body)).not.toContain("db:generate");
+    });
+
+    test("orm adds its subpaths and scripts to that file with patches, and every subpath is a file it ships", async () => {
+      const { orm } = await dbModules();
+      const value = mergedInto(orm.variant.patch, "packages/db/package.json");
+      const exports = isRecord(value.exports) ? value.exports : {};
+
+      expect(exports).toEqual({
+        ".": "./src/index.ts",
+        "./schema": "./src/schema/index.ts",
+        "./testing": "./src/testing.ts",
+      });
+      for (const target of Object.values(exports)) {
+        expect(orm.variant.copy).toContain(`packages/db/${String(target).replace("./", "")}`);
+      }
+      const scripts = orm.variant.patch?.find((patch) => patch.type === "scripts.merge");
+      expect(scripts).toEqual({
+        type: "scripts.merge",
+        file: "packages/db/package.json",
+        scripts: {
+          "db:generate": "drizzle-kit generate --config ./src/drizzle.config.ts",
+          "db:studio": "drizzle-kit studio --config ./src/drizzle.config.ts",
+        },
+      });
+      // The `--config` of each script is a file orm copies.
+      expect(orm.variant.copy).toContain("packages/db/src/drizzle.config.ts");
+    });
+
+    test("dependencies are exact, the two modules' maps merge into one that the formatter leaves sorted, and each is imported", async () => {
+      const { d1, orm } = await dbModules();
+      const merged = mergedInto(orm.variant.patch, "packages/db/package.json");
+      const mapOf = (value: unknown): Record<string, string> =>
+        isRecord(value)
+          ? Object.fromEntries(
+              Object.entries(value).flatMap(([name, version]) =>
+                typeof version === "string" ? [[name, version]] : [],
+              ),
+            )
+          : {};
+      const dependencies = {
+        d1: d1.variant.dependencies ?? {},
+        orm: mapOf(merged.dependencies),
+      };
+      const devDependencies = {
+        d1: d1.variant.devDependencies ?? {},
+        orm: mapOf(merged.devDependencies),
+      };
+
+      // orm's versions come through `jsonc.merge`, which the exact-version test over variants cannot see.
+      for (const [name, version] of Object.entries({
+        ...dependencies.orm,
+        ...devDependencies.orm,
+      })) {
+        expect(`${name}@${version}`).toMatch(/^[^@]+@\d+\.\d+\.\d+$/);
+      }
+      expect(dependencies.orm).toEqual({
+        "drizzle-kit": "0.31.10",
+        "drizzle-orm": "0.45.2",
+        elysia: "1.4.29",
+      });
+      // `jsonc.merge` appends, and `sortPackageJson` sorts a dependency map: a name that does not sort
+      // after the ones already there fails `bun run check`. The planner sorts db/d1's own map.
+      for (const maps of [dependencies, devDependencies]) {
+        // Every scope starts with `@`, which sorts before the names orm adds, at any length.
+        const rendered = (name: string) => name.replaceAll("{{SCOPE}}", "@app");
+        const installed = [
+          ...Object.keys(maps.d1).map(rendered).sort(),
+          ...Object.keys(maps.orm).map(rendered),
+        ];
+        expect(installed).toEqual([...installed].sort());
+      }
+
+      const declared = new Set([
+        ...Object.keys(dependencies.d1),
+        ...Object.keys(dependencies.orm),
+        ...Object.keys(devDependencies.d1),
+        ...Object.keys(devDependencies.orm),
+      ]);
+      const named = new Set<string>();
+      for (const [path, source] of await sourcesOf()) {
+        for (const name of packagesNamedBy(source)) {
+          if (!name.includes(":")) {
+            named.add(name);
+            expect([path, declared.has(name)]).toEqual([path, true]);
+          }
+        }
+      }
+      // And nothing is declared that no source of the package names.
+      expect([...declared].filter((name) => !named.has(name))).toEqual([]);
+    });
+
+    test("a peer is declared exactly when a source reaches the module's package or file", async () => {
+      const { catalog, d1, orm } = await dbModules();
+      const provider = catalog.modules.find(
+        ({ manifest }) => manifest.category === "provider" && manifest.id === "cloudflare",
+      );
+
+      // The package `provider/cloudflare` owns is the one `readRuntimeEnv` comes from.
+      expect(provider?.manifest.variants[0]?.workspace?.name).toBe("{{SCOPE}}/api-runtime");
+      expect(d1.variant.dependencies).toEqual({ "{{SCOPE}}/api-runtime": "workspace:*" });
+      const d1Imports = new Set<string>();
+      const ormImports = new Set<string>();
+      for (const [path, source] of await sourcesOf()) {
+        const into = d1.variant.copy?.includes(path) ? d1Imports : ormImports;
+        for (const [, specifier] of source.matchAll(/from\s+"([^"]+)"/g)) {
+          into.add(specifier ?? "");
+        }
+      }
+      expect(d1Imports.has("{{SCOPE}}/api-runtime")).toBe(true);
+      expect(ormImports.has("./d1")).toBe(true);
+      expect([...ormImports].filter((specifier) => specifier.startsWith("{{SCOPE}}/"))).toEqual([]);
+      expect(Object.keys(d1.manifest.peers)).toEqual(["provider"]);
+      expect(Object.keys(orm.manifest.peers)).toEqual(["db"]);
+    });
+
+    test("no relative import leaves the package, and each one names a file a module ships", async () => {
+      const shipped = new Set([...(await templateFiles(D1)), ...(await templateFiles(ORM))]);
+      const unresolved: string[] = [];
+
+      for (const [path, source] of await sourcesOf()) {
+        for (const [, specifier] of source.matchAll(/from\s+"(\.[^"]*)"/g)) {
+          const target = posix.normalize(posix.join(posix.dirname(path), specifier ?? ""));
+          const found = [`${target}.ts`, `${target}/index.ts`].some((file) => shipped.has(file));
+          if (!target.startsWith("packages/db/src/") || !found) {
+            unresolved.push(`${path}: ${specifier}`);
+          }
+        }
+      }
+
+      expect(unresolved).toEqual([]);
+    });
+
+    test("db/d1 declares the D1 binding in the Worker's wrangler.jsonc, top level and production, where drizzle-kit writes", async () => {
+      const { catalog, d1 } = await dbModules();
+      const value = mergedInto(d1.variant.patch, "apps/api/wrangler.jsonc");
+      const production =
+        isRecord(value.env) && isRecord(value.env.production) ? value.env.production : {};
+      const binding = /D1_BINDING = "([^"]+)"/.exec(await d1Text("packages/db/src/d1.ts"))?.[1];
+
+      expect(binding).toBe("DB");
+      for (const entries of [value.d1_databases, production.d1_databases]) {
+        expect(entries).toEqual([
+          {
+            binding,
+            database_name: "my-app-db",
+            // An id that exists nowhere: `wrangler d1 create` gives the real one before a deploy.
+            database_id: "00000000-0000-0000-0000-000000000000",
+            migrations_dir: "../../packages/db/migrations",
+          },
+        ]);
+      }
+      // The directory is `out` of the drizzle config, resolved from the package, seen from `apps/api`.
+      expect(posix.resolve("/p/apps/api", "../../packages/db/migrations")).toBe(
+        posix.resolve("/p/packages/db", "./migrations"),
+      );
+      // The file it patches is the API shell's, in the variant that has one, with a production env to merge into.
+      const api = catalog.modules.find(
+        ({ manifest }) => manifest.category === "api" && manifest.id === "elysia",
+      );
+      const wrangler = await readFile(
+        join(api?.dir ?? "", "template/apps/api/wrangler.jsonc"),
+        "utf8",
+      );
+      expect(wrangler).toContain('"production": {');
+      expect(Object.keys(value)).toEqual(["d1_databases", "env"]);
+    });
+
+    test("db/d1 adds the migration scripts to the API's package.json, by the binding and not the database's name", async () => {
+      const { d1 } = await dbModules();
+      const scripts = d1.variant.patch?.find((patch) => patch.type === "scripts.merge");
+
+      expect(scripts).toEqual({
+        type: "scripts.merge",
+        file: "apps/api/package.json",
+        scripts: {
+          "db:migrate:local": "wrangler d1 migrations apply DB --local",
+          "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+        },
+      });
+    });
+
+    test("the schema barrel takes the patches `auth` and `storage` bring, and stays what the formatter writes", async () => {
+      const file = "packages/db/src/schema/index.ts";
+      const barrel = await ormText(file);
+      await expect(formatWithProjectFormatter({ [file]: barrel })).resolves.toEqual({
+        [file]: barrel,
+      });
+
+      const withAuth = addNamedExport(file, barrel, "@app/auth/schema", [
+        "user",
+        "session",
+        "organization",
+      ]);
+      const withBoth = addNamedExport(file, withAuth, "@app/storage/schema", ["medias"]);
+
+      expect(withBoth).toContain(
+        'export { user, session, organization } from "@app/auth/schema";\n',
+      );
+      expect(withBoth).toContain('export { medias } from "@app/storage/schema";\n');
+      await expect(formatWithProjectFormatter({ [file]: withBoth })).resolves.toEqual({
+        [file]: withBoth,
+      });
+    });
+
+    test("the installed peers pick the variants, and a missing or wrong peer is named", async () => {
+      const { catalog } = await dbModules();
+      const project = createEmptyProjectManifest({ scope: "@app", registries: {} });
+      const plans = await resolveModulePlans(
+        catalog,
+        [
+          { category: "orm", id: "drizzle" },
+          { category: "db", id: "d1" },
+          { category: "provider", id: "cloudflare" },
+        ],
+        project,
+      );
+
+      expect(plans.map(({ key, variant }) => `${key}:${variant}`)).toEqual([
+        "provider/cloudflare:default",
+        "db/d1:cloudflare",
+        "orm/drizzle:d1",
+      ]);
+      await expect(
+        resolveModulePlans(catalog, [{ category: "orm", id: "drizzle" }], project),
+      ).rejects.toThrow(/orm\/drizzle needs a module in category db \(any\) and none is installed/);
+      await expect(
+        resolveModulePlans(
+          catalog,
+          [
+            { category: "provider", id: "dockerfile" },
+            { category: "db", id: "d1" },
+          ],
+          project,
+        ),
+      ).rejects.toThrow(
+        /db\/d1 accepts only cloudflare for provider, but provider\/dockerfile is present/,
+      );
+    });
+
+    // The wiring in `apps/api/src/app.ts`, `ts.addImport` of `dbModule` from `{{SCOPE}}/db` and
+    // `ts.elysiaUse`, is built (4a) and format-stable, but `apps/api` cannot import `{{SCOPE}}/db`
+    // until its package.json declares it, and no patch can: `jsonc.merge` refuses `{{SCOPE}}` (060).
+    test.todo("orm/drizzle wires dbModule into apps/api/src/app.ts, once a patch can declare {{SCOPE}}/db in apps/api/package.json", () =>
+      undefined);
   });
 
   test("every patch a variant declares is one the CLI applies, with arguments it accepts", async () => {

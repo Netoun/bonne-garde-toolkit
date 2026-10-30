@@ -1,0 +1,53 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "drizzle",
+  "category": "orm",
+  "version": "0.1.0",
+  "title": "Drizzle",
+  "description": "The Drizzle client, the schema barrel, the migration config and the test database, over the installed db module.",
+  "peers": { "db": [] },
+  "checks": ["cd packages/db && bun run typecheck && bun run test"],
+  "variants": [
+    {
+      "key": "d1",
+      "match": { "db": "d1" },
+      "copy": [
+        "packages/db/src/client.ts",
+        "packages/db/src/client.test.ts",
+        "packages/db/src/drizzle.config.ts",
+        "packages/db/src/index.ts",
+        "packages/db/src/module.ts",
+        "packages/db/src/module.test.ts",
+        "packages/db/src/schema/index.ts",
+        "packages/db/src/testing.ts",
+        "packages/db/src/testing.test.ts"
+      ],
+      "patch": [
+        {
+          "type": "jsonc.merge",
+          "file": "packages/db/package.json",
+          "value": {
+            "exports": {
+              ".": "./src/index.ts",
+              "./schema": "./src/schema/index.ts",
+              "./testing": "./src/testing.ts"
+            },
+            "dependencies": {
+              "drizzle-kit": "0.31.10",
+              "drizzle-orm": "0.45.2",
+              "elysia": "1.4.29"
+            }
+          }
+        },
+        {
+          "type": "scripts.merge",
+          "file": "packages/db/package.json",
+          "scripts": {
+            "db:generate": "drizzle-kit generate --config ./src/drizzle.config.ts",
+            "db:studio": "drizzle-kit studio --config ./src/drizzle.config.ts"
+          }
+        }
+      ]
+    }
+  ]
+}

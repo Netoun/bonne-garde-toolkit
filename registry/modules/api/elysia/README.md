@@ -53,9 +53,11 @@ modules import them, and the contract test pins the same two.
 ## Where a module plugs in
 
 `app.ts` has one marked place, between the last `.use()` and the routes, where a `ts.elysiaUse`
-patch (spec 060) will add `.use(<module>)` for `db`, `auth` and `storage` without reformatting the
-chain. That patch type is not built yet; the contract test pins the name `app`, the
-`new Elysia(runtimeOptions)` start and the place of the comment.
+patch (spec 060) adds `.use(<module>)` for `db`, `auth` and `storage` without reformatting the
+chain. The patch is built; the contract test pins the name `app`, the `new Elysia(runtimeOptions)`
+start and the place of the comment. No module uses it yet: `apps/api` has to depend on the package
+whose module is imported, no patch can write that dependency (060: `jsonc.merge` refuses
+`{{SCOPE}}`), and `orm/drizzle` explains what that leaves open.
 
 ## Placeholders to replace
 
