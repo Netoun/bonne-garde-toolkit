@@ -265,6 +265,8 @@ templates/base | grep vite.config` prints nothing; `bg list --items` prints what
 
 ### Stage 3: app shells, `api` then `web` (080 step 3).
 
+**Commits 1–2 done 2026-10-30** (`d2d942d`..`2b2a45f`). `config` and `dev` are categories in `packages/schema`. `config/branding` replaces the `config` item and adds root `gen:branding` through `scripts.merge`, the first tier-2 patch (`jsonc-parser` 3.3.1, exact; the packed CLI is no longer zero-dependency): each key is a region `regions["package.json"]["scripts.<key>"]`, an outcome in `bg add` JSON and `failedPatches`, and golden has a `re-add` phase that requires every patch `skipped` and the tree byte-identical. `doctor` checks a patched file region by region (Q5). Where the plan was wrong: 035's seam rule moved `branding.json` and `gen-branding.ts` into `packages/config/`; the `@acme/assets/*` alias cannot ship, so favicons are `{{SCOPE}}/config/assets/favicons/…`; the 7 binary favicons are **not carried** (templates are UTF-8 only), so stage 6 must not delete `assets/` until templates can carry bytes. `spa-react-router` keeps importing `@acme/config` through a transitional import-keyed rule (`MODULE_FOR_IMPORT` in `resolve-plan.ts`), to remove when `web/spa` lands. A failed patch is reported and fails `doctor --strict`, but its conversion into a pending intent (050 steps 11 and 14) is **not built**. Commits 3–4 (providers, `api/elysia`) are in progress.
+
 - **Scope, in commits:**
   1. `config/branding` (Q1). The shells need it: a module cannot require an item.
   2. `scripts.merge`, the first patch (`jsonc-parser`, idempotency test, first `regions`), with
