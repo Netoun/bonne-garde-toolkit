@@ -5,11 +5,16 @@
  *   bg create → bg add of a UI item, refused → bg add of the configuration's modules and every item in
  *   one call → the same bg add again, which must skip every patch and change nothing → bun install
  *   → typecheck → test → build → bg doctor --strict → bun run check → the `checks` of every installed module
+ *   → for the configuration that ships a Dockerfile, docker build, docker run, and the container's answers
  *
  * A configuration is a set of modules that fit in one project. `provider` admits one module and the
  * `api` module ships a variant per provider, so each provider is a configuration of its own: the
  * `cloudflare` one installs every item too, the `dockerfile` one only modules, and no SSR or static site.
  * Packing and the refusal run once.
+ *
+ * The image phases need a docker daemon. With no `docker` on PATH, or none that answers `docker info`,
+ * golden says so, in the timing table too, and still exits 0: every other failure of them fails the run.
+ * What they create is named `bg-golden-<pid>` (image, container, volume) and removed by that name.
  *
  * Any non-zero exit fails the run and names the phase. It needs a real `bun install` against npm,
  * so it is not part of `verify`; CI runs it as its own step.
@@ -120,6 +125,14 @@ export const CONFIGURATIONS: readonly Configuration[] = [
     items: false,
   },
 ];
+
+/** The module that ships the `Dockerfile` golden builds. */
+const IMAGE_MODULE = "provider/dockerfile";
+
+/** Whether the configuration ships a Dockerfile, so golden builds its image and asks the container. */
+export function buildsImage(configuration: Configuration): boolean {
+  return configuration.modules.includes(IMAGE_MODULE);
+}
 
 /** The modules of every configuration, each once, in the order they first appear. */
 export const MODULES: readonly string[] = [
@@ -431,7 +444,82 @@ export function expectRefusal(attempt: Attempt, item: string, module: string): v
   }
 }
 
-type Timing = { phase: string; ms: number };
+/** The port the image listens on: the Dockerfile's `PORT`. */
+const CONTAINER_PORT = 5172;
+
+/**
+ * Why the image phases cannot run, or null when they can. `probe` is how `docker info` ended, or
+ * null when `docker` is not on PATH. Only the absence of a daemon skips: a build or a container that
+ * fails with one running is a failed run.
+ */
+export function dockerSkipReason(probe: Attempt | null): string | null {
+  if (probe === null) {
+    return "docker unavailable: not on PATH";
+  }
+  return probe.code === 0 ? null : `docker unavailable: \`docker info\` exited with ${probe.code}`;
+}
+
+/** The name of the image, the container and the volume of one run: unique to this process. */
+export function dockerName(pid: number): string {
+  return `bg-golden-${pid}`;
+}
+
+/** The host port of the binding `docker port <name> <port>/tcp` prints, the first one when there are several. */
+export function publishedPort(output: string): number {
+  const port = /:(\d+)\s*$/m.exec(output)?.[1];
+  if (port === undefined) {
+    throw new Error(`docker port printed no port: ${output.trim() || "(nothing)"}`);
+  }
+  return Number(port);
+}
+
+/** What golden reads of a response. */
+export type Served = { status: number; contentType: string | null };
+
+/** The response has to carry `status` and the media type `type`, whatever parameters follow it (`; charset=utf-8`). */
+export function expectServed(what: string, served: Served, status: number, type: string): void {
+  const media = served.contentType?.split(";")[0]?.trim().toLowerCase() ?? "no content type";
+  if (served.status !== status || media !== type) {
+    throw new Error(`${what}: expected ${status} ${type}, got ${served.status} ${media}`);
+  }
+}
+
+/** The first script of /assets that the built index.html loads: a hashed file, so its name is read, not written. */
+export function assetPath(html: string): string {
+  const path = /(?:src|href)="(\/assets\/[^"]+\.js)"/.exec(html)?.[1];
+  if (path === undefined) {
+    throw new Error("the index.html served loads no script from /assets");
+  }
+  return path;
+}
+
+/**
+ * Asks `check` until it passes or `timeoutMs` has gone by, `intervalMs` apart. A check that throws is
+ * not ready yet (a connection refused while the server starts). Each ask has to bound itself: this
+ * does not interrupt one.
+ */
+export async function until(
+  check: () => Promise<boolean>,
+  { timeoutMs, intervalMs }: { timeoutMs: number; intervalMs: number },
+): Promise<boolean> {
+  const deadline = performance.now() + timeoutMs;
+  while (true) {
+    try {
+      if (await check()) {
+        return true;
+      }
+    } catch {
+      // not ready yet
+    }
+    if (performance.now() >= deadline) {
+      return false;
+    }
+    await Bun.sleep(intervalMs);
+  }
+}
+
+/** One row of the timing table. A `note` stands where the seconds do, for a phase that did not run. */
+type Timing = { phase: string; ms: number; note?: string };
 
 function seconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
@@ -454,8 +542,14 @@ async function capture(argv: string[], cwd: string): Promise<string> {
   return stdout;
 }
 
-async function attempt(argv: string[], cwd: string): Promise<Attempt> {
-  const proc = Bun.spawn(argv, { cwd, stdin: "ignore", stdout: "ignore", stderr: "pipe" });
+async function attempt(argv: string[], cwd: string, timeoutMs?: number): Promise<Attempt> {
+  const proc = Bun.spawn(argv, {
+    cwd,
+    stdin: "ignore",
+    stdout: "ignore",
+    stderr: "pipe",
+    ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
+  });
   const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
   return { code, stderr };
 }
@@ -594,6 +688,108 @@ async function configured(
       }
     });
   }
+  if (buildsImage(configuration)) {
+    await imaged(project, timings, name);
+  }
+}
+
+/**
+ * The image of a project that ships a Dockerfile: built, run on a host port docker picks, asked for
+ * what a deployed container answers, then removed. Everything it creates is named `bg-golden-<pid>`
+ * and removed by that name, the container first since it holds the image and the volume. Nothing
+ * else on the machine is touched: no prune, no cache clear.
+ */
+async function imaged(project: string, timings: Timing[], name: string): Promise<void> {
+  const label = `${name}: docker`;
+  const probe =
+    Bun.which("docker") === null ? null : await attempt(["docker", "info"], project, 20_000);
+  const skipped = dockerSkipReason(probe);
+  if (skipped !== null) {
+    console.log(`\n${label}  skipped (${skipped})`);
+    timings.push({ phase: label, ms: 0, note: `skipped (${skipped})` });
+    return;
+  }
+
+  const docker = dockerName(process.pid);
+  try {
+    await phase(timings, `${label} build`, () =>
+      run(["docker", "build", "-t", docker, "."], project),
+    );
+    await phase(timings, `${label} run`, async () => {
+      try {
+        await answers(project, docker);
+      } catch (error) {
+        console.log(`\ngolden: last lines of the container ${docker}`);
+        await run(["docker", "logs", "--tail", "40", docker], project).catch(() => undefined);
+        throw error;
+      }
+    });
+  } finally {
+    for (const [kind, argv] of [
+      ["container", ["docker", "rm", "-f", docker]],
+      ["volume", ["docker", "volume", "rm", docker]],
+      ["image", ["docker", "image", "rm", docker]],
+    ] as const) {
+      const { code, stderr } = await attempt([...argv], project);
+      // Nothing to remove when the build or the run failed before it existed.
+      if (code !== 0 && !/no such/i.test(stderr)) {
+        console.warn(`golden: could not remove the ${kind} ${docker}: ${stderr.trim()}`);
+      }
+    }
+  }
+}
+
+/** Starts the container, waits for `/health`, and checks what it serves: the API, the SPA, a hashed asset, a client route. */
+async function answers(project: string, docker: string): Promise<void> {
+  await run(
+    [
+      "docker",
+      "run",
+      "-d",
+      "--name",
+      docker,
+      "-v",
+      `${docker}:/data`,
+      "-p",
+      `127.0.0.1::${CONTAINER_PORT}`,
+      docker,
+    ],
+    project,
+  );
+  const port = publishedPort(
+    await capture(["docker", "port", docker, `${CONTAINER_PORT}/tcp`], project),
+  );
+  const get = async (path: string, accept?: string): Promise<Served & { body: string }> => {
+    const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+      headers: accept === undefined ? {} : { accept },
+      signal: AbortSignal.timeout(2000),
+    });
+    return {
+      status: response.status,
+      contentType: response.headers.get("content-type"),
+      body: await response.text(),
+    };
+  };
+
+  const ready = await until(async () => (await get("/health")).status === 200, {
+    timeoutMs: 60_000,
+    intervalMs: 500,
+  });
+  if (!ready) {
+    throw new Error("the container did not answer GET /health with 200 within 60 s");
+  }
+  expectServed("GET /health", await get("/health"), 200, "application/json");
+  const home = await get("/");
+  expectServed("GET /", home, 200, "text/html");
+  const asset = assetPath(home.body);
+  expectServed(`GET ${asset}`, await get(asset), 200, "text/javascript");
+  // A client route has no file: the runtime answers a navigation with the SPA's index.html.
+  const route = "/golden/unknown-client-route";
+  const client = await get(route, "text/html");
+  expectServed(`GET ${route} (Accept: text/html)`, client, 200, "text/html");
+  if (client.body !== home.body) {
+    throw new Error(`GET ${route} (Accept: text/html) answered something other than GET /`);
+  }
 }
 
 async function main(): Promise<number> {
@@ -610,8 +806,8 @@ async function main(): Promise<number> {
 
   console.log("\ngolden: phase timings");
   const width = Math.max(10, ...timings.map(({ phase: name }) => name.length));
-  for (const { phase: name, ms } of timings) {
-    console.log(`  ${name.padEnd(width)} ${seconds(ms)}`);
+  for (const { phase: name, ms, note } of timings) {
+    console.log(`  ${name.padEnd(width)} ${note ?? seconds(ms)}`);
   }
   console.log(`  ${"total".padEnd(width)} ${seconds(performance.now() - start)}`);
 

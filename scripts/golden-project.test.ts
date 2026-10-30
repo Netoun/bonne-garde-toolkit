@@ -3,19 +3,26 @@ import { join, resolve } from "node:path";
 import { loadLocalRegistry } from "../packages/registry/src/index";
 import {
   addArguments,
+  assetPath,
+  buildsImage,
   CONFIGURATIONS,
   diffTrees,
+  dockerName,
+  dockerSkipReason,
   EXCLUDED,
   EXCLUDED_MODULES,
   expectPatches,
   expectRefusal,
   expectRegionsRecorded,
+  expectServed,
   MODULES,
   PATCHED,
+  publishedPort,
   readAddedModules,
   SCOPE,
   selectItems,
   selectModules,
+  until,
   type AddedModule,
 } from "./golden-project";
 
@@ -210,7 +217,7 @@ describe("the golden project and modules", () => {
         expect(modules).toContain("ui/shadcn");
       }
     }
-    // The dockerfile configuration is a project with no SPA, which the Dockerfile has to build.
+    // The dockerfile configuration installs the ui module and no item: the image the Dockerfile has to build.
     expect(CONFIGURATIONS.find(({ name }) => name === "dockerfile")?.items).toBe(false);
   });
 });
@@ -519,5 +526,134 @@ describe("expectRegionsRecorded (bg.json carries what `bg add` reported)", () =>
 
   test("fails on a bg.json that is not an object with regions", () => {
     expect(() => expectRegionsRecorded("nope", added)).toThrow(/regions/);
+  });
+});
+
+describe("buildsImage (golden builds the image of the configuration that ships a Dockerfile)", () => {
+  test("is the dockerfile configuration and no other", () => {
+    expect(
+      CONFIGURATIONS.filter((configuration) => buildsImage(configuration)).map(({ name }) => name),
+    ).toEqual(["dockerfile"]);
+  });
+});
+
+describe("dockerSkipReason (only the absence of docker skips the image; a failing build is a failed run)", () => {
+  test("runs when docker is on PATH and `docker info` succeeds", () => {
+    expect(dockerSkipReason({ code: 0, stderr: "" })).toBeNull();
+  });
+
+  test("skips, and says why, when docker is not on PATH", () => {
+    expect(dockerSkipReason(null)).toBe("docker unavailable: not on PATH");
+  });
+
+  test("skips, and says why, when the daemon does not answer `docker info`", () => {
+    expect(dockerSkipReason({ code: 1, stderr: "Cannot connect to the Docker daemon" })).toBe(
+      "docker unavailable: `docker info` exited with 1",
+    );
+  });
+});
+
+describe("dockerName (one name for the image, the container and the volume of a run)", () => {
+  test("is bg-golden-<pid>, so two runs on one machine do not meet", () => {
+    expect(dockerName(4242)).toBe("bg-golden-4242");
+    expect(dockerName(4242)).not.toBe(dockerName(4243));
+  });
+});
+
+describe("publishedPort (what `docker port <name> 5172/tcp` prints)", () => {
+  test("reads the host port of one binding", () => {
+    expect(publishedPort("127.0.0.1:49153\n")).toBe(49153);
+  });
+
+  test("reads the first binding when docker prints an IPv6 one as well", () => {
+    expect(publishedPort("0.0.0.0:49153\n[::]:49153\n")).toBe(49153);
+  });
+
+  test("fails on output with no binding, which is a container that published nothing", () => {
+    expect(() => publishedPort("")).toThrow(/port/);
+    expect(() => publishedPort("no public port '5172/tcp' published\n")).toThrow(/port/);
+  });
+});
+
+describe("expectServed (what a response has to be: a status and a media type, whatever its parameters)", () => {
+  test("passes on the status and the media type, with or without a charset", () => {
+    expect(() =>
+      expectServed("GET /", { status: 200, contentType: "text/html" }, 200, "text/html"),
+    ).not.toThrow();
+    expect(() =>
+      expectServed(
+        "GET /",
+        { status: 200, contentType: "text/html;charset=utf-8" },
+        200,
+        "text/html",
+      ),
+    ).not.toThrow();
+  });
+
+  test("fails on another status, naming the request and what came back", () => {
+    expect(() =>
+      expectServed("GET /", { status: 404, contentType: "application/json" }, 200, "text/html"),
+    ).toThrow(/GET \/.*200 text\/html.*404 application\/json/s);
+  });
+
+  test("fails on another media type, as an SPA fallback that answered JSON", () => {
+    expect(() =>
+      expectServed("GET /x", { status: 200, contentType: "application/json" }, 200, "text/html"),
+    ).toThrow(/text\/html/);
+  });
+
+  test("fails on a response with no content type", () => {
+    expect(() =>
+      expectServed("GET /", { status: 200, contentType: null }, 200, "text/html"),
+    ).toThrow(/no content type/);
+  });
+});
+
+describe("assetPath (the hashed script the built index.html loads)", () => {
+  test("reads the first /assets script of the page", () => {
+    const html =
+      '<link rel="stylesheet" href="/assets/root-aaa.css"><link rel="modulepreload" href="/assets/entry.client-BQ1.js"><script type="module" src="/assets/entry.client-BQ1.js"></script>';
+
+    expect(assetPath(html)).toBe("/assets/entry.client-BQ1.js");
+  });
+
+  test("fails on a page that loads no script from /assets", () => {
+    expect(() => assetPath("<html><body>hello</body></html>")).toThrow(/script/);
+  });
+});
+
+describe("until (readiness is a bounded retry, not a fixed sleep)", () => {
+  test("returns as soon as the check passes, and stops asking", async () => {
+    let calls = 0;
+
+    const ready = await until(async () => ++calls === 3, { timeoutMs: 2000, intervalMs: 1 });
+
+    expect(ready).toBe(true);
+    expect(calls).toBe(3);
+  });
+
+  test("gives up at the deadline, so a container that never answers fails the run", async () => {
+    const start = performance.now();
+
+    const ready = await until(async () => false, { timeoutMs: 50, intervalMs: 5 });
+
+    expect(ready).toBe(false);
+    expect(performance.now() - start).toBeLessThan(1000);
+  });
+
+  test("a check that throws is not ready yet, as a connection refused while the server starts", async () => {
+    let calls = 0;
+
+    const ready = await until(
+      async () => {
+        if (++calls < 2) {
+          throw new Error("ECONNREFUSED");
+        }
+        return true;
+      },
+      { timeoutMs: 2000, intervalMs: 1 },
+    );
+
+    expect(ready).toBe(true);
   });
 });
