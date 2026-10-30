@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parseProjectManifest, type ProjectManifest } from "@bonne-garde/schema";
@@ -37,6 +38,10 @@ function defaultTarget(itemType: string, filePath: string): string {
   return base;
 }
 
+function sha256Hex(content: string): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+
 async function pathExists(path: string): Promise<boolean> {
   try {
     await readFile(path);
@@ -50,6 +55,7 @@ export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResu
   const written: string[] = [];
   const skippedIdentical: string[] = [];
   const staged: Array<{ abs: string; content: string }> = [];
+  const nextFiles = { ...options.manifest.files };
 
   for (const item of options.plan.items) {
     for (const file of item.files ?? []) {
@@ -57,10 +63,14 @@ export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResu
       const absTarget = join(options.projectRoot, relTarget);
       const raw = file.content ?? (await readFile(file.path, "utf8"));
       const content = raw.split("@acme").join(options.manifest.scope);
+      const sha256 = sha256Hex(content);
       if (await pathExists(absTarget)) {
         const existing = await readFile(absTarget, "utf8");
         if (existing === content) {
           skippedIdentical.push(relTarget);
+          // Identical to what we would write: record it, so a re-add leaves the same record and
+          // a pre-v2 file becomes tracked. Whoever owned it keeps it.
+          nextFiles[relTarget] = { owner: nextFiles[relTarget]?.owner ?? item.name, sha256 };
           continue;
         }
         if (!options.force) {
@@ -69,6 +79,7 @@ export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResu
       }
       staged.push({ abs: absTarget, content });
       written.push(relTarget);
+      nextFiles[relTarget] = { owner: item.name, sha256 };
     }
   }
 
@@ -84,6 +95,7 @@ export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResu
   const nextManifest = parseProjectManifest({
     ...options.manifest,
     items: nextItems,
+    files: nextFiles,
   });
 
   if (options.dryRun) {

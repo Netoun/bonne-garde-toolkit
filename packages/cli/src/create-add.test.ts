@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readProjectManifest } from "@bonne-garde/schema";
@@ -158,6 +159,98 @@ describe("bg create + add", () => {
     expect(manifest).toMatchObject({ apps: [], modules: {}, items: {}, files: {}, regions: {} });
   });
 
+  describe("add records what it wrote", () => {
+    function sha256Hex(bytes: string | Uint8Array): string {
+      return createHash("sha256").update(bytes).digest("hex");
+    }
+
+    async function freshProject(prefix: string): Promise<string> {
+      const parent = await mkdtemp(join(tmpdir(), prefix));
+      dirs.push(parent);
+      return createProject({
+        name: "rec-app",
+        cwd: parent,
+        git: false,
+        install: false,
+        registry: repoRegistry(),
+        scope: "@rec",
+      });
+    }
+
+    /** Every file under `root` -> sha256 of its bytes, `bg.json` included. */
+    async function snapshot(root: string): Promise<Record<string, string>> {
+      const out: Record<string, string> = {};
+      for (const entry of await readdir(root, { recursive: true })) {
+        const abs = join(root, entry);
+        if ((await stat(abs)).isFile()) {
+          out[entry] = sha256Hex(await readFile(abs));
+        }
+      }
+      return out;
+    }
+
+    /** `installedAt` is the one field a re-add may move. */
+    function withoutInstalledAt(json: string): string {
+      return json.replace(/"installedAt": "[^"]*"/g, '"installedAt": "-"');
+    }
+
+    test("`files` has one entry per written file, and each sha256 is the file's", async () => {
+      const target = await freshProject("bg-cli-rec-");
+      const { result } = await addItems({ projectRoot: target, items: ["button"], install: false });
+
+      const { manifest } = readProjectManifest(
+        JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as unknown,
+      );
+      expect(result.written.length).toBeGreaterThan(1);
+      expect(Object.keys(manifest.files).sort()).toEqual([...result.written].sort());
+      for (const [path, record] of Object.entries(manifest.files)) {
+        expect(record.sha256).toBe(sha256Hex(await readFile(join(target, path))));
+      }
+      expect(manifest.files["packages/ui/src/components/button.tsx"]?.owner).toBe("button");
+      expect(manifest.files["packages/ui/src/lib/utils.ts"]?.owner).toBe("utils");
+      // The engine applies no patch yet, so there is nothing to record under `regions`.
+      expect(manifest.regions).toEqual({});
+    });
+
+    test("a second add skips every file and changes nothing but installedAt", async () => {
+      const target = await freshProject("bg-cli-rec-twice-");
+      const first = await addItems({ projectRoot: target, items: ["button"], install: false });
+      const firstJson = await readFile(join(target, "bg.json"), "utf8");
+      const firstTree = await snapshot(target);
+
+      const second = await addItems({ projectRoot: target, items: ["button"], install: false });
+
+      expect(second.result.written).toEqual([]);
+      // `utils` is already installed, so the plan is `button` alone; its one file is skipped ...
+      expect(second.plan.items.map((i) => i.name)).toEqual(["button"]);
+      expect(second.result.skippedIdentical).toEqual(["packages/ui/src/components/button.tsx"]);
+      // ... and the records of everything the first add wrote survive
+      expect(Object.keys(first.result.manifest.files)).toHaveLength(4);
+      expect(second.result.manifest.files).toEqual(first.result.manifest.files);
+      const secondJson = await readFile(join(target, "bg.json"), "utf8");
+      expect(withoutInstalledAt(secondJson)).toBe(withoutInstalledAt(firstJson));
+      const { "bg.json": _bg, ...secondTree } = await snapshot(target);
+      const { "bg.json": _firstBg, ...firstFiles } = firstTree;
+      expect(secondTree).toEqual(firstFiles);
+    });
+
+    test("--dry-run leaves the tree and bg.json byte-identical", async () => {
+      const target = await freshProject("bg-cli-rec-dry-");
+      const before = await snapshot(target);
+
+      const { result } = await addItems({
+        projectRoot: target,
+        items: ["button"],
+        dryRun: true,
+        install: false,
+      });
+
+      expect(result.written.length).toBeGreaterThan(0);
+      expect(Object.keys(result.manifest.files).sort()).toEqual([...result.written].sort());
+      expect(await snapshot(target)).toEqual(before);
+    });
+  });
+
   describe("a v1 bg.json", () => {
     const V1 = {
       version: 1,
@@ -205,14 +298,17 @@ describe("bg create + add", () => {
       const after = JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as {
         version: number;
         items: Record<string, unknown>;
-        files: unknown;
+        files: Record<string, { owner: string; sha256: string }>;
         regions: unknown;
       };
       expect(after.version).toBe(2);
       // the v1 record survives under `items`, beside what this add wrote
       expect(Object.keys(after.items).sort()).toEqual(["button", "card", "utils"]);
-      // pre-v2 files are user-owned: nothing is claimed for them
-      expect(after.files).toEqual({});
+      // pre-v2 files are user-owned: only what this add wrote is claimed, never what card wrote
+      expect(Object.values(after.files).map((f) => f.owner)).toEqual(
+        expect.arrayContaining(["button", "utils"]),
+      );
+      expect(Object.values(after.files).every((f) => f.owner !== "card")).toBe(true);
       expect(after.regions).toEqual({});
       expect(after).not.toHaveProperty("installed");
       expect(after).not.toHaveProperty("capabilities");
