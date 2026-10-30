@@ -480,9 +480,10 @@ async function checkRegions(
     findings,
     [
       ...notes,
-      "foreign edit is checked for script regions, against the module.json of the registry bg.json names " +
-        "(bg.json records who owns a region, not what it contained); a region of another kind is listed " +
-        "as unchecked, and nothing was compared for it",
+      "foreign edit is checked for the regions that have a value (a script, a JSON leaf), against the " +
+        "module.json of the registry bg.json names (bg.json records who owns a region, not what it " +
+        "contained); an import, an export or a .use is only read as present, and a region of a kind " +
+        "doctor does not know is listed as unchecked, and nothing was compared for it",
     ],
   );
 }
