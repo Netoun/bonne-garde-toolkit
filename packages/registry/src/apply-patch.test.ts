@@ -1803,3 +1803,66 @@ describe("a module record keeps only what 020 names", () => {
     ]);
   });
 });
+
+describe("a file another module's intention edited (060: an intent[<id>] region is a region)", () => {
+  const FILE = "packages/auth/src/mailer.ts";
+  const REGION = "intent[email/resend/wire-email-into-auth]";
+  const SHIPPED = "export const mailer = unconfiguredMailer(apiLogger);\n";
+  const EDITED = "export const mailer = emailMailer;\n";
+  const auth = (content = SHIPPED) =>
+    modulePlan({
+      category: "auth",
+      id: "better-auth",
+      key: "auth/better-auth",
+      files: [{ target: FILE, content }],
+      patches: [],
+    });
+
+  /** auth installed, its mailer.ts edited by email's intention, and `bg record` having marked the file. */
+  async function recorded(marked = true) {
+    const { projectRoot, manifest } = await freshProject({});
+    const first = await install(projectRoot, manifest, [auth()]);
+    await writeFile(join(projectRoot, FILE), EDITED);
+    const withRegion = marked
+      ? parseProjectManifest({
+          ...first.manifest,
+          regions: { [FILE]: { [REGION]: "email/resend" } },
+        })
+      : first.manifest;
+    await writeFile(join(projectRoot, "bg.json"), `${JSON.stringify(withRegion, null, 2)}\n`);
+    return { projectRoot, first, manifest: withRegion };
+  }
+
+  test("its owner added again keeps the edit, --force or not: only the regions are classified, and an intent region has no value to differ", async () => {
+    const { projectRoot, manifest, first } = await recorded();
+    const before = await snapshot(projectRoot);
+
+    for (const force of [false, true]) {
+      const again = await install(projectRoot, manifest, [auth()], { force });
+
+      expect(again.kept).toEqual([FILE]);
+      expect(again.written).toEqual([]);
+      expect(again.manifest.files).toEqual(first.manifest.files);
+      expect(again.manifest.regions).toEqual({ [FILE]: { [REGION]: "email/resend" } });
+      expect(await snapshot(projectRoot)).toEqual(before);
+    }
+  });
+
+  test("it keeps the edit when the owner's template changed too, which a re-hash of the file would have overwritten", async () => {
+    const { projectRoot, manifest } = await recorded();
+    const next = `${SHIPPED}export const version = 2;\n`;
+
+    const again = await install(projectRoot, manifest, [auth(next)]);
+
+    expect(again.kept).toEqual([FILE]);
+    expect(await read(projectRoot, FILE)).toBe(EDITED);
+  });
+
+  test("without the region the same edit is a modified file: the add is refused, listing it", async () => {
+    const { projectRoot, manifest } = await recorded(false);
+
+    await expect(install(projectRoot, manifest, [auth()])).rejects.toThrow(
+      /nothing was written.*packages\/auth\/src\/mailer\.ts was modified since auth\/better-auth wrote it/s,
+    );
+  });
+});
