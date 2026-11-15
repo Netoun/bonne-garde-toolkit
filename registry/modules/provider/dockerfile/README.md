@@ -64,8 +64,36 @@ once under `DATA_DIR`, to a temporary file that is hard-linked into place, so tw
 starts cannot produce two secrets and a reader never sees an empty file. `RESEND_API_KEY` is not
 treated the same way, and it is not this module's: it is the `email` module's key, which that module
 declares and reads, and nothing here can stand in for an email provider. The API boots without it, and
-the first email asked for fails naming the key; `compose.yaml` only forwards it from the host's
-environment when it is set.
+the first email asked for fails naming the key; `compose.yaml` forwards the project's `.env`, so the key
+reaches the container when the file has it (see [Compose and the project's `.env`](#compose-and-the-projects-env)).
+
+## Compose and the project's `.env`
+
+`compose.yaml` names only what the provider owns: `APP_URL`, `TRUSTED_PROXY_HEADER` and the build argument
+`VITE_API_URL`, which bakes the API's origin into the SPA bundle. Every other key reaches the container
+through `env_file`, which forwards the project's `.env` whole:
+
+```yaml
+env_file:
+  - path: .env
+    required: false
+```
+
+A module declares its keys in the root `.env.example` (`bg add` merges them there), so the flow is
+`cp .env.example .env`, fill it, `docker compose up`, with nothing to add to `compose.yaml` when a module
+is installed. `BETTER_AUTH_SECRET=` left blank in `.env` counts as unset, and the runtime generates the
+secret into `DATA_DIR/secrets` on first start; a value an operator sets wins.
+
+- **Docker Compose 2.24 or later.** `required: false` on an `env_file` entry (the long form) arrived in
+  2.24.0; before it the file had to exist, and a project with no `.env` failed to start. Observed with
+  Compose v5.5.0: `docker compose config` accepts the file with and without a `.env`.
+- **`environment` wins over `env_file`**, so `APP_URL` and `TRUSTED_PROXY_HEADER` keep their defaults, and a
+  value in `.env` for either of them is the one Compose interpolates, since it reads `.env` for that too.
+- **A key exported only in the host's shell no longer reaches the container.** The old file named
+  `RESEND_API_KEY` with `${RESEND_API_KEY:-}`, which Compose filled from the shell; `env_file` reads the
+  file only. Put the key in `.env`, or pass it with `docker compose run -e` / `docker run -e`.
+- **Everything in `.env` is forwarded**, including keys the container never reads. Keep `.env` out of git
+  (the template's `.gitignore` does) and out of the image (the `.dockerignore` does).
 
 ## The client's address and a reverse proxy
 
@@ -137,8 +165,8 @@ under a second. Before this module wrote the `package.json` of `packages/api-run
 `Dockerfile` stopped naming the SPA, `bun run --filter '@scope/spa' build` failed with "No workspace
 packages matched" on such a project.
 
-`compose.yaml` no longer refuses to start without `RESEND_API_KEY`: the API shell does not read it, and
-the `email` module owns it (it forwards the key when the host has one).
+`compose.yaml` does not refuse to start without a module's key: the API shell reads none, and each module
+owns its own (see the next section).
 
 Two fixes were needed to get the image to build at all, neither of them where the first diagnosis put it:
 

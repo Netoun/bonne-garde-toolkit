@@ -10,17 +10,17 @@ services:
       - "5172:5172"
     volumes:
       - app-data:/data
+    # The project's .env reaches the container whole, so a module's key needs nothing named here. Copy
+    # .env.example to .env and fill it. Optional (Compose 2.24 or later), and `environment` below wins.
+    env_file:
+      - path: .env
+        required: false
     environment:
       APP_URL: ${APP_URL:-http://localhost:5172}
       # Name the header your reverse proxy overwrites with the client's address (x-forwarded-for) when
       # one sits in front: every client shares the proxy's address without it. Leave it blank when the
       # port is published to clients directly, where a client could set that header itself.
       TRUSTED_PROXY_HEADER: ${TRUSTED_PROXY_HEADER:-}
-      # The email module's key. Compose does not forward the host's environment on its own, so it is named
-      # here; the API boots without it and the first email asked for fails, naming it.
-      RESEND_API_KEY: ${RESEND_API_KEY:-}
-      # BETTER_AUTH_SECRET: generated into ${DATA_DIR}/secrets on first start when unset.
-      # BETTER_AUTH_SECRET: "replace-with-a-random-secret-of-at-least-32-characters"
 
 volumes:
   app-data:
