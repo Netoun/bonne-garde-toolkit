@@ -2125,7 +2125,11 @@ describe("module contract", () => {
         if (specifier === "{{SCOPE}}/api-runtime") return "provider";
         if (specifier === "{{SCOPE}}/db/d1") return "db";
         if (specifier === "{{SCOPE}}/db" || specifier === "{{SCOPE}}/db/testing") return "orm";
-        if (specifier === "{{SCOPE}}/auth" || specifier === "{{SCOPE}}/auth/schema") return "auth";
+        if (
+          ["{{SCOPE}}/auth", "{{SCOPE}}/auth/schema", "{{SCOPE}}/auth/testing"].includes(specifier)
+        ) {
+          return "auth";
+        }
         return null;
       };
       const reached = new Set<string>();

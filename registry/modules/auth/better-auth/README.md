@@ -34,25 +34,35 @@ member and invitation tables in it, and `storage`'s `medias` table has foreign k
 
 Everything in `packages/auth`, from explicit paths:
 
-| File                                | What it is                                                                                            |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `package.json`                      | `{{SCOPE}}/auth`: the `.`, `./client`, `./schema` and `./testing` exports, the scripts below          |
-| `src/auth.config.ts`                | `createAuth(options)`: the Better Auth instance, with no environment read and nothing built at import |
-| `src/auth.module.ts`                | `authModule` (the handler mounted on the app) and `authMacro` (`{ auth: true }` on a route)           |
-| `src/schema.ts`                     | the Drizzle tables and relations, **generator output** (see below)                                    |
-| `src/env.ts`                        | `resolveAuthEnv`: `BETTER_AUTH_SECRET`, read from `readRuntimeEnv()`                                  |
-| `src/mailer.ts`                     | `AuthMailer`, and the `mailer` an `email` module replaces                                             |
-| `src/password.ts`                   | scrypt `hashPassword` / `verifyPassword`, shared with the seed                                        |
-| `src/seed.ts`                       | `db:seed` and `db:reset`: an admin, SQL builders that are tested, and a thin `wrangler` runner        |
-| `src/client.ts`, `src/base-path.ts` | what a front imports: `type Auth` and `AUTH_BASE_PATH`, with no server code                           |
-| `src/auth.cli.ts`                   | the entry `auth:generate` loads                                                                       |
-| `src/testing.ts`                    | `createTestAuth()`: an instance over real in-memory SQLite, for this package's tests and others'      |
-| `src/*.test.ts`                     | the tests that travel, and the new ones, all against real SQLite: no mock of Drizzle or `fetch`       |
+| File                                | What it is                                                                                                                      |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `package.json`                      | `{{SCOPE}}/auth`: the `.`, `./client`, `./schema` and `./testing` exports, the scripts below                                    |
+| `src/auth.config.ts`                | `createAuth(options)`: the Better Auth instance, with no environment read and nothing built at import                           |
+| `src/auth.module.ts`                | `authModule` (the handler mounted on the app) and `authMacro` (`{ auth: true }` on a route)                                     |
+| `src/schema.ts`                     | the Drizzle tables and relations, **generator output** (see below)                                                              |
+| `src/env.ts`                        | `resolveAuthEnv`: `BETTER_AUTH_SECRET`, read from `readRuntimeEnv()`                                                            |
+| `src/mailer.ts`                     | `AuthMailer`, and the `mailer` an `email` module replaces                                                                       |
+| `src/password.ts`                   | scrypt `hashPassword` / `verifyPassword`, shared with the seed                                                                  |
+| `src/seed.ts`                       | `db:seed` and `db:reset`: an admin, SQL builders that are tested, and a thin `wrangler` runner                                  |
+| `src/client.ts`, `src/base-path.ts` | what a front imports: `type Auth` and `AUTH_BASE_PATH`, with no server code                                                     |
+| `src/auth.cli.ts`                   | the entry `auth:generate` loads                                                                                                 |
+| `src/testing.ts`                    | `createTestAuth(overrides?, tables?)`: an instance over real in-memory SQLite, for this package's tests and others' (see below) |
+| `src/*.test.ts`                     | the tests that travel, and the new ones, all against real SQLite: no mock of Drizzle or `fetch`                                 |
 
 Dependencies are exact: `better-auth` and `@better-auth/drizzle-adapter` at the same release (a
 contract test pins that, and the CLI the scripts run), `drizzle-orm`, `elysia`, and the project's
 `api`, `api-runtime` and `db` as workspaces. `api` imports `auth` to mount it and `auth` imports `api`'s
 `lib/*`; `db`'s barrel re-exports `auth`'s tables. Bun accepts those workspace cycles (see Wiring).
+
+## `createTestAuth` for another module's tests
+
+`createTestAuth(overrides?, tables?)` from `{{SCOPE}}/auth/testing` is the one place a test learns how to
+sign a user in: it signs up through the handler, opens the link of the verification email it kept, and
+signs in, which is `signIn(email)`, the cookie of that session. A module whose tables point at auth's
+passes them as the second argument, `createTestAuth({}, { medias })`, and they are created beside auth's in
+the same in-memory database, which comes back typed with both as `db`. `storage/r2`'s `createTestStorage`
+is built that way, so it repeats none of the flow. Each instance reads its own client address, so the
+rate limit of one test is never spent by another.
 
 ## The schema is pure generator output
 

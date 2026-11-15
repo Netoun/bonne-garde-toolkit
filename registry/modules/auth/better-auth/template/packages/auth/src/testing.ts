@@ -22,15 +22,43 @@ let instances = 0;
 /** An email the mailer was asked to send, in the order it was asked. */
 export type SentEmail = AuthEmail & { kind: "verification" | "password_reset" };
 
+type TestAuthOverrides = Partial<
+  Pick<AuthOptions, "mailer" | "trustedOrigins" | "clientIpHeaders">
+>;
+
+/** The database `createTestDb` gives for a schema: real SQLite, which is what D1 is. */
+type TestDatabase<TSchema extends Record<string, unknown>> = Awaited<
+  ReturnType<typeof createTestDb<TSchema>>
+>;
+
 /**
  * A Better Auth instance over a fresh in-memory SQLite database that has the auth tables, and a
  * mailer that keeps what it is asked to send instead of sending it. Nothing is mocked: the
  * database is the one D1 is, and the requests go through the handler the API mounts.
+ *
+ * A module whose tables point at auth's (a `medias` row has an author) passes them as `tables`: they
+ * are created beside auth's in the same database, which is `db`, and `signIn` is how its tests get a
+ * session over it.
  */
 export async function createTestAuth(
-  overrides: Partial<Pick<AuthOptions, "mailer" | "trustedOrigins" | "clientIpHeaders">> = {},
+  overrides?: TestAuthOverrides,
+): Promise<TestAuth<typeof schema>>;
+export async function createTestAuth<TTables extends Record<string, unknown>>(
+  overrides: TestAuthOverrides,
+  tables: TTables,
+): Promise<TestAuth<typeof schema & TTables>>;
+export async function createTestAuth(overrides: TestAuthOverrides = {}, tables = {}) {
+  return startTestAuth(overrides, await createTestDb({ ...schema, ...tables }));
+}
+
+export type TestAuth<TSchema extends Record<string, unknown>> = Awaited<
+  ReturnType<typeof startTestAuth<TSchema>>
+>;
+
+async function startTestAuth<TSchema extends Record<string, unknown>>(
+  overrides: TestAuthOverrides,
+  db: TestDatabase<TSchema>,
 ) {
-  const db = await createTestDb(schema);
   // A client address of this instance's own, so that no test spends another's rate limit.
   instances += 1;
   const clientIp = `10.${Math.floor(instances / 250)}.${instances % 250}.1`;

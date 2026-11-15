@@ -5,21 +5,17 @@ import { Elysia } from "elysia";
 import { Miniflare } from "miniflare";
 // `bg add` rewrites the scope in these lines, so the formatter cannot know how wide they are.
 // oxfmt-ignore
-import { authMacroPlugin, createAuth } from "{{SCOPE}}/auth";
+import { authMacroPlugin } from "{{SCOPE}}/auth";
 // oxfmt-ignore
 import * as authSchema from "{{SCOPE}}/auth/schema";
 // oxfmt-ignore
-import { createTestDb } from "{{SCOPE}}/db/testing";
+import { createTestAuth } from "{{SCOPE}}/auth/testing";
 import { R2_BINDING, bindR2 } from "./bucket";
 import { mediaPlugin } from "./media.module";
 import * as storageSchema from "./schema";
 
 /** The public url a test serves files under: the `R2_PUBLIC_URL` of a test project. */
 export const TEST_PUBLIC_URL = "https://media.example.com";
-
-const API_URL = "http://api.test";
-const APP_URL = "http://spa.test";
-const PASSWORD = "correct horse battery staple";
 
 /**
  * A real R2 bucket, which is what Miniflare runs workerd's for: no stand-in, no mock. One per test
@@ -49,25 +45,12 @@ export async function startTestBucket() {
 
 /**
  * The media routes over a fresh in-memory SQLite database that has the auth and the media tables, a
- * real Better Auth instance for the sessions, and the bucket the test brings (or none). Nothing is
- * mocked: the requests go through the plugin `apps/api` mounts, and what it stores lands in the
- * database the test reads back.
+ * real Better Auth instance for the sessions (`createTestAuth`, which owns the database and the
+ * sign-in flow), and the bucket the test brings (or none). Nothing is mocked: the requests go
+ * through the plugin `apps/api` mounts, and what it stores lands in the database the test reads back.
  */
 export async function createTestStorage(bucket: R2Bucket | undefined) {
-  const db = await createTestDb({ ...authSchema, ...storageSchema });
-  const auth = createAuth({
-    db,
-    secret: "test-auth-secret-min-32-chars-long!!",
-    baseURL: API_URL,
-    appURL: APP_URL,
-    trustedOrigins: [APP_URL],
-    clientIpHeaders: ["x-test-client-ip"],
-    mailer: {
-      async sendVerificationEmail() {},
-      async sendPasswordReset() {},
-    },
-    logger: { info() {}, warn() {}, error() {} },
-  });
+  const { auth, db, signIn } = await createTestAuth({}, storageSchema);
   const app = new Elysia().use(
     mediaPlugin(
       async () => ({ db, bucket, publicUrl: TEST_PUBLIC_URL }),
@@ -77,22 +60,15 @@ export async function createTestStorage(bucket: R2Bucket | undefined) {
 
   /** Signs a verified user up and in: its id, and the cookie of that session. */
   async function signUp(email: string) {
-    const { user } = await auth.api.signUpEmail({
-      body: { email, password: PASSWORD, name: email },
-    });
-    await db
-      .update(authSchema.user)
-      .set({ emailVerified: true })
-      .where(eq(authSchema.user.id, user.id));
-    const response = await auth.api.signInEmail({
-      body: { email, password: PASSWORD },
-      asResponse: true,
-    });
-    const cookie = response.headers
-      .getSetCookie()
-      .map((entry) => entry.split(";")[0])
-      .join("; ");
-    return { userId: user.id, cookie };
+    const cookie = await signIn(email);
+    const [created] = await db
+      .select({ id: authSchema.user.id })
+      .from(authSchema.user)
+      .where(eq(authSchema.user.email, email));
+    if (created === undefined) {
+      throw new Error(`${email} signed in but has no user row`);
+    }
+    return { userId: created.id, cookie };
   }
 
   /** `userId` as a member of the organization `orgId`, with `role`. */

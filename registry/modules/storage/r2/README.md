@@ -138,7 +138,8 @@ storage's table, storage reads `createDB`), like the one `auth` has; Bun, `tsc` 
 ## Tests
 
 63 tests in the project, against what is real: an R2 bucket from Miniflare (workerd's own, not a stand-in), an
-in-memory SQLite that has the auth and media tables, and a Better Auth instance for the sessions. Nothing is
+in-memory SQLite that has the auth and media tables, and a Better Auth instance for the sessions (`createTestAuth` of
+`{{SCOPE}}/auth/testing`, given the media tables: storage keeps no sign-in flow of its own). Nothing is
 mocked. The legacy ones travel: `r2.test.ts`, the file route of `media.routes.test.ts`, and the service cases
 of `media.e2e.test.ts`, which now go through the real routes at `/v1/media` where the legacy file re-implemented
 the handlers in the test. New: `bucket.test.ts` (the binding, and a variable that is not one), `env.test.ts`,
