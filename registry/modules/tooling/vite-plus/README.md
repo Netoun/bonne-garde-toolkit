@@ -9,10 +9,11 @@ bunx bg add tooling/vite-plus
 
 ## What it writes
 
-| File                | What it is                                                                              |
-| ------------------- | --------------------------------------------------------------------------------------- |
-| `vite.config.ts`    | `lint` (rules, plugins, ignore patterns), `fmt` (options, ignore patterns) and `staged` |
-| `.husky/pre-commit` | `bunx vp staged`: runs `vp check --fix` on the staged `*.{ts,tsx,js,jsx,mjs,cjs}` files |
+| File                          | What it is                                                                                                                                                                                                                                                                                           |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vite.config.ts`              | `lint` (rules, plugins, ignore patterns), `fmt` (options, ignore patterns) and `staged`                                                                                                                                                                                                              |
+| `.husky/pre-commit`           | `bunx vp staged`: runs `vp check --fix` on the staged `*.{ts,tsx,js,jsx,mjs,cjs}` files                                                                                                                                                                                                              |
+| `oxlint-plugins/structure.js` | rule `structure/route-modules`: a file declared in an app's `routes.ts` lives in `features/<f>/pages/` and is named `<f>-…-page.tsx`, `-layout.tsx` (it has children) or `-redirect.tsx`; those suffixes belong to routed files only. The rules head the file; `structure-plugin.test.ts` pins them. |
 
 It declares no dependency and no workspace: the `vite-plus` and `husky` dependencies and the `fmt`,
 `lint`, `check` and `prepare` scripts come with the base template, because `bg add` cannot edit a

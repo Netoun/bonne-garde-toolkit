@@ -277,7 +277,7 @@ describe("module contract", () => {
     });
   });
 
-  test("tooling/vite-plus is the quality gate: the Vite+ config and the pre-commit hook, no dependencies", async () => {
+  test("tooling/vite-plus is the quality gate: the Vite+ config, its route-structure rule and the pre-commit hook, no dependencies", async () => {
     const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
     const found = catalog.modules.find(
       ({ manifest }) => manifest.category === "tooling" && manifest.id === "vite-plus",
@@ -292,7 +292,11 @@ describe("module contract", () => {
     expect(manifest.variants).toHaveLength(1);
     const [variant] = manifest.variants;
     expect(variant?.match).toEqual({});
-    expect(variant?.copy).toEqual(["vite.config.ts", ".husky/pre-commit"]);
+    expect(variant?.copy).toEqual([
+      "vite.config.ts",
+      ".husky/pre-commit",
+      "oxlint-plugins/structure.js",
+    ]);
     // A repo-homed module needs an explicit `workspace` to declare dependencies, and `vite-plus` and
     // `husky` already come with the base template, so there is nothing for it to write into.
     expect(variant?.workspace).toBeUndefined();

@@ -12,12 +12,12 @@ bunx bg add web/spa
 
 ## Peers and variants
 
-| Peer       | Allow-list | Why                                                                                                    |
-| ---------- | ---------- | ------------------------------------------------------------------------------------------------------ |
-| `provider` | any        | the SPA is deployed differently on each: a Pages config, or the container that serves `build/client`   |
-| `config`   | `branding` | `routes/home.tsx` reads `branding`, and `root.tsx` imports the favicons from `{{SCOPE}}/config/assets` |
-| `api`      | `elysia`   | `lib/api.ts` types the Eden client with `type App` from `{{SCOPE}}/api/app`                            |
-| `ui`       | `shadcn`   | `root.tsx` imports `{{SCOPE}}/ui/globals.css`                                                          |
+| Peer       | Allow-list | Why                                                                                                                      |
+| ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `provider` | any        | the SPA is deployed differently on each: a Pages config, or the container that serves `build/client`                     |
+| `config`   | `branding` | `features/home/pages/home-page.tsx` reads `branding`, and `root.tsx` imports the favicons from `{{SCOPE}}/config/assets` |
+| `api`      | `elysia`   | `lib/api.ts` types the Eden client with `type App` from `{{SCOPE}}/api/app`                                              |
+| `ui`       | `shadcn`   | `root.tsx` imports `{{SCOPE}}/ui/globals.css`                                                                            |
 
 One variant per provider, which list the same files except `wrangler.jsonc`, and differ in what
 `scripts.merge` (spec 060) adds to the vendored `apps/spa/package.json`:
@@ -38,14 +38,14 @@ Everything under `apps/spa`, which is its home (035):
 
 - `package.json`, `tsconfig.json`, `react-router.config.ts` (`ssr: false`), `vite.config.ts`.
 - `src/root.tsx`: `Layout`, the providers, the loader and the error boundary.
-- `src/routes.ts` and `src/routes/home.tsx`: one index route, and its test.
+- `src/routes.ts` and `src/features/home/pages/home-page.tsx`: one index route, and its test.
 - `src/lib/{api,utils}.ts`, `src/providers/query-provider.tsx`, `src/stores/{theme-store,ui.store}.ts`,
   `src/hooks/{use-init-theme,use-load-app}.ts`, `src/components/{app-loader,client-only}.tsx`.
 - `testing/{frontend.setup.ts,matchers.d.ts}`: the Vitest setup, with the `jest-dom` matchers.
 - `wrangler.jsonc` on `cloudflare`, a Pages config: `my-app-spa` and the `*.my-app.com` URLs are the
   legacy app's placeholders, replaced by hand. `bg add` renders `{{SCOPE}}` and nothing else.
 
-`env` adds `VITE_API_URL` to `.env.example`. `bun run test` runs one test, `routes/home.test.tsx`.
+`env` adds `VITE_API_URL` to `.env.example`. `bun run test` runs one test, `features/home/pages/home-page.test.tsx`.
 
 ## What changed from the legacy `apps/spa`
 

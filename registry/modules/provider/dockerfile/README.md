@@ -128,7 +128,7 @@ volume on `/data` and its port published on `127.0.0.1`, answers:
 
 - `GET /health`: 200 `application/json`, `{"status":"ok","timestamp":…}`.
 - `GET /`: 200 `text/html`, the `index.html` of the `web/spa` build. Its route manifest lists the
-  `root` route and the index route `routes/home`.
+  `root` route and the index route `features/home/pages/home-page`.
 - A hashed asset of that page, `/assets/manifest-<hash>.js`: 200 `text/javascript`.
 - A path no file matches, `/golden/unknown-client-route`, asked for with `Accept: text/html`: 200,
   and the same `index.html` as `GET /`.

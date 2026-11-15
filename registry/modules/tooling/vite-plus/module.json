@@ -11,7 +11,7 @@
     {
       "key": "default",
       "match": {},
-      "copy": ["vite.config.ts", ".husky/pre-commit"]
+      "copy": ["vite.config.ts", ".husky/pre-commit", "oxlint-plugins/structure.js"]
     }
   ]
 }

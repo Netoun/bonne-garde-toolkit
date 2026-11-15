@@ -25,6 +25,8 @@ export default defineConfig({
       ".DS_Store",
     ],
     plugins: ["typescript", "import", "unicorn", "node"],
+    // Route modules: named by role, prefixed by feature, all in features/<f>/pages/ (rules in the file).
+    jsPlugins: ["./oxlint-plugins/structure.js"],
     env: {
       es2022: true,
       node: true,
@@ -35,6 +37,7 @@ export default defineConfig({
       "no-console": "warn",
       "no-debugger": "error",
       "unicorn/prefer-string-slice": "warn",
+      "structure/route-modules": ["error", { mode: "pages" }],
     },
     overrides: [
       {
