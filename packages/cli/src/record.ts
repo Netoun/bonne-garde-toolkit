@@ -21,11 +21,6 @@ export type RecordResult = {
   marked: string[];
   /** The files it declares `adapt` that are not a file of the project, so took none. */
   notFiles: string[];
-  /**
-   * An applied install intention for which there was nothing to read its `adapt` paths from: no failed
-   * patch of its module names it, and `.bg/` no longer holds its document. No file was marked.
-   */
-  unread: boolean;
 };
 
 async function isFile(projectRoot: string, path: string): Promise<boolean> {
@@ -74,6 +69,11 @@ async function declaredAdapt(
  * of its module (060), so that file is checked by region and not read as another module's file the
  * project modified. A path that is not a file of the project takes none: a region in a file that is
  * not there would be a `doctor` error.
+ *
+ * An applied install intention whose `adapt` paths cannot be read, because no failed patch of its module
+ * names it and `.bg/` no longer holds its document, is refused and nothing is written: recording it would
+ * leave its files unmarked, and `doctor --strict` calling them user-modified for good. It is still pending,
+ * so `bg add <module>` stages it again. `--skip` edited nothing and needs no paths.
  */
 export async function recordIntentionOutcome(
   projectRoot: string,
@@ -94,20 +94,27 @@ export async function recordIntentionOutcome(
     ((await isFile(projectRoot, path)) ? adapted : notFiles).push(path);
   }
 
+  // After `recordIntention`, which refuses a bad id or a module that is not installed first.
   const recorded = recordIntention(
     manifest,
     id,
     outcome.status === "applied" ? { status: "applied", adapted } : outcome,
   );
+  const install = recorded.recordedIn !== "platform";
+  if (install && outcome.status === "applied" && declared === null) {
+    throw new Error(
+      `cannot record ${id} as applied: no failed patch of ${recorded.recordedIn} names it and .bg/ no longer holds its document, ` +
+        "so the files it edited cannot be found to mark. Nothing was recorded. " +
+        `Run \`bg add ${recorded.recordedIn}\` to stage it again (every add stages an intention that is not recorded yet), resolve it, then record it.`,
+    );
+  }
   await writeManifest(projectRoot, recorded.manifest);
 
-  const install = recorded.recordedIn !== "platform";
   return {
     recordedIn: recorded.recordedIn,
     migratedFrom,
     staged: stagedFile !== undefined,
     marked: install ? adapted : [],
     notFiles: install ? notFiles : [],
-    unread: install && outcome.status === "applied" && declared === null,
   };
 }

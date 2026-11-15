@@ -274,8 +274,11 @@ export async function runCli(argv: string[]): Promise<number> {
     }
     const outcome: IntentionOutcome =
       reason === undefined ? { status: "applied" } : { status: "skipped", reason };
-    const { recordedIn, migratedFrom, staged, marked, notFiles, unread } =
-      await recordIntentionOutcome(process.cwd(), id, outcome);
+    const { recordedIn, migratedFrom, staged, marked, notFiles } = await recordIntentionOutcome(
+      process.cwd(),
+      id,
+      outcome,
+    );
     if (migratedFrom !== null) {
       console.error(manifestMigrationNotice(false));
     }
@@ -287,12 +290,6 @@ export async function runCli(argv: string[]): Promise<number> {
     for (const path of notFiles) {
       console.error(
         `bg: ${path} is not a file of the project, so ${id} did not mark it as edited by it.`,
-      );
-    }
-    if (unread) {
-      console.error(
-        `bg: no failed patch of ${recordedIn} names ${id} and .bg/ no longer holds its document, so there are no Reference Paths to read: ` +
-          "no file was marked as edited by it, and bg doctor reports an edit to a file another module wrote as user-modified.",
       );
     }
     console.log(

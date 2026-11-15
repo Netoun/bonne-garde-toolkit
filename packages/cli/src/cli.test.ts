@@ -464,14 +464,44 @@ describe("bg record: the files an install intention edited (060 Region ownership
     expect(await regionsOf(target)).toEqual({ [APP]: { [REGION]: "auth/fixture-auth" } });
   });
 
-  test("an applied intention with no document to read is recorded, and says that no file was marked", async () => {
+  test("an applied intention with no document to read is refused, writes nothing, and says to add the module again", async () => {
     const target = await withStaged("bg-cli-record-nodoc-", [], { staged: false });
+    const before = await readFile(join(target, "bg.json"), "utf8");
+
+    const { stdout, stderr, code } = await runBg(target, "record", ID);
+
+    expect(code).toBe(1);
+    expect(stdout).toBe("");
+    expect(stderr).toContain(`cannot record ${ID} as applied`);
+    expect(stderr).toContain("bg add auth/fixture-auth");
+    expect(await readFile(join(target, "bg.json"), "utf8")).toBe(before);
+  });
+
+  test("--skip needs no document: a skipped intention edited nothing, so it is recorded in the same state", async () => {
+    const target = await withStaged("bg-cli-record-nodoc-skip-", [], { staged: false });
+
+    const { stderr, code } = await runBg(
+      target,
+      "record",
+      ID,
+      "--skip",
+      "the project wires auth itself",
+    );
+
+    expect(code).toBe(0);
+    expect(stderr).toContain(`${ID} is not staged under .bg/`);
+    expect(await regionsOf(target)).toEqual({});
+  });
+
+  test("a document that declares no adapt path is read, so it is recorded with nothing to mark", async () => {
+    const target = await withStaged("bg-cli-record-noadapt-", [
+      "`copy` `packages/auth/src/new.ts`",
+    ]);
 
     const { stderr, code } = await runBg(target, "record", ID);
 
     expect(code).toBe(0);
-    expect(stderr).toContain(`${ID} is not staged under .bg/`);
-    expect(stderr).toContain("no file was marked as edited by it");
+    expect(stderr).toBe("");
     expect(await regionsOf(target)).toEqual({});
   });
 
@@ -1558,6 +1588,28 @@ describe("bg add: the intentions a module authors (065)", () => {
     expect(last.code).toBe(0);
     expect((JSON.parse(last.stdout) as ModuleOutput).pendingIntentions).toEqual([]);
     expect(last.stderr).not.toContain("pending intention");
+  });
+
+  test("bg record refuses once .bg/ is gone, and the add the refusal names stages the intention again", async () => {
+    const target = await projectWithLauncher();
+    await runBg(target, "add", "dev/launcher", "--yes", "--no-install");
+    await rm(join(target, ".bg"), { recursive: true });
+    const before = await readFile(join(target, "bg.json"), "utf8");
+
+    const refused = await runBg(target, "record", ID);
+
+    expect(refused.code).toBe(1);
+    expect(refused.stderr).toContain("bg add dev/launcher");
+    expect(await readFile(join(target, "bg.json"), "utf8")).toBe(before);
+
+    // The intention is still pending, so that add stages it again, and then it records.
+    const again = await runBg(target, "add", "dev/launcher", "--yes", "--no-install");
+    expect(again.code).toBe(0);
+    expect(await readFile(join(target, ".bg/add/01-wire-launcher.md"), "utf8")).toBe(
+      DOCUMENT.replaceAll("{{SCOPE}}", "@cli-app"),
+    );
+    expect((await runBg(target, "record", ID)).code).toBe(0);
+    expect((await runBg(target, "doctor", "--strict")).code).toBe(0);
   });
 
   test("--dry-run reports it with nothing staged", async () => {
