@@ -93,24 +93,30 @@ Email comes after auth in 035's order, so it wires itself into auth and auth nev
 Auth owns the `AuthMailer` interface and exports `mailer`, documented as the one place an `email` module
 wires itself in. The `better-auth` variant does it in two steps:
 
-1. **Two patches** (tier 2), which `bg add` applies: `package.dependencies` declares `{{SCOPE}}/email` in
-   `packages/auth/package.json`, and `ts.addImport` imports `emailMailer` into
-   `packages/auth/src/mailer.ts`.
+1. **One patch** (tier 2), which `bg add` applies: `package.dependencies` declares `{{SCOPE}}/email` in
+   `packages/auth/package.json`.
 2. **One intention** (tier 3), `email/resend/wire-email-into-auth`, which `bg add` stages in
-   `.bg/add/` and which is pending until `bg record`: make `mailer` `emailMailer`, and drop the
-   `apiLogger` import only the old initializer used. This is the first intention a module ships:
-   no patch of 060's closed catalog replaces the initializer of an exported constant.
+   `.bg/add/` and which is pending until `bg record`: make `mailer` `emailMailer`, importing it from
+   `{{SCOPE}}/email` in place of the `apiLogger` import only the old initializer used. This is the first
+   intention a module ships: no patch of 060's closed catalog replaces the initializer of an exported
+   constant, and an import patch on its own would sit unused, and fail `bun run check`, until the
+   initializer is replaced. So `bg add` writes nothing into `mailer.ts`, and there is no lint-red window
+   between `bg add` and `bg record`.
 
-**Why the import is a patch and not part of the intention.** `mailer.ts` is auth's tier-1 file, with
-its sha256 recorded, and an executor's edit changes it: `bg doctor` would report it user-modified, a
-warning that `--strict` fails on. A file with recorded regions is checked by region instead (060), and
-the import is a region of email's. After the edit, `mailer.ts` is the project's: re-adding auth keeps it
-and reports it, and re-adding email skips its patches and stages nothing. Golden checks both.
+**What `bg record` does to `mailer.ts`.** It is auth's tier-1 file, with its sha256 recorded, and the edit
+changes it: `bg doctor` would report it user-modified, a warning that `--strict` fails on. The intention
+declares `mailer.ts` as an `adapt` Reference Path, so `bg record` records `intent[email/resend/wire-email-into-auth]`,
+owned by email, on it. A file with recorded regions is checked by region (060), so `doctor` reads it as the
+project's, and re-adding auth keeps the edit and reports it, even when auth's template changed. Auth's
+recorded sha is not replaced by the edited file's: that would make auth's re-add see an untouched file
+and overwrite the edit. Re-adding email skips its patch and stages nothing. `bg record --skip` records no
+region. Golden checks all of it: no region before the record, the region after it, `doctor --strict`
+green, and each module added again changing nothing.
 
 What the executor does, and what golden does, the same way: read `.bg/add/session.md`, apply the edit the
 document describes, run its Validation (`typecheck`, `test`, `check`, and a test that signs a user up
 through `createTestAuth({ mailer })` and reads the `outbox`), then `bg record
-email/resend/wire-email-into-auth`. Until then the import is unused, so `bun run check` reports it, and
+email/resend/wire-email-into-auth`. Until then `mailer` is auth's own, which sends nothing and says so, and
 the module's `checks` are withheld (050 step 15).
 
 **Installed in the other order.** `bg add auth/better-auth` after email is installed does not wire

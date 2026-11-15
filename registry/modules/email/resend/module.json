@@ -94,13 +94,6 @@
           "file": "packages/auth/package.json",
           "dependencies": { "{{SCOPE}}/email": "workspace:*" },
           "intent": "Declare the project's email package as a dependency of the auth package, whose mailer is sent through it."
-        },
-        {
-          "type": "ts.addImport",
-          "file": "packages/auth/src/mailer.ts",
-          "moduleSpecifier": "{{SCOPE}}/email",
-          "namedImports": ["emailMailer"],
-          "intent": "Import emailMailer from the project's email package in the auth package's mailer.ts."
         }
       ],
       "intent": ["01-wire-email-into-auth.md"]

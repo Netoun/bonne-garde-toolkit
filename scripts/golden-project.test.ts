@@ -15,7 +15,10 @@ import {
   EXCLUDED_MODULES,
   expectedTables,
   expectGenerated,
+  expectIntentRegion,
+  expectKept,
   expectMigrated,
+  expectNoIntentRegion,
   expectNothingToApply,
   expectPatches,
   expectPeerRefusal,
@@ -40,12 +43,14 @@ import {
   wiredTest,
   wireEmailIntoAuth,
   hasStorage,
+  intentRegion,
   WITHOUT_ORM,
   MODULE_TABLES,
   MODULES,
   PATCHED,
   publishedPort,
   readAddedModules,
+  readKept,
   requiresDocker,
   SCOPE,
   selectItems,
@@ -517,7 +522,9 @@ describe("the golden project and patches", () => {
         "web/spa": ["scripts.deploy", "scripts.dev"],
         "web/ssr": ["scripts.deploy", "scripts.dev"],
         "web/static": ["scripts.deploy", "scripts.dev"],
-        "email/resend": ["dependencies.@app/email", "imports[@app/email]"],
+        // The import into mailer.ts is the intention's: the file an intention edits is region-checked
+        // by the `intent[<id>]` region `bg record` leaves, not by a patch that imports for it.
+        "email/resend": ["dependencies.@app/email"],
       },
       dockerfile: {
         "config/branding": ["scripts.gen:branding"],
@@ -1091,17 +1098,16 @@ describe("the email phases", () => {
     const before = [
       'import { logger as apiLogger } from "@app/api/lib/logger";',
       'import type { AuthLogger } from "./auth.config";',
-      'import { emailMailer } from "@app/email";',
       "",
       "export const mailer: AuthMailer = unconfiguredMailer(apiLogger);",
       "",
     ].join("\n");
 
-    test("replaces the initializer of mailer, and drops the logger import only it used", () => {
+    test("imports emailMailer in place of the logger only the old initializer used, and replaces the initializer of mailer", () => {
       expect(wireEmailIntoAuth(before, "@app")).toBe(
         [
-          'import type { AuthLogger } from "./auth.config";',
           'import { emailMailer } from "@app/email";',
+          'import type { AuthLogger } from "./auth.config";',
           "",
           "export const mailer: AuthMailer = emailMailer;",
           "",
@@ -1117,6 +1123,94 @@ describe("the email phases", () => {
         wireEmailIntoAuth(before.replace("@app/api/lib/logger", "@other/api/lib/logger"), "@app"),
       ).toThrow(/@app\/api\/lib\/logger/);
       expect(MAILER_FILE).toBe("packages/auth/src/mailer.ts");
+    });
+
+    test("is not applied twice: a file that already imports emailMailer is refused", () => {
+      expect(() => wireEmailIntoAuth(wireEmailIntoAuth(before, "@app"), "@app")).toThrow(
+        /unconfiguredMailer\(apiLogger\)/,
+      );
+    });
+  });
+
+  describe("RESOLUTIONS (each names the file its edit lands in, whose region `bg record` leaves)", () => {
+    test("the wiring of email into auth edits auth's mailer.ts", () => {
+      expect(RESOLUTIONS["email/resend/wire-email-into-auth"]).toMatchObject({
+        module: "email/resend",
+        editedOwner: "auth/better-auth",
+        file: MAILER_FILE,
+      });
+    });
+  });
+
+  describe("the intent[<id>] region `bg record` leaves on a file an intention edited (060, 065)", () => {
+    const ID = "email/resend/wire-email-into-auth";
+    const manifest = (regions: unknown) => ({ regions });
+
+    test("is spelled `intent[<id>]`", () => {
+      expect(intentRegion(ID)).toBe("intent[email/resend/wire-email-into-auth]");
+    });
+
+    test("expectIntentRegion passes when bg.json records it on the file, owned by the module that ships the intention", () => {
+      expect(() =>
+        expectIntentRegion(
+          manifest({ [MAILER_FILE]: { [intentRegion(ID)]: "email/resend" } }),
+          ID,
+          MAILER_FILE,
+          "email/resend",
+        ),
+      ).not.toThrow();
+    });
+
+    test("expectIntentRegion fails when it is missing, on another file, or owned by another module", () => {
+      expect(() => expectIntentRegion(manifest({}), ID, MAILER_FILE, "email/resend")).toThrow(
+        /records no intent\[email\/resend\/wire-email-into-auth\] on packages\/auth\/src\/mailer\.ts/,
+      );
+      expect(() =>
+        expectIntentRegion(
+          manifest({ "other.ts": { [intentRegion(ID)]: "email/resend" } }),
+          ID,
+          MAILER_FILE,
+          "email/resend",
+        ),
+      ).toThrow(/records no intent/);
+      expect(() =>
+        expectIntentRegion(
+          manifest({ [MAILER_FILE]: { [intentRegion(ID)]: "auth/better-auth" } }),
+          ID,
+          MAILER_FILE,
+          "email/resend",
+        ),
+      ).toThrow(/for auth\/better-auth, and the intention is email\/resend's/);
+      expect(() => expectIntentRegion("nope", ID, MAILER_FILE, "email/resend")).toThrow(/regions/);
+    });
+
+    test("expectNoIntentRegion passes before the record and fails on a region left by an add", () => {
+      expect(() =>
+        expectNoIntentRegion(
+          manifest({ [MAILER_FILE]: { "imports[@app/email]": "email/resend" } }),
+          ID,
+        ),
+      ).not.toThrow();
+      expect(() =>
+        expectNoIntentRegion(
+          manifest({ [MAILER_FILE]: { [intentRegion(ID)]: "email/resend" } }),
+          ID,
+        ),
+      ).toThrow(
+        /already records intent\[email\/resend\/wire-email-into-auth\] on packages\/auth\/src\/mailer\.ts/,
+      );
+    });
+
+    test("readKept reads the files `bg add` kept as the project has them, and expectKept names the one missing", () => {
+      const out = JSON.stringify({ kept: [MAILER_FILE] });
+
+      expect(readKept(out)).toEqual([MAILER_FILE]);
+      expect(() => expectKept(out, MAILER_FILE)).not.toThrow();
+      expect(() => expectKept(JSON.stringify({ kept: [] }), MAILER_FILE)).toThrow(
+        /did not keep packages\/auth\/src\/mailer\.ts/,
+      );
+      expect(() => readKept("nope")).toThrow(/did not print JSON/);
+      expect(() => readKept("{}")).toThrow(/no `kept` list/);
     });
   });
 

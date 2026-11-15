@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import {
+  adaptedPaths,
   createEmptyProjectManifest,
   isModuleCategory,
   parseModuleManifest,
@@ -2463,9 +2464,10 @@ describe("module contract", () => {
 
       expect(manifest.variants.map(({ key }) => key)).toEqual(["default", "better-auth"]);
       expect(standalone.match).toEqual({});
-      // No optional peer exists in 035: auth is not a peer of email, so email installs without it, and
-      // the most specific `match` picks the variant that wires when auth is there.
+      // Auth is an optional peer (035 Variants): a `match` names it and `peers` does not, so email
+      // installs without it, and the variant that matches on it applies only when it is installed.
       expect(wired.match).toEqual({ auth: "better-auth" });
+      expect(Object.keys(manifest.peers)).not.toContain("auth");
       for (const variant of [standalone, wired]) {
         expect(variant.workspace).toEqual({ name: "{{SCOPE}}/email", path: "packages/email" });
       }
@@ -2561,7 +2563,7 @@ describe("module contract", () => {
       }
     });
 
-    test("the wired variant patches the two files auth documents as its seam, and says why in each patch", async () => {
+    test("the wired variant patches auth's package.json only, and says why: mailer.ts is the intention's whole, with no patch to import for it", async () => {
       const { wired } = await emailModule();
 
       expect(wired.patch).toEqual([
@@ -2571,18 +2573,16 @@ describe("module contract", () => {
           dependencies: { "{{SCOPE}}/email": "workspace:*" },
           intent: expect.stringContaining("auth package"),
         },
-        {
-          type: "ts.addImport",
-          file: "packages/auth/src/mailer.ts",
-          moduleSpecifier: "{{SCOPE}}/email",
-          namedImports: ["emailMailer"],
-          intent: expect.stringContaining("mailer.ts"),
-        },
       ]);
       const auth = join(MODULES, "auth/better-auth/template");
       for (const patch of wired.patch ?? []) {
         expect(existsSync(join(auth, String(patch.file)))).toBe(true);
       }
+      // A patch there would put a region in the file only to keep it out of `doctor`'s user-modified
+      // list, and leave an unused import between `bg add` and `bg record`: `bg record` marks the file.
+      expect(
+        (wired.patch ?? []).filter(({ file }) => file === "packages/auth/src/mailer.ts"),
+      ).toEqual([]);
     });
 
     test("what the intention replaces is what auth ships: the initializer of `mailer`, and the import only it uses", async () => {
@@ -2604,6 +2604,21 @@ describe("module contract", () => {
       expect(document).toContain("unconfiguredMailer(apiLogger)");
       expect(document).toContain("export const mailer: AuthMailer = emailMailer;");
       expect(document).toContain("id: email/resend/wire-email-into-auth");
+      // The import is the intention's too: it says where it goes, and that `bg add` did not write it.
+      expect(document).toContain("imported from `{{SCOPE}}/email`");
+      expect(document).toContain("`emailMailer` is not imported");
+    });
+
+    test("the intention declares mailer.ts, a file auth ships, as its one `adapt` path: it is the file `bg record` marks", async () => {
+      const document = await readFile(
+        join(MODULES, "email/resend/intent/01-wire-email-into-auth.md"),
+        "utf8",
+      );
+
+      expect(adaptedPaths(document)).toEqual(["packages/auth/src/mailer.ts"]);
+      expect(
+        existsSync(join(MODULES, "auth/better-auth/template/packages/auth/src/mailer.ts")),
+      ).toBe(true);
     });
 
     test("package.json carries exports and scripts and no dependency map, and each export is a file it ships", async () => {
@@ -2653,7 +2668,6 @@ describe("module contract", () => {
       expect(withAuth?.variant).toBe("better-auth");
       expect(withAuth?.patches.map(({ type, file }) => `${type} ${file}`)).toEqual([
         "package.dependencies packages/auth/package.json",
-        "ts.addImport packages/auth/src/mailer.ts",
       ]);
       expect(withAuth?.intentions.map(({ id }) => id)).toEqual([
         "email/resend/wire-email-into-auth",

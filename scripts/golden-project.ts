@@ -386,7 +386,9 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
     "web/spa": ["scripts.deploy", "scripts.dev"],
     "web/ssr": ["scripts.deploy", "scripts.dev"],
     "web/static": ["scripts.deploy", "scripts.dev"],
-    "email/resend": ["dependencies.@app/email", "imports[@app/email]"],
+    // Not the import into mailer.ts: that is the intention's edit, and the file it edits is
+    // region-checked by the `intent[<id>]` region `bg record` leaves.
+    "email/resend": ["dependencies.@app/email"],
   },
   dockerfile: {
     "config/branding": ["scripts.gen:branding"],
@@ -657,9 +659,10 @@ export function expectPending(reported: readonly string[], expected: readonly st
 
 /**
  * The edit `email/resend/wire-email-into-auth` describes, as an executor makes it: `mailer` becomes
- * `emailMailer`, which `bg add` already imported (a patch), and the import of the logger that only the
- * old initializer used goes. It fails, naming what it looked for, when auth ships something else, so a
- * seam that moved is not edited blind.
+ * `emailMailer`, imported from the email package in place of the import of the logger that only the old
+ * initializer used. `bg add` imports nothing into `mailer.ts`: the whole edit is the intention's. It fails,
+ * naming what it looked for, when auth ships something else or the edit was made already, so a seam that
+ * moved is not edited blind.
  */
 export function wireEmailIntoAuth(source: string, scope: string): string {
   const initializer = "export const mailer: AuthMailer = unconfiguredMailer(apiLogger);";
@@ -671,7 +674,7 @@ export function wireEmailIntoAuth(source: string, scope: string): string {
   }
   return source
     .replace(initializer, "export const mailer: AuthMailer = emailMailer;")
-    .replace(logger, "");
+    .replace(logger, `import { emailMailer } from "${scope}/email";\n`);
 }
 
 /**
@@ -740,10 +743,12 @@ test("a password reset request is sent the reset email, with the page that takes
  * typecheck and tests, which run that test, have passed.
  */
 export type Resolution = {
-  /** The module that ships the intention, whose `bg add` stages it. */
+  /** The module that ships the intention, whose `bg add` stages it and whose region `bg record` leaves. */
   module: string;
   /** The module that owns the file the edit lands in: it has to survive its own re-add. */
   editedOwner: string;
+  /** The file the edit lands in, which the intention declares `adapt`. */
+  file: string;
   apply(project: string): Promise<void>;
 };
 
@@ -751,6 +756,7 @@ export const RESOLUTIONS: Readonly<Record<string, Resolution>> = {
   "email/resend/wire-email-into-auth": {
     module: "email/resend",
     editedOwner: "auth/better-auth",
+    file: MAILER_FILE,
     async apply(project) {
       const file = join(project, MAILER_FILE);
       await Bun.write(file, wireEmailIntoAuth(await Bun.file(file).text(), SCOPE));
@@ -768,6 +774,75 @@ function resolution(id: string): Resolution {
     );
   }
   return found;
+}
+
+/** The region `bg record` leaves on a file an intention edited (060): `intent[<id>]`, spelled out here as a consumer reads it. */
+export function intentRegion(id: string): string {
+  return `intent[${id}]`;
+}
+
+function regionsOf(manifest: unknown): Record<string, unknown> {
+  if (!isRecord(manifest) || !isRecord(manifest.regions)) {
+    throw new Error("bg.json has no `regions` object");
+  }
+  return manifest.regions;
+}
+
+/**
+ * After `bg record`, `bg.json` holds the intention's region on the file it edited, owned by the module
+ * that ships it. That region is what makes `doctor --strict` read the edit as the project's, and what
+ * makes the owner's re-add keep it: a recorded sha would have the owner overwrite it.
+ */
+export function expectIntentRegion(
+  manifest: unknown,
+  id: string,
+  file: string,
+  owner: string,
+): void {
+  const owned = regionsOf(manifest)[file];
+  const found = isRecord(owned) ? owned[intentRegion(id)] : undefined;
+  if (found === undefined) {
+    throw new Error(`bg.json records no ${intentRegion(id)} on ${file} after \`bg record ${id}\``);
+  }
+  if (found !== owner) {
+    throw new Error(
+      `bg.json records ${intentRegion(id)} on ${file} for ${String(found)}, and the intention is ${owner}'s`,
+    );
+  }
+}
+
+/** Before `bg record`, no file carries the region: it is what the record leaves, never what an add does. */
+export function expectNoIntentRegion(manifest: unknown, id: string): void {
+  for (const [file, owned] of Object.entries(regionsOf(manifest))) {
+    if (isRecord(owned) && Object.hasOwn(owned, intentRegion(id))) {
+      throw new Error(
+        `bg.json already records ${intentRegion(id)} on ${file}, before \`bg record\``,
+      );
+    }
+  }
+}
+
+/** The files `bg add` printed under `kept`: left as the project has them, since they carry recorded regions. */
+export function readKept(stdout: string): string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    throw new Error("bg add did not print JSON");
+  }
+  if (!isRecord(parsed) || !isStringArray(parsed.kept)) {
+    throw new Error("bg add printed no `kept` list");
+  }
+  return parsed.kept;
+}
+
+/** The re-add of the owner of an edited file kept it: with the region recorded, only regions are classified. */
+export function expectKept(stdout: string, file: string): void {
+  if (!readKept(stdout).includes(file)) {
+    throw new Error(
+      `bg add did not keep ${file}: the edit an intention made to it is the project's`,
+    );
+  }
 }
 
 /**
@@ -1172,7 +1247,12 @@ async function configured(
     const reported = readAddedModules(stdout, modules);
     expectPatches(reported, "applied", patched);
     expectPending(readPendingIntentions(stdout), pending);
-    expectRegionsRecorded(JSON.parse(await Bun.file(join(project, "bg.json")).text()), reported);
+    const manifest: unknown = JSON.parse(await Bun.file(join(project, "bg.json")).text());
+    expectRegionsRecorded(manifest, reported);
+    // Pending is not recorded: no file carries an intention's region before `bg record` leaves it.
+    for (const id of pending) {
+      expectNoIntentRegion(manifest, id);
+    }
     return reported;
   });
   // Before `bun install`, so that node_modules and the lockfile are not in the comparison.
@@ -1241,6 +1321,14 @@ async function configured(
       await run([BUN, "run", "check"], project);
       for (const id of pending) {
         await run(bg("record", id), project);
+        // The edited file is region-checked from here on: bg.json holds the intention's region on it.
+        const { module, file } = resolution(id);
+        expectIntentRegion(
+          JSON.parse(await Bun.file(join(project, "bg.json")).text()),
+          id,
+          file,
+          module,
+        );
       }
     });
   }
@@ -1250,7 +1338,7 @@ async function configured(
   if (pending.length > 0) {
     await step("intentions: re-add", async () => {
       for (const id of pending) {
-        const { module, editedOwner } = resolution(id);
+        const { module, editedOwner, file } = resolution(id);
         for (const owner of [module, editedOwner]) {
           const before = await snapshot(project);
           const stdout = await capture(bg(...addArguments([owner], [])), project);
@@ -1259,6 +1347,11 @@ async function configured(
           );
           expectPatches(readAddedModules(stdout, [owner]), "skipped", expected);
           expectPending(readPendingIntentions(stdout), []);
+          if (owner === editedOwner) {
+            // The owner of the edited file wrote it and its recorded sha no longer matches: the region
+            // is what makes the add keep it and say so, instead of refusing or overwriting it.
+            expectKept(stdout, file);
+          }
           const changed = diffTrees(before, await snapshot(project));
           if (changed.length > 0) {
             throw new Error(

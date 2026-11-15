@@ -13,12 +13,12 @@ classification: migration
 
 ## Why
 
-Auth owns the `AuthMailer` interface and ships `mailer = unconfiguredMailer(apiLogger)`, which sends nothing and logs that it did not. The email module comes after auth in spec 035's order, so it wires itself into auth and auth never imports it first. `bg add` already did what 060's patch catalog can express: it declared `{{SCOPE}}/email` as a dependency of `packages/auth` and imported `emailMailer` into `mailer.ts`. No patch replaces the initializer of an exported constant, so that last edit is this intention's.
+Auth owns the `AuthMailer` interface and ships `mailer = unconfiguredMailer(apiLogger)`, which sends nothing and logs that it did not. The email module comes after auth in spec 035's order, so it wires itself into auth and auth never imports it first. `bg add` already did what 060's patch catalog can express: it declared `{{SCOPE}}/email` as a dependency of `packages/auth`. No patch replaces the initializer of an exported constant, and the import that goes with it would sit unused until that is done, so the whole edit to `mailer.ts`, the import included, is this intention's. `bg record` then marks `mailer.ts` with this intention's region, so the file reads as the project's and auth's own re-add keeps it.
 
 ## Applies When
 
 - `mailer` in `packages/auth/src/mailer.ts` is still initialised with `unconfiguredMailer(`.
-- `emailMailer` is imported from `{{SCOPE}}/email` in that file and not used.
+- `emailMailer` is not imported from `{{SCOPE}}/email` in that file.
 - A project that signed up a user and got no verification email, because `requireEmailVerification` is on and nothing sent it, is the case this closes.
 
 ## Do Not Apply When
@@ -30,8 +30,8 @@ Auth owns the `AuthMailer` interface and ships `mailer = unconfiguredMailer(apiL
 ## Observable Gaps
 
 - `grep -n "unconfiguredMailer(apiLogger)" packages/auth/src/mailer.ts` finds the initializer of `mailer`.
-- `emailMailer` is imported in `packages/auth/src/mailer.ts` and nothing reads it (the linter reports an unused import).
-- Done when `mailer` is `export const mailer: AuthMailer = emailMailer;`, the file no longer calls `unconfiguredMailer(apiLogger)`, and the `apiLogger` import that only that call used is gone. `unconfiguredMailer` stays exported and untouched: auth's own test pins it.
+- `grep -n "{{SCOPE}}/email" packages/auth/src/mailer.ts` finds nothing: `emailMailer` is not imported.
+- Done when `mailer` is `export const mailer: AuthMailer = emailMailer;`, `emailMailer` is imported from `{{SCOPE}}/email`, the file no longer calls `unconfiguredMailer(apiLogger)`, and the `apiLogger` import that only that call used is gone (import `emailMailer` in its place). `unconfiguredMailer` stays exported and untouched: auth's own test pins it.
 
 ## Out of Scope
 
@@ -41,7 +41,7 @@ Auth owns the `AuthMailer` interface and ships `mailer = unconfiguredMailer(apiL
 
 ## Reference Paths
 
-- `adapt` `packages/auth/src/mailer.ts` — read it first; replace the one initializer, drop the import it leaves unused, keep the rest as the project has it.
+- `adapt` `packages/auth/src/mailer.ts` — read it first; replace the one initializer, import `emailMailer` where the import it leaves unused was, keep the rest as the project has it.
 
 ## Validation
 
