@@ -61,12 +61,10 @@ export const SCOPE = "@app";
 
 /**
  * Items `bg list` shows that stay out of the golden project, each with its reason. An entry for an
- * item the registry no longer lists fails the run, so this list cannot go stale. Empty on purpose
- * but for the item a module replaces, until the item is removed: every other item is installed.
+ * item the registry no longer lists fails the run, so this list cannot go stale. Empty on purpose:
+ * every item the registry ships is installed, and the test pins that.
  */
-export const EXCLUDED: Readonly<Record<string, string>> = {
-  portless: "the item dev/portless replaces; `bg add` refuses a bare name that is also a module",
-};
+export const EXCLUDED: Readonly<Record<string, string>> = {};
 
 export type Excluded = { name: string; reason: string };
 

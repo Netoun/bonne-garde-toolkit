@@ -769,16 +769,17 @@ describe("bg add <module>", () => {
     const { stdout, code } = await runBg(
       target,
       "add",
-      "portless",
+      "utils",
       "dockerfile",
+      "ui/shadcn",
       "--yes",
       "--no-install",
     );
 
     expect(code).toBe(0);
     const out = JSON.parse(stdout) as ModuleOutput & { items: string[] };
-    expect(out.items).toEqual(["portless"]);
-    expect(out.modules.map((m) => m.module)).toEqual(["provider/dockerfile"]);
+    expect(out.items).toEqual(["utils"]);
+    expect(out.modules.map((m) => m.module)).toEqual(["provider/dockerfile", "ui/shadcn"]);
   });
 
   test("an unknown name fails with suggestions from both catalogs", async () => {
