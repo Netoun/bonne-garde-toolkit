@@ -14,6 +14,7 @@ import {
 } from "@bonne-garde/registry";
 import {
   MODULE_CATEGORIES,
+  parseIntentRegion,
   readProjectManifest,
   type ModuleCategory,
   type ModuleRecord,
@@ -390,12 +391,38 @@ async function checkRegions(
           message: `region ${region} of ${file} is owned by ${owner}, which is neither an installed item nor an installed module`,
         });
       }
-      if (!isReadableRegion(file, region)) {
+      if (parseIntentRegion(region) === null && !isReadableRegion(file, region)) {
         details.unchecked.push(`${file}#${region}`);
       }
     }
 
-    const readable = entries.filter(([region]) => isReadableRegion(file, region));
+    // `intent[<id>]` is what an applied intention left on a file it edited (060): it names no place in
+    // the file and has no value to compare, so what is checked of it is the record in `bg.json`, and
+    // the file is never read for it.
+    if (exists) {
+      for (const [region, owner] of entries) {
+        const id = parseIntentRegion(region);
+        const installed = installedModules(manifest).find(({ key }) => key === owner);
+        if (id === null || installed === undefined) {
+          continue; // not this kind, or an owner `region-owner-unknown` already names
+        }
+        if (installed.record.intentions.applied.includes(id)) {
+          details.checked.push(`${file}#${region}`);
+        } else {
+          details.missing.push(`${file}#${region}`);
+          findings.push({
+            severity: "error",
+            code: "region-missing",
+            path: file,
+            message: `${region} is recorded for ${owner} on ${file}, and ${owner}'s record does not list ${id} as applied`,
+          });
+        }
+      }
+    }
+
+    const readable = entries.filter(
+      ([region]) => parseIntentRegion(region) === null && isReadableRegion(file, region),
+    );
     if (!exists || readable.length === 0) {
       continue;
     }
@@ -482,7 +509,8 @@ async function checkRegions(
       ...notes,
       "foreign edit is checked for the regions that have a value (a script, a JSON leaf), against the " +
         "module.json of the registry bg.json names (bg.json records who owns a region, not what it " +
-        "contained); an import, an export or a .use is only read as present, and a region of a kind " +
+        "contained); an import, an export or a .use is only read as present, an intent[<id>] region is " +
+        "present when its module's record lists the intention as applied, and a region of a kind " +
         "doctor does not know is listed as unchecked, and nothing was compared for it",
     ],
   );

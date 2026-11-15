@@ -383,6 +383,115 @@ describe("runDoctor: a file with recorded regions is checked by region, not by s
   });
 });
 
+describe("runDoctor: an intent[<id>] region, what an applied intention left on a file it edited (060)", () => {
+  const ID = "auth/fixture-auth/wire-auth-into-api";
+  const REGION = `intent[${ID}]`;
+
+  /** A tier-1 file of the project that an intention edited, so its sha256 no longer matches. */
+  async function editedByIntention(options: {
+    applied: boolean;
+    region?: boolean;
+  }): Promise<string> {
+    const root = await projectWithButton();
+    await writeFile(join(root, BUTTON), "// edited by the intention\n");
+    const regions: ProjectManifest["regions"] = {};
+    if (options.region !== false) {
+      regions[BUTTON] = { [REGION]: "auth/fixture-auth" };
+    }
+    await editManifest(root, (m) => ({
+      ...m,
+      modules: {
+        auth: [
+          moduleRecord("fixture-auth", {
+            intentions: { applied: options.applied ? [ID] : [], skipped: {} },
+          }),
+        ],
+      },
+      regions,
+    }));
+    return root;
+  }
+
+  test("the file is checked by region, so the edit is not user-modified, and strict is green", async () => {
+    const report = await runDoctor(await editedByIntention({ applied: true }));
+
+    expect(codes(report, "files")).toEqual([]);
+    expect(report.checks.files.details).toMatchObject({ byRegion: [BUTTON], modified: [] });
+    expect(codes(report, "regions")).toEqual([]);
+    expect(report.status).toBe("ok");
+    expect(doctorExitCode(report, true)).toBe(0);
+  });
+
+  test("without the region, the same edit is user-modified: what the region is for", async () => {
+    const report = await runDoctor(await editedByIntention({ applied: true, region: false }));
+
+    expect(codes(report, "files")).toEqual(["file-modified"]);
+  });
+
+  test("what is checked of it is the record: the region counts as read, with nothing to compare it with", async () => {
+    const report = await runDoctor(await editedByIntention({ applied: true }));
+
+    expect(report.checks.regions.details).toMatchObject({
+      files: 1,
+      regions: 1,
+      checked: [`${BUTTON}#${REGION}`],
+      missing: [],
+      foreignEdit: [],
+      unchecked: [],
+    });
+  });
+
+  test("a region whose intention bg.json does not record as applied is an error: the record contradicts itself", async () => {
+    const report = await runDoctor(await editedByIntention({ applied: false }));
+
+    expect(codes(report, "regions")).toEqual(["region-missing"]);
+    expect(report.checks.regions.findings[0]).toMatchObject({ severity: "error", path: BUTTON });
+    expect(report.checks.regions.findings[0]?.message).toContain(ID);
+    expect(report.checks.regions.findings[0]?.message).toContain("auth/fixture-auth");
+    expect(report.checks.regions.details).toMatchObject({ missing: [`${BUTTON}#${REGION}`] });
+    expect(doctorExitCode(report, false)).toBe(1);
+  });
+
+  test("a skipped intention is no record of an edit either", async () => {
+    const root = await editedByIntention({ applied: false });
+    await editManifest(root, (m) => ({
+      ...m,
+      modules: {
+        auth: [
+          moduleRecord("fixture-auth", { intentions: { applied: [], skipped: { [ID]: "no" } } }),
+        ],
+      },
+    }));
+
+    expect(codes(await runDoctor(root), "regions")).toEqual(["region-missing"]);
+  });
+
+  test("a JSON file is not read for it as a leaf: the key names no path in the file", async () => {
+    const root = await editedByIntention({ applied: true });
+    await writeFile(join(root, "package.json"), '{ "name": "mine" }\n');
+    await editManifest(root, (m) => ({
+      ...m,
+      files: { ...m.files, "package.json": { owner: "button", sha256: "a".repeat(64) } },
+      regions: { "package.json": { [REGION]: "auth/fixture-auth" } },
+    }));
+
+    const report = await runDoctor(root);
+
+    expect(codes(report, "regions")).toEqual([]);
+    expect(report.checks.regions.details).toMatchObject({ checked: [`package.json#${REGION}`] });
+  });
+
+  test("an owner that is not installed, and a file that is gone, are still errors", async () => {
+    const root = await editedByIntention({ applied: true });
+    await editManifest(root, (m) => ({ ...m, modules: {} }));
+    expect(codes(await runDoctor(root), "regions")).toEqual(["region-owner-unknown"]);
+
+    const gone = await editedByIntention({ applied: true });
+    await unlink(join(gone, BUTTON));
+    expect(codes(await runDoctor(gone), "regions")).toEqual(["region-file-missing"]);
+  });
+});
+
 describe("runDoctor: manifest", () => {
   test("a missing bg.json is one error, and the other checks are skipped", async () => {
     const root = await emptyProject();
