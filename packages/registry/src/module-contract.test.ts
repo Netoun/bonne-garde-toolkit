@@ -7,7 +7,11 @@ import {
   adaptedPaths,
   createEmptyProjectManifest,
   isModuleCategory,
+  MODULE_CATEGORIES,
   parseModuleManifest,
+  type ModuleCategory,
+  type ModuleManifest,
+  type ModuleVariant,
 } from "@bonne-garde/schema";
 import {
   assertBranding,
@@ -120,6 +124,82 @@ describe("module contract", () => {
     }
 
     expect(ids).toEqual(new Set(["cloudflare", "dockerfile"]));
+  });
+
+  describe("a module peers only on categories 035 lists before its own (the table is topological)", () => {
+    /** Every category 035's table lists, in the order it lists them: the table is the one place the order is written. */
+    const tableOrder = async (): Promise<string[]> => {
+      const spec = await readFile(join(ROOT, "docs/specs/035-module-registry.md"), "utf8");
+      const table = spec.slice(
+        spec.indexOf("## Categories (normative)"),
+        spec.indexOf("**Rules:**"),
+      );
+      return [...table.matchAll(/^\| `([a-z]+)`\s+\|/gm)].flatMap(([, id]) =>
+        id === undefined ? [] : [id],
+      );
+    };
+
+    /** What a manifest peers on or matches that its own category does not come after, as `<where>: <category>`. */
+    const misorderedPeers = (manifest: ModuleManifest): string[] => {
+      const own = MODULE_CATEGORIES.indexOf(manifest.category);
+      const later = (category: ModuleCategory): boolean =>
+        MODULE_CATEGORIES.indexOf(category) >= own;
+      return [
+        ...Object.keys(manifest.peers)
+          .filter(isModuleCategory)
+          .filter(later)
+          .map((category) => `peers: ${category}`),
+        ...manifest.variants.flatMap(({ key, match }) =>
+          Object.keys(match)
+            .filter(isModuleCategory)
+            .filter(later)
+            .map((category) => `variant ${key} match: ${category}`),
+        ),
+      ];
+    };
+
+    const manifestOf = (
+      category: ModuleCategory,
+      peers: ModuleManifest["peers"],
+      match: ModuleVariant["match"] = {},
+    ): ModuleManifest => ({
+      id: "x",
+      category,
+      title: "X",
+      description: "x",
+      peers,
+      variants: [{ key: "default", match }],
+    });
+
+    test("MODULE_CATEGORIES is 035's table, row by row: the order the check below reads is the spec's", async () => {
+      expect<string[]>([...MODULE_CATEGORIES]).toEqual(await tableOrder());
+    });
+
+    test("names a peers category listed after the module's own, and a variant's optional peer listed after it", () => {
+      expect(misorderedPeers(manifestOf("auth", { db: [], email: [] }))).toEqual(["peers: email"]);
+      expect(misorderedPeers(manifestOf("auth", { db: [] }, { email: "resend" }))).toEqual([
+        "variant default match: email",
+      ]);
+      // A category is not its own peer either: a second one of a `one` category would be a conflict.
+      expect(misorderedPeers(manifestOf("auth", { auth: [] }))).toEqual(["peers: auth"]);
+    });
+
+    test("passes a module that peers and matches only on earlier categories", () => {
+      expect(
+        misorderedPeers(manifestOf("email", { provider: [], config: [] }, { auth: "better-auth" })),
+      ).toEqual([]);
+    });
+
+    test("every module in the registry is ordered after each category it peers on or matches", async () => {
+      const misordered: string[] = [];
+      for (const [category, id, path] of await findModuleManifests()) {
+        const manifest = parseModuleManifest(JSON.parse(await readFile(path, "utf8")));
+        for (const found of misorderedPeers(manifest)) {
+          misordered.push(`${category}/${id} ${found}`);
+        }
+      }
+      expect(misordered).toEqual([]);
+    });
   });
 
   describe("a provider owns packages/api-runtime whole and writes nothing under apps/ (035 provider note, seam rule)", () => {

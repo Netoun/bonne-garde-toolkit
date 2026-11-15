@@ -31,7 +31,7 @@ A module fills exactly one category. The category carries **cardinality** and **
 
 **Rules:**
 
-- Order is topological: a category appears after every category it may peer on; `many` categories come last.
+- Order is topological: a category appears after every category it may peer on, an optional peer a variant's `match` names included; `many` categories come last.
 - `provider` is first: it peers on nothing, and `api`, `db`, `storage`, `web` and `deploy` MUST declare
   `peers.provider` and ship one variant per provider they support. A category's `home` and
   cardinality are provider-independent; only variant payloads differ.
