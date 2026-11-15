@@ -1,6 +1,8 @@
 export {
   createEmptyProjectManifest,
   DEFAULT_PLATFORM_REMOTE,
+  intentRegion,
+  parseIntentRegion,
   parseProjectManifest,
   ProjectManifestError,
   readProjectManifest,
@@ -32,10 +34,17 @@ export {
   type ModuleVariant,
 } from "./module-manifest";
 export {
+  adaptedPaths,
   INTENTION_CLASSIFICATIONS,
   INTENTION_FILE_RE,
+  isReferenceFile,
   parseFrontmatter,
+  parseReferenceLine,
   readModuleIntention,
+  referenceLines,
+  referencePaths,
+  sectionBody,
   type ModuleIntention,
+  type ReferencePath,
 } from "./intention-document";
 export { isRepoRelative } from "./repo-path";

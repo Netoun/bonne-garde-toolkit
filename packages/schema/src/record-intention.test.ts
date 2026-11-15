@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
+  intentRegion,
+  parseIntentRegion,
   parseProjectManifest,
   ProjectManifestError,
   recordIntention,
@@ -157,5 +159,127 @@ describe("recordIntention: purity", () => {
       reason: "not for this project",
     });
     expect(parseProjectManifest(JSON.parse(JSON.stringify(after)) as unknown)).toEqual(after);
+  });
+});
+
+describe("recordIntention: the files an install intention adapted (060 Region ownership)", () => {
+  const ID = "auth/better-auth/wire-auth-into-api";
+  const REGION = "intent[auth/better-auth/wire-auth-into-api]";
+
+  test("an applied install intention takes an intent region, owned by its module, on each file it adapted", () => {
+    const { manifest: after } = recordIntention(manifest(), ID, {
+      status: "applied",
+      adapted: ["apps/api/src/app.ts", "packages/auth/src/mailer.ts"],
+    });
+
+    expect(after.regions).toEqual({
+      "apps/api/src/app.ts": { [REGION]: "auth/better-auth" },
+      "packages/auth/src/mailer.ts": { [REGION]: "auth/better-auth" },
+    });
+  });
+
+  test("it joins the regions a file already has, and leaves them as they were", () => {
+    const before = manifest({
+      regions: { "packages/auth/src/mailer.ts": { "imports[@acme/email]": "email/resend" } },
+    });
+
+    const { manifest: after } = recordIntention(before, ID, {
+      status: "applied",
+      adapted: ["packages/auth/src/mailer.ts"],
+    });
+
+    expect(after.regions["packages/auth/src/mailer.ts"]).toEqual({
+      "imports[@acme/email]": "email/resend",
+      [REGION]: "auth/better-auth",
+    });
+  });
+
+  test("applied with nothing adapted records no region", () => {
+    expect(recordIntention(manifest(), ID, { status: "applied" }).manifest.regions).toEqual({});
+    expect(
+      recordIntention(manifest(), ID, { status: "applied", adapted: [] }).manifest.regions,
+    ).toEqual({});
+  });
+
+  test("a skip records none, and removes the ones an earlier applied record left", () => {
+    const applied = recordIntention(manifest(), ID, {
+      status: "applied",
+      adapted: ["apps/api/src/app.ts"],
+    }).manifest;
+
+    const { manifest: skipped } = recordIntention(applied, ID, {
+      status: "skipped",
+      reason: "the project wires auth itself",
+    });
+
+    expect(skipped.regions).toEqual({});
+  });
+
+  test("recording it applied again says which files it adapted now: the earlier ones go, and a file left with no region leaves regions", () => {
+    const first = recordIntention(manifest(), ID, {
+      status: "applied",
+      adapted: ["apps/api/src/app.ts"],
+    }).manifest;
+
+    const { manifest: second } = recordIntention(first, ID, {
+      status: "applied",
+      adapted: ["packages/auth/src/mailer.ts"],
+    });
+
+    expect(Object.keys(second.regions)).toEqual(["packages/auth/src/mailer.ts"]);
+  });
+
+  test("the regions of other intentions and of patches on the same file are not touched", () => {
+    const other = "intent[auth/better-auth/create-session-table]";
+    const before = manifest({
+      regions: {
+        "apps/api/src/app.ts": {
+          "elysia[app].use[authModule]": "auth/better-auth",
+          [other]: "auth/better-auth",
+        },
+      },
+    });
+
+    const { manifest: after } = recordIntention(before, ID, {
+      status: "skipped",
+      reason: "later",
+    });
+
+    expect(after.regions).toEqual(before.regions);
+  });
+
+  test("a release intention has no module to own a region, so it records none", () => {
+    const { manifest: after } = recordIntention(manifest(), "v0.2.0/align-bun-pin", {
+      status: "applied",
+      adapted: ["vite.config.ts"],
+    });
+
+    expect(after.regions).toEqual({});
+  });
+
+  test("a file that is not repo-relative is refused, as every region file is", () => {
+    expect(() =>
+      recordIntention(manifest(), ID, { status: "applied", adapted: ["../outside.ts"] }),
+    ).toThrow(/regions key must be a repo-relative path/);
+  });
+});
+
+describe("intentRegion", () => {
+  test("is `intent[<id>]`, and reads back to the id, and to nothing else", () => {
+    expect(intentRegion("email/resend/wire-email-into-auth")).toBe(
+      "intent[email/resend/wire-email-into-auth]",
+    );
+    expect(parseIntentRegion("intent[email/resend/wire-email-into-auth]")).toBe(
+      "email/resend/wire-email-into-auth",
+    );
+    for (const region of [
+      "imports[@acme/email]",
+      "intent[]",
+      "intent[email/resend]",
+      "intent[a/b/c",
+      "scripts.dev",
+    ]) {
+      expect(parseIntentRegion(region)).toBeNull();
+    }
   });
 });

@@ -1,6 +1,8 @@
+import { isRepoRelative } from "./repo-path";
+
 /**
  * The intention document of spec 065: frontmatter, then sections. The parser is shared by every
- * reader of one: the registry that plans a module's `intent/`, the CLI that stages and lints it.
+ * reader of one: the registry that plans a module's `intent/`, the CLI that stages, lints and records it.
  */
 
 export function parseFrontmatter(source: string): Record<string, unknown> {
@@ -136,4 +138,66 @@ export function readModuleIntention(
     requires: requires as string[],
     ...(title === undefined ? {} : { title }),
   };
+}
+
+/** What a section holds: the lines after its `## <name>` heading, up to the next `## `; `null` without it. */
+export function sectionBody(source: string, name: string): string | null {
+  const lines = source.split("\n");
+  const start = lines.findIndex((line) => line.trim() === `## ${name}`);
+  if (start === -1) {
+    return null;
+  }
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => line.startsWith("## "));
+  return (end === -1 ? rest : rest.slice(0, end)).join("\n");
+}
+
+/** One bullet of Reference Paths (065): how the executor takes the path, and the path. A part the line lacks is `null`. */
+export type ReferencePath = { mode: "copy" | "adapt" | null; path: string | null };
+
+const REFERENCE_MODES: readonly string[] = ["copy", "adapt"];
+
+/** The bullets of the Reference Paths section, as written; none when the document has no such section. */
+export function referenceLines(source: string): string[] {
+  return (sectionBody(source, "Reference Paths") ?? "")
+    .split("\n")
+    .filter((line) => /^\s*[-*]\s/.test(line));
+}
+
+/**
+ * The mode and the path one bullet declares. Both are code spans: the mode is the first span that is
+ * `copy` or `adapt` and the path the first that is not, so `- \`adapt\` \`src/x.ts\`` and
+ * `- \`src/x.ts\` — \`adapt\`` read the same.
+ */
+export function parseReferenceLine(line: string): ReferencePath {
+  const spans = [...line.matchAll(/`([^`]+)`/g)].flatMap(([, span]) =>
+    span === undefined ? [] : [span],
+  );
+  const mode = spans.find((span) => REFERENCE_MODES.includes(span));
+  const path = spans.find((span) => !REFERENCE_MODES.includes(span));
+  return { mode: mode === "copy" || mode === "adapt" ? mode : null, path: path ?? null };
+}
+
+/** The bullets of the Reference Paths section, each as the mode and the path it declares. */
+export function referencePaths(source: string): ReferencePath[] {
+  return referenceLines(source).map(parseReferenceLine);
+}
+
+const GLOB_CHARS = /[*?[\]{}!]/;
+
+/** Whether a Reference Path names one file of the project: repo-relative, and not a glob. */
+export function isReferenceFile(path: string): boolean {
+  return isRepoRelative(path) && !GLOB_CHARS.test(path);
+}
+
+/**
+ * The files the intention declares `adapt`: the project files it edits, in the order written, once
+ * each. `bg record` marks each of them as edited by the intention (060). A path that is not one file
+ * (a glob, a parent directory) is left out here, and is `intentions lint`'s to report.
+ */
+export function adaptedPaths(source: string): string[] {
+  const paths = referencePaths(source).flatMap(({ mode, path }) =>
+    mode === "adapt" && path !== null && isReferenceFile(path) ? [path] : [],
+  );
+  return [...new Set(paths)];
 }

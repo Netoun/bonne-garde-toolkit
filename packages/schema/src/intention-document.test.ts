@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { parseFrontmatter, readModuleIntention } from "./intention-document";
+import {
+  adaptedPaths,
+  parseFrontmatter,
+  readModuleIntention,
+  referencePaths,
+  sectionBody,
+} from "./intention-document";
 
 const document = (frontmatter: string, body = "# Wire the mailer\n\n## Goal\n\nx\n") =>
   `---\n${frontmatter}\n---\n\n${body}`;
@@ -108,5 +114,92 @@ describe("readModuleIntention: the intention a module authors under intent/ (065
     ],
   ])("refuses %s", (_what, fileName, source, message) => {
     expect(() => readModuleIntention("email/resend", fileName, source)).toThrow(message);
+  });
+});
+
+const WITH_PATHS = document(
+  "id: email/resend/wire-email-into-auth\nkind: install\ndomain: email\nclassification: migration",
+  [
+    "# Wire",
+    "",
+    "## Out of Scope",
+    "",
+    "- `adapt` `not/a/reference.ts` — another section's bullet",
+    "",
+    "## Reference Paths",
+    "",
+    "- `adapt` `packages/auth/src/mailer.ts` — read it first; keep the rest.",
+    "* `packages/email/src/index.ts` — `copy`",
+    "- `adapt` `packages/auth/src/auth.module.ts`",
+    "",
+    "## Validation",
+    "",
+    "- `bun run check`",
+  ].join("\n"),
+);
+
+describe("sectionBody", () => {
+  test("is the lines after the heading, up to the next one, and null when there is none", () => {
+    expect(sectionBody(WITH_PATHS, "Validation")).toBe("\n- `bun run check`");
+    expect(sectionBody(WITH_PATHS, "Goal")).toBeNull();
+  });
+});
+
+describe("referencePaths (065 Sections: each path declares copy or adapt)", () => {
+  test("reads the mode and the path of every bullet of Reference Paths, whichever comes first", () => {
+    expect(referencePaths(WITH_PATHS)).toEqual([
+      { mode: "adapt", path: "packages/auth/src/mailer.ts" },
+      { mode: "copy", path: "packages/email/src/index.ts" },
+      { mode: "adapt", path: "packages/auth/src/auth.module.ts" },
+    ]);
+  });
+
+  test("a bullet with a mode and no path, or a path and no mode, says so with a null", () => {
+    expect(
+      referencePaths(
+        document("id: a/b/c", "## Reference Paths\n\n- `adapt` the mailer\n- `src/x.ts` — read it"),
+      ),
+    ).toEqual([
+      { mode: "adapt", path: null },
+      { mode: null, path: "src/x.ts" },
+    ]);
+  });
+
+  test("a document with no Reference Paths section has none", () => {
+    expect(referencePaths(VALID)).toEqual([]);
+  });
+});
+
+describe("adaptedPaths: what `bg record` marks as edited by the intention (060)", () => {
+  test("is the paths declared adapt, and not the ones declared copy", () => {
+    expect(adaptedPaths(WITH_PATHS)).toEqual([
+      "packages/auth/src/mailer.ts",
+      "packages/auth/src/auth.module.ts",
+    ]);
+  });
+
+  test("leaves out a path that is not one file of the project: a glob, a parent, an absolute path", () => {
+    const source = document(
+      "id: a/b/c",
+      [
+        "## Reference Paths",
+        "",
+        "- `adapt` `packages/auth/src/*.ts`",
+        "- `adapt` `../outside.ts`",
+        "- `adapt` `/etc/hosts`",
+        "- `adapt` `packages/auth/src/mailer.ts`",
+      ].join("\n"),
+    );
+
+    expect(adaptedPaths(source)).toEqual(["packages/auth/src/mailer.ts"]);
+  });
+
+  test("lists a file once, however many bullets name it", () => {
+    const source = document(
+      "id: a/b/c",
+      "## Reference Paths\n\n- `adapt` `src/x.ts`\n- `adapt` `src/x.ts` — again",
+    );
+
+    expect(adaptedPaths(source)).toEqual(["src/x.ts"]);
   });
 });

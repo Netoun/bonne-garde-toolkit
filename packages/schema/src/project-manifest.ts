@@ -497,7 +497,59 @@ export function readProjectManifest(input: unknown): ProjectManifestRead {
   return { manifest: parseProjectManifest(input), migratedFrom: null };
 }
 
-export type IntentionOutcome = { status: "applied" } | { status: "skipped"; reason: string };
+export type IntentionOutcome =
+  | {
+      status: "applied";
+      /**
+       * Repo-relative files an install intention edited (its `adapt` Reference Paths): each takes an
+       * `intent[<id>]` region owned by the intention's module (060). A release intention has no module
+       * to own one, so it records none.
+       */
+      adapted?: readonly string[];
+    }
+  | { status: "skipped"; reason: string };
+
+const INTENT_REGION_RE = /^intent\[([^\]]+)\]$/;
+
+/**
+ * The region an applied install intention takes on a file it edited (060): `intent[<id>]`, owned by
+ * the intention's module. It names no place in the file and has no value to compare, so what is
+ * checked of it is that `bg.json` records the intention as applied.
+ */
+export function intentRegion(id: string): string {
+  return `intent[${id}]`;
+}
+
+/** The intention id a region key names, or `null` when it is not an `intent[<id>]` key. */
+export function parseIntentRegion(region: string): string | null {
+  const id = INTENT_REGION_RE.exec(region)?.[1];
+  return id !== undefined && MODULE_INTENTION_ID_RE.test(id) ? id : null;
+}
+
+/**
+ * `regions` once `id` is recorded: the regions an earlier record of it left are dropped, wherever they
+ * are, and an applied outcome adds one on each file it adapted. So an install intention has regions
+ * exactly when it is recorded applied, and a file left with none is no longer in `regions`.
+ */
+function withIntentRegions(
+  regions: ProjectManifest["regions"],
+  id: string,
+  owner: string,
+  adapted: readonly string[],
+): ProjectManifest["regions"] {
+  const region = intentRegion(id);
+  const next: ProjectManifest["regions"] = {};
+  for (const [file, owned] of Object.entries(regions)) {
+    const kept = Object.fromEntries(Object.entries(owned).filter(([key]) => key !== region));
+    if (Object.keys(kept).length > 0) {
+      next[file] = kept;
+    }
+  }
+  for (const file of adapted) {
+    next[file] = { ...next[file], [region]: owner };
+  }
+  return next;
+}
 
 export type RecordedIntention = {
   manifest: ProjectManifest;
@@ -581,6 +633,12 @@ export function recordIntention(
             : record,
         ),
       },
+      regions: withIntentRegions(
+        manifest.regions,
+        id,
+        `${category}/${target.id}`,
+        outcome.status === "applied" ? (outcome.adapted ?? []) : [],
+      ),
     }),
     recordedIn: `${category}/${target.id}`,
   };
