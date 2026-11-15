@@ -81,11 +81,16 @@ loudly. A failed read is not remembered: set the key and the next email finds it
 | Provider     | Where the key comes from                                                                         |
 | ------------ | ------------------------------------------------------------------------------------------------ |
 | `cloudflare` | `.dev.vars` in `apps/api` for `wrangler dev`, `wrangler secret put RESEND_API_KEY` when deployed |
-| `dockerfile` | the container's environment; `compose.yaml` forwards it from the host when it is set             |
+| `dockerfile` | `RESEND_API_KEY` in the project's `.env`, which `compose.yaml` passes to the container           |
 
 The module declares `RESEND_API_KEY` (`required`) in `.env.example`. A key belongs to the module that
 reads it (035), so neither provider declares it any more, and a contract test refuses a second
 declarer.
+
+On `dockerfile`, `compose.yaml` names no module's key. It reads the project's `.env` through `env_file`
+(Compose 2.24 or later), so the key has to be in that file, copied from `.env.example`: one exported only
+in the host's shell does not reach the container, and `docker compose run -e` or `docker run -e` passes it
+by hand ([`provider/dockerfile`](../../provider/dockerfile/README.md#compose-and-the-projects-env)).
 
 ## Wiring into auth (060, 065)
 
