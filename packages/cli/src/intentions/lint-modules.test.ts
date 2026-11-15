@@ -167,6 +167,28 @@ describe("lintModuleIntentions (065: one linter for modules and migrations)", ()
     ]);
   });
 
+  test("an adapt path names one file of the project, since `bg record` makes it a region key: no glob, no parent, and one is there", async () => {
+    const root = await registry({
+      files: {
+        "01-wire.md": document("wire", {
+          references: [
+            "- `adapt` `packages/auth/src/*.ts`",
+            "- `adapt` `../outside.ts`",
+            "- `adapt` the mailer, with no path",
+            "- `adapt` `packages/auth/src/mailer.ts` — fine",
+            "- `copy` `packages/email/src/*.ts` — a copy may name what it takes",
+          ].join("\n"),
+        }),
+      },
+    });
+
+    expect(await errorsOf(root)).toEqual([
+      "email/resend: 01-wire.md: Reference Paths line `- `adapt` `packages/auth/src/*.ts`` declares adapt on `packages/auth/src/*.ts`, which is not one file of the project (a repo-relative path with no glob)",
+      "email/resend: 01-wire.md: Reference Paths line `- `adapt` `../outside.ts`` declares adapt on `../outside.ts`, which is not one file of the project (a repo-relative path with no glob)",
+      "email/resend: 01-wire.md: Reference Paths line `- `adapt` the mailer, with no path` declares adapt and names no path in backticks",
+    ]);
+  });
+
   test("a file no variant names is orphaned, and a name no file answers to is dangling", async () => {
     const root = await registry({
       variants: { default: ["02-gone.md"] },
