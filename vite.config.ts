@@ -33,6 +33,11 @@ export default defineConfig({
       "no-console": "warn",
       "no-debugger": "error",
       "unicorn/prefer-string-slice": "warn",
+      // docs/RULES.md › Types: no @ts-ignore / @ts-expect-error without a justification.
+      "typescript/ban-ts-comment": [
+        "error",
+        { "ts-ignore": "allow-with-description", "ts-expect-error": "allow-with-description" },
+      ],
     },
     overrides: [
       {
@@ -59,6 +64,172 @@ export default defineConfig({
         files: ["scripts/**"],
         rules: {
           "no-console": "off",
+        },
+      },
+      {
+        // The other React fronts, legacy and registry templates: same plugins as apps/spa.
+        files: ["apps/ssr/**", "apps/static/**", "registry/modules/web/*/template/apps/**"],
+        plugins: ["typescript", "import", "unicorn", "react", "node"],
+        env: {
+          browser: true,
+          es2022: true,
+        },
+      },
+      {
+        // Front conventions (AGENTS.md › Non-negotiables, docs/RULES.md › Product conventions).
+        // A rule only runs where its plugin is listed in the same override: react for forbid-elements.
+        files: [
+          "apps/spa/**",
+          "apps/ssr/**",
+          "apps/static/**",
+          "registry/modules/web/*/template/apps/**",
+        ],
+        plugins: ["typescript", "import", "unicorn", "react", "node"],
+        rules: {
+          "no-restricted-globals": [
+            "error",
+            { name: "fetch", message: "call the API through Eden Treaty, never raw fetch" },
+          ],
+          "no-restricted-imports": [
+            "error",
+            {
+              paths: [
+                {
+                  name: "better-auth",
+                  message: "fronts use the better-auth client → import from better-auth/react",
+                },
+                {
+                  name: "@sinclair/typebox",
+                  message: "TypeBox validates API input only → validate client input with Zod",
+                },
+                {
+                  name: "react-router",
+                  importNames: ["AppLoadContext"],
+                  message:
+                    "loaders receive RouterContextProvider → read bindings from cloudflareContext",
+                },
+              ],
+              patterns: [
+                {
+                  group: [
+                    "jotai",
+                    "valtio",
+                    "redux",
+                    "react-redux",
+                    "@reduxjs/*",
+                    "recoil",
+                    "mobx",
+                  ],
+                  message: "client state is Zustand only (docs/RULES.md › Product conventions)",
+                },
+              ],
+            },
+          ],
+          "react/forbid-elements": [
+            "error",
+            {
+              forbid: [
+                { element: "button", message: "compose the Button primitive of packages/ui" },
+                { element: "input", message: "compose the Input primitive of packages/ui" },
+                { element: "select", message: "compose the Select primitive of packages/ui" },
+                { element: "textarea", message: "compose the Textarea primitive of packages/ui" },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        // Component files are kebab-case (AGENTS.md › Do).
+        files: [
+          "apps/spa/**",
+          "apps/ssr/**",
+          "apps/static/**",
+          "packages/ui/**",
+          "registry/modules/web/*/template/apps/**",
+          "registry/modules/ui/*/template/packages/ui/**",
+          "registry/ui/**",
+        ],
+        rules: {
+          "unicorn/filename-case": ["error", { case: "kebabCase" }],
+        },
+      },
+      {
+        // API conventions: TypeBox input, no Cloudflare API outside the DB / BUCKET bindings.
+        files: ["apps/api/**", "registry/modules/api/*/template/apps/api/**"],
+        rules: {
+          "no-restricted-imports": [
+            "error",
+            {
+              paths: [
+                {
+                  name: "zod",
+                  message: "Elysia input is validated with TypeBox → use t from elysia",
+                },
+              ],
+              patterns: [
+                {
+                  group: ["cloudflare:*"],
+                  message:
+                    "Cloudflare APIs only through the DB / BUCKET bindings (AGENTS.md › Key decisions)",
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        // docs/TESTING.md › Prohibitions.
+        files: ["**/*.test.ts", "**/*.test.tsx"],
+        rules: {
+          "no-restricted-properties": [
+            "error",
+            {
+              object: "vi",
+              property: "mock",
+              message: "no module mocking → intercept HTTP with MSW, or inject the dependency",
+            },
+            {
+              object: "vi",
+              property: "doMock",
+              message: "no module mocking → intercept HTTP with MSW, or inject the dependency",
+            },
+            {
+              object: "mock",
+              property: "module",
+              message: "no module mocking → intercept HTTP with MSW, or inject the dependency",
+            },
+            {
+              object: "globalThis",
+              property: "fetch",
+              message: "no hand-mocked fetch → MSW on the front, treaty(app) on the API",
+            },
+            {
+              property: "toMatchSnapshot",
+              message: "no snapshot tests → assert what the user sees",
+            },
+            {
+              property: "toMatchInlineSnapshot",
+              message: "no snapshot tests → assert what the user sees",
+            },
+            {
+              property: "toThrowErrorMatchingSnapshot",
+              message: "no snapshot tests → assert the error",
+            },
+            {
+              property: "toThrowErrorMatchingInlineSnapshot",
+              message: "no snapshot tests → assert the error",
+            },
+          ],
+        },
+      },
+      {
+        // API tests call the app through treaty(app), never a launched server.
+        files: ["apps/api/**/*.test.ts", "registry/modules/api/*/template/apps/api/**/*.test.ts"],
+        rules: {
+          "no-restricted-globals": [
+            "error",
+            { name: "fetch", message: "test the API through treaty(app) (docs/TESTING.md)" },
+          ],
         },
       },
     ],
