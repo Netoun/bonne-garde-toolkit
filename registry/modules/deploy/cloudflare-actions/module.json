@@ -1,0 +1,28 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "cloudflare-actions",
+  "category": "deploy",
+  "version": "0.1.0",
+  "title": "Cloudflare deploy workflow",
+  "description": "A GitHub Actions workflow that builds, migrates and deploys every Cloudflare app of the project, planned from the tree by the script it ships.",
+  "peers": { "provider": ["cloudflare"] },
+  "checks": ["bun test scripts/deploy-cloudflare.test.ts"],
+  "variants": [
+    {
+      "key": "cloudflare",
+      "match": { "provider": "cloudflare" },
+      "copy": [
+        ".github/workflows/deploy.yml",
+        "scripts/deploy-cloudflare.ts",
+        "scripts/deploy-cloudflare.test.ts"
+      ],
+      "patch": [
+        {
+          "type": "scripts.merge",
+          "file": "package.json",
+          "scripts": { "deploy:cloudflare": "bun scripts/deploy-cloudflare.ts" }
+        }
+      ]
+    }
+  ]
+}

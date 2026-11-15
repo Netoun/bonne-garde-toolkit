@@ -120,7 +120,7 @@ function readWrangler(path: string, text: string): Pick<App, "kind" | "name"> {
   }
   if (!isRecord(config.env) || !isRecord(config.env[ENVIRONMENT])) {
     throw new Error(
-      `${path} has no \`env.${ENVIRONMENT}\`: the deploy targets that environment, and without it wrangler would deploy the development configuration`,
+      `${path} has no \`env.${ENVIRONMENT}\`: the deploy targets that environment, and wrangler either fails without it or, in a config with no \`env\` at all, only warns and deploys the development values`,
     );
   }
   return { kind, name: config.name };
@@ -288,7 +288,7 @@ if (import.meta.main) {
       root,
       env: process.env,
       run: spawnRunner(root),
-      log: console.log,
+      log: (line) => process.stdout.write(`${line}\n`),
     }),
   );
 }

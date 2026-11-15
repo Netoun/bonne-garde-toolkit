@@ -2517,6 +2517,156 @@ describe("module contract", () => {
     });
   });
 
+  describe("deploy/cloudflare-actions is the project's deploy workflow, and the script that plans it from the tree (035, 060)", () => {
+    const MODULE = join(MODULES, "deploy/cloudflare-actions");
+    const WORKFLOW = ".github/workflows/deploy.yml";
+
+    const deployModule = async () => {
+      const manifest = parseModuleManifest(
+        JSON.parse(await readFile(join(MODULE, "module.json"), "utf8")),
+      );
+      const [variant, ...others] = manifest.variants;
+      expect(others).toEqual([]);
+      if (variant === undefined) {
+        throw new Error("deploy/cloudflare-actions has no variant");
+      }
+      return { manifest, variant };
+    };
+
+    /** The workflow as text with its comments dropped, and as the YAML it parses to. */
+    const workflow = async () => {
+      const text = await readFile(join(MODULE, "template", WORKFLOW), "utf8");
+      const code = text
+        .split("\n")
+        .filter((line) => !line.trimStart().startsWith("#"))
+        .join("\n");
+      const parsed: unknown = Bun.YAML.parse(text);
+      if (!isRecord(parsed) || !isRecord(parsed.jobs)) {
+        throw new Error(`${WORKFLOW} has no jobs`);
+      }
+      return { text, code, parsed, jobs: parsed.jobs };
+    };
+
+    const stepsOf = (job: unknown): Record<string, unknown>[] =>
+      isRecord(job) && Array.isArray(job.steps) ? job.steps.filter(isRecord) : [];
+
+    test("peers on the cloudflare provider and ships that one variant, at the repo root, with no workspace, dependency or env key", async () => {
+      const { manifest, variant } = await deployModule();
+      const providers = (await readdir(join(MODULES, "provider"))).sort();
+
+      expect(manifest.category).toBe("deploy");
+      expect(manifest.peers).toEqual({ provider: ["cloudflare"] });
+      expect(providers).toContain("cloudflare");
+      expect(variant.key).toBe("cloudflare");
+      expect(variant.match).toEqual({ provider: "cloudflare" });
+      expect(variant.workspace).toBeUndefined();
+      expect(variant.dependencies ?? {}).toEqual({});
+      expect(variant.devDependencies ?? {}).toEqual({});
+      // A key belongs to the module whose code reads it: the secrets are the workflow's, and GitHub's.
+      expect(variant.env ?? []).toEqual([]);
+      expect(variant.intent ?? []).toEqual([]);
+      expect(variant.copy).toEqual([
+        ".github/workflows/deploy.yml",
+        "scripts/deploy-cloudflare.ts",
+        "scripts/deploy-cloudflare.test.ts",
+      ]);
+      expect(manifest.checks).toEqual(["bun test scripts/deploy-cloudflare.test.ts"]);
+    });
+
+    test("its one patch is the root script the workflow calls, so no workflow carries a path", async () => {
+      const { variant } = await deployModule();
+
+      expect(variant.patch).toEqual([
+        {
+          type: "scripts.merge",
+          file: "package.json",
+          scripts: { "deploy:cloudflare": "bun scripts/deploy-cloudflare.ts" },
+        },
+      ]);
+    });
+
+    test("the workflow runs on dispatch only, the CI-gated trigger left as a comment", async () => {
+      const { text, parsed } = await workflow();
+
+      expect(parsed.on).toBe("workflow_dispatch");
+      expect(text).toMatch(/^#\s+workflow_run:/m);
+      expect(text).toMatch(/^#\s+workflows: \[CI\]/m);
+    });
+
+    test("it keeps the legacy's safety: one deploy at a time that is never cancelled, the environment on the job with the secrets, a verify job the deploy waits for", async () => {
+      const { parsed, jobs } = await workflow();
+      const { validate, deploy } = jobs;
+
+      expect(Object.keys(jobs)).toEqual(["validate", "deploy"]);
+      expect(parsed.concurrency).toEqual({
+        group: "deploy-production",
+        "cancel-in-progress": false,
+      });
+      expect(parsed.permissions).toEqual({ actions: "read", contents: "read" });
+      expect(isRecord(deploy) && deploy.needs).toBe("validate");
+      expect(isRecord(deploy) && deploy.environment).toBe("cloudflare");
+      // The job that runs project code on every dispatch holds no credential.
+      expect(JSON.stringify(validate)).not.toContain("secrets.");
+      expect(JSON.stringify(deploy)).toContain("secrets.CLOUDFLARE_API_TOKEN");
+      expect(JSON.stringify(deploy)).toContain("secrets.CLOUDFLARE_ACCOUNT_ID");
+    });
+
+    test("every action is pinned to a commit, as the repo's own workflows are", async () => {
+      const { jobs } = await workflow();
+      const uses = Object.values(jobs).flatMap((job) =>
+        stepsOf(job).flatMap((step) => (typeof step.uses === "string" ? [step.uses] : [])),
+      );
+
+      expect(uses.length).toBeGreaterThanOrEqual(4);
+      expect(uses.filter((action) => !/^[\w./-]+@[0-9a-f]{40}$/.test(action))).toEqual([]);
+    });
+
+    test("it names Cloudflare's two secrets and no variable of any module: the builds get the workflow's variables as JSON", async () => {
+      const { code } = await workflow();
+      const secrets = new Set([...code.matchAll(/secrets\.([A-Z0-9_]+)/g)].map(([, name]) => name));
+
+      expect([...secrets].sort()).toEqual(["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"]);
+      expect(code).toContain("VARS_JSON: ${{ toJSON(vars) }}");
+      // An env key belongs to the module that reads it: none is named here, so none can go stale.
+      expect(code).not.toMatch(/\bVITE_/);
+      expect(code).not.toMatch(/\bvars\.\w/);
+    });
+
+    test("every `bun run <script>` of the workflow exists in a project that has this module: the base template's, or the one it patches in", async () => {
+      const { code, jobs } = await workflow();
+      const { variant } = await deployModule();
+      const base: unknown = JSON.parse(
+        await readFile(join(ROOT, "templates/base/package.json"), "utf8"),
+      );
+      const patched = (variant.patch ?? []).flatMap((patch) =>
+        isRecord(patch.scripts) ? Object.keys(patch.scripts) : [],
+      );
+      const known = new Set([
+        ...(isRecord(base) && isRecord(base.scripts) ? Object.keys(base.scripts) : []),
+        ...patched,
+      ]);
+      const used = [...code.matchAll(/\brun: bun run (\S+)/g)].flatMap(([, name]) =>
+        name === undefined ? [] : [name],
+      );
+
+      expect(used.filter((name) => !known.has(name))).toEqual([]);
+      // The verify job proves the project, and plans the deploy so a bad config fails before the job with the secrets starts.
+      const runs = (job: unknown): string[] =>
+        stepsOf(job).flatMap((step) => (typeof step.run === "string" ? [step.run] : []));
+      expect(runs(jobs.validate)).toEqual([
+        "bun install --frozen-lockfile",
+        "bun run check",
+        "bun run typecheck",
+        "bun run test",
+        "bun run deploy:cloudflare --dry-run",
+      ]);
+      expect(runs(jobs.deploy)).toEqual([
+        "bun install --frozen-lockfile",
+        "bun run deploy:cloudflare",
+      ]);
+    });
+  });
+
   describe("email/resend is packages/email, and wires itself into auth by the variant the installed auth selects (035, 060, 065)", () => {
     const EMAIL = join(MODULES, "email/resend/template");
     const emailText = (path: string): Promise<string> => readFile(join(EMAIL, path), "utf8");

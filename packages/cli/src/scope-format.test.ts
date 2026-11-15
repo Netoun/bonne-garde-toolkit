@@ -32,6 +32,7 @@ const SHARED_MODULES = [
   "web/spa",
   "web/ssr",
   "web/static",
+  "deploy/cloudflare-actions",
   "email/resend",
 ];
 /**

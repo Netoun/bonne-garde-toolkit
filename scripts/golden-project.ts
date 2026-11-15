@@ -128,6 +128,7 @@ export const CONFIGURATIONS: readonly Configuration[] = [
       "web/static",
       "dev/portless",
       "email/resend",
+      "deploy/cloudflare-actions",
     ],
     items: true,
   },
@@ -484,6 +485,7 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
     // Not the import into mailer.ts: that is the intention's edit, and the file it edits is
     // region-checked by the `intent[<id>]` region `bg record` leaves.
     "email/resend": ["dependencies.@app/email"],
+    "deploy/cloudflare-actions": ["scripts.deploy:cloudflare"],
   },
   dockerfile: {
     "config/branding": ["scripts.gen:branding"],

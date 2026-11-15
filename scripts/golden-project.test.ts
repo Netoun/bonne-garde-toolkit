@@ -246,6 +246,7 @@ describe("the golden project and modules", () => {
       "web/static",
       "dev/portless",
       "email/resend",
+      "deploy/cloudflare-actions",
       "provider/dockerfile",
     ]);
   });
@@ -559,6 +560,7 @@ describe("the golden project and patches", () => {
         // The import into mailer.ts is the intention's: the file an intention edits is region-checked
         // by the `intent[<id>]` region `bg record` leaves, not by a patch that imports for it.
         "email/resend": ["dependencies.@app/email"],
+        "deploy/cloudflare-actions": ["scripts.deploy:cloudflare"],
       },
       dockerfile: {
         "config/branding": ["scripts.gen:branding"],
