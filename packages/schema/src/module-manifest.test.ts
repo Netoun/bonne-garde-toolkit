@@ -38,13 +38,32 @@ describe("parseModuleManifest", () => {
     );
   });
 
-  it("rejects an unknown category inside a variant match", () => {
+  it("rejects an unknown category inside a variant match, and says what a match key is", () => {
     expect(() =>
       parseModuleManifest({
         ...valid,
         variants: [{ key: "default", match: { runtime: "cloudflare" } }],
       }),
-    ).toThrow(/unknown category: runtime/);
+    ).toThrow(/unknown category: runtime \(a match key is a category/);
+  });
+
+  it("accepts a match on a category peers does not declare: an optional peer (035)", () => {
+    const manifest = parseModuleManifest({
+      ...valid,
+      id: "resend",
+      category: "email",
+      peers: { provider: [] },
+      variants: [
+        { key: "default", match: {} },
+        { key: "wired", match: { auth: "better-auth" } },
+      ],
+    });
+
+    expect(Object.keys(manifest.peers)).toEqual(["provider"]);
+    expect(manifest.variants.map((variant) => variant.match)).toEqual([
+      {},
+      { auth: "better-auth" },
+    ]);
   });
 
   it("rejects two variants with the same match set", () => {

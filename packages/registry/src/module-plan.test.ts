@@ -422,6 +422,83 @@ describe("resolveModulePlans: variant (050 step 7)", () => {
   });
 });
 
+describe("resolveModulePlans: an optional peer (035 Variants)", () => {
+  // `auth` is a category this module's `peers` does not name: it installs without it, and the variant
+  // that matches on it applies only when it is installed.
+  const EMAIL: ModuleSpec = {
+    category: "email",
+    id: "resend",
+    json: {
+      peers: { provider: [] },
+      variants: [
+        { key: "default", match: {} },
+        { key: "wired", match: { auth: "better-auth" } },
+      ],
+    },
+  };
+  const AUTH: ModuleSpec = { category: "auth", id: "better-auth" };
+  const EMAIL_REF = { category: "email", id: "resend" } as const;
+
+  async function variantWith(
+    installed: Partial<Record<ModuleCategory, string[]>>,
+    alsoRequested: ModuleSpec[] = [],
+  ): Promise<string> {
+    const catalog = await registry([EMAIL, ...alsoRequested]);
+    const refs = [EMAIL_REF, ...alsoRequested.map(({ category, id }) => ({ category, id }))];
+    const plans = await resolveModulePlans(catalog, refs, project(installed));
+    return plans.find((plan) => plan.key === "email/resend")?.variant ?? "";
+  }
+
+  test("it is not required: the module installs with no auth, on the variant that has no match", async () => {
+    expect(await variantWith({ provider: ["cloudflare"] })).toBe("default");
+  });
+
+  test("it selects its variant when installed", async () => {
+    expect(await variantWith({ provider: ["cloudflare"], auth: ["better-auth"] })).toBe("wired");
+  });
+
+  test("an optional peer installed in the same call counts as installed", async () => {
+    expect(await variantWith({ provider: ["cloudflare"] }, [AUTH])).toBe("wired");
+  });
+
+  test("another module of that category does not select it", async () => {
+    expect(await variantWith({ provider: ["cloudflare"], auth: ["lucia"] })).toBe("default");
+  });
+
+  test("a declared peer is still required beside it", async () => {
+    const catalog = await registry([EMAIL]);
+
+    await expect(
+      resolveModulePlans(catalog, [EMAIL_REF], project({ auth: ["better-auth"] })),
+    ).rejects.toThrow(
+      /email\/resend needs a module in category provider \(any\) and none is installed/,
+    );
+  });
+
+  test("an optional-peer variant and a declared-peer variant both satisfied at equal specificity is still an authoring error", async () => {
+    const catalog = await registry([
+      {
+        ...EMAIL,
+        json: {
+          peers: { provider: [] },
+          variants: [
+            { key: "on-cloudflare", match: { provider: "cloudflare" } },
+            { key: "wired", match: { auth: "better-auth" } },
+          ],
+        },
+      },
+    ]);
+
+    await expect(
+      resolveModulePlans(
+        catalog,
+        [EMAIL_REF],
+        project({ provider: ["cloudflare"], auth: ["better-auth"] }),
+      ),
+    ).rejects.toThrow(/on-cloudflare and wired are equally specific/);
+  });
+});
+
 describe("resolveModulePlans: the plan (050 step 8)", () => {
   test("copies every file the globs match, from template/, with dotfiles, in sorted order", async () => {
     const catalog = await registry([

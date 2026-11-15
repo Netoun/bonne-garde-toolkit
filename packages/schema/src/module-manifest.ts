@@ -135,7 +135,9 @@ function parseMatch(value: unknown, where: string): Partial<Record<ModuleCategor
   const match: Partial<Record<ModuleCategory, string>> = {};
   for (const [category, moduleId] of Object.entries(value)) {
     if (!isModuleCategory(category)) {
-      throw new ModuleManifestError(`${where} has an unknown category: ${category}`);
+      throw new ModuleManifestError(
+        `${where} has an unknown category: ${category} (a match key is a category; one that peers does not declare is an optional peer)`,
+      );
     }
     if (typeof moduleId !== "string" || !ID_RE.test(moduleId)) {
       throw new ModuleManifestError(`${where}.${category} must be a kebab-case module id`);

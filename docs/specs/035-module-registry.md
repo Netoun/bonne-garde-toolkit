@@ -132,7 +132,7 @@ The combinatorial explosion is data, not branching code. A module ships one vari
 | `patch`                            | Tier 2 — typed patches, see [060](./060-patches-and-regions.md)                                                                                                                                                                             |
 | `intent`                           | Tier 3 — intention filenames under `intent/`, see [065](./065-intentions.md)                                                                                                                                                                |
 
-**Selection:** the most specific `match` satisfied by the installed peers wins. Ties are a registry authoring error and MUST fail the contract test, not be resolved at runtime.
+**Selection:** the most specific `match` satisfied by the installed peers wins. A variant's `match` may name a category absent from `peers`; that is an **optional peer**, and the variant applies only when that category is installed: the module installs without it, and it counts for specificity like any other peer. A `match` key that is not a category is a registry authoring error. Ties are a registry authoring error and MUST fail the contract test, not be resolved at runtime.
 
 **Normative:**
 
