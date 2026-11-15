@@ -4,7 +4,7 @@
   "category": "provider",
   "version": "0.1.0",
   "title": "Cloudflare",
-  "description": "Workers runtime with D1 and R2 bindings, deployed with wrangler.",
+  "description": "Elysia on Cloudflare Workers, deployed with wrangler.",
   "peers": {},
   "checks": ["cd packages/api-runtime && bun run typecheck && bun run test"],
   "variants": [

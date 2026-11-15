@@ -1,7 +1,9 @@
 # provider/cloudflare
 
-The runtime this toolkit was built on: Elysia on Workers, D1 for the database, R2 for media,
-`wrangler` to deploy.
+The runtime this toolkit was built on: Elysia on Workers, deployed with `wrangler`. The bindings the
+modules read, `DB` and `BUCKET`, are theirs: [`db/d1`](../../db/d1/README.md) declares `DB` and
+[`storage/r2`](../../storage/r2/README.md) declares `BUCKET`. This provider only hands them over, through
+`readRuntimeEnv()`.
 
 Nothing here is new work — it names what `apps/api` already does, so that the alternative
 (`provider/dockerfile`) has something to be an alternative _to_. Installed, it is the default.
@@ -11,9 +13,7 @@ Nothing here is new work — it names what `apps/api` already does, so that the 
 | Seam            | Choice                                                                  |
 | --------------- | ----------------------------------------------------------------------- |
 | Runtime adapter | `CloudflareAdapter` with `aot: false` (Workers forbid `new Function()`) |
-| Environment     | `cloudflare:workers`, read once at module load                          |
-| Database        | D1 binding `DB`, through `drizzle-orm/d1`                               |
-| Object storage  | R2 binding `BUCKET`                                                     |
+| Environment     | `cloudflare:workers`, read once at module load; bindings are in it      |
 | Deploy          | `wrangler deploy`, config in the Worker's `wrangler.jsonc`              |
 | Dev secrets     | `.dev.vars`                                                             |
 
