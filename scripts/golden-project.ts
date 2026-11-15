@@ -45,7 +45,7 @@
 
 import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
 const PACKED_CLI = join(ROOT, "dist/npm/create-bonne-garde");
@@ -61,10 +61,12 @@ export const SCOPE = "@app";
 
 /**
  * Items `bg list` shows that stay out of the golden project, each with its reason. An entry for an
- * item the registry no longer lists fails the run, so this list cannot go stale. Empty on purpose:
- * every item the registry ships is installed, and the test pins that.
+ * item the registry no longer lists fails the run, so this list cannot go stale. Empty on purpose
+ * but for the item a module replaces, until the item is removed: every other item is installed.
  */
-export const EXCLUDED: Readonly<Record<string, string>> = {};
+export const EXCLUDED: Readonly<Record<string, string>> = {
+  portless: "the item dev/portless replaces; `bg add` refuses a bare name that is also a module",
+};
 
 export type Excluded = { name: string; reason: string };
 
@@ -126,6 +128,7 @@ export const CONFIGURATIONS: readonly Configuration[] = [
       "web/spa",
       "web/ssr",
       "web/static",
+      "dev/portless",
       "email/resend",
     ],
     items: true,
@@ -139,6 +142,7 @@ export const CONFIGURATIONS: readonly Configuration[] = [
       "ui/shadcn",
       "api/elysia",
       "web/spa",
+      "dev/portless",
       "email/resend",
     ],
     items: false,
@@ -474,6 +478,11 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
     "web/spa": ["scripts.deploy", "scripts.dev"],
     "web/ssr": ["scripts.deploy", "scripts.dev"],
     "web/static": ["scripts.deploy", "scripts.dev"],
+    "dev/portless": [
+      "devDependencies.portless",
+      "scripts.dev:lan:portless",
+      "scripts.dev:portless",
+    ],
     // Not the import into mailer.ts: that is the intention's edit, and the file it edits is
     // region-checked by the `intent[<id>]` region `bg record` leaves.
     "email/resend": ["dependencies.@app/email"],
@@ -482,6 +491,11 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
     "config/branding": ["scripts.gen:branding"],
     "api/elysia": ["scripts.dev"],
     "web/spa": ["scripts.dev"],
+    "dev/portless": [
+      "devDependencies.portless",
+      "scripts.dev:lan:portless",
+      "scripts.dev:portless",
+    ],
   },
 };
 
@@ -1033,6 +1047,182 @@ export function expectRan(
   }
 }
 
+/** The module whose launcher golden counts the tests of and asks for its plan. */
+const PORTLESS_MODULE = "dev/portless";
+
+/** Whether the configuration installs the launcher, so golden runs its tests and prints its plan. */
+export function hasPortless(configuration: Configuration): boolean {
+  return configuration.modules.includes(PORTLESS_MODULE);
+}
+
+/**
+ * How many tests the launcher runs in the project (`bun test ./scripts/dev-portless.test.ts`: it is a
+ * root script, so the root `test` fan-out over workspaces never reaches it); fewer means they went.
+ */
+export const PORTLESS_MIN_TESTS = 33;
+
+/** The count in the `Ran N tests across M files` line `bun test` prints on stderr. */
+export function ranTests(output: string): number {
+  const ran = /Ran (\d+) tests?\b/.exec(output)?.[1];
+  if (ran === undefined) {
+    throw new Error(`bun test printed no \`Ran N tests\` line: ${output.trim() || "(nothing)"}`);
+  }
+  return Number(ran);
+}
+
+/** One app of the launcher's plan, as golden expects it: its directory, its portless name and the command. */
+export type ExpectedPortlessApp = { dir: string; name: string; cmd: string[] };
+
+/**
+ * What `scripts/dev-portless.ts --dry-run` has to plan in a configuration, written out by hand and not
+ * by the launcher's own rules, for a project whose root package is `slug` and a proxy serving `tld`: the
+ * apps the modules install, and for each the command that follows from its `dev` script. The Worker API
+ * runs through wrangler with the free port and every sibling's URL, the Bun API reads PORT, and a front
+ * runs through `bunx react-router`, which portless recognises.
+ */
+export function expectedPortlessApps(
+  configuration: string,
+  slug: string,
+  tld: string,
+): ExpectedPortlessApp[] {
+  const app = (dir: string, run: readonly string[]): ExpectedPortlessApp => ({
+    dir,
+    name: `${dir}.${slug}`,
+    cmd: ["portless", "run", "--name", `${dir}.${slug}`, ...run],
+  });
+  const url = (dir: string, path = "") => `https://${dir}.${slug}.${tld}${path}`;
+  const front = (dir: string) => app(dir, ["bunx", "react-router", "dev"]);
+
+  if (configuration === "cloudflare") {
+    return [
+      app("api", [
+        "sh",
+        "-c",
+        'exec bunx wrangler dev --port "$PORT" "$@"',
+        "wrangler",
+        "--var",
+        `API_URL:${url("api")}`,
+        "--var",
+        `R2_PUBLIC_URL:${url("api", "/v1/media/file")}`,
+        "--var",
+        `SPA_URL:${url("spa")}`,
+        "--var",
+        `SSR_URL:${url("ssr")}`,
+        "--var",
+        `STATIC_URL:${url("static")}`,
+      ]),
+      front("spa"),
+      front("ssr"),
+      front("static"),
+    ];
+  }
+  if (configuration === "dockerfile") {
+    return [app("api", ["bun", "--watch", "src/index.ts"]), front("spa")];
+  }
+  throw new Error(`golden does not know what the launcher plans in ${configuration}`);
+}
+
+type PlannedPortlessApp = ExpectedPortlessApp & {
+  url: string;
+  cwd: string;
+  env: Record<string, string>;
+};
+
+/** The apps in the JSON `bun scripts/dev-portless.ts --dry-run` prints. */
+function readPortlessPlan(stdout: string): PlannedPortlessApp[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    throw new Error("dev-portless --dry-run did not print JSON");
+  }
+  if (!isRecord(parsed) || !Array.isArray(parsed.apps)) {
+    throw new Error("dev-portless --dry-run printed no `apps` list");
+  }
+  return parsed.apps.map((entry: unknown): PlannedPortlessApp => {
+    if (
+      !isRecord(entry) ||
+      typeof entry.dir !== "string" ||
+      typeof entry.name !== "string" ||
+      typeof entry.url !== "string" ||
+      typeof entry.cwd !== "string" ||
+      !isStringArray(entry.cmd) ||
+      !isRecord(entry.env)
+    ) {
+      throw new Error(
+        "dev-portless --dry-run printed an app without dir, name, url, cwd, cmd and env",
+      );
+    }
+    const env = Object.fromEntries(
+      Object.entries(entry.env).flatMap(([key, value]) =>
+        typeof value === "string" ? [[key, value]] : [],
+      ),
+    );
+    return {
+      dir: entry.dir,
+      name: entry.name,
+      url: entry.url,
+      cwd: entry.cwd,
+      cmd: entry.cmd,
+      env,
+    };
+  });
+}
+
+/**
+ * The launcher's dry run planned exactly the apps `expected` names, each with the name, the address under
+ * `tld`, the directory and the command golden expects, and told every app but the API where the API is
+ * (`API_URL` and `VITE_API_URL`: a Worker is told through `--var`, which the command carries).
+ */
+export function expectPortlessPlan(
+  stdout: string,
+  expected: readonly ExpectedPortlessApp[],
+  tld: string,
+): void {
+  const planned = readPortlessPlan(stdout);
+  const dirs = planned.map(({ dir }) => dir);
+  const missing = expected.filter(({ dir }) => !dirs.includes(dir)).map(({ dir }) => dir);
+  const unexpected = dirs.filter((dir) => !expected.some((app) => app.dir === dir));
+  if (missing.length > 0 || unexpected.length > 0) {
+    throw new Error(
+      `dev-portless planned [${dirs.join(", ")}], golden expects [${expected.map(({ dir }) => dir).join(", ")}]` +
+        (missing.length > 0 ? `; it did not plan ${missing.join(", ")}` : "") +
+        (unexpected.length > 0
+          ? `; it planned ${unexpected.join(", ")}, which golden did not expect`
+          : ""),
+    );
+  }
+  for (const want of expected) {
+    const got = planned.find(({ dir }) => dir === want.dir);
+    if (got === undefined) {
+      continue;
+    }
+    if (got.name !== want.name || got.cwd !== `apps/${want.dir}`) {
+      throw new Error(
+        `${want.dir}: planned name ${got.name} in ${got.cwd}, expected ${want.name} in apps/${want.dir}`,
+      );
+    }
+    if (got.url !== `https://${want.name}.${tld}`) {
+      throw new Error(`${want.dir}: planned url ${got.url}, expected https://${want.name}.${tld}`);
+    }
+    if (JSON.stringify(got.cmd) !== JSON.stringify(want.cmd)) {
+      throw new Error(
+        `${want.dir}: planned \`${got.cmd.join(" ")}\`, expected \`${want.cmd.join(" ")}\``,
+      );
+    }
+  }
+  const api = planned.find(({ dir }) => dir === "api");
+  for (const app of api === undefined ? [] : planned.filter(({ dir }) => dir !== "api")) {
+    for (const key of ["API_URL", "VITE_API_URL"]) {
+      if (app.env[key] !== api?.url) {
+        throw new Error(
+          `${app.dir}: ${key} is ${app.env[key] ?? "not set"}, expected the API's ${api?.url}`,
+        );
+      }
+    }
+  }
+}
+
 /** How a command ended, for one that is expected to fail. */
 export type Attempt = { code: number; stderr: string };
 
@@ -1460,6 +1650,9 @@ async function configured(
     }
   }
   await step("check", () => run([BUN, "run", "check"], project));
+  if (hasPortless(configuration)) {
+    await launched(project, timings, name);
+  }
   for (const { module, checks } of added.filter(({ checks }) => checks.length > 0)) {
     await step(`checks:${module}`, async () => {
       for (const command of checks) {
@@ -1470,6 +1663,27 @@ async function configured(
   if (buildsImage(configuration)) {
     await imaged(project, timings, name);
   }
+}
+
+/**
+ * The launcher of `dev/portless`, in the project it was installed into: its own tests counted (a root
+ * script is outside the root `test` fan-out, so nothing else runs them), and its dry run, which needs
+ * neither portless nor a proxy, compared with the apps this configuration installs: their names, addresses,
+ * directories and commands, on `.localhost` and, with `--lan`, on `.local`.
+ */
+async function launched(project: string, timings: Timing[], name: string): Promise<void> {
+  const slug = basename(project);
+  const plan = (...flags: string[]) =>
+    capture([BUN, "scripts/dev-portless.ts", "--dry-run", ...flags], project);
+
+  await phase(timings, `${name}: portless tests`, async () => {
+    const { stderr } = await captureBoth([BUN, "test", "./scripts/dev-portless.test.ts"], project);
+    expectRan({ [PORTLESS_MODULE]: ranTests(stderr) }, PORTLESS_MODULE, PORTLESS_MIN_TESTS);
+  });
+  await phase(timings, `${name}: portless plan`, async () => {
+    expectPortlessPlan(await plan(), expectedPortlessApps(name, slug, "localhost"), "localhost");
+    expectPortlessPlan(await plan("--lan"), expectedPortlessApps(name, slug, "local"), "local");
+  });
 }
 
 /**

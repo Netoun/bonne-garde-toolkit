@@ -1,0 +1,39 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "portless",
+  "category": "dev",
+  "version": "0.1.0",
+  "title": "Portless",
+  "description": "Named local HTTPS URLs for every app under apps/, with a .local LAN mode for phones. Starting the proxy needs sudo (it binds 443 and trusts a local CA).",
+  "peers": {},
+  "checks": [
+    "bunx tsc --project scripts/dev-portless.tsconfig.json",
+    "bun test ./scripts/dev-portless.test.ts"
+  ],
+  "variants": [
+    {
+      "key": "default",
+      "match": {},
+      "copy": [
+        "scripts/dev-portless.ts",
+        "scripts/dev-portless.test.ts",
+        "scripts/dev-portless.tsconfig.json"
+      ],
+      "patch": [
+        {
+          "type": "scripts.merge",
+          "file": "package.json",
+          "scripts": {
+            "dev:portless": "bun scripts/dev-portless.ts",
+            "dev:lan:portless": "bun scripts/dev-portless.ts --lan"
+          }
+        },
+        {
+          "type": "package.dependencies",
+          "file": "package.json",
+          "devDependencies": { "portless": "0.15.6" }
+        }
+      ]
+    }
+  ]
+}

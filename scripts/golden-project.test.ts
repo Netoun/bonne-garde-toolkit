@@ -15,6 +15,7 @@ import {
   dockerSkipReason,
   EXCLUDED,
   EXCLUDED_MODULES,
+  expectedPortlessApps,
   expectedTables,
   expectGenerated,
   expectIntentRegion,
@@ -23,6 +24,7 @@ import {
   expectNoIntentRegion,
   expectNothingToApply,
   expectPatches,
+  expectPortlessPlan,
   expectPeerRefusal,
   expectRan,
   expectRefusal,
@@ -42,8 +44,10 @@ import {
   hasAuth,
   hasDatabase,
   hasEmail,
+  hasPortless,
   MAILER_FILE,
   PENDING,
+  PORTLESS_MIN_TESTS,
   readPendingIntentions,
   RESOLUTIONS,
   wiredTest,
@@ -55,6 +59,7 @@ import {
   MODULES,
   PATCHED,
   publishedPort,
+  ranTests,
   readAddedModules,
   readKept,
   readCounts,
@@ -239,6 +244,7 @@ describe("the golden project and modules", () => {
       "web/spa",
       "web/ssr",
       "web/static",
+      "dev/portless",
       "email/resend",
       "provider/dockerfile",
     ]);
@@ -268,6 +274,18 @@ describe("the golden project and modules", () => {
     }
     // The dockerfile configuration installs the ui module and no item: the image the Dockerfile has to build.
     expect(CONFIGURATIONS.find(({ name }) => name === "dockerfile")?.items).toBe(false);
+  });
+
+  test("no item golden installs shares its bare name with a module: `bg add` refuses a name that is both", async () => {
+    const catalog = await loadLocalRegistry(
+      join(resolve(import.meta.dir, ".."), "registry/registry.json"),
+    );
+    const listing = catalog.items.map((item) => `${item.name}\t${item.type}`).join("\n");
+    const moduleIds = catalog.modules.map(({ manifest }) => manifest.id);
+
+    expect(selectItems(listing, EXCLUDED).items.filter((name) => moduleIds.includes(name))).toEqual(
+      [],
+    );
   });
 });
 
@@ -533,6 +551,11 @@ describe("the golden project and patches", () => {
         "web/spa": ["scripts.deploy", "scripts.dev"],
         "web/ssr": ["scripts.deploy", "scripts.dev"],
         "web/static": ["scripts.deploy", "scripts.dev"],
+        "dev/portless": [
+          "devDependencies.portless",
+          "scripts.dev:lan:portless",
+          "scripts.dev:portless",
+        ],
         // The import into mailer.ts is the intention's: the file an intention edits is region-checked
         // by the `intent[<id>]` region `bg record` leaves, not by a patch that imports for it.
         "email/resend": ["dependencies.@app/email"],
@@ -541,6 +564,11 @@ describe("the golden project and patches", () => {
         "config/branding": ["scripts.gen:branding"],
         "api/elysia": ["scripts.dev"],
         "web/spa": ["scripts.dev"],
+        "dev/portless": [
+          "devDependencies.portless",
+          "scripts.dev:lan:portless",
+          "scripts.dev:portless",
+        ],
       },
     });
   });
@@ -784,6 +812,168 @@ describe("until (readiness is a bounded retry, not a fixed sleep)", () => {
     );
 
     expect(ready).toBe(true);
+  });
+});
+
+describe("the launcher phase (dev/portless)", () => {
+  const SLUG = "golden-cloudflare";
+  const frontCommand = (dir: string) => [
+    "portless",
+    "run",
+    "--name",
+    `${dir}.${SLUG}`,
+    "bunx",
+    "react-router",
+    "dev",
+  ];
+
+  /** The JSON `bun scripts/dev-portless.ts --dry-run` prints, for the apps of the cloudflare configuration. */
+  const printed = (tld: string, overrides: Record<string, Record<string, unknown>> = {}) => {
+    const apiUrl = `https://api.${SLUG}.${tld}`;
+    return JSON.stringify({
+      slug: SLUG,
+      lan: tld === "local",
+      apps: expectedPortlessApps("cloudflare", SLUG, tld).map((app) => ({
+        ...app,
+        url: `https://${app.name}.${tld}`,
+        cwd: `apps/${app.dir}`,
+        // A Worker is told through `--var`, every other app through its environment.
+        env: app.dir === "api" ? {} : { API_URL: apiUrl, VITE_API_URL: apiUrl },
+        ...overrides[app.dir],
+      })),
+    });
+  };
+
+  test("both configurations install the launcher, and it has tests to count", () => {
+    expect(CONFIGURATIONS.filter(hasPortless).map(({ name }) => name)).toEqual([
+      "cloudflare",
+      "dockerfile",
+    ]);
+    expect(PORTLESS_MIN_TESTS).toBeGreaterThan(0);
+  });
+
+  test("a project with a Worker API plans four apps, the API through wrangler with every sibling's URL", () => {
+    const apps = expectedPortlessApps("cloudflare", SLUG, "localhost");
+
+    expect(apps.map(({ dir }) => dir)).toEqual(["api", "spa", "ssr", "static"]);
+    expect(apps[0]?.cmd).toEqual([
+      "portless",
+      "run",
+      "--name",
+      `api.${SLUG}`,
+      "sh",
+      "-c",
+      'exec bunx wrangler dev --port "$PORT" "$@"',
+      "wrangler",
+      "--var",
+      `API_URL:https://api.${SLUG}.localhost`,
+      "--var",
+      `R2_PUBLIC_URL:https://api.${SLUG}.localhost/v1/media/file`,
+      "--var",
+      `SPA_URL:https://spa.${SLUG}.localhost`,
+      "--var",
+      `SSR_URL:https://ssr.${SLUG}.localhost`,
+      "--var",
+      `STATIC_URL:https://static.${SLUG}.localhost`,
+    ]);
+    expect(apps.slice(1).map(({ cmd }) => cmd)).toEqual(["spa", "ssr", "static"].map(frontCommand));
+  });
+
+  test("a project on the dockerfile provider plans two apps, the API as a Bun process that reads PORT", () => {
+    expect(expectedPortlessApps("dockerfile", "golden-dockerfile", "localhost")).toEqual([
+      {
+        dir: "api",
+        name: "api.golden-dockerfile",
+        cmd: [
+          "portless",
+          "run",
+          "--name",
+          "api.golden-dockerfile",
+          "bun",
+          "--watch",
+          "src/index.ts",
+        ],
+      },
+      {
+        dir: "spa",
+        name: "spa.golden-dockerfile",
+        cmd: ["portless", "run", "--name", "spa.golden-dockerfile", "bunx", "react-router", "dev"],
+      },
+    ]);
+  });
+
+  test("a configuration golden does not know is refused, not planned as empty", () => {
+    expect(() => expectedPortlessApps("netlify", "x", "localhost")).toThrow(/netlify/);
+  });
+
+  describe("expectPortlessPlan", () => {
+    const expected = expectedPortlessApps("cloudflare", SLUG, "localhost");
+
+    test("accepts the plan the launcher printed", () => {
+      expect(() => expectPortlessPlan(printed("localhost"), expected, "localhost")).not.toThrow();
+    });
+
+    test("accepts the LAN plan, which serves every name under .local", () => {
+      const lan = expectedPortlessApps("cloudflare", SLUG, "local");
+
+      expect(() => expectPortlessPlan(printed("local"), lan, "local")).not.toThrow();
+    });
+
+    test("names an app the launcher did not plan", () => {
+      const missing = JSON.stringify({
+        slug: SLUG,
+        lan: false,
+        apps: JSON.parse(printed("localhost")).apps.slice(0, 3),
+      });
+
+      expect(() => expectPortlessPlan(missing, expected, "localhost")).toThrow(/static/);
+    });
+
+    test("names an app the launcher planned and golden did not expect", () => {
+      expect(() =>
+        expectPortlessPlan(printed("localhost"), expected.slice(0, 2), "localhost"),
+      ).toThrow(/ssr/);
+    });
+
+    test("names the app whose command is another, and shows both", () => {
+      const other = printed("localhost", {
+        spa: { cmd: ["portless", "run", "bun", "run", "dev"] },
+      });
+
+      expect(() => expectPortlessPlan(other, expected, "localhost")).toThrow(/spa.*bun run dev/s);
+    });
+
+    test("names the app whose URL is not under the TLD the proxy serves", () => {
+      const lan = printed("local");
+
+      expect(() => expectPortlessPlan(lan, expected, "localhost")).toThrow(/api.*\.local/s);
+    });
+
+    test("fails when the launcher printed something that is not a plan", () => {
+      expect(() => expectPortlessPlan("not json", expected, "localhost")).toThrow(/JSON/);
+      expect(() => expectPortlessPlan('{"apps":3}', expected, "localhost")).toThrow(/apps/);
+    });
+
+    test("fails when an app that is not the API is not told where the API is", () => {
+      const blind = printed("localhost", { spa: { env: {} } });
+      const noVite = printed("localhost", {
+        ssr: { env: { API_URL: `https://api.${SLUG}.localhost` } },
+      });
+
+      expect(() => expectPortlessPlan(blind, expected, "localhost")).toThrow(/spa.*API_URL/s);
+      expect(() => expectPortlessPlan(noVite, expected, "localhost")).toThrow(/ssr.*VITE_API_URL/s);
+    });
+  });
+
+  describe("ranTests", () => {
+    test("reads the count from the line `bun test` prints on stderr", () => {
+      expect(ranTests("\n 33 pass\n 0 fail\nRan 33 tests across 1 file. [557.00ms]\n")).toBe(33);
+      expect(ranTests("Ran 1 test across 1 file.")).toBe(1);
+    });
+
+    test("fails when there is no such line, so a run that printed nothing is not a pass", () => {
+      expect(() => ranTests("")).toThrow(/Ran/);
+    });
   });
 });
 
