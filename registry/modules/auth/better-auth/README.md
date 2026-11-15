@@ -43,7 +43,7 @@ Everything in `packages/auth`, from explicit paths:
 | `src/env.ts`                        | `resolveAuthEnv`: `BETTER_AUTH_SECRET`, read from `readRuntimeEnv()`                                                            |
 | `src/mailer.ts`                     | `AuthMailer`, and the `mailer` an `email` module replaces                                                                       |
 | `src/password.ts`                   | scrypt `hashPassword` / `verifyPassword`, shared with the seed                                                                  |
-| `src/seed.ts`                       | `db:seed`: an admin, a SQL builder that is tested, and a thin `wrangler` runner; it deletes nothing                             |
+| `src/seed.ts`                       | `db:seed`: `seedAdmin` (the admin, once), a SQL builder that is tested, and a thin `wrangler` runner; it deletes nothing        |
 | `src/client.ts`, `src/base-path.ts` | what a front imports: `type Auth` and `AUTH_BASE_PATH`, with no server code                                                     |
 | `src/auth.cli.ts`                   | the entry `auth:generate` loads                                                                                                 |
 | `src/testing.ts`                    | `createTestAuth(overrides?, tables?)`: an instance over real in-memory SQLite, for this package's tests and others' (see below) |
@@ -162,17 +162,23 @@ so it failed once a `medias` row had an author and no organization (`storage`'s 
 and no module could add a step to it. What it leaves behind is a database `db:seed` works on, so starting
 over is `db:reset`, then `db:seed`.
 
-**A second `db:seed` without a reset is refused.** `user.email` is unique, so the admin's insert fails first,
-and the whole call with it: the local D1 keeps its one admin, organization and membership, and Wrangler
-prints `UNIQUE constraint failed: user.email`. The seed before this one cleared the auth tables first, which
-is what `db:reset` is for now.
+**A second `db:seed` changes nothing.** The admin is the user with `admin@example.local`, whatever else that
+user holds. When the database has one, the seed does not touch it, prints
+`Already seeded: admin@example.local exists, so nothing was changed` and exits 0, so a script can run it every
+time. A person who signed up with that email keeps the password they chose. The inserts stay one
+`wrangler d1 execute` call, which D1 runs as a transaction: a seed that fails midway leaves no user without its
+organization (observed on a local D1 with the `personal` slug already taken: no user, no account, no member),
+and the unique `user.email` still refuses a second admin if two seeds start at once. The seed before this one
+cleared the auth tables first, which is what `db:reset` is for now.
 
-The SQL is built by `seedStatements()`, a pure function the tests run against real SQLite and then read
-back through Better Auth: the admin signs in, the wrong password is refused, it seeds again after the ORM's
-`resetStatements` has emptied the auth tables, and a second seed adds no row. The runner only hands it to
-`bunx wrangler d1 execute DB --local` from `apps/api`: the database is addressed by its binding, as
+`seedAdmin(database)` looks for the admin and, when there is none, applies `seedStatements()`, a pure function
+that builds the SQL. The tests run both against real SQLite and read the result back through Better Auth: the
+admin signs in, the wrong password is refused, a seed on a database that has the admin adds no row and answers
+`present`, and it seeds again after the ORM's `resetStatements` has emptied the auth tables. The runner only hands
+them to `bunx wrangler d1 execute DB --local` from `apps/api`: the database is addressed by its binding, as
 `db/d1`'s scripts do, not by the name in `wrangler.jsonc`. Golden runs `db:seed`, puts a row in every other
-table, runs `db:reset`, and runs `db:seed` again.
+table, runs `db:reset`, runs `db:seed` again, and once more on the seeded database, where it has to say so and
+leave every table with the rows it had.
 
 ## Organizations marked deleted
 

@@ -14,7 +14,8 @@
  *   → for a configuration with auth: `bun run auth:generate` again, which has to write the schema the
  *     module ships byte for byte (it is generator output, not a hand-edited file); `db:seed`, then a row
  *     in every other table (a media with an author and no organization among them), `db:reset`, which has
- *     to empty every table of the barrel, and `db:seed` again
+ *     to empty every table of the barrel, `db:seed` again, and once more on the seeded database, which has
+ *     to say so, exit 0 and change no row
  *   → bun run check → the `checks` of every installed module
  *   → for the configuration that ships a Dockerfile, docker build, docker run, and the container's answers
  *
@@ -200,7 +201,8 @@ export const SEEDED_ADMIN = "admin@example.local";
 
 /**
  * What `db:seed` left in D1: one user, the admin, verified, who owns one organization. It deletes
- * nothing, so the second time it runs is after `db:reset` and has to leave the same rows, not two admins.
+ * nothing and leaves a database that has the admin as it is, so after `db:reset` or a second run it is
+ * the same rows, not two admins.
  */
 export function expectSeeded(
   users: readonly Record<string, unknown>[],
@@ -275,6 +277,13 @@ export const MODULE_TABLES: Readonly<Record<string, readonly string[]>> = {
 /** What the migration has to create in a configuration: the table golden adds, and each module's own. */
 export function expectedTables(configuration: Configuration): string[] {
   return [GOLDEN_TABLE, ...configuration.modules.flatMap((name) => MODULE_TABLES[name] ?? [])];
+}
+
+/** `db:seed` on a database that has the admin: it exits 0 and says it changed nothing. */
+export function expectAlreadySeeded(stdout: string): void {
+  if (!stdout.includes("Already seeded")) {
+    throw new Error(`db:seed on a seeded database did not say it changed nothing:\n${stdout}`);
+  }
 }
 
 /**
@@ -1581,7 +1590,8 @@ async function migrated(
  * `bun run db:seed` against the local D1 the migration phase filled, which has the auth tables because
  * the module re-exports them from the schema barrel; then a row in every other table the barrel exports,
  * a media with an author and no organization among them; then `bun run db:reset`, the orm's, which has
- * to leave every table empty; then `db:seed` again, which has to leave the admin once. The SQL is tested
+ * to leave every table empty; then `db:seed` again, which has to leave the admin once; then once more on
+ * the seeded database, which has to say so and leave every table with the rows it had. The SQL is tested
  * against SQLite and Better Auth in the modules; this is the runners (`wrangler d1 execute` by the
  * binding `DB`) and D1 itself, which enforces the foreign keys the order of the deletes is for.
  */
@@ -1642,6 +1652,13 @@ async function seeded(
   });
 
   await phase(timings, `${name}: auth db:seed again`, seedAdmin);
+
+  await phase(timings, `${name}: auth db:seed on a seeded database`, async () => {
+    const tables = resetTables(configuration);
+    const before = readCounts(await select(countStatement(tables)));
+    expectAlreadySeeded(await capture([BUN, "run", "db:seed"], auth, OFFLINE));
+    expectRows(readCounts(await select(countStatement(tables))), before);
+  });
 }
 
 /**

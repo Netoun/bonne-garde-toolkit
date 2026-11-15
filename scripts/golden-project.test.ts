@@ -28,6 +28,7 @@ import {
   expectRefusal,
   expectRegenerated,
   expectRows,
+  expectAlreadySeeded,
   expectSeeded,
   expectRegionsRecorded,
   expectServed,
@@ -999,6 +1000,21 @@ describe("the auth phases", () => {
       expect(() => expectSeeded(admin, [])).toThrow(/one owner/);
       expect(() => expectSeeded(admin, [{ role: "member" }])).toThrow(/one owner/);
       expect(() => expectSeeded(admin, [...owner, ...owner])).toThrow(/one owner/);
+    });
+  });
+
+  describe("expectAlreadySeeded (db:seed on a database that has the admin says so)", () => {
+    test("passes on the line the seed prints for an admin that exists, and fails on the line of a first seed", () => {
+      expect(() =>
+        expectAlreadySeeded(
+          "✅ No migrations to apply!\nAlready seeded: admin@example.local exists, so nothing was changed\n",
+        ),
+      ).not.toThrow();
+      expect(() =>
+        expectAlreadySeeded(
+          "Seeded: admin@example.local / password123, owner of the Personal organization\n",
+        ),
+      ).toThrow(/changed nothing/);
     });
   });
 

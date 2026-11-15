@@ -1,9 +1,16 @@
 import { describe, it, expect } from "bun:test";
 import { sql } from "drizzle-orm";
 import pkg from "../package.json";
-import { member, organization, user } from "./schema";
+import { account, member, organization, user } from "./schema";
 import * as authSchema from "./schema";
-import { ADMIN_EMAIL, ADMIN_PASSWORD, seedStatements } from "./seed";
+import {
+  ADMIN_EMAIL,
+  ADMIN_PASSWORD,
+  d1Rows,
+  seedAdmin,
+  seedStatements,
+  type SeedDatabase,
+} from "./seed";
 import { createTestAuth } from "./testing";
 // `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
@@ -76,19 +83,95 @@ describe("the seed", () => {
     expect((await call("/get-session")).status).toBe(200);
   });
 
-  it("clears nothing: a second seed without a reset is refused on the admin's email, and adds no row", async () => {
-    const { db } = await seeded();
+  // `seedAdmin` is what `bun run db:seed` runs, over the local D1; here it runs over real SQLite, with
+  // the one difference that a batch is run statement by statement, since D1's is a transaction.
+  describe("seedAdmin: seeding a database that already has the admin", () => {
+    type TestDatabase = Awaited<ReturnType<typeof createTestAuth>>["db"];
 
-    const again = async () => {
-      for (const statement of await seedStatements()) {
-        await db.run(sql.raw(statement));
-      }
-    };
+    const databaseOf = (db: TestDatabase): SeedDatabase => ({
+      rows: async (statement) => db.all<Record<string, unknown>>(sql.raw(statement)),
+      batch: async (statements) => {
+        for (const statement of statements) {
+          await db.run(sql.raw(statement));
+        }
+      },
+    });
 
-    await expect(again()).rejects.toThrow(/Failed to run the query/);
-    expect(await db.select().from(user)).toHaveLength(1);
-    expect(await db.select().from(organization)).toHaveLength(1);
-    expect(await db.select().from(member)).toHaveLength(1);
+    const counts = async (db: TestDatabase) => ({
+      user: (await db.select().from(user)).length,
+      account: (await db.select().from(account)).length,
+      organization: (await db.select().from(organization)).length,
+      member: (await db.select().from(member)).length,
+    });
+
+    it("seeds an empty database once, and the admin signs in", async () => {
+      const { auth, db } = await createTestAuth();
+
+      expect(await seedAdmin(databaseOf(db))).toBe("seeded");
+
+      expect(await counts(db)).toEqual({ user: 1, account: 1, organization: 1, member: 1 });
+      expect(
+        (await auth.api.signInEmail({ body: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD } }))
+          .user.email,
+      ).toBe(ADMIN_EMAIL);
+    });
+
+    it("does nothing when the admin exists, and says so: no table gains a row, and the admin still signs in", async () => {
+      const { auth, db } = await createTestAuth();
+      const database = databaseOf(db);
+      await seedAdmin(database);
+      const before = await counts(db);
+
+      expect(await seedAdmin(database)).toBe("present");
+      expect(await seedAdmin(database)).toBe("present");
+
+      expect(await counts(db)).toEqual(before);
+      expect(
+        (await auth.api.signInEmail({ body: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD } }))
+          .user.email,
+      ).toBe(ADMIN_EMAIL);
+    });
+
+    it("leaves alone a user who signed up with the admin's email, and the password that user chose", async () => {
+      const { auth, db, signIn } = await createTestAuth();
+      await signIn(ADMIN_EMAIL, "the password someone chose");
+      const before = await counts(db);
+
+      expect(await seedAdmin(databaseOf(db))).toBe("present");
+
+      expect(await counts(db)).toEqual(before);
+      await expect(
+        auth.api.signInEmail({ body: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD } }),
+      ).rejects.toThrow();
+    });
+
+    it("applies the inserts in one batch, which is what keeps a failed seed from leaving a user with no organization", async () => {
+      const { db } = await createTestAuth();
+      const batches: string[][] = [];
+      const database = databaseOf(db);
+
+      await seedAdmin({
+        rows: database.rows,
+        batch: async (statements) => {
+          batches.push(statements);
+          await database.batch(statements);
+        },
+      });
+
+      expect(batches).toHaveLength(1);
+      expect(batches[0]).toHaveLength(4);
+    });
+  });
+
+  // The shape `wrangler d1 execute --local --json --command` prints: one result for the one statement.
+  it("reads the rows wrangler prints for a statement, and refuses what is not a success", () => {
+    const printed = (results: unknown[], success = true) =>
+      JSON.stringify([{ results, success, meta: { duration: 0 } }]);
+
+    expect(d1Rows(printed([{ id: "a" }]))).toEqual([{ id: "a" }]);
+    expect(d1Rows(printed([]))).toEqual([]);
+    expect(() => d1Rows(printed([], false))).toThrow(/no successful result/);
+    expect(() => d1Rows("[]")).toThrow(/no successful result/);
   });
 
   it("owns db:seed and no db:reset: the reset is the ORM's, and the seed deletes nothing", async () => {
