@@ -62,7 +62,7 @@ requires:
 - **Applies When / Do Not Apply When** — observable conditions. A prior stack being migrated away from is an **apply** signal, never a skip reason
 - **Observable Gaps** — greppable, binary done-when
 - **Out of Scope**
-- **Reference Paths** — each path declares `copy` (take verbatim) or `adapt` (diff first, replay the meaning, preserve project deltas)
+- **Reference Paths** — each path declares `copy` (take verbatim) or `adapt` (diff first, replay the meaning, preserve project deltas). An `adapt` path names one project file, repo-relative with no glob: `bg record` marks it (see Recording)
 - **Validation** — commands to run after applying (a module's `checks` land here)
 - **Record Result** — how to mark applied or skipped
 
@@ -83,6 +83,7 @@ Outcomes live in `bg.json` ([020](./020-project-manifest.md)), same shape for bo
 - `applied` is a list of ids; `skipped` is a map id → human reason.
 - An intention MUST NOT be recorded before its Validation passes.
 - `bg doctor` MUST report every staged-but-unresolved intention.
+- **Applied, an install intention marks the files it edited.** `bg record <id>` also records an `intent[<id>]` region, owned by the intention's module, under `regions` in `bg.json` ([060](./060-patches-and-regions.md)) on every project file its Reference Paths declare `adapt`. The file an intention edited is then region-checked like a patched file, so `doctor --strict` does not call another module's file user-modified, and its owner's re-add keeps the edit. The paths come from the failed patch `bg.json` records for the intention, else from its document staged under `.bg/`. A path that is not a file of the project takes no region and is reported; when neither source is there, `bg record` records the outcome, marks nothing and says so. `bg record --skip` records no region, and removes one an earlier record left. A release intention has no module to own a region and records none. `bg doctor` checks the region by the record: the intention MUST be in the module's `applied` list.
 
 ## Executor protocol (normative)
 
@@ -107,7 +108,7 @@ Identical for install and upgrade:
 - frontmatter presence, id agreement with path and slug, known `kind` / `classification`;
 - `requires` resolvable and strictly earlier in order;
 - required sections present;
-- every Reference Path declaring `copy` or `adapt`;
+- every Reference Path declaring `copy` or `adapt`, and every `adapt` path one file of the project;
 - migration release READMEs listing every id in that release.
 
 CI MUST run it before tagging.

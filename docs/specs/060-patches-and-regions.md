@@ -49,6 +49,9 @@ The catalog is closed. A module MUST NOT invent a patch type; adding one is a pl
   },
   "apps/api/src/app.ts": {
     "elysia[app].use[authModule]": "auth/better-auth"
+  },
+  "packages/auth/src/mailer.ts": {
+    "intent[email/resend/wire-email-into-auth]": "email/resend"
   }
 }
 ```
@@ -61,6 +64,8 @@ The catalog is closed. A module MUST NOT invent a patch type; adding one is a pl
 | Revert       | `bg remove` deletes exactly the recorded regions and nothing else                                                          |
 | Foreign edit | A region present but differing from what was recorded is **user-owned**; the patch MUST NOT overwrite it without `--force` |
 
+**An applied intention is a region too.** `bg record <id>` ([065](./065-intentions.md)) records `intent[<id>]`, owned by the intention's module, on every project file the intention declares `adapt` in its Reference Paths. It names no place in the file and has no value to compare, so `doctor` checks only that `bg.json` lists `<id>` as applied for the owning module; an intention recorded `--skip` leaves none, and a release intention has no module to own one. `bg remove` drops it with the module's other regions and leaves the edit, which tier 3 never undoes ([050](./050-cli-add.md)).
+
 ## Checksums (tier 1)
 
 For every copied file, `bg.json` records the owner and the SHA-256 of what was written. That is what lets `add`, `doctor`, and `upgrade` tell three states apart:
@@ -71,7 +76,7 @@ For every copied file, `bg.json` records the owner and the SHA-256 of what was w
 | differs              | user-modified   | see the conflict policy: `add` fails, `upgrade` keeps |
 | file absent          | deleted by user | report in `doctor`; re-create only on explicit `add`  |
 
-**A file with recorded regions is checked region by region.** A patch rewrites a file whose tier-1 sha `bg.json` recorded, so the whole-file sha no longer matches and says nothing about a user edit. `doctor` skips the sha check for that file and reports its regions instead ([Region ownership](#region-ownership)). The conflict policy below classifies it by region too: the sha rows apply to a file without recorded regions. The sha recorded is that of the file as its owner wrote it, the owner's own patches included and no other module's, whether those run in the same call or a later one, so the owner added alone again keeps a file another module patched and replaces one nobody touched.
+**A file with recorded regions is checked region by region.** A patch rewrites a file whose tier-1 sha `bg.json` recorded, so the whole-file sha no longer matches and says nothing about a user edit. `doctor` skips the sha check for that file and reports its regions instead ([Region ownership](#region-ownership)). The conflict policy below classifies it by region too: the sha rows apply to a file without recorded regions. The sha recorded is that of the file as its owner wrote it, the owner's own patches included and no other module's, whether those run in the same call or a later one, so the owner added alone again keeps a file another module patched and replaces one nobody touched. An `intent[<id>]` region counts as a region: the file another module's intention edited is region-checked like a patched file, and `bg record` leaves its recorded sha as the owner wrote it. Recording the edited file's new sha instead would let the owner's re-add see an untouched file, and overwrite the edit as soon as its template changes.
 
 ## Patch outcomes
 
@@ -89,18 +94,18 @@ The intention's id is `<category>/<module-id>/patch-<type>-<file>-<first region>
 
 ## Conflict policy
 
-| Situation                                                        | Default                                                                                                               |
-| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Target file missing                                              | create                                                                                                                |
-| Target file identical to recorded sha                            | keep, report `skipped`                                                                                                |
-| Target file without regions differs from recorded sha, `add`     | error listing every path; `--force` overwrites                                                                        |
-| Target file without regions differs from recorded sha, `upgrade` | keep, report; `--force` overwrites                                                                                    |
-| Target file recorded for another owner                           | error naming both owners; `--force` takes it over and reports it                                                      |
-| Target file with recorded regions, edited since written, `add`   | keep, report `kept`; only the regions written are classified; `--force` overwrites a differing region, never the file |
-| Region present and equal                                         | `skipped`                                                                                                             |
-| Region present and differing                                     | error; `--force` overwrites                                                                                           |
-| Region owned by another module                                   | error always — `--force` does not bypass                                                                              |
-| Category already filled (`cardinality: one`)                     | error always — use `bg replace`                                                                                       |
+| Situation                                                        | Default                                                                                                                                                                                                            |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Target file missing                                              | create                                                                                                                                                                                                             |
+| Target file identical to recorded sha                            | keep, report `skipped`                                                                                                                                                                                             |
+| Target file without regions differs from recorded sha, `add`     | error listing every path; `--force` overwrites                                                                                                                                                                     |
+| Target file without regions differs from recorded sha, `upgrade` | keep, report; `--force` overwrites                                                                                                                                                                                 |
+| Target file recorded for another owner                           | error naming both owners; `--force` takes it over and reports it                                                                                                                                                   |
+| Target file with recorded regions, edited since written, `add`   | keep, report `kept`; only the regions written are classified; `--force` overwrites a differing region, never the file; an `intent[<id>]` region of another module makes it the project's, as a patch's region does |
+| Region present and equal                                         | `skipped`                                                                                                                                                                                                          |
+| Region present and differing                                     | error; `--force` overwrites                                                                                                                                                                                        |
+| Region owned by another module                                   | error always — `--force` does not bypass                                                                                                                                                                           |
+| Category already filled (`cardinality: one`)                     | error always — use `bg replace`                                                                                                                                                                                    |
 
 `add` and `upgrade` differ on a user-modified file on purpose. `add` is a request to install a module whole: keeping the user's file would record the module as installed without that file, so it fails and names the paths. `upgrade` moves an installed project forward: it keeps the user's edit and reports it.
 
