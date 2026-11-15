@@ -4,8 +4,10 @@ import { loadLocalRegistry, patchRegions, plannedPatches } from "../packages/reg
 import {
   addArguments,
   assetPath,
+  AUTH_TABLES,
   buildsImage,
   CONFIGURATIONS,
+  countStatement,
   d1Rows,
   diffTrees,
   dockerDecision,
@@ -25,10 +27,13 @@ import {
   expectRan,
   expectRefusal,
   expectRegenerated,
+  expectRows,
   expectSeeded,
   expectRegionsRecorded,
   expectServed,
   GOLDEN_BARREL_LINE,
+  GOLDEN_MEDIA_STATEMENT,
+  GOLDEN_NOTE_STATEMENT,
   GOLDEN_TABLE,
   AUTH_MIN_TESTS,
   EMAIL_MIN_TESTS,
@@ -51,6 +56,9 @@ import {
   publishedPort,
   readAddedModules,
   readKept,
+  readCounts,
+  resetTables,
+  SEEDED_ADMIN,
   requiresDocker,
   SCOPE,
   selectItems,
@@ -513,10 +521,12 @@ describe("the golden project and patches", () => {
           "devDependencies.drizzle-kit",
           "elysia[app].use[dbModule]",
           'exports."."',
+          'exports."./reset"',
           'exports."./schema"',
           'exports."./testing"',
           "imports[@app/db]",
           "scripts.db:generate",
+          "scripts.db:reset",
           "scripts.db:studio",
         ],
         "web/spa": ["scripts.deploy", "scripts.dev"],
@@ -956,12 +966,14 @@ describe("the auth phases", () => {
       const counts = { "@app/auth": AUTH_MIN_TESTS, "@app/api": 33 };
 
       expect(() => expectRan(counts, "@app/auth", AUTH_MIN_TESTS)).not.toThrow();
-      expect(() => expectRan(counts, "@app/auth", AUTH_MIN_TESTS + 1)).toThrow(/ran 45 tests/);
+      expect(() => expectRan(counts, "@app/auth", AUTH_MIN_TESTS + 1)).toThrow(
+        new RegExp(`ran ${AUTH_MIN_TESTS} tests`),
+      );
       expect(() => expectRan({ "@app/api": 33 }, "@app/auth", 1)).toThrow(/ran 0 tests/);
     });
   });
 
-  describe("expectSeeded (db:seed leaves the admin once, db:reset again)", () => {
+  describe("expectSeeded (db:seed leaves the admin once, and again after db:reset)", () => {
     const admin = [{ email: "admin@example.local", email_verified: 1 }];
     const owner = [{ role: "owner" }];
 
@@ -969,7 +981,7 @@ describe("the auth phases", () => {
       expect(() => expectSeeded(admin, owner)).not.toThrow();
     });
 
-    test("fails on no user, on a second one, and on another email: a reset that did not clear first", () => {
+    test("fails on no user, on a second one, and on another email: a seed that ran on top of rows", () => {
       expect(() => expectSeeded([], owner)).toThrow(/expected only/);
       expect(() => expectSeeded([...admin, ...admin], owner)).toThrow(/expected only/);
       expect(() => expectSeeded([{ email: "x@example.com", email_verified: 1 }], owner)).toThrow(
@@ -987,6 +999,62 @@ describe("the auth phases", () => {
       expect(() => expectSeeded(admin, [])).toThrow(/one owner/);
       expect(() => expectSeeded(admin, [{ role: "member" }])).toThrow(/one owner/);
       expect(() => expectSeeded(admin, [...owner, ...owner])).toThrow(/one owner/);
+    });
+  });
+
+  describe("the rows golden puts in D1 for db:reset to empty, and reads back", () => {
+    const cloudflare = CONFIGURATIONS.find(({ name }) => name === "cloudflare");
+
+    test("AUTH_TABLES is the tables the auth schema declares: a table it gains is one reset must empty", async () => {
+      const schema = await Bun.file(
+        join(
+          resolve(import.meta.dir, ".."),
+          "registry/modules/auth/better-auth/template/packages/auth/src/schema.ts",
+        ),
+      ).text();
+      const declared = [...schema.matchAll(/sqliteTable\(\s*"([^"]+)"/g)].flatMap(([, name]) =>
+        name === undefined ? [] : [name],
+      );
+
+      expect([...AUTH_TABLES].sort()).toEqual(declared.sort());
+    });
+
+    test("reset has to empty the auth tables, the one golden adds and each module's, and no more", () => {
+      expect(cloudflare === undefined ? [] : resetTables(cloudflare)).toEqual([
+        ...AUTH_TABLES,
+        GOLDEN_TABLE,
+        "medias",
+      ]);
+      expect(resetTables({ name: "a", modules: ["orm/drizzle"], items: false })).toEqual([
+        GOLDEN_TABLE,
+      ]);
+    });
+
+    test("the media it inserts has the admin as author and no organization, which is the row an organization cascade does not reach", () => {
+      expect(GOLDEN_MEDIA_STATEMENT).toContain("INSERT INTO medias");
+      expect(GOLDEN_MEDIA_STATEMENT).toContain("author_id");
+      expect(GOLDEN_MEDIA_STATEMENT).not.toContain("organization");
+      expect(GOLDEN_MEDIA_STATEMENT).toContain(SEEDED_ADMIN);
+      expect(GOLDEN_NOTE_STATEMENT).toContain(GOLDEN_TABLE);
+    });
+
+    test("counts every table in one row, without a compound select (D1 allows five terms), and reads the counts back", () => {
+      expect(countStatement(["user", "medias"])).toBe(
+        `SELECT (SELECT count(*) FROM "user") AS "user", (SELECT count(*) FROM "medias") AS "medias"`,
+      );
+      expect(readCounts([{ user: 1, medias: 0 }])).toEqual({ user: 1, medias: 0 });
+      expect(() => readCounts([{ user: "1" }])).toThrow(/no count/);
+      expect(() => readCounts([])).toThrow(/one row/);
+    });
+
+    test("expectRows passes on the counts it expects, and names every table that differs, one it did not count too", () => {
+      expect(() => expectRows({ user: 0, medias: 0 }, { user: 0, medias: 0 })).not.toThrow();
+      expect(() => expectRows({ user: 1, medias: 0 }, { user: 0, medias: 0 })).toThrow(
+        /user holds 1, expected 0/,
+      );
+      expect(() => expectRows({ user: 0 }, { user: 0, medias: 1 })).toThrow(
+        /medias was not counted/,
+      );
     });
   });
 

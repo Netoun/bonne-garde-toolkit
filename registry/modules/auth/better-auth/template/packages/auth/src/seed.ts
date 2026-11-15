@@ -3,24 +3,8 @@ import { hashPassword } from "./password";
 export const ADMIN_EMAIL = "admin@example.local";
 export const ADMIN_PASSWORD = "password123";
 
-/** The auth tables, children first: a foreign key refuses to delete a row that another still points at. */
-export const AUTH_TABLES = [
-  "member",
-  "invitation",
-  "session",
-  "account",
-  "organization",
-  "verification",
-  "user",
-] as const;
-
 function quote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
-}
-
-/** What `db:reset` runs first: every row of every auth table, and no table of another module. */
-export function resetStatements(): string[] {
-  return AUTH_TABLES.map((table) => `DELETE FROM "${table}";`);
 }
 
 /**
@@ -58,14 +42,13 @@ async function wrangler(...args: string[]): Promise<void> {
 }
 
 /**
- * `bun run db:seed` (migrations, then reset, then seed) and `bun run db:reset` (reset, then seed)
- * against the local D1 the binding `DB` names in `apps/api/wrangler.jsonc`.
+ * `bun run db:seed`: applies the migrations to the local D1 the binding `DB` names in
+ * `apps/api/wrangler.jsonc`, then inserts the admin. It deletes nothing: on a database that already has
+ * the admin it fails on the unique email, and `bun run db:reset` (the ORM's, which empties every table of
+ * the schema barrel) comes first.
  */
-async function main(argv: string[]): Promise<void> {
-  if (!argv.includes("--no-migrate")) {
-    await wrangler("d1", "migrations", "apply", "DB", "--local");
-  }
-  await wrangler("d1", "execute", "DB", "--local", "--command", resetStatements().join(" "));
+async function main(): Promise<void> {
+  await wrangler("d1", "migrations", "apply", "DB", "--local");
   await wrangler(
     "d1",
     "execute",
@@ -82,7 +65,7 @@ async function main(argv: string[]): Promise<void> {
 
 if (import.meta.main) {
   try {
-    await main(Bun.argv.slice(2));
+    await main();
   } catch (error) {
     await Bun.write(Bun.stderr, `${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;

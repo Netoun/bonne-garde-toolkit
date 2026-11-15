@@ -12,7 +12,9 @@
  *   → for a configuration with storage: the tests of `@scope/storage` counted, since the media routes
  *     run only in the project (they import packages a project installs)
  *   → for a configuration with auth: `bun run auth:generate` again, which has to write the schema the
- *     module ships byte for byte (it is generator output, not a hand-edited file)
+ *     module ships byte for byte (it is generator output, not a hand-edited file); `db:seed`, then a row
+ *     in every other table (a media with an author and no organization among them), `db:reset`, which has
+ *     to empty every table of the barrel, and `db:seed` again
  *   → bun run check → the `checks` of every installed module
  *   → for the configuration that ships a Dockerfile, docker build, docker run, and the container's answers
  *
@@ -197,8 +199,8 @@ export function expectRegenerated(shipped: string, regenerated: string): void {
 export const SEEDED_ADMIN = "admin@example.local";
 
 /**
- * What `db:seed` left in D1: one user, the admin, verified, who owns one organization. Run twice (the
- * seed, then `db:reset`) it has to leave the same rows, not two admins: both clear before they insert.
+ * What `db:seed` left in D1: one user, the admin, verified, who owns one organization. It deletes
+ * nothing, so the second time it runs is after `db:reset` and has to leave the same rows, not two admins.
  */
 export function expectSeeded(
   users: readonly Record<string, unknown>[],
@@ -273,6 +275,81 @@ export const MODULE_TABLES: Readonly<Record<string, readonly string[]>> = {
 /** What the migration has to create in a configuration: the table golden adds, and each module's own. */
 export function expectedTables(configuration: Configuration): string[] {
   return [GOLDEN_TABLE, ...configuration.modules.flatMap((name) => MODULE_TABLES[name] ?? [])];
+}
+
+/**
+ * The tables the auth schema declares (`packages/auth/src/schema.ts`, which a test compares this with):
+ * `db:seed` fills them, and `db:reset` has to empty them with everything else the barrel exports.
+ */
+export const AUTH_TABLES: readonly string[] = [
+  "account",
+  "invitation",
+  "member",
+  "organization",
+  "session",
+  "user",
+  "verification",
+];
+
+/**
+ * Every table `db:reset` has to leave empty in a configuration: the auth tables, the one golden adds to
+ * the barrel, and each module's own. It is the orm's script, so it empties what the barrel exports and
+ * not what a module lists, and this is what says the barrel exports each of them.
+ */
+export function resetTables(configuration: Configuration): string[] {
+  return [...(hasAuth(configuration) ? AUTH_TABLES : []), ...expectedTables(configuration)];
+}
+
+/**
+ * A media with the admin as its author and no organization. `medias.author_id` has no cascade, and
+ * `organization_id` does: a media of an organization goes when the organization is deleted, so it never
+ * stopped a reset that deleted organizations first. One with none stops the delete of its author, which
+ * is what `auth`'s own reset ran into.
+ */
+export const GOLDEN_MEDIA_STATEMENT = `INSERT INTO medias (id, name, url, key, size, mime_type, author_id) SELECT 'golden-media', 'golden.png', 'http://localhost/golden.png', 'golden/golden.png', 1, 'image/png', id FROM "user" WHERE email = '${SEEDED_ADMIN}' LIMIT 1`;
+
+/** A row in the table golden adds to the barrel, which no module owns: reset empties the project's tables too. */
+export const GOLDEN_NOTE_STATEMENT = `INSERT INTO ${GOLDEN_TABLE} (body) VALUES ('golden')`;
+
+/**
+ * One query that counts the rows of every table, as one row with a column per table. A compound
+ * `SELECT ... UNION ALL` would be shorter, and D1 refuses one of more than five terms.
+ */
+export function countStatement(tables: readonly string[]): string {
+  return `SELECT ${tables.map((table) => `(SELECT count(*) FROM "${table}") AS "${table}"`).join(", ")}`;
+}
+
+/** The counts `countStatement` returned, by table. */
+export function readCounts(rows: readonly Record<string, unknown>[]): Record<string, number> {
+  const [row, ...others] = rows;
+  if (row === undefined || others.length > 0) {
+    throw new Error(`D1 gave ${rows.length} rows for the counts, expected one row`);
+  }
+  const counts: Record<string, number> = {};
+  for (const [table, held] of Object.entries(row)) {
+    if (typeof held !== "number") {
+      throw new Error(`D1 gave no count for ${table}: ${JSON.stringify(held)}`);
+    }
+    counts[table] = held;
+  }
+  return counts;
+}
+
+/** Each table in `expected` holds that many rows: names every one that differs, and one that was not counted. */
+export function expectRows(
+  counts: Readonly<Record<string, number>>,
+  expected: Readonly<Record<string, number>>,
+): void {
+  const wrong = Object.entries(expected).flatMap(([table, rows]) => {
+    const held = counts[table];
+    if (held === undefined) {
+      return [`${table} was not counted`];
+    }
+    return held === rows ? [] : [`${table} holds ${held}, expected ${rows}`];
+  });
+  if (wrong.length > 0) {
+    throw new Error(`D1 holds other rows than expected: ${wrong.join("; ")}`);
+  }
 }
 
 /** The modules of every configuration, each once, in the order they first appear. */
@@ -377,10 +454,12 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "devDependencies.drizzle-kit",
       "elysia[app].use[dbModule]",
       'exports."."',
+      'exports."./reset"',
       'exports."./schema"',
       'exports."./testing"',
       "imports[@app/db]",
       "scripts.db:generate",
+      "scripts.db:reset",
       "scripts.db:studio",
     ],
     "web/spa": ["scripts.deploy", "scripts.dev"],
@@ -925,13 +1004,13 @@ export function testCounts(output: string): Record<string, number> {
 }
 
 /** How many tests the auth package runs in the project; fewer means the root `test` stopped reaching it. */
-export const AUTH_MIN_TESTS = 45;
+export const AUTH_MIN_TESTS = 47;
 
 /**
  * How many tests the storage package runs in the project: the legacy media tests (r2, routes, e2e)
  * ported, and the ones the extraction added. Fewer means the root `test` stopped reaching them.
  */
-export const STORAGE_MIN_TESTS = 63;
+export const STORAGE_MIN_TESTS = 65;
 
 /** The workspace ran at least `atLeast` tests: a workspace the root `test` skipped would otherwise pass in silence. */
 export function expectRan(
@@ -1368,7 +1447,7 @@ async function configured(
   if (hasDatabase(configuration)) {
     await migrated(project, timings, name, expectedTables(configuration));
     if (hasAuth(configuration)) {
-      await seeded(project, timings, name);
+      await seeded(project, timings, name, configuration);
     }
   }
   await step("check", () => run([BUN, "run", "check"], project));
@@ -1499,14 +1578,22 @@ async function migrated(
 }
 
 /**
- * `bun run db:seed` and then `db:reset` against the local D1 the migration phase filled, which has the
- * auth tables because the module re-exports them from the schema barrel: each has to leave the admin of
- * `seed.ts` in D1, once. The SQL is tested against SQLite and Better Auth in the module; this is the
- * runner (`wrangler d1 execute` by the binding `DB`) and D1 itself.
+ * `bun run db:seed` against the local D1 the migration phase filled, which has the auth tables because
+ * the module re-exports them from the schema barrel; then a row in every other table the barrel exports,
+ * a media with an author and no organization among them; then `bun run db:reset`, the orm's, which has
+ * to leave every table empty; then `db:seed` again, which has to leave the admin once. The SQL is tested
+ * against SQLite and Better Auth in the modules; this is the runners (`wrangler d1 execute` by the
+ * binding `DB`) and D1 itself, which enforces the foreign keys the order of the deletes is for.
  */
-async function seeded(project: string, timings: Timing[], name: string): Promise<void> {
+async function seeded(
+  project: string,
+  timings: Timing[],
+  name: string,
+  configuration: Configuration,
+): Promise<void> {
   const api = join(project, "apps/api");
   const auth = join(project, "packages/auth");
+  const db = join(project, "packages/db");
   const select = async (statement: string) =>
     d1Rows(
       await capture(
@@ -1515,16 +1602,46 @@ async function seeded(project: string, timings: Timing[], name: string): Promise
         OFFLINE,
       ),
     );
+  const execute = (statement: string) =>
+    run(
+      ["bunx", "wrangler", "d1", "execute", "DB", "--local", "--command", statement],
+      api,
+      OFFLINE,
+    );
+  const seedAdmin = async () => {
+    await run([BUN, "run", "db:seed"], auth, OFFLINE);
+    expectSeeded(
+      await select('SELECT email, email_verified FROM "user"'),
+      await select('SELECT role FROM "member"'),
+    );
+  };
 
-  for (const script of ["db:seed", "db:reset"]) {
-    await phase(timings, `${name}: auth ${script}`, async () => {
-      await run([BUN, "run", script], auth, OFFLINE);
-      expectSeeded(
-        await select('SELECT email, email_verified FROM "user"'),
-        await select('SELECT role FROM "member"'),
-      );
+  await phase(timings, `${name}: auth db:seed`, seedAdmin);
+
+  await phase(timings, `${name}: db reset`, async () => {
+    const tables = resetTables(configuration);
+    const storage = hasStorage(configuration);
+    await execute(GOLDEN_NOTE_STATEMENT);
+    if (storage) {
+      await execute(GOLDEN_MEDIA_STATEMENT);
+    }
+    // The inserts above select from or add to what the seed left: one that matched nothing would make
+    // the reset below prove less than it appears to.
+    expectRows(readCounts(await select(countStatement(tables))), {
+      user: 1,
+      [GOLDEN_TABLE]: 1,
+      ...(storage ? { medias: 1 } : {}),
     });
-  }
+
+    await run([BUN, "run", "db:reset"], db, OFFLINE);
+
+    expectRows(
+      readCounts(await select(countStatement(tables))),
+      Object.fromEntries(tables.map((table) => [table, 0])),
+    );
+  });
+
+  await phase(timings, `${name}: auth db:seed again`, seedAdmin);
 }
 
 /**

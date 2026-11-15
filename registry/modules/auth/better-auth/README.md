@@ -43,7 +43,7 @@ Everything in `packages/auth`, from explicit paths:
 | `src/env.ts`                        | `resolveAuthEnv`: `BETTER_AUTH_SECRET`, read from `readRuntimeEnv()`                                                            |
 | `src/mailer.ts`                     | `AuthMailer`, and the `mailer` an `email` module replaces                                                                       |
 | `src/password.ts`                   | scrypt `hashPassword` / `verifyPassword`, shared with the seed                                                                  |
-| `src/seed.ts`                       | `db:seed` and `db:reset`: an admin, SQL builders that are tested, and a thin `wrangler` runner                                  |
+| `src/seed.ts`                       | `db:seed`: an admin, a SQL builder that is tested, and a thin `wrangler` runner; it deletes nothing                             |
 | `src/client.ts`, `src/base-path.ts` | what a front imports: `type Auth` and `AUTH_BASE_PATH`, with no server code                                                     |
 | `src/auth.cli.ts`                   | the entry `auth:generate` loads                                                                                                 |
 | `src/testing.ts`                    | `createTestAuth(overrides?, tables?)`: an instance over real in-memory SQLite, for this package's tests and others' (see below) |
@@ -148,22 +148,31 @@ a patch the catalog does not have.
 
 ## Seed
 
-`bun run db:seed` (in `packages/auth`) applies the migrations to the local D1, clears the auth tables and
-inserts an admin, `admin@example.local` / `password123`, verified, who owns a Personal organization;
-`bun run db:reset` does the same without the migrations. The legacy seed was `db.seed.ts`, in the ORM's
-directory, because it sat in `apps/api`; every statement of it inserts into `user`, `account`,
-`organization` or `member` and hashes a password, so it is auth's. `drizzle/seed.sql` was referenced by
-nothing and is not shipped.
+`bun run db:seed` (in `packages/auth`) applies the migrations to the local D1 and inserts an admin,
+`admin@example.local` / `password123`, verified, who owns a Personal organization. The legacy seed was
+`db.seed.ts`, in the ORM's directory, because it sat in `apps/api`; every statement of it inserts into
+`user`, `account`, `organization` or `member` and hashes a password, so it is auth's. `drizzle/seed.sql` was
+referenced by nothing and is not shipped.
 
-The SQL is built by `seedStatements()` and `resetStatements()`, pure functions the tests run against real
-SQLite and then read back through Better Auth (the admin signs in; the wrong password is refused; reset
-empties every table in an order a foreign key accepts, and the seed runs again). The runner only hands
-them to `bunx wrangler d1 execute DB --local` from `apps/api`: the database is addressed by its binding,
-as `db/d1`'s scripts do, not by the name in `wrangler.jsonc`.
+**It deletes nothing, and `db:reset` is not auth's.** Resetting a database means emptying every table the
+schema barrel exports, the other modules' and the project's own included, in an order a foreign key accepts,
+and the barrel is `orm/drizzle`'s: its `bun run db:reset` (in `packages/db`) does that
+([`orm/drizzle`](../../orm/drizzle/README.md#resetting-the-database)). Auth's reset cleared auth's tables and only those,
+so it failed once a `medias` row had an author and no organization (`storage`'s `author_id` has no cascade),
+and no module could add a step to it. What it leaves behind is a database `db:seed` works on, so starting
+over is `db:reset`, then `db:seed`.
 
-`db:reset` clears the auth tables and **only** those. The legacy script also ran `DELETE FROM medias`,
-which is `storage`'s table; its `author_id` has no cascade onto `user`, so with media rows `DELETE FROM
-"user"` fails on the foreign key. The `storage` module has to clear its own table before this runs.
+**A second `db:seed` without a reset is refused.** `user.email` is unique, so the admin's insert fails first,
+and the whole call with it: the local D1 keeps its one admin, organization and membership, and Wrangler
+prints `UNIQUE constraint failed: user.email`. The seed before this one cleared the auth tables first, which
+is what `db:reset` is for now.
+
+The SQL is built by `seedStatements()`, a pure function the tests run against real SQLite and then read
+back through Better Auth: the admin signs in, the wrong password is refused, it seeds again after the ORM's
+`resetStatements` has emptied the auth tables, and a second seed adds no row. The runner only hands it to
+`bunx wrangler d1 execute DB --local` from `apps/api`: the database is addressed by its binding, as
+`db/d1`'s scripts do, not by the name in `wrangler.jsonc`. Golden runs `db:seed`, puts a row in every other
+table, runs `db:reset`, and runs `db:seed` again.
 
 ## Organizations marked deleted
 

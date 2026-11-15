@@ -16,7 +16,6 @@
     "test": "bun test",
     "auth:generate": "bunx auth@1.6.26 generate --config ./src/auth.cli.ts --output ./src/schema.ts --adapter drizzle --dialect sqlite --yes && vp fmt --write ./src/schema.ts",
     "auth:secret": "bunx auth@1.6.26 secret",
-    "db:seed": "bun run src/seed.ts",
-    "db:reset": "bun run src/seed.ts --no-migrate"
+    "db:seed": "bun run src/seed.ts"
   }
 }

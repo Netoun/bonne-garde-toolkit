@@ -1,6 +1,12 @@
 /// <reference types="@cloudflare/workers-types" />
 import { afterAll, beforeEach, describe, expect, it } from "bun:test";
-import { eq } from "drizzle-orm";
+import { eq, getTableName, is, sql } from "drizzle-orm";
+import { SQLiteTable } from "drizzle-orm/sqlite-core";
+// `bg add` rewrites the scope in these lines, so the formatter cannot know how wide they are.
+// oxfmt-ignore
+import * as authSchema from "{{SCOPE}}/auth/schema";
+// oxfmt-ignore
+import { resetStatements } from "{{SCOPE}}/db/reset";
 import {
   deleteFromR2,
   extractKeyFromUrl,
@@ -9,6 +15,7 @@ import {
   validateFile,
   R2Error,
 } from "./r2";
+import * as storageSchema from "./schema";
 import { medias } from "./schema";
 import { TEST_PUBLIC_URL, createTestStorage, startTestBucket } from "./testing";
 
@@ -473,5 +480,55 @@ describe("R2 Integration - Full Flow", () => {
     // Verify all deleted
     const emptyList = await bucket.list({ prefix: "medias/test/multiple" });
     expect(emptyList.objects.length).toBe(0);
+  });
+});
+
+// `db:reset` is `orm/drizzle`'s: it empties every table of the schema barrel, and `medias` is in the barrel
+// because this module re-exports it. `medias.author_id` has no cascade, so a media whose organization is not
+// deleted first (it has none, or the organization outlives it) stops a delete of its author.
+describe("db:reset with media rows", () => {
+  const schema = { ...authSchema, ...storageSchema };
+  const tables = Object.values(schema)
+    .filter((value) => is(value, SQLiteTable))
+    .map(getTableName);
+
+  it("empties every table, a media with an author and no organization included", async () => {
+    const { db, signUp, addOrganization } = await createTestStorage(undefined);
+    const { userId } = await signUp("author@example.com");
+    await addOrganization("org-reset", userId, "owner");
+    await db.run(sql`PRAGMA foreign_keys = ON`);
+    const file = { size: 1, mimeType: "image/png", authorId: userId };
+    await db.insert(medias).values([
+      { ...file, name: "alone.png", key: "medias/alone.png", url: `${TEST_PUBLIC_URL}/alone.png` },
+      {
+        ...file,
+        name: "owned.png",
+        key: "medias/owned.png",
+        url: `${TEST_PUBLIC_URL}/owned.png`,
+        organizationId: "org-reset",
+      },
+    ]);
+    // What the reset has to get past: the author of a media cannot be deleted while the media is there.
+    expect(() => db.run(sql`DELETE FROM "user"`)).toThrow(/Failed to run the query/);
+
+    for (const statement of resetStatements(schema)) {
+      await db.run(sql.raw(statement));
+    }
+
+    for (const table of tables) {
+      const [counted] = await db.all<{ n: number }>(
+        sql.raw(`SELECT count(*) AS n FROM "${table}"`),
+      );
+      expect([table, counted?.n]).toEqual([table, 0]);
+    }
+  });
+
+  it("is what the project's schema barrel resets: medias is in it, and goes before the user it points at", () => {
+    const statements = resetStatements();
+
+    expect(statements).toContain('DELETE FROM "medias";');
+    expect(statements.indexOf('DELETE FROM "medias";')).toBeLessThan(
+      statements.indexOf('DELETE FROM "user";'),
+    );
   });
 });

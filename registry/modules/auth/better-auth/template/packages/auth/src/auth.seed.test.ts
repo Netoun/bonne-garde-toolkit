@@ -1,10 +1,13 @@
 import { describe, it, expect } from "bun:test";
-import { getTableName, is, sql } from "drizzle-orm";
-import { SQLiteTable } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import pkg from "../package.json";
 import { member, organization, user } from "./schema";
 import * as authSchema from "./schema";
-import { ADMIN_EMAIL, ADMIN_PASSWORD, AUTH_TABLES, resetStatements, seedStatements } from "./seed";
+import { ADMIN_EMAIL, ADMIN_PASSWORD, seedStatements } from "./seed";
 import { createTestAuth } from "./testing";
+// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// oxfmt-ignore
+import { resetStatements } from "{{SCOPE}}/db/reset";
 
 // The seed writes the rows Better Auth would, with SQL, because it runs against a local D1 through
 // `wrangler d1 execute`. What proves it is Better Auth reading them back.
@@ -51,37 +54,45 @@ describe("the seed", () => {
     expect(signedIn.user.id).toBe((await db.select().from(user))[0]?.id ?? "");
   });
 
-  it("is what reset empties: every auth table, in an order a foreign key accepts, and it seeds again", async () => {
+  it("seeds again after the ORM's reset: the admin signs in and the tables are as a first seed leaves them", async () => {
     const { db, call, signIn, auth } = await seeded();
     await signIn("someone@example.com");
     await db.run(sql`PRAGMA foreign_keys = ON`);
 
-    for (const statement of resetStatements()) {
+    // `db:reset` is `orm/drizzle`'s: it empties every table of the barrel. Here, the auth tables.
+    for (const statement of resetStatements(authSchema)) {
       await db.run(sql.raw(statement));
     }
-
-    for (const table of AUTH_TABLES) {
-      const [counted] = await db.all<{ n: number }>(
-        sql.raw(`SELECT count(*) AS n FROM "${table}"`),
-      );
-      expect([table, counted?.n]).toEqual([table, 0]);
-    }
+    expect(await db.select().from(user)).toEqual([]);
     for (const statement of await seedStatements()) {
       await db.run(sql.raw(statement));
     }
+
     expect(
       (await auth.api.signInEmail({ body: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD } })).user
         .email,
     ).toBe(ADMIN_EMAIL);
+    expect((await db.select().from(user)).map(({ email }) => email)).toEqual([ADMIN_EMAIL]);
     expect((await call("/get-session")).status).toBe(200);
   });
 
-  it("clears the tables of the schema and no other: medias is storage's, and it clears its own", () => {
-    const tables = Object.values(authSchema)
-      .filter((value) => is(value, SQLiteTable))
-      .map(getTableName);
+  it("clears nothing: a second seed without a reset is refused on the admin's email, and adds no row", async () => {
+    const { db } = await seeded();
 
-    expect([...AUTH_TABLES].sort()).toEqual([...tables].sort());
-    expect(resetStatements().join(" ")).not.toContain("medias");
+    const again = async () => {
+      for (const statement of await seedStatements()) {
+        await db.run(sql.raw(statement));
+      }
+    };
+
+    await expect(again()).rejects.toThrow(/Failed to run the query/);
+    expect(await db.select().from(user)).toHaveLength(1);
+    expect(await db.select().from(organization)).toHaveLength(1);
+    expect(await db.select().from(member)).toHaveLength(1);
+  });
+
+  it("owns db:seed and no db:reset: the reset is the ORM's, and the seed deletes nothing", async () => {
+    expect(Object.keys(pkg.scripts).filter((name) => name.startsWith("db:"))).toEqual(["db:seed"]);
+    expect(await Bun.file(new URL("./seed.ts", import.meta.url)).text()).not.toContain("DELETE");
   });
 });

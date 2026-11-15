@@ -1284,6 +1284,8 @@ describe("module contract", () => {
         "packages/db/src/index.ts",
         "packages/db/src/module.ts",
         "packages/db/src/module.test.ts",
+        "packages/db/src/reset.ts",
+        "packages/db/src/reset.test.ts",
         "packages/db/src/schema/index.ts",
         "packages/db/src/testing.ts",
         "packages/db/src/testing.test.ts",
@@ -1351,6 +1353,7 @@ describe("module contract", () => {
 
       expect(exports).toEqual({
         ".": "./src/index.ts",
+        "./reset": "./src/reset.ts",
         "./schema": "./src/schema/index.ts",
         "./testing": "./src/testing.ts",
       });
@@ -1363,11 +1366,13 @@ describe("module contract", () => {
         file: "packages/db/package.json",
         scripts: {
           "db:generate": "drizzle-kit generate --config ./src/drizzle.config.ts",
+          "db:reset": "bun run src/reset.ts",
           "db:studio": "drizzle-kit studio --config ./src/drizzle.config.ts",
         },
       });
-      // The `--config` of each script is a file orm copies.
+      // The `--config` of each script is a file orm copies, and so is what `db:reset` runs.
       expect(orm.variant.copy).toContain("packages/db/src/drizzle.config.ts");
+      expect(orm.variant.copy).toContain("packages/db/src/reset.ts");
     });
 
     /** The `package.dependencies` patch of a variant on `file`, as declared. */
@@ -2124,7 +2129,9 @@ describe("module contract", () => {
       const peerOf = (specifier: string): string | null => {
         if (specifier === "{{SCOPE}}/api-runtime") return "provider";
         if (specifier === "{{SCOPE}}/db/d1") return "db";
-        if (specifier === "{{SCOPE}}/db" || specifier === "{{SCOPE}}/db/testing") return "orm";
+        if (["{{SCOPE}}/db", "{{SCOPE}}/db/testing", "{{SCOPE}}/db/reset"].includes(specifier)) {
+          return "orm";
+        }
         if (
           ["{{SCOPE}}/auth", "{{SCOPE}}/auth/schema", "{{SCOPE}}/auth/testing"].includes(specifier)
         ) {

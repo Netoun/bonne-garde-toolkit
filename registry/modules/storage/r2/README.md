@@ -44,7 +44,7 @@ Everything in `packages/storage`, from explicit paths:
 | `src/media.module.ts`   | `mediaModule`, which `apps/api` mounts, and `resolveRuntimeStorage()`, what a request runs against    |
 | `src/index.ts`          | what `apps/api` imports                                                                               |
 | `src/testing.ts`        | `startTestBucket()` and `createTestStorage()`, for this package's tests                               |
-| `src/*.test.ts`         | 63 tests: the legacy ones that travel, and the new ones                                               |
+| `src/*.test.ts`         | 65 tests: the legacy ones that travel, and the new ones                                               |
 
 Dependencies are exact: `drizzle-orm` and `elysia` at the releases `auth` and `orm/drizzle` pin (a
 contract test compares them), the project's `api-runtime`, `auth` and `db` as workspaces, and, for the
@@ -111,10 +111,13 @@ tables from `{{SCOPE}}/auth/schema`. `coreSchema`, the legacy aggregate, is not 
 tables. The file imports nothing of the project but that, and runs nothing when it loads, because
 `packages/db`'s schema barrel re-exports it and an import back into the project would be a module cycle.
 
-`organization_id` cascades on delete; **`author_id` does not**. With media rows, `DELETE FROM "user"` fails on
-that foreign key, so `auth`'s `bun run db:reset` fails once a project has uploaded anything. Golden seeds no
-media, so it does not see this. Clearing `medias` first (`wrangler d1 execute DB --local --command 'DELETE FROM medias'`
-from `apps/api`) is what to do until a seam exists for a module to add a step to another's reset.
+`organization_id` cascades on delete; **`author_id` does not**. A media of an organization goes when the
+organization is deleted, but one with no organization (the column is nullable) stops the delete of its
+author: `DELETE FROM "user"` fails on that foreign key. This module adds no step to a reset, and needs none:
+`bun run db:reset` is `orm/drizzle`'s, it empties every table the barrel exports, and `medias` is in the barrel
+because this module re-exports it, so the table is emptied before the `user` and `organization` it points at.
+`media.e2e.test.ts` runs the reset's statements over a media with an author and no organization (and one with
+both) on real SQLite with foreign keys on, and golden puts the first in the local D1 before it runs `db:reset`.
 
 ## Wiring (060)
 
@@ -137,7 +140,7 @@ storage's table, storage reads `createDB`), like the one `auth` has; Bun, `tsc` 
 
 ## Tests
 
-63 tests in the project, against what is real: an R2 bucket from Miniflare (workerd's own, not a stand-in), an
+65 tests in the project, against what is real: an R2 bucket from Miniflare (workerd's own, not a stand-in), an
 in-memory SQLite that has the auth and media tables, and a Better Auth instance for the sessions (`createTestAuth` of
 `{{SCOPE}}/auth/testing`, given the media tables: storage keeps no sign-in flow of its own). Nothing is
 mocked. The legacy ones travel: `r2.test.ts`, the file route of `media.routes.test.ts`, and the service cases
@@ -145,7 +148,7 @@ of `media.e2e.test.ts`, which now go through the real routes at `/v1/media` wher
 the handlers in the test. New: `bucket.test.ts` (the binding, and a variable that is not one), `env.test.ts`,
 `media.module.test.ts` (what `apps/api` mounts, with no Worker: `BUCKET_NOT_CONFIGURED`, `401`), `exports.test.ts`
 (the subpaths the project imports), and in `media.e2e.test.ts` the `401` of each guarded route, an admin deleting
-a member's media, and `404` of `GET /v1/media/:id`.
+a member's media, `404` of `GET /v1/media/:id`, and the reset's statements over media rows.
 
 They import `{{SCOPE}}/…` packages that exist only in a project, so `test:scripts` skips this directory and
 golden is where they run, with a floor on the count.

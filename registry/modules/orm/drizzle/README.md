@@ -25,7 +25,9 @@ and the allow-list stays empty so that a project with a `db` this module has no 
 | `src/index.ts`                        | `createDB`, `DB`, `dbModule`, `dbPlugin`                                                       |
 | `src/drizzle.config.ts`               | `schema: ./src/schema/index.ts`, `out: ./migrations`, `dialect: sqlite`                        |
 | `src/testing.ts`                      | `createTestDb(schema?)`: an in-memory SQLite with the schema's tables                          |
+| `src/reset.ts`                        | `resetStatements(schema?)` and `bun run db:reset`: empties every table the barrel exports      |
 | `src/{client,module,testing}.test.ts` | seven tests: two against a real D1 (Miniflare), three against real SQLite, two with no binding |
+| `src/reset.test.ts`                   | nine tests: the order of the deletes, on real SQLite and on a real D1 (Miniflare)              |
 
 `dbModule` reads the binding through `db/d1`'s `readD1()` for each request, and derives `db` for the
 routes registered after it. With no binding it still loads: see `db/d1`.
@@ -40,9 +42,9 @@ region each, which `bg remove orm/drizzle` deletes and nothing else:
 
 | Type                   | Regions                                                                          |
 | ---------------------- | -------------------------------------------------------------------------------- |
-| `jsonc.merge`          | `exports."."`, `exports."./schema"`, `exports."./testing"`                       |
+| `jsonc.merge`          | `exports."."`, `exports."./reset"`, `exports."./schema"`, `exports."./testing"`  |
 | `package.dependencies` | `dependencies.drizzle-orm`, `dependencies.elysia`, `devDependencies.drizzle-kit` |
-| `scripts.merge`        | `scripts.db:generate`, `scripts.db:studio`                                       |
+| `scripts.merge`        | `scripts.db:generate`, `scripts.db:reset`, `scripts.db:studio`                   |
 
 The dependencies are a patch because the variant's maps reach only a `package.json` the module writes,
 and this one is db/d1's. `package.dependencies` writes each entry where the formatter sorts it, so
@@ -102,6 +104,42 @@ keys onto `user` and `organization`: it belongs to `storage`, which comes after 
 in a module that precedes it. A project's own tables are a file next to the barrel and a line in it.
 Golden does exactly that with `golden_notes`.
 
+## Resetting the database
+
+`bun run db:reset` (in `packages/db`) empties every table the schema barrel exports, in the local D1 the
+binding `DB` names in `apps/api/wrangler.jsonc`, and prints the tables it emptied. It is this module's because
+this module owns the barrel: the tables are other modules' (`auth`, `storage`) and the project's own, and the
+only thing that knows all of them is the file they are re-exported from. It reads the barrel when it runs, so a
+module added later is reset with no change here. Nothing else is touched: no migration runs, and `d1_migrations`
+is not in the barrel, so what is applied stays applied. Putting rows back is the module's: `auth`'s
+`bun run db:seed` inserts the admin, and works on a database this has emptied.
+
+```bash
+cd packages/db && bun run db:reset      # every table of the barrel, children before parents
+cd ../auth && bun run db:seed           # the admin, who owns a Personal organization
+```
+
+**The order is the foreign keys.** `resetStatements(schema?)` is one `DELETE FROM "<table>";` per table, each
+before the tables it points at, which it reads from `getTableConfig(table).foreignKeys`. A reference to the table
+itself is not an ordering (one statement deletes all its rows), nor is a reference to a table the schema does not
+hold. Two tables that point at each other have no order, whatever their `ON DELETE`: the error names them, and the
+reset does not run. The statements run in one `wrangler d1 execute`.
+
+Deferring the checks was the alternative, and it was tried on the local D1 that `wrangler` runs. `PRAGMA
+foreign_keys = OFF` is not honoured: with a media that had an author and no organization, `PRAGMA foreign_keys
+= OFF; DELETE FROM "user";` still failed on the foreign key. `PRAGMA defer_foreign_keys = on` in the same
+`--command` did let the parent go first. The order was taken anyway: it needs no pragma, it is the same
+statements on D1 and on `bun:sqlite`, where the tests run them, and it fails loudly on the one schema deferral
+would let through, a cycle. A table with a cascade needs no special case: `ON DELETE CASCADE` on
+`medias.organization_id` is why a media of an organization never stopped a reset, and the nullable `author_id`
+with no cascade is why one with no organization did.
+
+`reset.test.ts` proves it on real databases: on `bun:sqlite` with `PRAGMA foreign_keys = ON` (it is off by
+default there, so a test without it proves nothing) and on a D1 from Miniflare, where it first shows that
+deleting a parent first is refused. The `./reset` export is for other modules' tests (`auth`'s seed test and
+`storage`'s run `resetStatements` over their own tables). Golden runs the script itself against a local D1
+holding a media with an author and no organization, a row in `golden_notes` and the seeded admin.
+
 ## The test database
 
 `createTestDb()` is a fresh in-memory SQLite (`bun:sqlite`) with the tables of the barrel, or of the
@@ -114,6 +152,6 @@ the legacy `createTestDb` was not, because `drizzle-kit/api` is.
 
 - **The seed.** Every statement of the legacy `db.seed.ts` and of `drizzle/seed.sql` inserts into
   `user`, `account`, `organization` or `member`, and hashes a password: it is `auth`'s. `seed.sql` is
-  referenced by nothing.
+  referenced by nothing. The reset is here; the legacy `db:reset` ran the seed after it, and this one does not.
 - **`dbService`.** It decorated `db` and `env` with empty objects to give other modules the types.
   `dbModule` has a `name`, so Elysia applies it once however many modules `.use` it.
