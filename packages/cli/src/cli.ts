@@ -274,11 +274,8 @@ export async function runCli(argv: string[]): Promise<number> {
     }
     const outcome: IntentionOutcome =
       reason === undefined ? { status: "applied" } : { status: "skipped", reason };
-    const { recordedIn, migratedFrom, staged } = await recordIntentionOutcome(
-      process.cwd(),
-      id,
-      outcome,
-    );
+    const { recordedIn, migratedFrom, staged, marked, notFiles, unread } =
+      await recordIntentionOutcome(process.cwd(), id, outcome);
     if (migratedFrom !== null) {
       console.error(manifestMigrationNotice(false));
     }
@@ -287,9 +284,21 @@ export async function runCli(argv: string[]): Promise<number> {
         `bg: ${id} is not staged under .bg/; recorded anyway (the scratch root is disposable).`,
       );
     }
+    for (const path of notFiles) {
+      console.error(
+        `bg: ${path} is not a file of the project, so ${id} did not mark it as edited by it.`,
+      );
+    }
+    if (unread) {
+      console.error(
+        `bg: no failed patch of ${recordedIn} names ${id} and .bg/ no longer holds its document, so there are no Reference Paths to read: ` +
+          "no file was marked as edited by it, and bg doctor reports an edit to a file another module wrote as user-modified.",
+      );
+    }
     console.log(
       outcome.status === "applied"
-        ? `recorded ${id} as applied in ${recordedIn}`
+        ? `recorded ${id} as applied in ${recordedIn}` +
+            (marked.length > 0 ? `, and marked ${marked.join(", ")} as edited by it` : "")
         : `recorded ${id} as skipped in ${recordedIn}: ${outcome.reason}`,
     );
     return 0;

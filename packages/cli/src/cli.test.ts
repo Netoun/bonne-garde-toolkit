@@ -337,6 +337,160 @@ describe("bg record", () => {
   });
 });
 
+describe("bg record: the files an install intention edited (060 Region ownership, 065 Recording)", () => {
+  const ID = "auth/fixture-auth/wire-auth-into-api";
+  const REGION = `intent[${ID}]`;
+  const APP = "apps/api/src/app.ts";
+  const MAILER = "packages/auth/src/mailer.ts";
+
+  const documentOf = (paths: string[]): string =>
+    [
+      `---\nid: ${ID}\nkind: install\ndomain: auth\nclassification: migration\n---\n`,
+      "# Wire auth\n",
+      "## Goal\n\nx\n",
+      `## Reference Paths\n\n${paths.map((path) => `- ${path}`).join("\n")}\n`,
+      "## Validation\n\n- `bun run check`\n",
+    ].join("\n");
+
+  /** A project with a fixture auth module, the files an intention may name, and the document staged for it. */
+  async function withStaged(
+    prefix: string,
+    paths: string[],
+    options: { patches?: unknown[]; staged?: boolean } = {},
+  ): Promise<string> {
+    const target = await freshProject(prefix);
+    const bg = JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as Record<
+      string,
+      unknown
+    >;
+    const record = {
+      id: "fixture-auth",
+      variant: "default",
+      version: "0.0.0",
+      installedAt: "2026-01-01T00:00:00.000Z",
+      options: {},
+      patches: options.patches ?? [],
+      intentions: { applied: [], skipped: {} },
+    };
+    await writeFile(
+      join(target, "bg.json"),
+      `${JSON.stringify({ ...bg, modules: { auth: [record] } }, null, 2)}\n`,
+    );
+    for (const file of [APP, MAILER]) {
+      await mkdir(join(target, file, ".."), { recursive: true });
+      await writeFile(join(target, file), "// the project's\n");
+    }
+    if (options.staged !== false) {
+      await mkdir(join(target, ".bg/add"), { recursive: true });
+      await writeFile(join(target, ".bg/add/01-wire-auth-into-api.md"), documentOf(paths));
+    }
+    return target;
+  }
+
+  const regionsOf = async (target: string): Promise<Record<string, Record<string, string>>> =>
+    (
+      JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as {
+        regions: Record<string, Record<string, string>>;
+      }
+    ).regions;
+
+  test("an applied intention takes an intent region, owned by its module, on each file it declares adapt, and not on one it declares copy", async () => {
+    const target = await withStaged("bg-cli-record-adapt-", [
+      `\`adapt\` \`${MAILER}\` — read it first`,
+      `\`adapt\` \`${APP}\``,
+      "`copy` `packages/auth/src/new.ts`",
+    ]);
+
+    const { stdout, stderr, code } = await runBg(target, "record", ID);
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+    expect(stdout).toContain(`recorded ${ID} as applied in auth/fixture-auth`);
+    expect(stdout).toContain(MAILER);
+    expect(await regionsOf(target)).toEqual({
+      [APP]: { [REGION]: "auth/fixture-auth" },
+      [MAILER]: { [REGION]: "auth/fixture-auth" },
+    });
+    // The file is region-checked now, and the record is what doctor reads of the region.
+    const doctor = await runBg(target, "doctor", "--strict");
+    expect(doctor.stdout).toContain("2 regions in 2 files, 2 read");
+    expect(doctor.code).toBe(0);
+  });
+
+  test("--skip records no region, and one an earlier record left is gone", async () => {
+    const target = await withStaged("bg-cli-record-skip-", [`\`adapt\` \`${MAILER}\``]);
+    await runBg(target, "record", ID);
+    expect(Object.keys(await regionsOf(target))).toEqual([MAILER]);
+
+    const skipped = await runBg(target, "record", ID, "--skip", "the project wires auth itself");
+
+    expect(skipped.code).toBe(0);
+    expect(skipped.stdout).not.toContain("edited");
+    expect(await regionsOf(target)).toEqual({});
+  });
+
+  test("a path that is not a file of the project is not marked, and is said on stderr; the rest are", async () => {
+    const target = await withStaged("bg-cli-record-missing-", [
+      "`adapt` `packages/auth/src/not-there.ts`",
+      `\`adapt\` \`${MAILER}\``,
+    ]);
+
+    const { stderr, code } = await runBg(target, "record", ID);
+
+    expect(code).toBe(0);
+    expect(stderr).toContain("packages/auth/src/not-there.ts is not a file of the project");
+    expect(await regionsOf(target)).toEqual({ [MAILER]: { [REGION]: "auth/fixture-auth" } });
+  });
+
+  test("the file of a failed patch is the one it adapted, though .bg/ is gone: bg.json is what is read", async () => {
+    const target = await withStaged("bg-cli-record-patch-", [], {
+      staged: false,
+      patches: [
+        {
+          type: "ts.elysiaUse",
+          file: APP,
+          status: "failed",
+          reason: "no chain",
+          intention: ID,
+        },
+      ],
+    });
+
+    const { stderr, code } = await runBg(target, "record", ID);
+
+    expect(code).toBe(0);
+    expect(stderr).toContain("not staged");
+    expect(stderr).not.toContain("no file was marked");
+    expect(await regionsOf(target)).toEqual({ [APP]: { [REGION]: "auth/fixture-auth" } });
+  });
+
+  test("an applied intention with no document to read is recorded, and says that no file was marked", async () => {
+    const target = await withStaged("bg-cli-record-nodoc-", [], { staged: false });
+
+    const { stderr, code } = await runBg(target, "record", ID);
+
+    expect(code).toBe(0);
+    expect(stderr).toContain(`${ID} is not staged under .bg/`);
+    expect(stderr).toContain("no file was marked as edited by it");
+    expect(await regionsOf(target)).toEqual({});
+  });
+
+  test("a release intention has no module to own a region, so it marks nothing", async () => {
+    const target = await withStaged("bg-cli-record-release-", []);
+    await mkdir(join(target, ".bg/upgrade"), { recursive: true });
+    await writeFile(
+      join(target, ".bg/upgrade/00-align-bun-pin.md"),
+      `---\nid: v0.2.0/align-bun-pin\ndomain: tooling\nclassification: migration\n---\n\n## Reference Paths\n\n- \`adapt\` \`${MAILER}\`\n`,
+    );
+
+    const { stderr, code } = await runBg(target, "record", "v0.2.0/align-bun-pin");
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+    expect(await regionsOf(target)).toEqual({});
+  });
+});
+
 /** Every path under `root` with its content, so two trees compare whole. */
 async function snapshot(root: string): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
