@@ -326,20 +326,28 @@ templates/base | grep vite.config` prints nothing; `bg list --items` prints what
 
 **`storage/r2`** is `packages/storage` (`peers` provider `cloudflare`, `db`, `orm`, `auth`). It owns `BUCKET` (`r2_buckets` by `jsonc.merge`) and `R2_PUBLIC_URL`, which is read per request so the shell boots without it. It serves at `/v1/media` and re-exports `medias` from the barrel. It runs on real Miniflare R2 and real SQLite: 63 tests against the legacy 44. The `dockerfile` configuration refuses it naming the provider. Golden runs 193 tests in the `cloudflare` project: storage 63, auth 47, api 33, email 19, db 12, api-runtime 7, config 6, ssr 4, spa 1, static 1.
 
-**Decided by the user (2026-11-14), not built yet (5b):**
+**5b and 5c, done 2026-11-15** (`e1a9c7d`..`e3b7670`), on the user's answers:
 
-- 035 gains the optional peer: a `match` may name a category that `peers` does not, and that variant applies only when that category is installed.
-- Closing an intention stops another module's file it edited from reading as drift. The mechanism is under review: a re-hash would let the owner's re-add overwrite the edit.
-- The dockerfile `compose.yaml` forwards `.env` generically through `env_file` and names no module's key.
+- **Optional peer (035).** A variant's `match` may name a category that `peers` does not declare; that variant applies only when the category is installed. The engine already selected variants this way, so only the spec and the parser message changed.
+- **035's order is tested.** A contract test reads the category table from 035 and fails a module whose `peers` or `match` names a category at or after its own.
+- **Recording an intention marks the files it edited.** `bg record <id>` records an `intent[<id>]` region, owned by the intention's module, on each file the intention declares `adapt` (060, 065, 050).
+  - That file is then region-checked, and its owner's re-add keeps the edit even when its template changes. Re-hashing was rejected because the re-add would then overwrite the edit.
+  - `bg record` refuses when it cannot find the `adapt` paths, and says to run `bg add` again.
+  - The decoy `ts.addImport` in `email/resend` is gone: the intention does the whole edit, so lint no longer goes red between `bg add` and `bg record`.
+- **`db:reset` is `orm/drizzle`'s.** It empties every table the barrel exports, child tables before parents (D1 ignores `PRAGMA foreign_keys = OFF`), and is proved with a `medias` row that has an author and no organization.
+  - `db:seed` stays auth's. When the admin exists it does nothing and says so.
+- **Dockerfile provider.** `compose.yaml` reads `.env` through `env_file` (Compose ≥ 2.24) and names no module's key. The runtime no longer fills `R2_PUBLIC_URL`.
+- **Cloudflare provider.** Its README and description no longer claim D1 and R2.
+- **Test helpers.** `createTestAuth` accepts another module's tables, and storage signs in through it.
+
+Golden runs 210 tests in the `cloudflare` project: storage 65, auth 53, api 33, db 21, email 19, api-runtime 7, config 6, ssr 4, spa 1, static 1. Docker builds and runs.
 
 **Open:**
 
-- the dockerfile runtime still fills `R2_PUBLIC_URL`, though no installed module reads it there;
-- auth's `db:reset` fails once a `medias` row exists (`author_id` has no cascade);
-- the cloudflare provider README still describes R2 as its own;
-- storage's `testing.ts` repeats auth's sign-in flow because `createTestAuth` takes no `db`;
 - installing auth after email wires nothing until `bg add email/resend` runs again;
-- lint stays red between `bg add` and `bg record`, because of the unused import.
+- an intention recorded `--skip` and later wanted as applied, once `.bg/` is gone, cannot be staged again, because `add` treats it as resolved; recommended: `bg record` reads the module's `intent/` itself;
+- a failed `wrangler` call during the seed prints the whole SQL, including the dev admin's password hash;
+- a second `web` module cannot peer on another `web` module under the strict order test.
 
 - **Scope:** `storage/r2` (row 15) and `email/resend` (row 16, renamed `emails` to `email`). `queue`
   has nothing to extract. The `cloudflare` email adapter is the `EMAIL` binding AGENTS.md forbids,
