@@ -1013,7 +1013,7 @@ export function testCounts(output: string): Record<string, number> {
 }
 
 /** How many tests the auth package runs in the project; fewer means the root `test` stopped reaching it. */
-export const AUTH_MIN_TESTS = 47;
+export const AUTH_MIN_TESTS = 53;
 
 /**
  * How many tests the storage package runs in the project: the legacy media tests (r2, routes, e2e)
