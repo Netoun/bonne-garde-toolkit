@@ -33,9 +33,10 @@ writes at the same paths, so swapping providers swaps this package and leaves `a
 entry stay as they are:
 
 - `runtimeOptions`: `{ aot: true }`. Elysia picks its Bun adapter itself.
-- `readRuntimeEnv(source = process.env)`: fills `SPA_URL`, `SSR_URL` and `API_URL` from `APP_URL`,
-  `R2_PUBLIC_URL` from `<APP_URL>/v1/media/file`, and `BETTER_AUTH_SECRET` from
-  `DATA_DIR/secrets/better-auth-secret`. It does not invent `RESEND_API_KEY`.
+- `readRuntimeEnv(source = process.env)`: fills `SPA_URL`, `SSR_URL` and `API_URL` from `APP_URL`, and
+  `BETTER_AUTH_SECRET` from `DATA_DIR/secrets/better-auth-secret`. It invents no other key: a key
+  belongs to the module whose code reads it (035), so `RESEND_API_KEY` is the `email` module's and
+  `R2_PUBLIC_URL` is `storage/r2`'s, which is Cloudflare-only and has no variant for this provider.
 - `clientIpHeaders`: `["x-client-ip"]`, the header `serve` fills with the client's address. See
   [The client's address](#the-clients-address-and-a-reverse-proxy).
 - `serve(app, { spaDir, port, trustedProxyHeader })`: returns `{ port, fetch }`, which Bun serves by itself when

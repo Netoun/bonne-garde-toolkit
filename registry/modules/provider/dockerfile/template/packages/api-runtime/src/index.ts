@@ -64,9 +64,10 @@ async function authSecret(dataDir: string): Promise<string> {
 
 /**
  * `process.env`, completed for a container where the API and the SPA share one origin: the three
- * front-end URLs and `R2_PUBLIC_URL` default from `APP_URL`, and `BETTER_AUTH_SECRET` is generated
- * under `DATA_DIR` when unset. `RESEND_API_KEY` is not invented — nothing here can stand in for an
- * email provider, so `apps/api`'s config reports it missing.
+ * front-end URLs default from `APP_URL`, and `BETTER_AUTH_SECRET` is generated under `DATA_DIR` when
+ * unset. Nothing else is invented: a key belongs to the module whose code reads it, so
+ * `RESEND_API_KEY` is the email module's and `R2_PUBLIC_URL` is storage's, and this provider has
+ * neither an email provider nor a bucket to stand in for.
  */
 export async function readRuntimeEnv(
   source: Record<string, string | undefined> = process.env,
@@ -79,7 +80,6 @@ export async function readRuntimeEnv(
 
   const appUrl = source.APP_URL || `http://localhost:${source.PORT || DEFAULT_PORT}`;
   for (const key of ["SPA_URL", "SSR_URL", "API_URL"]) fill(key, appUrl);
-  fill("R2_PUBLIC_URL", `${appUrl.replace(/\/+$/, "")}/v1/media/file`);
   // Under NODE_ENV=test the app fills a fixture itself; generating one would write into the cwd.
   if (!env.BETTER_AUTH_SECRET && source.NODE_ENV !== "test") {
     env.BETTER_AUTH_SECRET = await authSecret(source.DATA_DIR || DEFAULT_DATA_DIR);

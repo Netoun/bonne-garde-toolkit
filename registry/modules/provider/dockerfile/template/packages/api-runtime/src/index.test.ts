@@ -62,10 +62,10 @@ describe("readRuntimeEnv", () => {
     expect(env.API_URL).toBe("https://app.example.com");
   });
 
-  it("derives R2_PUBLIC_URL from APP_URL, the media route being on the same origin", async () => {
+  it("does not invent a storage key: R2_PUBLIC_URL is the storage module's, and this provider has no bucket", async () => {
     const env = await readRuntimeEnv({ APP_URL: "https://app.example.com/", DATA_DIR: dir });
 
-    expect(env.R2_PUBLIC_URL).toBe("https://app.example.com/v1/media/file");
+    expect(env.R2_PUBLIC_URL).toBeUndefined();
   });
 
   it("falls back to localhost on PORT when APP_URL is unset", async () => {

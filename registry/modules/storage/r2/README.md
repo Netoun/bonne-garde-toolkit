@@ -100,9 +100,9 @@ this module. The value is read **per request**, not at import: a missing one fai
 naming the key (`Missing required environment variables: R2_PUBLIC_URL`). Under `NODE_ENV=test` it gets the
 local media route.
 
-The `dockerfile` runtime still derives `R2_PUBLIC_URL` from `APP_URL` inside its own `readRuntimeEnv`. That
-is container behaviour, as its generation of `BETTER_AUTH_SECRET` is, and nothing reads the value there: that
-provider has no bucket.
+The `dockerfile` runtime does not derive it: that provider has no bucket and this module has no variant for it,
+so nothing reads the value there, and a provider fills only the keys of the container itself (the origins, and
+the secret it generates).
 
 ## The `medias` table
 
