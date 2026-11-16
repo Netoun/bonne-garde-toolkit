@@ -2,32 +2,43 @@
 
 <!-- GEN:START -->
 
-> Auto-generated from `package.json` files. Regenerate: `bun run gen:architecture`. Last: 2026-10-30.
+> Auto-generated from `package.json` files and the `registry/` tree. Regenerate: `bun run gen:architecture`. Last: 2026-11-16.
 
 ## Overview
 
-My App is a Bun monorepo with 2 apps and 7 packages, deployed on Cloudflare.
-
-### Apps
-
-| App        | Framework       | Mode      | Platform |
-| ---------- | --------------- | --------- | -------- |
-| `apps/api` | Elysia          | CF Worker | Workers  |
-| `apps/spa` | React Router v8 | SPA       | Pages    |
+Bonne Garde is a Bun monorepo of a CLI, the registry it installs from and the base template it copies: 3 packages, 16 modules in 13 categories, 34 items.
 
 ### Packages
 
-| Package                | Role                                 |
-| ---------------------- | ------------------------------------ |
-| `packages/api-runtime` | —                                    |
-| `packages/cli`         | —                                    |
-| `packages/config`      | Shared branding / white-label config |
-| `packages/emails`      | React-Email templates                |
-| `packages/registry`    | —                                    |
-| `packages/schema`      | —                                    |
-| `packages/ui`          | shadcn/ui + global CSS               |
+| Package             | Role                                                       |
+| ------------------- | ---------------------------------------------------------- |
+| `packages/cli`      | `bg` and `create-bonne-garde`: create, add, doctor, record |
+| `packages/registry` | Load, plan and apply registry items and modules            |
+| `packages/schema`   | `bg.json` and `module.json` validation                     |
+
+### Registry
+
+| Path                        | Content                           |
+| --------------------------- | --------------------------------- |
+| `registry/modules/api`      | `elysia`                          |
+| `registry/modules/auth`     | `better-auth`                     |
+| `registry/modules/config`   | `branding`                        |
+| `registry/modules/db`       | `d1`                              |
+| `registry/modules/deploy`   | `cloudflare-actions`              |
+| `registry/modules/dev`      | `portless`                        |
+| `registry/modules/email`    | `resend`                          |
+| `registry/modules/orm`      | `drizzle`                         |
+| `registry/modules/provider` | `cloudflare`, `dockerfile`        |
+| `registry/modules/storage`  | `r2`                              |
+| `registry/modules/tooling`  | `vite-plus`                       |
+| `registry/modules/ui`       | `shadcn`                          |
+| `registry/modules/web`      | `spa`, `ssr`, `static`            |
+| `registry/ui`               | 32 items                          |
+| `registry/features`         | 2 items: spa-auth, spa-backoffice |
 
 <!-- GEN:END -->
+
+Everything below describes the code the registry ships into a generated project (`apps/api` from `api/elysia`, `apps/spa` from `web/spa`, ...), not this repository's tree.
 
 ## Communication
 
