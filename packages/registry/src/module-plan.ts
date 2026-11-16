@@ -3,6 +3,7 @@ import { join, posix } from "node:path";
 import { glob } from "tinyglobby";
 import {
   categoryCardinality,
+  cliRunner,
   isModuleCategory,
   MODULE_CATEGORIES,
   readModuleIntention,
@@ -207,7 +208,7 @@ function checkCardinality(requested: ModuleRef[], manifest: ProjectManifest): vo
     const installed = manifest.modules[category]?.[0];
     if (wanted && installed && installed.id !== wanted.id) {
       throw new PlanError(
-        `${category} is already filled by ${category}/${installed.id}; \`bg replace ${keyOf(wanted)}\` swaps it`,
+        `${category} is already filled by ${category}/${installed.id}; \`${cliRunner()} replace ${keyOf(wanted)}\` swaps it`,
       );
     }
   }

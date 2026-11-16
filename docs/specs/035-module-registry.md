@@ -154,9 +154,9 @@ The combinatorial explosion is data, not branching code. A module ships one vari
 
 ## Acceptance
 
-- `bg list --category auth` shows every auth module.
-- `bg add better-auth` on a project without an `orm` fails naming the missing peer.
+- `bonne-garde list --category auth` shows every auth module.
+- `bonne-garde add better-auth` on a project without an `orm` fails naming the missing peer.
 - Installing a second `auth` module fails without any `conflicts` field existing in the schema.
 - A module with only `copy` and `patch` installs non-interactively in CI.
-- A binary template file lands byte-identical from a `local:` and from a `github:` source, `bg doctor --strict` is green after the add, and a second add skips it.
+- A binary template file lands byte-identical from a `local:` and from a `github:` source, `bonne-garde doctor --strict` is green after the add, and a second add skips it.
 - Contract tests reject a module whose `match` set is ambiguous or whose category is unknown.

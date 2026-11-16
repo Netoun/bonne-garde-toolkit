@@ -8,7 +8,7 @@ It replaces the `portless` registry item, which was hard-wired to four apps (`Ap
 runtime path ([035](../../../../docs/specs/035-module-registry.md), [09](../../../../docs/plans/2026-10-sync/09-dissolution.md) row 19).
 
 ```bash
-bunx bg add dev/portless
+bunx bonne-garde add dev/portless
 bun run dev:portless          # or: bun run dev:lan:portless
 ```
 

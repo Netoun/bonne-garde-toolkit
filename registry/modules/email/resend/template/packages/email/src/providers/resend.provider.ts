@@ -1,4 +1,4 @@
-// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { branding, formatEmailFrom } from "{{SCOPE}}/config";
 import type { EmailMessage, EmailProvider } from "../types";

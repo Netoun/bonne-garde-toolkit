@@ -47,4 +47,5 @@ export {
   type ModuleIntention,
   type ReferencePath,
 } from "./intention-document";
+export { cliRunner, PROJECT_RUNNER, runnerFor } from "./cli-runner";
 export { isRepoRelative } from "./repo-path";

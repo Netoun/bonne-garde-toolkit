@@ -16,7 +16,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@acme/ui/components/sidebar";
-// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { Avatar, AvatarFallback } from "@acme/ui/components/avatar";
 import { LogOut, User, Settings } from "lucide-react";

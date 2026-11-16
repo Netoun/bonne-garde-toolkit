@@ -13,6 +13,7 @@ const REGISTRY = `local:${join(ROOT, "registry")}`;
  * `yarn dlx bonne-garde` all run the bin with it, so spawning it here is deliberate.
  */
 const NODE = Bun.which("node");
+const NPM_USER_AGENT = "npm/10.9.0 node/v22.12.0 darwin arm64";
 
 async function spawn(argv: string[], cwd: string, env?: Record<string, string | undefined>) {
   const proc = Bun.spawn(argv, {
@@ -49,12 +50,21 @@ describe("pack-cli", () => {
     await Promise.all(dirs.map((d) => rm(d, { recursive: true, force: true })));
   });
 
-  /** The packed bin, run by Node from `cwd`. */
+  /** The packed bin, run by Node from `cwd`, started by the package manager `userAgent` names. */
   async function bonneGarde(cwd: string, ...args: string[]) {
+    return startedBy(NPM_USER_AGENT, cwd, ...args);
+  }
+
+  async function startedBy(userAgent: string | undefined, cwd: string, ...args: string[]) {
     if (NODE === null) {
       throw new Error("node is not on PATH");
     }
-    return spawn([NODE, join(installed, "bin.js"), ...args], cwd);
+    const { npm_config_user_agent: _ambient, ...env } = process.env;
+    return spawn(
+      [NODE, join(installed, "bin.js"), ...args],
+      cwd,
+      userAgent === undefined ? env : { ...env, npm_config_user_agent: userAgent },
+    );
   }
 
   async function createdProject(name: string, ...args: string[]) {
@@ -175,6 +185,24 @@ describe("pack-cli", () => {
     const manifest = await Bun.file(join(project, "bg.json")).json();
     expect(manifest.platform.version).toBe("0.1.0");
     expect(manifest.registries["@bg"]).toBe("github:Netoun/bonne-garde-toolkit@v0.1.0");
+  });
+
+  test("names, in the commands it prints, the runner of the package manager that started it", async () => {
+    const { project, code } = await createdProject("runner-app", "--registry", REGISTRY);
+    expect(code).toBe(0);
+
+    for (const [userAgent, runner] of [
+      ["npm/10.9.0 node/v22.12.0 darwin arm64", "npx bonne-garde"],
+      ["pnpm/9.12.0 npm/? node/v22.12.0 darwin arm64", "pnpm dlx bonne-garde"],
+      ["yarn/4.5.0 npm/? node/v22.12.0 darwin arm64", "yarn dlx bonne-garde"],
+      ["bun/1.4.4 npm/? node/v22.12.0 darwin arm64", "bunx bonne-garde"],
+      [undefined, "npx bonne-garde"],
+    ] as const) {
+      // An item that needs the ui module is refused with the command that installs both.
+      const refused = await startedBy(userAgent, project, "add", "button", "--yes", "--no-install");
+      expect(refused.code).toBe(1);
+      expect(refused.stderr).toContain(`run: ${runner} add ui/shadcn button`);
+    }
   });
 
   test("copies the binary favicons of config/branding byte for byte", async () => {

@@ -5,7 +5,7 @@ re-exported from, the drizzle-kit config and a test database in real SQLite. It 
 `packages/db`, which `db/d1` owns.
 
 ```bash
-bunx bg add provider/cloudflare db/d1 orm/drizzle
+bunx bonne-garde add provider/cloudflare db/d1 orm/drizzle
 ```
 
 ## Peers and variant
@@ -38,7 +38,7 @@ routes registered after it. With no binding it still loads: see `db/d1`.
 that has a workspace, and refuses a second claimant (`named by both` in one call, `owned by` in two), so
 exactly one module may. `db/d1` is first in 035's order and the only one that can stand alone, so it
 owns the workspace and the vendored `package.json`, and orm adds to that file with patches, one
-region each, which `bg remove orm/drizzle` deletes and nothing else:
+region each, which `bunx bonne-garde remove orm/drizzle` deletes and nothing else:
 
 | Type                   | Regions                                                                          |
 | ---------------------- | -------------------------------------------------------------------------------- |
@@ -65,7 +65,7 @@ alone exports only `./d1`. So orm wires it, with three patches on the files `api
 
 The dependency is what lets the import resolve: Bun's isolated installs link only what a `package.json`
 declares. Like `db/d1`, orm does not peer on `api`: without `apps/api` the three fail and become pending
-intentions (060), not a failed install. With it, in one call or after, `bg add` of either module alone
+intentions (060), not a failed install. With it, in one call or after, `bonne-garde add` of either module alone
 later skips every patch and changes nothing.
 
 Every route registered after it has `db` on its context. The API shell's own tests, and every route

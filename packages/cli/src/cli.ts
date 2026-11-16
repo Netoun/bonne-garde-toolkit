@@ -1,5 +1,5 @@
 import { ApplyError } from "@bonne-garde/registry";
-import type { IntentionOutcome } from "@bonne-garde/schema";
+import { cliRunner, type IntentionOutcome } from "@bonne-garde/schema";
 import { addItems, searchItems, viewItem } from "./add";
 import { checksNotice } from "./checks-notice";
 import { createProject } from "./create";
@@ -13,21 +13,21 @@ import { recordIntentionOutcome } from "./record";
 import { BUN_MISSING } from "./run-command";
 
 function usage(): string {
-  return `bg — Bonne Garde CLI
+  return `bonne-garde — Bonne Garde CLI
 
 Usage:
-  bg create <dir> [--yes] [--no-git] [--no-install] [--scope @name] [--registry <source>]
-  bg list [--items | --category <category>] [--source <source>]
+  bonne-garde create <dir> [--yes] [--no-git] [--no-install] [--scope @name] [--registry <source>]
+  bonne-garde list [--items | --category <category>] [--source <source>]
       with no flag: the items, then the modules as <category>/<id>; --items is the items alone
-  bg search <query> [--source <source>]
-  bg view <item> [--source <source>]
-  bg add <name...> [--dry-run] [--force] [--no-install] [--yes] [--source <source>]
+  bonne-garde search <query> [--source <source>]
+  bonne-garde view <item> [--source <source>]
+  bonne-garde add <name...> [--dry-run] [--force] [--no-install] [--yes] [--source <source>]
       <name> is an item, a module id, or <category>/<id> (provider/cloudflare)
       <source> is local:<path> or github:owner/repo[@ref]; a github source reads raw.githubusercontent.com
       (set GITHUB_TOKEN to lift the rate limit); with no @ref it reads the tag v<platform.version> of bg.json
-  bg record <intention-id> [--skip "<reason>"]
-  bg doctor [--json] [--strict]
-  bg intentions lint [--dir <migrations-dir>] [--registry <registry-dir>]
+  bonne-garde record <intention-id> [--skip "<reason>"]
+  bonne-garde doctor [--json] [--strict]
+  bonne-garde intentions lint [--dir <migrations-dir>] [--registry <registry-dir>]
       the release migrations, and the intentions each module ships under its intent/
 `;
 }
@@ -37,8 +37,8 @@ function manifestMigrationNotice(dryRun: boolean): string {
   const changes =
     '"installed" becomes "items", "capabilities" is dropped, and "files" and "regions" start empty';
   return dryRun
-    ? `bg: bg.json is version 1; a real run will rewrite it as version 2 (${changes}). Not written: --dry-run.`
-    : `bg: rewrote bg.json from version 1 to version 2 (${changes}). Files already in the project are user-owned until re-added.`;
+    ? `bonne-garde: bg.json is version 1; a real run will rewrite it as version 2 (${changes}). Not written: --dry-run.`
+    : `bonne-garde: rewrote bg.json from version 1 to version 2 (${changes}). Files already in the project are user-owned until re-added.`;
 }
 
 function takeFlag(args: string[], name: string): boolean {
@@ -179,11 +179,11 @@ export async function runCli(argv: string[]): Promise<number> {
     // 050 step 7: a module this call did not name, planned again because one it did name changes its variant.
     for (const { ref, from, to, because } of reselected) {
       console.error(
-        `bg: ${ref.category}/${ref.id}, installed on variant ${from}, is planned again on variant ${to}, which matches ${because.join(", ")}`,
+        `bonne-garde: ${ref.category}/${ref.id}, installed on variant ${from}, is planned again on variant ${to}, which matches ${because.join(", ")}`,
       );
     }
     for (const { path, from, by } of result.tookOver) {
-      console.error(`bg: ${path} was owned by ${from}; ${by} now owns it`);
+      console.error(`bonne-garde: ${path} was owned by ${from}; ${by} now owns it`);
     }
     // Spec 060: a failed patch never aborts the install and is never silent. It is a pending tier-3
     // intention (050 steps 11 and 14), staged under .bg/add/ with the executor entry point.
@@ -194,7 +194,7 @@ export async function runCli(argv: string[]): Promise<number> {
       const resolved =
         intention !== undefined && !result.pending.some(({ id }) => id === intention);
       console.error(
-        `bg: PATCH FAILED ${type} on ${file} (${module}): ${reason}. ` +
+        `bonne-garde: PATCH FAILED ${type} on ${file} (${module}): ${reason}. ` +
           (intention === undefined
             ? "Make the edit by hand."
             : resolved
@@ -205,8 +205,8 @@ export async function runCli(argv: string[]): Promise<number> {
     const pendingCount = result.pending.length + result.authored.length;
     if (staged !== null) {
       console.error(
-        `bg: ${pendingCount} pending intention${pendingCount === 1 ? "" : "s"}: ` +
-          `read ${staged.session} and follow it (spec 065), then bg record <id> or bg record <id> --skip "<reason>".`,
+        `bonne-garde: ${pendingCount} pending intention${pendingCount === 1 ? "" : "s"}: ` +
+          `read ${staged.session} and follow it (spec 065), then ${cliRunner()} record <id> or ${cliRunner()} record <id> --skip "<reason>".`,
       );
     }
     const notice = checksNotice(modulePlans, pendingCount);
@@ -290,7 +290,7 @@ export async function runCli(argv: string[]): Promise<number> {
 
   if (command === "remove" || command === "replace") {
     throw new Error(
-      `bg ${command} is not supported yet: spec 050 "remove and replace" is not implemented`,
+      `bonne-garde ${command} is not supported yet: spec 050 "remove and replace" is not implemented`,
     );
   }
 
@@ -316,12 +316,12 @@ export async function runCli(argv: string[]): Promise<number> {
     }
     if (!staged) {
       console.error(
-        `bg: ${id} is not staged under .bg/; recorded anyway (the scratch root is disposable).`,
+        `bonne-garde: ${id} is not staged under .bg/; recorded anyway (the scratch root is disposable).`,
       );
     }
     for (const path of notFiles) {
       console.error(
-        `bg: ${path} is not a file of the project, so ${id} did not mark it as edited by it.`,
+        `bonne-garde: ${path} is not a file of the project, so ${id} did not mark it as edited by it.`,
       );
     }
     console.log(

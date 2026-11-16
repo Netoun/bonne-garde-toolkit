@@ -5,7 +5,7 @@ that carries the API URL, a server-side Eden client that forwards the request's 
 page. Extracted from the legacy `apps/ssr` ([080](../../../../docs/specs/080-existing-code-migration.md)).
 
 ```bash
-bunx bg add web/ssr
+bunx bonne-garde add web/ssr
 ```
 
 ## Peers and variants
@@ -23,7 +23,7 @@ One variant, `cloudflare`, which copies `wrangler.jsonc` and adds `dev` (`react-
 
 **Why `cloudflare` only** (080, step 3): the app is a Worker, and the `dockerfile` provider has no
 SSR shell. Its `serve()` answers from `apps/spa/build/client` and its image starts the API alone.
-Running this app as a second service is a new feature, and so is a second variant. `bg add web/ssr`
+Running this app as a second service is a new feature, and so is a second variant. `bunx bonne-garde add web/ssr`
 on a `dockerfile` project fails naming the provider.
 
 ## What it writes

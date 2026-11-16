@@ -134,7 +134,7 @@ describe("registry contract", () => {
       expect(wrong).toEqual([]);
     });
 
-    test("an item declares exactly the items its file imports, so `bg add <item>` brings what it needs and no more", async () => {
+    test("an item declares exactly the items its file imports, so `bonne-garde add <item>` brings what it needs and no more", async () => {
       const wrong: string[] = [];
       for (const item of await uiItems()) {
         const imported = new Set<string>();

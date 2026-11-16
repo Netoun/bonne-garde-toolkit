@@ -2,12 +2,12 @@
 /**
  * The golden project: what a consumer does, end to end, in a fresh directory, once per configuration.
  *
- *   bg create → bg add of a UI item, refused → bg add of a feature item, refused in a bare project and in
- *   a project that lacks only auth, or only storage → bg add of the configuration's modules and every
+ *   bonne-garde create → bonne-garde add of a UI item, refused → bonne-garde add of a feature item, refused in a bare project and in
+ *   a project that lacks only auth, or only storage → bonne-garde add of the configuration's modules and every
  *   item in one call (the feature items' dependencies written into apps/spa/package.json) → the same
- *   bg add again, which must skip every patch and change nothing, and each module and each feature
+ *   bonne-garde add again, which must skip every patch and change nothing, and each module and each feature
  *   item again on its own, which must too → bun install
- *   → typecheck → test → build → bg doctor --strict
+ *   → typecheck → test → build → bonne-garde doctor --strict
  *   → for a configuration with a database: a table added to the schema barrel, `bun run db:generate`,
  *     the migration applied to a local D1 (`wrangler`, no network, no account), and what D1 holds read back,
  *     the tables of its modules (`medias`, storage's) in the migration and in D1 as well
@@ -42,7 +42,7 @@
  * Node 22.12 or later on PATH). It runs from a copy outside the repo: the packed `paths.ts` still
  * walks up to find the repo root, and `templateBaseDir()` falls back to the repo's `templates/base`,
  * so in place under `dist/` a pack that dropped its `templates/` would still pass. From a copy under
- * the temp directory, `bg create` can only use what the pack carries.
+ * the temp directory, `bonne-garde create` can only use what the pack carries.
  *
  * Usage:
  *   bun run golden
@@ -54,6 +54,7 @@ import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, relative, resolve } from "node:path";
 import { stripVTControlCharacters } from "node:util";
+import { cliRunner } from "../packages/schema/src/cli-runner";
 
 const ROOT = resolve(import.meta.dir, "..");
 const PACKED_CLI = join(ROOT, "dist/npm/bonne-garde");
@@ -70,7 +71,7 @@ const NODE = "node";
 export const SCOPE = "@app";
 
 /**
- * Items `bg list` shows that stay out of the golden project, each with its reason. An entry for an
+ * Items `bonne-garde list` shows that stay out of the golden project, each with its reason. An entry for an
  * item the registry no longer lists fails the run, so this list cannot go stale. Empty on purpose:
  * every item the registry ships is installed, and a new one is a decision made here.
  */
@@ -78,7 +79,7 @@ export const EXCLUDED: Readonly<Record<string, string>> = {};
 
 export type Excluded = { name: string; reason: string };
 
-/** The item names to `bg add`, read from `bg list` output (`name<TAB>type<TAB>description`). */
+/** The item names to `bonne-garde add`, read from `bonne-garde list` output (`name<TAB>type<TAB>description`). */
 export function selectItems(
   listing: string,
   exclusions: Readonly<Record<string, string>>,
@@ -95,7 +96,7 @@ export function selectItems(
 
   const items = listed.filter((name) => !Object.hasOwn(exclusions, name));
   if (items.length === 0) {
-    throw new Error("bg list left no items to install");
+    throw new Error("bonne-garde list left no items to install");
   }
 
   return {
@@ -106,12 +107,12 @@ export function selectItems(
   };
 }
 
-/** One project golden builds: the modules `bg add` installs in one call, and whether every item comes with them. */
+/** One project golden builds: the modules `bonne-garde add` installs in one call, and whether every item comes with them. */
 export type Configuration = {
   name: string;
-  /** `<category>/<id>`, in the order they are given to `bg add`. */
+  /** `<category>/<id>`, in the order they are given to `bonne-garde add`. */
   modules: readonly string[];
-  /** Also install every item `bg list --items` shows. Items land in `packages/ui` and need the `ui` module. */
+  /** Also install every item `bonne-garde list --items` shows. Items land in `packages/ui` and need the `ui` module. */
   items: boolean;
 };
 
@@ -247,16 +248,16 @@ export const WITHOUT_ORM: readonly string[] = [
   "db/d1",
 ];
 
-/** `bg add <name>` failed and named `category` as the peer it needs: what an agent reads to fix it. */
+/** `bonne-garde add <name>` failed and named `category` as the peer it needs: what an agent reads to fix it. */
 export function expectPeerRefusal(attempt: Attempt, name: string, category: string): void {
   if (attempt.code === 0) {
     throw new Error(
-      `\`bg add ${name}\` succeeded in a project with no ${category} module: it must be refused`,
+      `\`bonne-garde add ${name}\` succeeded in a project with no ${category} module: it must be refused`,
     );
   }
   if (!attempt.stderr.includes(`category ${category}`)) {
     throw new Error(
-      `\`bg add ${name}\` was refused without naming the missing peer category ${category}; it printed: ${attempt.stderr.trim() || "(nothing)"}`,
+      `\`bonne-garde add ${name}\` was refused without naming the missing peer category ${category}; it printed: ${attempt.stderr.trim() || "(nothing)"}`,
     );
   }
 }
@@ -510,7 +511,7 @@ export function expectWorkflow(text: string, rootScripts: readonly string[]): vo
   }
 }
 
-/** `bg add` of a module on a provider it does not accept fails and names the provider that is installed (035: a peer outside the allow-list). */
+/** `bonne-garde add` of a module on a provider it does not accept fails and names the provider that is installed (035: a peer outside the allow-list). */
 export function expectProviderRefusal(
   attempt: Attempt,
   module: string,
@@ -519,13 +520,13 @@ export function expectProviderRefusal(
 ): void {
   if (attempt.code === 0) {
     throw new Error(
-      `\`bg add ${module}\` succeeded in a project on provider/${installed}: it accepts only ${allowed}, so it must be refused`,
+      `\`bonne-garde add ${module}\` succeeded in a project on provider/${installed}: it accepts only ${allowed}, so it must be refused`,
     );
   }
   for (const named of [`accepts only ${allowed}`, `provider/${installed}`]) {
     if (!attempt.stderr.includes(named)) {
       throw new Error(
-        `\`bg add ${module}\` was refused without saying \`${named}\`; it printed: ${attempt.stderr.trim() || "(nothing)"}`,
+        `\`bonne-garde add ${module}\` was refused without saying \`${named}\`; it printed: ${attempt.stderr.trim() || "(nothing)"}`,
       );
     }
   }
@@ -698,13 +699,13 @@ export const FEATURE_REFUSALS: readonly {
 ];
 
 /**
- * Modules `bg list` shows that stay out of every configuration, each with its reason. An entry for
+ * Modules `bonne-garde list` shows that stay out of every configuration, each with its reason. An entry for
  * a module the registry no longer lists fails the run, as for `EXCLUDED`. Empty on purpose.
  */
 export const EXCLUDED_MODULES: Readonly<Record<string, string>> = {};
 
 /**
- * The module ids to `bg add`, read from the `module` lines of `bg list` output
+ * The module ids to `bonne-garde add`, read from the `module` lines of `bonne-garde list` output
  * (`<category>/<id><TAB>module<TAB>description`). `installed` is what golden installs, in that order,
  * over all configurations; every other listed module must be in `exclusions`.
  */
@@ -752,7 +753,7 @@ export function selectModules(
  * The modules of each configuration whose variants declare a tier-2 patch, with the regions each
  * one's patches write there. Variants patch differently (`api/elysia` writes `dev` and `deploy` for
  * `wrangler` and only `dev` for the container), so this is per configuration. Golden checks that
- * `bg add` reports exactly these as `applied` and, run again, as `skipped`: a module that gains or
+ * `bonne-garde add` reports exactly these as `applied` and, run again, as `skipped`: a module that gains or
  * loses a patch is a decision made here, as a module that is not installed is.
  */
 export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
@@ -806,7 +807,7 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "scripts.dev:portless",
     ],
     // Not the import into mailer.ts: that is the intention's edit, and the file it edits is
-    // region-checked by the `intent[<id>]` region `bg record` leaves.
+    // region-checked by the `intent[<id>]` region `bonne-garde record` leaves.
     "email/resend": ["dependencies.@app/email"],
     "deploy/cloudflare-actions": ["scripts.deploy:cloudflare"],
   },
@@ -825,7 +826,7 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
 /**
  * The patches the feature items make (030, 060): the `name@version` dependencies each writes into the
  * package.json of the app its files land in, one region each, owned by the item. A bare name is not one.
- * Golden checks that `bg add` reports exactly these as `applied` and, run again, as `skipped`.
+ * Golden checks that `bonne-garde add` reports exactly these as `applied` and, run again, as `skipped`.
  */
 export const PATCHED_ITEMS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> =
   {
@@ -848,7 +849,7 @@ export const PATCHED_ITEMS: Readonly<Record<string, Readonly<Record<string, read
     dockerfile: {},
   };
 
-/** One patch of a module, as `bg add` prints it (spec 060): its outcome and, per region, what it did. */
+/** One patch of a module, as `bonne-garde add` prints it (spec 060): its outcome and, per region, what it did. */
 export type AddedPatch = {
   type: string;
   file: string;
@@ -857,7 +858,7 @@ export type AddedPatch = {
   regions: { region: string; status: string }[];
 };
 
-/** A module `bg add` reported, with the commands it declares to validate itself (spec 050 step 15) and its patches. */
+/** A module `bonne-garde add` reported, with the commands it declares to validate itself (spec 050 step 15) and its patches. */
 export type AddedModule = { module: string; checks: string[]; patches: AddedPatch[] };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -876,7 +877,9 @@ function readPatch(module: string, patch: unknown): AddedPatch {
     typeof patch.status !== "string" ||
     !Array.isArray(patch.regions)
   ) {
-    throw new Error(`bg add printed a patch of ${module} without type, file, status and regions`);
+    throw new Error(
+      `bonne-garde add printed a patch of ${module} without type, file, status and regions`,
+    );
   }
   const regions = patch.regions.map((region: unknown) => {
     if (
@@ -884,7 +887,9 @@ function readPatch(module: string, patch: unknown): AddedPatch {
       typeof region.region !== "string" ||
       typeof region.status !== "string"
     ) {
-      throw new Error(`bg add printed a region of a patch of ${module} without region and status`);
+      throw new Error(
+        `bonne-garde add printed a region of a patch of ${module} without region and status`,
+      );
     }
     return { region: region.region, status: region.status };
   });
@@ -898,7 +903,7 @@ function readPatch(module: string, patch: unknown): AddedPatch {
 }
 
 /**
- * The modules in the JSON `bg add` prints, which is where the packed CLI says what it installed
+ * The modules in the JSON `bonne-garde add` prints, which is where the packed CLI says what it installed
  * and what each module checks: `add` prints those commands and does not run them. Fails when a
  * module in `expected` is not among them.
  */
@@ -907,35 +912,37 @@ export function readAddedModules(stdout: string, expected: readonly string[]): A
   try {
     parsed = JSON.parse(stdout);
   } catch {
-    throw new Error("bg add did not print JSON");
+    throw new Error("bonne-garde add did not print JSON");
   }
   if (!isRecord(parsed) || !Array.isArray(parsed.modules)) {
-    throw new Error("bg add printed no `modules` array");
+    throw new Error("bonne-garde add printed no `modules` array");
   }
   const added = parsed.modules.map((entry: unknown): AddedModule => {
     if (!isRecord(entry) || typeof entry.module !== "string") {
-      throw new Error("bg add printed a module with no `module` key");
+      throw new Error("bonne-garde add printed a module with no `module` key");
     }
     const checks = entry.checks ?? [];
     if (!isStringArray(checks)) {
-      throw new Error(`bg add printed \`checks\` of ${entry.module} that is not a list of strings`);
+      throw new Error(
+        `bonne-garde add printed \`checks\` of ${entry.module} that is not a list of strings`,
+      );
     }
     const patches = entry.patches ?? [];
     if (!Array.isArray(patches)) {
-      throw new Error(`bg add printed \`patches\` of ${entry.module} that is not a list`);
+      throw new Error(`bonne-garde add printed \`patches\` of ${entry.module} that is not a list`);
     }
     const { module } = entry;
     return { module, checks, patches: patches.map((patch) => readPatch(module, patch)) };
   });
   const missing = expected.filter((name) => !added.some(({ module }) => module === name));
   if (missing.length > 0) {
-    throw new Error(`bg add did not report ${missing.join(", ")}`);
+    throw new Error(`bonne-garde add did not report ${missing.join(", ")}`);
   }
   return added;
 }
 
 /**
- * The dependencies the items added, in the `itemPatches` `bg add` prints (030), shaped as the modules' are
+ * The dependencies the items added, in the `itemPatches` `bonne-garde add` prints (030), shaped as the modules' are
  * (an item is the owner of its regions) so `expectPatches` and `expectRegionsRecorded` read both alike.
  */
 export function readAddedItems(stdout: string): AddedModule[] {
@@ -943,15 +950,15 @@ export function readAddedItems(stdout: string): AddedModule[] {
   try {
     parsed = JSON.parse(stdout);
   } catch {
-    throw new Error("bg add did not print JSON");
+    throw new Error("bonne-garde add did not print JSON");
   }
   if (!isRecord(parsed) || !Array.isArray(parsed.itemPatches)) {
-    throw new Error("bg add printed no `itemPatches` array");
+    throw new Error("bonne-garde add printed no `itemPatches` array");
   }
   const byItem = new Map<string, AddedPatch[]>();
   for (const entry of parsed.itemPatches as unknown[]) {
     if (!isRecord(entry) || typeof entry.item !== "string") {
-      throw new Error("bg add printed an item patch with no `item` key");
+      throw new Error("bonne-garde add printed an item patch with no `item` key");
     }
     const { item, ...patch } = entry;
     byItem.set(item, [...(byItem.get(item) ?? []), readPatch(item, patch)]);
@@ -961,7 +968,7 @@ export function readAddedItems(stdout: string): AddedModule[] {
 
 /**
  * Spec 060: a failed patch is never silent, and a re-add finds every region present and equal.
- * Checks every patch `bg add` reported against `status`, and the regions of each module against
+ * Checks every patch `bonne-garde add` reported against `status`, and the regions of each module against
  * `expected`, which is where golden says which modules patch what.
  */
 export function expectPatches(
@@ -1001,7 +1008,7 @@ export function expectPatches(
 }
 
 /**
- * The regions `bg add` reported must be in `bg.json` under `regions`, owned by the module that
+ * The regions `bonne-garde add` reported must be in `bg.json` under `regions`, owned by the module that
  * reported them: the printed outcome and the recorded state are two things, and this ties them.
  */
 export function expectRegionsRecorded(manifest: unknown, added: readonly AddedModule[]): void {
@@ -1016,7 +1023,7 @@ export function expectRegionsRecorded(manifest: unknown, added: readonly AddedMo
         const owner = isRecord(owned) ? owned[region] : undefined;
         if (owner !== module) {
           throw new Error(
-            `bg.json records ${region} of ${file} for ${String(owner)}, and bg add reported it for ${module}`,
+            `bg.json records ${region} of ${file} for ${String(owner)}, and bonne-garde add reported it for ${module}`,
           );
         }
       }
@@ -1066,10 +1073,10 @@ export async function snapshot(root: string): Promise<Record<string, string>> {
 }
 
 /**
- * The argv of the one `bg add` golden runs per configuration: every module, then every item the
+ * The argv of the one `bonne-garde add` golden runs per configuration: every module, then every item the
  * configuration has. One call, so a module and the items that need it are planned together, and never
  * `--force`: two installs that write the same file have to fail here and not be settled by an
- * overwrite. A name given twice, and no module, fail, so a broken `bg list` is not a green run (an
+ * overwrite. A name given twice, and no module, fail, so a broken `bonne-garde list` is not a green run (an
  * empty item list is `selectItems`'s to refuse: a configuration may have none).
  */
 export function addArguments(modules: readonly string[], items: readonly string[]): string[] {
@@ -1079,7 +1086,7 @@ export function addArguments(modules: readonly string[], items: readonly string[
   const names = [...modules, ...items];
   const twice = names.filter((name, index) => names.indexOf(name) !== index);
   if (twice.length > 0) {
-    throw new Error(`named twice in one \`bg add\`: ${[...new Set(twice)].join(", ")}`);
+    throw new Error(`named twice in one \`bonne-garde add\`: ${[...new Set(twice)].join(", ")}`);
   }
   return ["add", ...names, "--yes", "--no-install"];
 }
@@ -1389,7 +1396,7 @@ export const MAILER_FILE = "packages/auth/src/mailer.ts";
 const WIRED_TEST_FILE = "packages/auth/src/mailer.wired.test.ts";
 
 /**
- * The intentions `bg add` leaves pending (050 step 14, 065), per configuration: what the variants it
+ * The intentions `bonne-garde add` leaves pending (050 step 14, 065), per configuration: what the variants it
  * selects ship. Golden resolves each the way an executor would, and a configuration that gains one is a
  * decision made here. The dockerfile project has no auth, so email selects the variant that wires nothing
  * and nothing is pending: it installs cleanly and `doctor --strict` is green as it is.
@@ -1399,20 +1406,20 @@ export const PENDING: Readonly<Record<string, readonly string[]>> = {
   dockerfile: [],
 };
 
-/** The ids in the `pendingIntentions` list `bg add` prints. */
+/** The ids in the `pendingIntentions` list `bonne-garde add` prints. */
 export function readPendingIntentions(stdout: string): string[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stdout);
   } catch {
-    throw new Error("bg add did not print JSON");
+    throw new Error("bonne-garde add did not print JSON");
   }
   if (!isRecord(parsed) || !Array.isArray(parsed.pendingIntentions)) {
-    throw new Error("bg add printed no `pendingIntentions` array");
+    throw new Error("bonne-garde add printed no `pendingIntentions` array");
   }
   return parsed.pendingIntentions.map((entry: unknown) => {
     if (!isRecord(entry) || typeof entry.id !== "string") {
-      throw new Error("bg add printed a pending intention without an id");
+      throw new Error("bonne-garde add printed a pending intention without an id");
     }
     return entry.id;
   });
@@ -1422,24 +1429,24 @@ export function readPendingIntentions(stdout: string): string[] {
 export function expectPending(reported: readonly string[], expected: readonly string[]): void {
   if (JSON.stringify([...reported].sort()) !== JSON.stringify([...expected].sort())) {
     throw new Error(
-      `bg add left pending [${reported.join(", ")}], golden expects [${expected.join(", ")}]`,
+      `bonne-garde add left pending [${reported.join(", ")}], golden expects [${expected.join(", ")}]`,
     );
   }
 }
 
-/** A module `bg add` planned again though the command did not name it (050 step 7): the variant it left and the one it took. */
+/** A module `bonne-garde add` planned again though the command did not name it (050 step 7): the variant it left and the one it took. */
 export type Reselected = { module: string; from: string; to: string };
 
-/** The modules in the `reselected` list `bg add` prints. */
+/** The modules in the `reselected` list `bonne-garde add` prints. */
 export function readReselected(stdout: string): Reselected[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stdout);
   } catch {
-    throw new Error("bg add did not print JSON");
+    throw new Error("bonne-garde add did not print JSON");
   }
   if (!isRecord(parsed) || !Array.isArray(parsed.reselected)) {
-    throw new Error("bg add printed no `reselected` array");
+    throw new Error("bonne-garde add printed no `reselected` array");
   }
   return parsed.reselected.map((entry: unknown) => {
     if (
@@ -1448,7 +1455,7 @@ export function readReselected(stdout: string): Reselected[] {
       typeof entry.from !== "string" ||
       typeof entry.to !== "string"
     ) {
-      throw new Error("bg add printed a reselected module without module, from and to");
+      throw new Error("bonne-garde add printed a reselected module without module, from and to");
     }
     return { module: entry.module, from: entry.from, to: entry.to };
   });
@@ -1462,7 +1469,9 @@ export function expectReselected(
   const show = (list: readonly Reselected[]) =>
     list.map(({ module, from, to }) => `${module} ${from} -> ${to}`).join(", ");
   if (JSON.stringify(reported) !== JSON.stringify(expected)) {
-    throw new Error(`bg add planned again [${show(reported)}], golden expects [${show(expected)}]`);
+    throw new Error(
+      `bonne-garde add planned again [${show(reported)}], golden expects [${show(expected)}]`,
+    );
   }
 }
 
@@ -1477,7 +1486,7 @@ export const RESELECTED: Reselected = { module: EMAIL_MODULE, from: "default", t
 /**
  * The edit `email/resend/wire-email-into-auth` describes, as an executor makes it: `mailer` becomes
  * `emailMailer`, imported from the email package in place of the import of the logger that only the old
- * initializer used. `bg add` imports nothing into `mailer.ts`: the whole edit is the intention's. It fails,
+ * initializer used. `bonne-garde add` imports nothing into `mailer.ts`: the whole edit is the intention's. It fails,
  * naming what it looked for, when auth ships something else or the edit was made already, so a seam that
  * moved is not edited blind.
  */
@@ -1560,7 +1569,7 @@ test("a password reset request is sent the reset email, with the page that takes
  * typecheck and tests, which run that test, have passed.
  */
 export type Resolution = {
-  /** The module that ships the intention, whose `bg add` stages it and whose region `bg record` leaves. */
+  /** The module that ships the intention, whose `bonne-garde add` stages it and whose region `bonne-garde record` leaves. */
   module: string;
   /** The module that owns the file the edit lands in: it has to survive its own re-add. */
   editedOwner: string;
@@ -1593,7 +1602,7 @@ function resolution(id: string): Resolution {
   return found;
 }
 
-/** The region `bg record` leaves on a file an intention edited (060): `intent[<id>]`, spelled out here as a consumer reads it. */
+/** The region `bonne-garde record` leaves on a file an intention edited (060): `intent[<id>]`, spelled out here as a consumer reads it. */
 export function intentRegion(id: string): string {
   return `intent[${id}]`;
 }
@@ -1606,7 +1615,7 @@ function regionsOf(manifest: unknown): Record<string, unknown> {
 }
 
 /**
- * After `bg record`, `bg.json` holds the intention's region on the file it edited, owned by the module
+ * After `bonne-garde record`, `bg.json` holds the intention's region on the file it edited, owned by the module
  * that ships it. That region is what makes `doctor --strict` read the edit as the project's, and what
  * makes the owner's re-add keep it: a recorded sha would have the owner overwrite it.
  */
@@ -1619,7 +1628,9 @@ export function expectIntentRegion(
   const owned = regionsOf(manifest)[file];
   const found = isRecord(owned) ? owned[intentRegion(id)] : undefined;
   if (found === undefined) {
-    throw new Error(`bg.json records no ${intentRegion(id)} on ${file} after \`bg record ${id}\``);
+    throw new Error(
+      `bg.json records no ${intentRegion(id)} on ${file} after \`bonne-garde record ${id}\``,
+    );
   }
   if (found !== owner) {
     throw new Error(
@@ -1628,27 +1639,27 @@ export function expectIntentRegion(
   }
 }
 
-/** Before `bg record`, no file carries the region: it is what the record leaves, never what an add does. */
+/** Before `bonne-garde record`, no file carries the region: it is what the record leaves, never what an add does. */
 export function expectNoIntentRegion(manifest: unknown, id: string): void {
   for (const [file, owned] of Object.entries(regionsOf(manifest))) {
     if (isRecord(owned) && Object.hasOwn(owned, intentRegion(id))) {
       throw new Error(
-        `bg.json already records ${intentRegion(id)} on ${file}, before \`bg record\``,
+        `bg.json already records ${intentRegion(id)} on ${file}, before \`bonne-garde record\``,
       );
     }
   }
 }
 
-/** The files `bg add` printed under `kept`: left as the project has them, since they carry recorded regions. */
+/** The files `bonne-garde add` printed under `kept`: left as the project has them, since they carry recorded regions. */
 export function readKept(stdout: string): string[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stdout);
   } catch {
-    throw new Error("bg add did not print JSON");
+    throw new Error("bonne-garde add did not print JSON");
   }
   if (!isRecord(parsed) || !isStringArray(parsed.kept)) {
-    throw new Error("bg add printed no `kept` list");
+    throw new Error("bonne-garde add printed no `kept` list");
   }
   return parsed.kept;
 }
@@ -1657,7 +1668,7 @@ export function readKept(stdout: string): string[] {
 export function expectKept(stdout: string, file: string): void {
   if (!readKept(stdout).includes(file)) {
     throw new Error(
-      `bg add did not keep ${file}: the edit an intention made to it is the project's`,
+      `bonne-garde add did not keep ${file}: the edit an intention made to it is the project's`,
     );
   }
 }
@@ -1984,18 +1995,18 @@ export type Attempt = { code: number; stderr: string };
  * An item that lands in `packages/ui` is refused until a `ui` module is named, and one that lands in an
  * app's `features` folder until an `auth` module is (030). Golden tries each with the packed CLI in a
  * project that has none, before installing anything: the refusal has to carry the command that fixes
- * it, every missing module in it, as an agent running `bg add` reads it and nothing else.
+ * it, every missing module in it, as an agent running `bonne-garde add` reads it and nothing else.
  */
 export function expectRefusal(attempt: Attempt, item: string, ...modules: string[]): void {
   if (attempt.code === 0) {
     throw new Error(
-      `\`bg add ${item}\` succeeded in a project with no ${modules.join(" and ")}: it must be refused`,
+      `\`bonne-garde add ${item}\` succeeded in a project with no ${modules.join(" and ")}: it must be refused`,
     );
   }
-  const fix = `bg add ${[...modules, item].join(" ")}`;
+  const fix = `${cliRunner()} add ${[...modules, item].join(" ")}`;
   if (!attempt.stderr.includes(fix)) {
     throw new Error(
-      `\`bg add ${item}\` was refused without naming \`${fix}\`; it printed: ${attempt.stderr.trim() || "(nothing)"}`,
+      `\`bonne-garde add ${item}\` was refused without naming \`${fix}\`; it printed: ${attempt.stderr.trim() || "(nothing)"}`,
     );
   }
 }
@@ -2203,7 +2214,7 @@ async function phase<T>(timings: Timing[], name: string, body: () => Promise<T>)
 
 async function golden(work: string, timings: Timing[]): Promise<void> {
   const cli = join(work, "cli");
-  const bg = (...args: string[]) => [NODE, join(cli, "bin.js"), ...args];
+  const bonneGarde = (...args: string[]) => [NODE, join(cli, "bin.js"), ...args];
   const registry = `local:${join(ROOT, "registry")}`;
 
   await phase(timings, "pack", async () => {
@@ -2216,11 +2227,11 @@ async function golden(work: string, timings: Timing[]): Promise<void> {
 
   const { items, excluded } = await phase(timings, "list", async () => {
     const fromItems = selectItems(
-      await capture(bg("list", "--items", "--source", registry), work),
+      await capture(bonneGarde("list", "--items", "--source", registry), work),
       EXCLUDED,
     );
     const fromModules = selectModules(
-      await capture(bg("list", "--source", registry), work),
+      await capture(bonneGarde("list", "--source", registry), work),
       MODULES,
       EXCLUDED_MODULES,
     );
@@ -2234,23 +2245,29 @@ async function golden(work: string, timings: Timing[]): Promise<void> {
   }
 
   for (const [index, configuration] of CONFIGURATIONS.entries()) {
-    await configured(work, timings, { bg, registry, items, configuration, first: index === 0 });
+    await configured(work, timings, {
+      bonneGarde,
+      registry,
+      items,
+      configuration,
+      first: index === 0,
+    });
   }
 }
 
-/** One configuration, from `bg create` to the modules' `checks`. */
+/** One configuration, from `bonne-garde create` to the modules' `checks`. */
 async function configured(
   work: string,
   timings: Timing[],
   options: {
-    bg: (...args: string[]) => string[];
+    bonneGarde: (...args: string[]) => string[];
     registry: string;
     items: readonly string[];
     configuration: Configuration;
     first: boolean;
   },
 ): Promise<void> {
-  const { bg, registry, configuration, first } = options;
+  const { bonneGarde, registry, configuration, first } = options;
   const { name, modules } = configuration;
   const installed = configuration.items ? options.items : [];
   const patched = PATCHED[name] ?? {};
@@ -2263,7 +2280,7 @@ async function configured(
   console.log(`\ngolden: configuration ${name}: ${modules.join(" ")}`);
   await step("create", () =>
     run(
-      bg(
+      bonneGarde(
         "create",
         project,
         "--yes",
@@ -2287,43 +2304,43 @@ async function configured(
       }
       const manifest = await Bun.file(join(project, "bg.json")).text();
       expectRefusal(
-        await attempt(bg("add", REFUSED_ITEM, "--yes", "--no-install"), project),
+        await attempt(bonneGarde("add", REFUSED_ITEM, "--yes", "--no-install"), project),
         REFUSED_ITEM,
         REFUSED_MODULE,
       );
       if ((await Bun.file(join(project, "bg.json")).text()) !== manifest) {
-        throw new Error(`the refused \`bg add ${REFUSED_ITEM}\` changed bg.json`);
+        throw new Error(`the refused \`bonne-garde add ${REFUSED_ITEM}\` changed bg.json`);
       }
       expectRefusal(
-        await attempt(bg("add", REFUSED_FEATURE, "--yes", "--no-install"), project),
+        await attempt(bonneGarde("add", REFUSED_FEATURE, "--yes", "--no-install"), project),
         REFUSED_FEATURE,
         ...REFUSED_FEATURE_MODULES,
       );
       if ((await Bun.file(join(project, "bg.json")).text()) !== manifest) {
-        throw new Error(`the refused \`bg add ${REFUSED_FEATURE}\` changed bg.json`);
+        throw new Error(`the refused \`bonne-garde add ${REFUSED_FEATURE}\` changed bg.json`);
       }
     });
   }
   if (first && hasAuth(configuration)) {
-    await refusedPeer(work, timings, bg, registry);
+    await refusedPeer(work, timings, bonneGarde, registry);
   }
   if (first && hasAuth(configuration) && hasEmail(configuration)) {
-    await reselected(work, timings, bg, registry);
+    await reselected(work, timings, bonneGarde, registry);
   }
   if (first && hasFeatures(configuration)) {
     for (const refusal of FEATURE_REFUSALS) {
-      await refusedFeature(work, timings, bg, registry, refusal);
+      await refusedFeature(work, timings, bonneGarde, registry, refusal);
     }
   }
   const added = await step("add", async () => {
-    const stdout = await capture(bg(...addArguments(modules, installed)), project);
+    const stdout = await capture(bonneGarde(...addArguments(modules, installed)), project);
     process.stdout.write(stdout);
     const reported = [...readAddedModules(stdout, modules), ...readAddedItems(stdout)];
     expectPatches(reported, "applied", { ...patched, ...patchedItems });
     expectPending(readPendingIntentions(stdout), pending);
     const manifest: unknown = JSON.parse(await Bun.file(join(project, "bg.json")).text());
     expectRegionsRecorded(manifest, reported);
-    // Pending is not recorded: no file carries an intention's region before `bg record` leaves it.
+    // Pending is not recorded: no file carries an intention's region before `bonne-garde record` leaves it.
     for (const id of pending) {
       expectNoIntentRegion(manifest, id);
     }
@@ -2332,7 +2349,7 @@ async function configured(
   // Before `bun install`, so that node_modules and the lockfile are not in the comparison.
   await step("re-add", async () => {
     const before = await snapshot(project);
-    const stdout = await capture(bg(...addArguments(modules, installed)), project);
+    const stdout = await capture(bonneGarde(...addArguments(modules, installed)), project);
     expectPatches([...readAddedModules(stdout, modules), ...readAddedItems(stdout)], "skipped", {
       ...patched,
       ...patchedItems,
@@ -2341,7 +2358,9 @@ async function configured(
     expectPending(readPendingIntentions(stdout), pending);
     const changed = diffTrees(before, await snapshot(project));
     if (changed.length > 0) {
-      throw new Error(`the same \`bg add\` again changed the project: ${changed.join(", ")}`);
+      throw new Error(
+        `the same \`bonne-garde add\` again changed the project: ${changed.join(", ")}`,
+      );
     }
   });
   // Each module on its own, after the whole set was installed in one call: a file one module vendors
@@ -2350,25 +2369,29 @@ async function configured(
   await step("re-add alone", async () => {
     for (const module of modules) {
       const before = await snapshot(project);
-      const stdout = await capture(bg(...addArguments([module], [])), project);
+      const stdout = await capture(bonneGarde(...addArguments([module], [])), project);
       const expected = Object.fromEntries(
         Object.entries(patched).filter(([name]) => name === module),
       );
       expectPatches(readAddedModules(stdout, [module]), "skipped", expected);
       const changed = diffTrees(before, await snapshot(project));
       if (changed.length > 0) {
-        throw new Error(`\`bg add ${module}\` alone changed the project: ${changed.join(", ")}`);
+        throw new Error(
+          `\`bonne-garde add ${module}\` alone changed the project: ${changed.join(", ")}`,
+        );
       }
     }
     // Each feature item on its own too: its dependencies are in a file its module owns, the item
     // finds them present and equal, and the project is as it was.
     for (const item of installed.filter((name) => Object.hasOwn(patchedItems, name))) {
       const before = await snapshot(project);
-      const stdout = await capture(bg("add", item, "--yes", "--no-install"), project);
+      const stdout = await capture(bonneGarde("add", item, "--yes", "--no-install"), project);
       expectPatches(readAddedItems(stdout), "skipped", { [item]: patchedItems[item] ?? [] });
       const changed = diffTrees(before, await snapshot(project));
       if (changed.length > 0) {
-        throw new Error(`\`bg add ${item}\` alone changed the project: ${changed.join(", ")}`);
+        throw new Error(
+          `\`bonne-garde add ${item}\` alone changed the project: ${changed.join(", ")}`,
+        );
       }
     }
   });
@@ -2377,7 +2400,7 @@ async function configured(
     await step("deploy: refuse", async () => {
       const before = await snapshot(project);
       expectProviderRefusal(
-        await attempt(bg("add", DEPLOY_MODULE, "--yes", "--no-install"), project),
+        await attempt(bonneGarde("add", DEPLOY_MODULE, "--yes", "--no-install"), project),
         DEPLOY_MODULE,
         DEPLOY_PROVIDER.split("/")[1] ?? "",
         modules.find((module) => module.startsWith("provider/"))?.split("/")[1] ?? "",
@@ -2385,7 +2408,7 @@ async function configured(
       const changed = diffTrees(before, await snapshot(project));
       if (changed.length > 0) {
         throw new Error(
-          `the refused \`bg add ${DEPLOY_MODULE}\` changed the project: ${changed.join(", ")}`,
+          `the refused \`bonne-garde add ${DEPLOY_MODULE}\` changed the project: ${changed.join(", ")}`,
         );
       }
     });
@@ -2458,7 +2481,7 @@ async function configured(
     await step("intentions: record", async () => {
       await run([BUN, "run", "check"], project);
       for (const id of pending) {
-        await run(bg("record", id), project);
+        await run(bonneGarde("record", id), project);
         // The edited file is region-checked from here on: bg.json holds the intention's region on it.
         const { module, file } = resolution(id);
         expectIntentRegion(
@@ -2470,7 +2493,7 @@ async function configured(
       }
     });
   }
-  await step("doctor", () => run(bg("doctor", "--strict"), project));
+  await step("doctor", () => run(bonneGarde("doctor", "--strict"), project));
   if (hasDeploy(configuration)) {
     await deployPlanned(project, timings, name);
   }
@@ -2482,7 +2505,7 @@ async function configured(
         const { module, editedOwner, file } = resolution(id);
         for (const owner of [module, editedOwner]) {
           const before = await snapshot(project);
-          const stdout = await capture(bg(...addArguments([owner], [])), project);
+          const stdout = await capture(bonneGarde(...addArguments([owner], [])), project);
           const expected = Object.fromEntries(
             Object.entries(patched).filter(([key]) => key === owner),
           );
@@ -2496,7 +2519,7 @@ async function configured(
           const changed = diffTrees(before, await snapshot(project));
           if (changed.length > 0) {
             throw new Error(
-              `\`bg add ${owner}\` after ${id} was recorded changed the project: ${changed.join(", ")}`,
+              `\`bonne-garde add ${owner}\` after ${id} was recorded changed the project: ${changed.join(", ")}`,
             );
           }
         }
@@ -2586,20 +2609,20 @@ async function launched(project: string, timings: Timing[], name: string): Promi
 }
 
 /**
- * 035 and 050 acceptance: `bg add better-auth` in a project that has everything but an `orm` fails,
+ * 035 and 050 acceptance: `bonne-garde add better-auth` in a project that has everything but an `orm` fails,
  * names the missing peer's category, and writes nothing. It needs a project of its own, because the
  * configuration under test has the ORM, and runs before the `add` of that one.
  */
 async function refusedPeer(
   work: string,
   timings: Timing[],
-  bg: (...args: string[]) => string[],
+  bonneGarde: (...args: string[]) => string[],
   registry: string,
 ): Promise<void> {
   const project = join(work, "golden-peer");
   await phase(timings, "peer: create", () =>
     run(
-      bg(
+      bonneGarde(
         "create",
         project,
         "--yes",
@@ -2614,26 +2637,26 @@ async function refusedPeer(
     ),
   );
   await phase(timings, "peer: add the modules but the orm", () =>
-    run(bg("add", ...WITHOUT_ORM, "--yes", "--no-install"), project),
+    run(bonneGarde("add", ...WITHOUT_ORM, "--yes", "--no-install"), project),
   );
   await phase(timings, "peer: refuse", async () => {
     const before = await snapshot(project);
     expectPeerRefusal(
-      await attempt(bg("add", "better-auth", "--yes", "--no-install"), project),
+      await attempt(bonneGarde("add", "better-auth", "--yes", "--no-install"), project),
       "better-auth",
       "orm",
     );
     const changed = diffTrees(before, await snapshot(project));
     if (changed.length > 0) {
       throw new Error(
-        `the refused \`bg add better-auth\` changed the project: ${changed.join(", ")}`,
+        `the refused \`bonne-garde add better-auth\` changed the project: ${changed.join(", ")}`,
       );
     }
   });
 }
 
 /**
- * 035 and 050 step 7: `bg add auth/better-auth` in a project that has email on its default variant plans
+ * 035 and 050 step 7: `bonne-garde add auth/better-auth` in a project that has email on its default variant plans
  * email again on the `better-auth` one, in the same plan, and says so. The patch that declares the email
  * package in auth's package.json is applied, the wiring intention is staged and pending, and adding either
  * module again afterwards changes nothing and plans nothing again. It needs a project of its own: the
@@ -2642,7 +2665,7 @@ async function refusedPeer(
 async function reselected(
   work: string,
   timings: Timing[],
-  bg: (...args: string[]) => string[],
+  bonneGarde: (...args: string[]) => string[],
   registry: string,
 ): Promise<void> {
   const project = join(work, "golden-reselect");
@@ -2652,7 +2675,7 @@ async function reselected(
   }
   await phase(timings, "reselect: create and add email first", async () => {
     await run(
-      bg(
+      bonneGarde(
         "create",
         project,
         "--yes",
@@ -2665,12 +2688,12 @@ async function reselected(
       ),
       work,
     );
-    const stdout = await capture(bg(...addArguments(RESELECT_BASE, [])), project);
+    const stdout = await capture(bonneGarde(...addArguments(RESELECT_BASE, [])), project);
     expectReselected(readReselected(stdout), []);
     expectPending(readPendingIntentions(stdout), []);
   });
   await phase(timings, "reselect: add auth", async () => {
-    const stdout = await capture(bg("add", AUTH_MODULE, "--yes", "--no-install"), project);
+    const stdout = await capture(bonneGarde("add", AUTH_MODULE, "--yes", "--no-install"), project);
     expectReselected(readReselected(stdout), [RESELECTED]);
     expectPending(readPendingIntentions(stdout), [wired]);
     const reported = readAddedModules(stdout, [AUTH_MODULE, EMAIL_MODULE]);
@@ -2694,12 +2717,12 @@ async function reselected(
   await phase(timings, "reselect: add either again", async () => {
     for (const name of [AUTH_MODULE, EMAIL_MODULE]) {
       const before = await snapshot(project);
-      const stdout = await capture(bg("add", name, "--yes", "--no-install"), project);
+      const stdout = await capture(bonneGarde("add", name, "--yes", "--no-install"), project);
       expectReselected(readReselected(stdout), []);
       const changed = diffTrees(before, await snapshot(project));
       if (changed.length > 0) {
         throw new Error(
-          `\`bg add ${name}\` after the other order changed the project: ${changed.join(", ")}`,
+          `\`bonne-garde add ${name}\` after the other order changed the project: ${changed.join(", ")}`,
         );
       }
     }
@@ -3083,7 +3106,7 @@ if (import.meta.main) {
 async function refusedFeature(
   work: string,
   timings: Timing[],
-  bg: (...args: string[]) => string[],
+  bonneGarde: (...args: string[]) => string[],
   registry: string,
   refusal: (typeof FEATURE_REFUSALS)[number],
 ): Promise<void> {
@@ -3091,7 +3114,7 @@ async function refusedFeature(
   const project = join(work, `golden-feature-${label}`);
   await phase(timings, `feature: ${label}: create`, async () => {
     await run(
-      bg(
+      bonneGarde(
         "create",
         project,
         "--yes",
@@ -3104,18 +3127,20 @@ async function refusedFeature(
       ),
       work,
     );
-    await run(bg("add", ...modules, "--yes", "--no-install"), project);
+    await run(bonneGarde("add", ...modules, "--yes", "--no-install"), project);
   });
   await phase(timings, `feature: ${label}: refuse`, async () => {
     const before = await snapshot(project);
     expectRefusal(
-      await attempt(bg("add", item, "--yes", "--no-install"), project),
+      await attempt(bonneGarde("add", item, "--yes", "--no-install"), project),
       item,
       ...missing,
     );
     const changed = diffTrees(before, await snapshot(project));
     if (changed.length > 0) {
-      throw new Error(`the refused \`bg add ${item}\` changed the project: ${changed.join(", ")}`);
+      throw new Error(
+        `the refused \`bonne-garde add ${item}\` changed the project: ${changed.join(", ")}`,
+      );
     }
   });
 }

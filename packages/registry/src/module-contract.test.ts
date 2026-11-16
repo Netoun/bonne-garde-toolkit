@@ -356,7 +356,7 @@ describe("module contract", () => {
     expect(ignored).toContain("packages/db/migrations/");
   });
 
-  test("tooling/vite-plus leaves bg.json alone: the CLI writes it, and `bg record` makes an array the formatter would collapse", async () => {
+  test("tooling/vite-plus leaves bg.json alone: the CLI writes it, and `bonne-garde record` makes an array the formatter would collapse", async () => {
     const config: unknown = (
       await import(join(MODULES, "tooling/vite-plus/template/vite.config.ts"))
     ).default;
@@ -365,7 +365,7 @@ describe("module contract", () => {
 
     // A recorded intention is `"applied": ["<id>"]` laid out one id per line by `JSON.stringify`, and
     // `vp fmt` wants it on one line, so a project that formats it fails `bun run check` right after
-    // its first `bg record`. Golden is where that was found: the first module to ship an intention.
+    // its first `bonne-garde record`. Golden is where that was found: the first module to ship an intention.
     expect(ignored).toContain("bg.json");
   });
 
@@ -1593,7 +1593,7 @@ describe("module contract", () => {
         ?.files.find((f) => f.target === file);
       const ormPlan = plans.find(({ key }) => key === "orm/drizzle");
 
-      // What `bg add db/d1 orm/drizzle` writes: the vendored file with the variant's maps merged in
+      // What `bonne-garde add db/d1 orm/drizzle` writes: the vendored file with the variant's maps merged in
       // (sorted by the planner), then orm's patches on it, in the order declared.
       let text = planned?.content ?? "";
       for (const patch of ormPlan?.patches ?? []) {
@@ -2879,7 +2879,7 @@ describe("module contract", () => {
         expect(existsSync(join(auth, String(patch.file)))).toBe(true);
       }
       // A patch there would put a region in the file only to keep it out of `doctor`'s user-modified
-      // list, and leave an unused import between `bg add` and `bg record`: `bg record` marks the file.
+      // list, and leave an unused import between `bonne-garde add` and `bonne-garde record`: `bonne-garde record` marks the file.
       expect(
         (wired.patch ?? []).filter(({ file }) => file === "packages/auth/src/mailer.ts"),
       ).toEqual([]);
@@ -2904,12 +2904,12 @@ describe("module contract", () => {
       expect(document).toContain("unconfiguredMailer(apiLogger)");
       expect(document).toContain("export const mailer: AuthMailer = emailMailer;");
       expect(document).toContain("id: email/resend/wire-email-into-auth");
-      // The import is the intention's too: it says where it goes, and that `bg add` did not write it.
+      // The import is the intention's too: it says where it goes, and that `bonne-garde add` did not write it.
       expect(document).toContain("imported from `{{SCOPE}}/email`");
       expect(document).toContain("`emailMailer` is not imported");
     });
 
-    test("the intention declares mailer.ts, a file auth ships, as its one `adapt` path: it is the file `bg record` marks", async () => {
+    test("the intention declares mailer.ts, a file auth ships, as its one `adapt` path: it is the file `bonne-garde record` marks", async () => {
       const document = await readFile(
         join(MODULES, "email/resend/intent/01-wire-email-into-auth.md"),
         "utf8",
@@ -3058,7 +3058,7 @@ describe("module contract", () => {
     expect(text).toEqual([]);
   });
 
-  test("no module id is also an item name, since `bg add <name>` would be ambiguous", async () => {
+  test("no module id is also an item name, since `bonne-garde add <name>` would be ambiguous", async () => {
     const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
     const itemNames = new Set(catalog.items.map((item) => item.name));
 

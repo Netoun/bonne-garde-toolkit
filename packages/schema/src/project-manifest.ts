@@ -33,7 +33,7 @@ export type PatchStatus = "applied" | "skipped" | "failed";
 
 /**
  * Outcome of one tier-2 patch (spec 060). `reason` is required when `status` is `failed`, and
- * `intention` then names the pending intention the failure became (spec 065): `bg doctor` reads it
+ * `intention` then names the pending intention the failure became (spec 065): `bonne-garde doctor` reads it
  * back from here, since `.bg/` is disposable.
  */
 export type PatchOutcome = {

@@ -1,6 +1,6 @@
 # Environment Variables
 
-Source of truth: the `.env.example` of a generated project, which `bg add` writes from the `env` entries of each module (one line per key, owned by the module that declares it). This file documents conventions only, not variable values.
+Source of truth: the `.env.example` of a generated project, which `bonne-garde add` writes from the `env` entries of each module (one line per key, owned by the module that declares it). This file documents conventions only, not variable values.
 
 ## Conventions
 

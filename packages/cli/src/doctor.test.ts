@@ -33,7 +33,7 @@ async function scratch(prefix: string): Promise<string> {
   return dir;
 }
 
-/** A project straight out of `bg create`, registry pointed at this repo's. */
+/** A project straight out of `bonne-garde create`, registry pointed at this repo's. */
 async function emptyProject(registry = repoRegistry()): Promise<string> {
   return createProject({
     name: "doc-app",
@@ -44,7 +44,7 @@ async function emptyProject(registry = repoRegistry()): Promise<string> {
   });
 }
 
-/** A project after one clean `bg add button`. */
+/** A project after one clean `bonne-garde add button`. */
 async function projectWithButton(): Promise<string> {
   const root = await emptyProject();
   await addItems({ projectRoot: root, items: ["ui/shadcn", "button"], install: false });
@@ -700,7 +700,7 @@ describe("runDoctor: a failed patch that became a pending intention (060 Degrada
     expect(staged.checks.intentions.details?.pending).toHaveLength(1);
   });
 
-  test("bg record closes it, applied or skipped: no finding, and --strict is green", async () => {
+  test("bonne-garde record closes it, applied or skipped: no finding, and --strict is green", async () => {
     const outcomes: { applied: string[]; skipped: Record<string, string> }[] = [
       { applied: [ID], skipped: {} },
       { applied: [], skipped: { [ID]: "no API in this project" } },
@@ -784,7 +784,7 @@ describe("runDoctor: intentions", () => {
       applied: [],
       skipped: {},
     });
-    expect(report.checks.intentions.findings[0]?.message).toContain("bg record");
+    expect(report.checks.intentions.findings[0]?.message).toContain("bonne-garde record");
     expect(doctorExitCode(report, true)).toBe(1);
   });
 

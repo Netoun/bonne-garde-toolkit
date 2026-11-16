@@ -10,11 +10,11 @@ Bonne Garde is a Bun monorepo of a CLI, the registry it installs from and the ba
 
 ### Packages
 
-| Package             | Role                                                       |
-| ------------------- | ---------------------------------------------------------- |
-| `packages/cli`      | `bg` and `create-bonne-garde`: create, add, doctor, record |
-| `packages/registry` | Load, plan and apply registry items and modules            |
-| `packages/schema`   | `bg.json` and `module.json` validation                     |
+| Package             | Role                                            |
+| ------------------- | ----------------------------------------------- |
+| `packages/cli`      | `bonne-garde`: create, add, doctor, record      |
+| `packages/registry` | Load, plan and apply registry items and modules |
+| `packages/schema`   | `bg.json` and `module.json` validation          |
 
 ### Registry
 

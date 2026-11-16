@@ -2,7 +2,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 import { eq, getTableName, is, sql } from "drizzle-orm";
 import { SQLiteTable } from "drizzle-orm/sqlite-core";
-// `bg add` rewrites the scope in these lines, so the formatter cannot know how wide they are.
+// `bonne-garde add` rewrites the scope in these lines, so the formatter cannot know how wide they are.
 // oxfmt-ignore
 import * as authSchema from "{{SCOPE}}/auth/schema";
 // oxfmt-ignore

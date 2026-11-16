@@ -63,7 +63,7 @@ changes nothing in what this module wrote, and adding this module alone again ke
 ## Placeholders to replace
 
 The cloudflare variant's `wrangler.jsonc` keeps the legacy app's names (`my-app-api`,
-`api.my-app.com`, the `*.my-app.com` fronts). `bg add` renders `{{SCOPE}}` and nothing else, so they
+`api.my-app.com`, the `*.my-app.com` fronts). `bonne-garde add` renders `{{SCOPE}}` and nothing else, so they
 are replaced by hand.
 
 ## Typechecking

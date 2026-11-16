@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readProjectManifest } from "@bonne-garde/schema";
+import { cliRunner, readProjectManifest } from "@bonne-garde/schema";
 import { addItems, listItems } from "./add";
 import { createProject, MAX_SCOPE_LENGTH } from "./create";
 import { doctorExitCode, runDoctor } from "./doctor";
@@ -23,7 +23,7 @@ afterAll(async () => {
   await Promise.all(dirs.map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-describe("bg create + add", () => {
+describe("bonne-garde create + add", () => {
   test("creates empty project and installs button with deps", async () => {
     const parent = await mkdtemp(join(tmpdir(), "bg-cli-"));
     dirs.push(parent);
@@ -53,7 +53,7 @@ describe("bg create + add", () => {
 
     const listed = await listItems(target);
     expect(listed.some((i) => i.name === "button")).toBe(true);
-    // The API shell is the `api/elysia` module now, and `bg list --items` shows items only.
+    // The API shell is the `api/elysia` module now, and `bonne-garde list --items` shows items only.
     expect(listed.some((i) => i.name === "api-elysia")).toBe(false);
 
     // 030: an item that lands in packages/ui needs the ui module, and the error says which command to run.
@@ -61,7 +61,7 @@ describe("bg create + add", () => {
     await expect(
       addItems({ projectRoot: target, items: ["button"], install: false }),
     ).rejects.toThrow(
-      "button needs the ui module, and none is installed or named in this call; run: bg add ui/shadcn button",
+      `button needs the ui module, and none is installed or named in this call; run: ${cliRunner()} add ui/shadcn button`,
     );
     expect(await readFile(join(target, "bg.json"), "utf8")).toBe(bgBefore);
     expect(await stat(join(target, "packages/ui")).catch(() => null)).toBeNull();
@@ -175,7 +175,7 @@ describe("bg create + add", () => {
     expect(manifest).toMatchObject({ apps: [], modules: {}, items: {}, files: {}, regions: {} });
   });
 
-  test("`bg add ui/shadcn` writes the host package, with its dependencies merged into the vendored package.json", async () => {
+  test("`bonne-garde add ui/shadcn` writes the host package, with its dependencies merged into the vendored package.json", async () => {
     const parent = await mkdtemp(join(tmpdir(), "bg-cli-ui-"));
     dirs.push(parent);
     const target = await createProject({
@@ -539,7 +539,7 @@ describe("bg create + add", () => {
     expect(await readFile(join(target, "CONTEXT.md"), "utf8")).toStartWith("# my-app\n");
   });
 
-  test("`bg create .` names the project after the current directory", async () => {
+  test("`bonne-garde create .` names the project after the current directory", async () => {
     const parent = await mkdtemp(join(tmpdir(), "bg-cli-dot-"));
     dirs.push(parent);
     const here = join(parent, "dot-app");

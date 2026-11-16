@@ -6,7 +6,7 @@ import { byName, setDependencies, type DependencyEntry } from "./package-depende
  * 060: `package.dependencies` writes each entry where the project's formatter sorts it. Every case
  * patches a package.json the way a module will and hands the result to `vp fmt` with the config
  * `tooling/vite-plus` installs; the formatter must give it back unchanged, or `bun run check` fails
- * right after `bg add` and fixing it by hand makes `doctor` report the file as edited.
+ * right after `bonne-garde add` and fixing it by hand makes `doctor` report the file as edited.
  */
 
 const dep = (name: string, version = "1.0.0"): DependencyEntry => ({

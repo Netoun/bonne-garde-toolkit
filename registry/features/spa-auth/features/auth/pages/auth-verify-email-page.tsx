@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { authClient } from "@acme/spa/features/auth/lib/auth";
-// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { Alert, AlertDescription } from "@acme/ui/components/alert";
 import { Loader2 } from "lucide-react";

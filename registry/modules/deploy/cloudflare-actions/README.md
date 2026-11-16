@@ -5,7 +5,7 @@ workflow for every combination of `api` and `web` modules, because it does not n
 reads the tree.
 
 ```bash
-bunx bg add provider/cloudflare deploy/cloudflare-actions
+bunx bonne-garde add provider/cloudflare deploy/cloudflare-actions
 ```
 
 ## Peers and variant
@@ -163,6 +163,6 @@ Golden installs it on the `cloudflare` configuration and checks, with no account
 `deploy.yml` parses, that the dry run's plan is exactly the list above and every app in it exists with
 a valid `wrangler.jsonc`, that the dry run names the one variable the builds need (`VITE_API_URL`, for the
 SPA and the static site, and none for the Worker) and refuses variables that lack it, that re-adding it changes
-nothing and `bg doctor --strict` is green, and that the `dockerfile` configuration refuses it, naming the
+nothing and `bonne-garde doctor --strict` is green, and that the `dockerfile` configuration refuses it, naming the
 provider. **No deploy has been run**: the commands
 are the legacy workflow's, but this workflow has never talked to Cloudflare.

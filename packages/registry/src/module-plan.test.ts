@@ -246,7 +246,7 @@ describe("resolveModulePlans: peers (050 step 4)", () => {
 });
 
 describe("resolveModulePlans: cardinality (050 step 5)", () => {
-  test("a filled `one` category fails naming the installed module and pointing at bg replace", async () => {
+  test("a filled `one` category fails naming the installed module and pointing at bonne-garde replace", async () => {
     const catalog = await registry([CLOUDFLARE, DOCKERFILE]);
 
     await expect(
@@ -256,7 +256,7 @@ describe("resolveModulePlans: cardinality (050 step 5)", () => {
         project({ provider: ["cloudflare"] }),
       ),
     ).rejects.toThrow(
-      /provider is already filled by provider\/cloudflare.*bg replace provider\/dockerfile/s,
+      /provider is already filled by provider\/cloudflare.*bonne-garde replace provider\/dockerfile/s,
     );
   });
 

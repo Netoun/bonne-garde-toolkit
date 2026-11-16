@@ -2,7 +2,7 @@
 
 ## Objective
 
-Define `templates/base`: the empty monorepo copied by `bun create bonne-garde@latest`.
+Define `templates/base`: the empty monorepo copied by `bunx bonne-garde create`.
 
 ## Contents (MUST)
 

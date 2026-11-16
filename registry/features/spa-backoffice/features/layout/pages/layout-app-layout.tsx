@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Outlet, useNavigate } from "react-router";
-// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@acme/ui/components/sidebar";
 import { TooltipProvider } from "@acme/ui/components/tooltip";

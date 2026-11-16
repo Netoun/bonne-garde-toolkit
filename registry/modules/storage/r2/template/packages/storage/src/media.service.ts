@@ -2,7 +2,7 @@
 import { Elysia } from "elysia";
 import { eq } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
-// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import type * as authSchema from "{{SCOPE}}/auth/schema";
 import { R2Error, deleteFromR2, uploadToR2, validateKey, type UploadResult } from "./r2";

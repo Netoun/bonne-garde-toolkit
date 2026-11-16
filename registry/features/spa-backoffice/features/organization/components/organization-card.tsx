@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 import { Building2, Settings, Users } from "lucide-react";
-// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { Card, CardContent, CardHeader, CardTitle } from "@acme/ui/components/card";
 import { Badge } from "@acme/ui/components/badge";

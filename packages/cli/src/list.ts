@@ -1,9 +1,14 @@
 import type { GithubOptions, RegistryModule } from "@bonne-garde/registry";
-import { isModuleCategory, MODULE_CATEGORIES, type ModuleCategory } from "@bonne-garde/schema";
+import {
+  cliRunner,
+  isModuleCategory,
+  MODULE_CATEGORIES,
+  type ModuleCategory,
+} from "@bonne-garde/schema";
 import { openCatalog } from "./add";
 
 export type ListQuery = {
-  /** `--items`: only the items, as `bg list` printed them before it knew modules. */
+  /** `--items`: only the items, as `bonne-garde list` printed them before it knew modules. */
   itemsOnly: boolean;
   /** `--category`: only the modules of this category. An item has none, so it is not a filter on items. */
   category: string | undefined;
@@ -27,7 +32,7 @@ function inCategoryOrder(modules: RegistryModule[]): RegistryModule[] {
 }
 
 /**
- * What `bg list` prints (spec 050): `name<TAB>type<TAB>description` for an item and
+ * What `bonne-garde list` prints (spec 050): `name<TAB>type<TAB>description` for an item and
  * `<category>/<id><TAB>module<TAB>description` for a module, items first. `--items` is the items
  * alone, byte for byte what `list` printed before modules, because `scripts/golden-project.ts`
  * reads it. `notes` go to stderr.
@@ -60,7 +65,7 @@ export async function listRegistry(
   const notes: string[] = [];
   if (!query.itemsOnly && catalog.reader !== undefined) {
     notes.push(
-      `bg: modules are not listed from ${catalog.reader.label}: raw HTTP has no directory listing. \`bg add <category>/<id>\` still installs one by name.`,
+      `bonne-garde: modules are not listed from ${catalog.reader.label}: raw HTTP has no directory listing. \`${cliRunner()} add <category>/<id>\` still installs one by name.`,
     );
   }
   return { lines, notes };

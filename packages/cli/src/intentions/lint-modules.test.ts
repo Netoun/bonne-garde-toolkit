@@ -167,7 +167,7 @@ describe("lintModuleIntentions (065: one linter for modules and migrations)", ()
     ]);
   });
 
-  test("an adapt path names one file of the project, since `bg record` makes it a region key: no glob, no parent, and one is there", async () => {
+  test("an adapt path names one file of the project, since `bonne-garde record` makes it a region key: no glob, no parent, and one is there", async () => {
     const root = await registry({
       files: {
         "01-wire.md": document("wire", {

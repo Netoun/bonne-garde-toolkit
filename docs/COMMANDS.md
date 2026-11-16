@@ -13,7 +13,7 @@
 
 | Script               | Command                                                                                                                                      |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bg`                 | `bun packages/cli/src/bin.ts`                                                                                                                |
+| `bonne-garde`        | `bun packages/cli/src/bin.ts`                                                                                                                |
 | `check`              | `vp check`                                                                                                                                   |
 | `check:platform`     | `vp check packages/cli packages/registry packages/schema scripts`                                                                            |
 | `fmt`                | `vp fmt --write`                                                                                                                             |

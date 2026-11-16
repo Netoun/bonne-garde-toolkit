@@ -10,7 +10,7 @@ import { findRepoRoot } from "./paths";
 
 /**
  * A template file that is not valid UTF-8 (035) is a binary file: copied byte for byte, never
- * rendered, recorded and checked by the sha256 of its bytes. This runs the real `bg` against a
+ * rendered, recorded and checked by the sha256 of its bytes. This runs the real `bonne-garde` against a
  * registry on disk with one such file, the way a consumer does.
  */
 
@@ -79,8 +79,8 @@ async function project(registry?: string): Promise<string> {
   });
 }
 
-/** Runs the real `bg` entry in `cwd`. */
-async function bg(cwd: string, ...args: string[]) {
+/** Runs the real `bonne-garde` entry in `cwd`. */
+async function bonneGarde(cwd: string, ...args: string[]) {
   const proc = Bun.spawn(["bun", join(findRepoRoot() ?? "", "packages/cli/src/bin.ts"), ...args], {
     cwd,
     stdout: "pipe",
@@ -98,11 +98,11 @@ const ADD = ["add", "config/icons", "--yes", "--no-install"];
 
 const bytesOf = async (root: string) => Buffer.from(await readFile(join(root, ICON_PATH)));
 
-describe("bg add of a module with a binary template file", () => {
+describe("bonne-garde add of a module with a binary template file", () => {
   test("--dry-run lists the file with the others and writes nothing", async () => {
     const root = await project();
 
-    const { stdout, code } = await bg(root, ...ADD, "--dry-run");
+    const { stdout, code } = await bonneGarde(root, ...ADD, "--dry-run");
 
     expect(code).toBe(0);
     const printed = JSON.parse(stdout);
@@ -114,7 +114,7 @@ describe("bg add of a module with a binary template file", () => {
   test("copies the bytes as they are, renders the text beside it, and records the sha256 of the bytes", async () => {
     const root = await project();
 
-    const { code } = await bg(root, ...ADD);
+    const { code } = await bonneGarde(root, ...ADD);
 
     expect(code).toBe(0);
     expect((await bytesOf(root)).equals(ICON)).toBe(true);
@@ -127,11 +127,11 @@ describe("bg add of a module with a binary template file", () => {
 
   test("doctor --strict is green, and a second add skips the file and changes nothing", async () => {
     const root = await project();
-    await bg(root, ...ADD);
+    await bonneGarde(root, ...ADD);
     const bgJson = await readFile(join(root, "bg.json"), "utf8");
 
-    expect((await bg(root, "doctor", "--strict")).code).toBe(0);
-    const again = await bg(root, ...ADD);
+    expect((await bonneGarde(root, "doctor", "--strict")).code).toBe(0);
+    const again = await bonneGarde(root, ...ADD);
 
     expect(again.code).toBe(0);
     const printed = JSON.parse(again.stdout);
@@ -145,21 +145,21 @@ describe("bg add of a module with a binary template file", () => {
 
   test("a changed byte is the user's: doctor names the file, add fails on it, and --force restores it", async () => {
     const root = await project();
-    await bg(root, ...ADD);
+    await bonneGarde(root, ...ADD);
     await writeFile(join(root, ICON_PATH), LOOKALIKE);
 
-    const strict = await bg(root, "doctor", "--strict", "--json");
+    const strict = await bonneGarde(root, "doctor", "--strict", "--json");
     expect(strict.code).toBe(1);
     expect(JSON.parse(strict.stdout).checks.files.details.modified).toEqual([ICON_PATH]);
 
-    const refused = await bg(root, ...ADD);
+    const refused = await bonneGarde(root, ...ADD);
     expect(refused.code).toBe(1);
     expect(refused.stderr).toContain(`${ICON_PATH} was modified since config/icons wrote it`);
     expect((await bytesOf(root)).equals(LOOKALIKE)).toBe(true);
 
-    expect((await bg(root, ...ADD, "--force")).code).toBe(0);
+    expect((await bonneGarde(root, ...ADD, "--force")).code).toBe(0);
     expect((await bytesOf(root)).equals(ICON)).toBe(true);
-    expect((await bg(root, "doctor", "--strict")).code).toBe(0);
+    expect((await bonneGarde(root, "doctor", "--strict")).code).toBe(0);
   });
 });
 

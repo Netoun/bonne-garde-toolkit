@@ -4,11 +4,11 @@ import type { PlannedPatch } from "./patch-plan";
 /**
  * Spec 060 "Degradation": a patch that cannot apply is converted into a pending tier-3 intention
  * (065), carrying the patch's intent, its target file and why it failed. This is the data; writing
- * it under `.bg/` is the CLI's, and recording it in `bg.json` is `bg record`'s.
+ * it under `.bg/` is the CLI's, and recording it in `bg.json` is `bonne-garde record`'s.
  */
 
 export type PendingIntention = {
-  /** `<category>/<module-id>/<slug>` (065): `bg record` lands it in that module's record. */
+  /** `<category>/<module-id>/<slug>` (065): `bonne-garde record` lands it in that module's record. */
   id: string;
   /** `<category>/<module-id>` of the module whose patch failed. */
   module: string;
@@ -27,7 +27,7 @@ export type PendingIntention = {
 /**
  * An intention a module authors under `intent/` (065), for the part of its wiring no patch of the
  * catalog can express. Planned from the selected variant, so a variant that has nothing to wire
- * declares none; staged as written, with the scope rendered, and pending until `bg record` closes it.
+ * declares none; staged as written, with the scope rendered, and pending until `bonne-garde record` closes it.
  */
 export type AuthoredIntention = {
   /** `<category>/<module-id>/<slug>`, the frontmatter id. */
@@ -49,7 +49,7 @@ const kebab = (text: string): string =>
 
 /**
  * The id of the intention a failed patch becomes: `<category>/<module-id>/patch-<type>-<file>-<region>`,
- * in kebab case. The module part is the module whose patch failed, so `bg record` finds its record;
+ * in kebab case. The module part is the module whose patch failed, so `bonne-garde record` finds its record;
  * the slug names the patch by what it is (its type, its file, its first region) and not by its place
  * in the list, so it is the same on every `add` and when a module reorders its patches, which keeps
  * staging idempotent and a recorded outcome valid. The `patch-` prefix keeps it clear of the slugs

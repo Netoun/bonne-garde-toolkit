@@ -192,7 +192,7 @@ export function isReferenceFile(path: string): boolean {
 
 /**
  * The files the intention declares `adapt`: the project files it edits, in the order written, once
- * each. `bg record` marks each of them as edited by the intention (060). A path that is not one file
+ * each. `bonne-garde record` marks each of them as edited by the intention (060). A path that is not one file
  * (a glob, a parent directory) is left out here, and is `intentions lint`'s to report.
  */
 export function adaptedPaths(source: string): string[] {

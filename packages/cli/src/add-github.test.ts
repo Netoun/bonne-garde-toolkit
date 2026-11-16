@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serveGithubRaw, type GithubRawServer } from "@bonne-garde/registry/testing";
+import { cliRunner } from "@bonne-garde/schema";
 import { addItems, listItems, searchItems, viewItem } from "./add";
 import { createProject } from "./create";
 import { findRepoRoot, platformPackageVersion } from "./paths";
@@ -80,7 +81,7 @@ function comparable(bg: BgJson) {
 
 const LOCAL = `local:${REGISTRY_DIR}`;
 
-describe("bg add from a github source", () => {
+describe("bonne-garde add from a github source", () => {
   test("installs an item and its dependencies, and records the source as given", async () => {
     const raw = serve();
     const root = await project(SOURCE);
@@ -117,7 +118,7 @@ describe("bg add from a github source", () => {
 
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toBe(
-      "button needs the ui module, and none is installed or named in this call; run: bg add ui/shadcn button",
+      `button needs the ui module, and none is installed or named in this call; run: ${cliRunner()} add ui/shadcn button`,
     );
     expect(await snapshot(root)).toEqual(before);
   });
@@ -391,7 +392,7 @@ describe("bg add from a github source", () => {
     expect(raw.requested).toEqual([]);
   });
 
-  describe("bg record, with no .bg/ and no failed patch to read the intention from (065)", () => {
+  describe("bonne-garde record, with no .bg/ and no failed patch to read the intention from (065)", () => {
     const ID = "email/resend/wire-email-into-auth";
     const MAILER = "packages/auth/src/mailer.ts";
 

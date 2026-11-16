@@ -1,5 +1,5 @@
 import { Elysia } from "elysia";
-// `bg add` rewrites the scope in these lines, so the formatter cannot know how wide they are.
+// `bonne-garde add` rewrites the scope in these lines, so the formatter cannot know how wide they are.
 // oxfmt-ignore
 import { readRuntimeEnv } from "{{SCOPE}}/api-runtime";
 // oxfmt-ignore

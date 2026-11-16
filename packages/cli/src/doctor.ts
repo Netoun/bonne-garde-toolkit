@@ -13,6 +13,7 @@ import {
   type PlannedPatch,
 } from "@bonne-garde/registry";
 import {
+  cliRunner,
   MODULE_CATEGORIES,
   parseIntentRegion,
   readProjectManifest,
@@ -24,7 +25,7 @@ import { readStagedIntentions } from "./intentions/staged";
 import { defaultSource } from "./manifest-file";
 
 /**
- * `bg doctor` (spec 050): what `bg.json` says against what is on disk, with no network.
+ * `bonne-garde doctor` (spec 050): what `bg.json` says against what is on disk, with no network.
  *
  * Severity, one rule: an **error** is a record that contradicts the tree or itself (a recorded
  * file that is gone, an owner that is not installed, a peer category that is empty), so plain
@@ -495,7 +496,7 @@ async function checkRegions(
           path: file,
           message:
             `${region} of ${file} is ${state.shown}, but ${owner} declares ${wanted ?? "something else"}: ` +
-            "the project owns it now, and bg add will not overwrite it without --force",
+            "the project owns it now, and bonne-garde add will not overwrite it without --force",
         });
       }
     }
@@ -524,7 +525,7 @@ function checkPatches(manifest: ProjectManifest): CheckReport<PatchesDetails> {
     for (const patch of record.patches) {
       details[patch.status] += 1;
       // A failed patch that became an intention is reported, once, by the intentions check: pending
-      // there until `bg record` closes it. Only a failure `bg.json` has no intention for is reported here.
+      // there until `bonne-garde record` closes it. Only a failure `bg.json` has no intention for is reported here.
       if (patch.status === "failed" && patch.intention === undefined) {
         findings.push({
           severity: "warning",
@@ -532,7 +533,7 @@ function checkPatches(manifest: ProjectManifest): CheckReport<PatchesDetails> {
           path: patch.file,
           message:
             `${key}: patch ${patch.type} on ${patch.file} failed (${patch.reason ?? "no reason recorded"}); ` +
-            "it is a pending intention (spec 060): apply it by hand, then bg record",
+            "it is a pending intention (spec 060): apply it by hand, then bonne-garde record",
         });
       }
     }
@@ -583,7 +584,8 @@ async function checkIntentions(
       .map(([id, patch]): PendingIntention => ({ id, file: null, patch })),
   ];
 
-  const record = (id: string) => `bg record ${id} (or bg record ${id} --skip "<reason>")`;
+  const record = (id: string) =>
+    `${cliRunner()} record ${id} (or ${cliRunner()} record ${id} --skip "<reason>")`;
   const findings: Finding[] = [
     ...pending.map(({ id, file, patch }): Finding => {
       const why =
@@ -596,7 +598,7 @@ async function checkIntentions(
         ...(file === null ? (patch === undefined ? {} : { path: patch.file }) : { path: file }),
         message:
           file === null
-            ? `${id} is pending${why}, and not staged (.bg/ is disposable; bg add of its module stages it again): apply it, then run ${record(id)}`
+            ? `${id} is pending${why}, and not staged (.bg/ is disposable; bonne-garde add of its module stages it again): apply it, then run ${record(id)}`
             : `${id} is staged in ${file}${why} and not recorded: apply it, then run ${record(id)}`,
       };
     }),
@@ -691,7 +693,7 @@ export function doctorExitCode(doctor: DoctorReport, strict: boolean): 0 | 1 {
 }
 
 export function formatDoctor(doctor: DoctorReport): string {
-  const lines = ["bg doctor", ""];
+  const lines = ["bonne-garde doctor", ""];
   for (const [name, check] of Object.entries(doctor.checks)) {
     lines.push(`${name.padEnd(11)} ${check.status.padEnd(8)} ${check.summary}`);
     for (const finding of check.findings) {

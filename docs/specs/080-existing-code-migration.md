@@ -46,7 +46,7 @@ Every extracted piece MUST be assigned a category from [035](./035-module-regist
 
 ## Done when
 
-- MVP modules installable via `bg add`, non-interactively.
-- Playground generated from base + MVP is green on typecheck, test, and `bg doctor --strict`.
+- MVP modules installable via `bonne-garde add`, non-interactively.
+- Playground generated from base + MVP is green on typecheck, test, and `bonne-garde doctor --strict`.
 - No `meta.bg` remains in the UI catalog.
 - Specs remain the source of truth for further extractions.

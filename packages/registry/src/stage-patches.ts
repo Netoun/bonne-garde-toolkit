@@ -27,7 +27,7 @@ export type RegionReport = {
 };
 
 /**
- * What one tier-2 patch did (spec 060), in the detail `bg add` prints. `bg.json` keeps the first
+ * What one tier-2 patch did (spec 060), in the detail `bonne-garde add` prints. `bg.json` keeps the first
  * four fields of it under the module's `patches`; the regions are in `bg.json` under `regions`.
  */
 export type PatchReport = {

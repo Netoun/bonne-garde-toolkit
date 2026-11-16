@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { loadNamedModules, readAuthoredIntention, type GithubOptions } from "@bonne-garde/registry";
 import {
   adaptedPaths,
+  cliRunner,
   isModuleCategory,
   recordIntention,
   type IntentionOutcome,
@@ -136,7 +137,7 @@ export async function recordIntentionOutcome(
     throw new Error(
       `cannot record ${id} as applied: no failed patch of ${recorded.recordedIn} names it, .bg/ no longer holds its document, ` +
         `and the registry gave none (${declared.missing}), so the files it edited cannot be found to mark. Nothing was recorded. ` +
-        `Record it again when the registry can be read; or, if it is not recorded yet, \`bg add ${recorded.recordedIn}\` stages it again.`,
+        `Record it again when the registry can be read; or, if it is not recorded yet, \`${cliRunner()} add ${recorded.recordedIn}\` stages it again.`,
     );
   }
   await writeManifest(projectRoot, recorded.manifest);
