@@ -46,6 +46,7 @@
       },
       "env": [{ "name": "VITE_API_URL", "required": true, "example": "http://localhost:5172" }],
       "copy": [
+        "apps/spa/AGENTS.md",
         "apps/spa/package.json",
         "apps/spa/tsconfig.json",
         "apps/spa/react-router.config.ts",
@@ -114,6 +115,7 @@
       },
       "env": [{ "name": "VITE_API_URL", "required": true, "example": "http://localhost:5172" }],
       "copy": [
+        "apps/spa/AGENTS.md",
         "apps/spa/package.json",
         "apps/spa/tsconfig.json",
         "apps/spa/react-router.config.ts",

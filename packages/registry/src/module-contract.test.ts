@@ -2998,4 +2998,47 @@ describe("module contract", () => {
       catalog.modules.map(({ manifest }) => manifest.id).filter((id) => itemNames.has(id)),
     ).toEqual([]);
   });
+
+  test("web/spa ships apps/spa/AGENTS.md, the agent's recipes: each file, lint rule and check it cites exists, and the base AGENTS.md sends the agent to it", async () => {
+    const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+    const found = catalog.modules.find(
+      ({ manifest }) => manifest.category === "web" && manifest.id === "spa",
+    );
+    if (!found) {
+      throw new Error("registry/modules/web/spa is missing");
+    }
+    const { manifest, dir } = found;
+    const app = join(dir, "template/apps/spa");
+
+    for (const variant of manifest.variants) {
+      expect(variant.copy ?? []).toContain("apps/spa/AGENTS.md");
+    }
+    const recipes = await readFile(join(app, "AGENTS.md"), "utf8");
+    // An agent reads it on top of the root instructions each time it enters the app: it stays short.
+    expect(recipes.split("\n").length).toBeLessThanOrEqual(40);
+
+    // A path with a placeholder (`src/features/<f>/…`) states a convention; any other names a file.
+    const files = [...recipes.matchAll(/`(src\/[^`<>*\s]+)`/g)].map((match) => match[1] ?? "");
+    expect(files.length).toBeGreaterThan(0);
+    expect(files.filter((file) => !existsSync(join(app, file)))).toEqual([]);
+
+    const plugin = await readFile(
+      join(MODULES, "tooling/vite-plus/template/oxlint-plugins/structure.js"),
+      "utf8",
+    );
+    const rules = [...recipes.matchAll(/`structure\/([a-z-]+)`/g)].map((match) => match[1] ?? "");
+    expect(rules.length).toBeGreaterThan(0);
+    expect(rules.filter((rule) => !plugin.includes(`"${rule}":`))).toEqual([]);
+
+    expect(manifest.checks?.length).toBeGreaterThan(0);
+    for (const check of manifest.checks ?? []) {
+      expect(recipes).toContain(check);
+    }
+
+    // Claude Code loads the root AGENTS.md by itself, not one in a subfolder (observed on 2.1.325):
+    // the root file is what sends an agent to the app's.
+    expect(await readFile(join(ROOT, "templates/base/AGENTS.md"), "utf8")).toContain(
+      "apps/<app>/AGENTS.md",
+    );
+  });
 });

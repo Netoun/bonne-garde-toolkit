@@ -36,6 +36,9 @@ first install. The dependency maps come from the variant (spec 035), pinned exac
 
 Everything under `apps/spa`, which is its home (035):
 
+- `AGENTS.md`: the recipes a coding agent follows in this app (add a page, call the API, build UI,
+  done-signal). The root `AGENTS.md` of `templates/base` sends agents to it: Claude Code does not
+  load an `AGENTS.md` from a subfolder by itself. A contract test checks what it cites.
 - `package.json`, `tsconfig.json`, `react-router.config.ts` (`ssr: false`), `vite.config.ts`.
 - `src/root.tsx`: `Layout`, the providers, the loader and the error boundary.
 - `src/routes.ts`, which composes the routes of the features (see below), `src/routes.test.ts`, and
