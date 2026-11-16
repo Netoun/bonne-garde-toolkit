@@ -10,12 +10,12 @@ bunx bg add web/ssr
 
 ## Peers and variants
 
-| Peer       | Allow-list   | Why                                                                                       |
-| ---------- | ------------ | ----------------------------------------------------------------------------------------- |
-| `provider` | `cloudflare` | `workers/app.ts` is a Worker, `vite.config.ts` loads `@cloudflare/vite-plugin`: see below |
-| `config`   | `branding`   | `root.tsx`, the home page and the test read `branding`; the favicons are in its package   |
-| `api`      | `elysia`     | `lib/api.server.ts` types the Eden client with `type App` from `{{SCOPE}}/api/app`        |
-| `ui`       | `shadcn`     | `root.tsx` imports `{{SCOPE}}/ui/globals.css`                                             |
+| Peer       | Allow-list   | Why                                                                                                |
+| ---------- | ------------ | -------------------------------------------------------------------------------------------------- |
+| `provider` | `cloudflare` | `workers/app.ts` is a Worker, `vite.config.ts` loads `@cloudflare/vite-plugin`: see below          |
+| `config`   | `branding`   | `root.tsx`, the home page and the test read `branding`; `vite.config.ts` loads its favicons plugin |
+| `api`      | `elysia`     | `lib/api.server.ts` types the Eden client with `type App` from `{{SCOPE}}/api/app`                 |
+| `ui`       | `shadcn`     | `root.tsx` imports `{{SCOPE}}/ui/globals.css`                                                      |
 
 One variant, `cloudflare`, which copies `wrangler.jsonc` and adds `dev` (`react-router dev`) and
 `deploy` (`wrangler deploy`) to the vendored `apps/ssr/package.json` with `scripts.merge` (spec 060).
@@ -49,8 +49,13 @@ from `README.md` (placeholder text) and `.env.example`, which `env` replaces wit
 
 Each file is the legacy one with `@acme` rendered as `{{SCOPE}}`, except:
 
-- `root.tsx` imports the favicons from `{{SCOPE}}/config/assets/favicons/…`, and the stylesheet as
-  `{{SCOPE}}/ui/globals.css`: the paths the two packages export.
+- The favicons and the manifest are files of the build, served from the site root, which the Worker
+  serves from its assets. `vite.config.ts` loads `favicons()` from `{{SCOPE}}/config/vite`, which adds
+  them to the client build and keeps `public/robots.txt` (Vite takes one `publicDir`), and `root.tsx`
+  links them by root URL, as `web/spa` does. Legacy imported `favicon.svg` and the manifest through the
+  bundler, which inlined both as `data:` URLs: the manifest's icons were never served. The page's
+  `theme-color` is `branding.themeColor`, the manifest's.
+- `root.tsx` imports the stylesheet as `{{SCOPE}}/ui/globals.css`: the path the `ui` package exports.
 - `lib/api.server.ts` returns `treaty<App>(…)`, not `treaty<App>(…).v1`, and
   `lib/api.server.test.ts` calls `api.health.get()` where it called `api.media({ id }).get()`. The API
   shell has neither a `/v1` group nor a `media` route (that is the `storage` module's), so both

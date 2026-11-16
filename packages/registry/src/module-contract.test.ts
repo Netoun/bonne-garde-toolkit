@@ -568,6 +568,8 @@ describe("module contract", () => {
         "packages/config/src/gen-branding.test.ts",
         "packages/config/src/gen-branding.ts",
         "packages/config/src/index.ts",
+        "packages/config/src/vite-favicons.test.ts",
+        "packages/config/src/vite-favicons.ts",
       ]);
       expect(variant.dependencies ?? {}).toEqual({});
       expect(variant.devDependencies ?? {}).toEqual({});
@@ -621,6 +623,41 @@ describe("module contract", () => {
       }
     });
 
+    test("web/ssr and web/static add those favicons to their build with the package's Vite plugin, keep their own public/, and link only files of the package", async () => {
+      const shipped = await readdir(join(TEMPLATE, "packages/config/assets/favicons"));
+      const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+
+      for (const id of ["ssr", "static"]) {
+        const app = join(MODULES, `web/${id}/template/apps/${id}`);
+        const root = await readFile(join(app, "src/root.tsx"), "utf8");
+        const config = await readFile(join(app, "vite.config.ts"), "utf8");
+        const module = catalog.modules.find(({ manifest }) => manifest.id === id);
+        const copy = module?.manifest.variants.flatMap((variant) => variant.copy ?? []) ?? [];
+
+        // Vite takes one `publicDir`: the app keeps its own, and the plugin adds the favicons to the build.
+        expect(config).toContain('import { favicons } from "{{SCOPE}}/config/vite";');
+        expect(config).toMatch(/\bfavicons\(\)/);
+        expect(copy).toContain(`apps/${id}/public/robots.txt`);
+        expect(await readdir(join(app, "public"))).toEqual(["robots.txt"]);
+        // The bundler turns the manifest into a data: URL and renames the svg, which no manifest can name.
+        expect(root).not.toContain("{{SCOPE}}/config/assets/favicons");
+        expect(root).not.toMatch(/import \w+ from "[^"]*\.(?:svg|webmanifest)"/);
+        expect(root).toContain("branding.themeColor");
+        expect(root).not.toContain('content="#000000"');
+
+        const linked = [...root.matchAll(/href(?::\s|=)"\/([^"]+)"/g)].flatMap(
+          ([, file]) => file ?? [],
+        );
+        for (const file of linked) {
+          expect(shipped).toContain(file);
+        }
+        // Everything but the two icons only the manifest names is linked, the manifest included.
+        for (const file of shipped.filter((name) => !name.startsWith("android-chrome-"))) {
+          expect(linked).toContain(file);
+        }
+      }
+    });
+
     test("its package.json carries exports and scripts and no dependency map (the variant has none to merge)", async () => {
       const body: unknown = JSON.parse(await text("packages/config/package.json"));
 
@@ -629,6 +666,7 @@ describe("module contract", () => {
         exports: {
           ".": "./src/index.ts",
           "./branding": "./src/branding.generated.ts",
+          "./vite": "./src/vite-favicons.ts",
           "./assets/*": "./assets/*",
         },
         scripts: { typecheck: "tsc --noEmit", test: "bun test" },

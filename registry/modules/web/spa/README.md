@@ -89,7 +89,8 @@ why `routes.ts` carries no region and `bg doctor` has nothing to say about it.
   served. The stylesheet is `{{SCOPE}}/ui/globals.css`, the path the `ui` package exports. The `tsconfig` `paths`
   into other trees are gone: `{{SCOPE}}/api` is reached through its `exports`.
 - The app has no `public/` of its own: the favicons are its `publicDir`, and Vite takes one. An app
-  that needs static files of its own has to merge them with the favicons in `vite.config.ts`.
+  that needs static files of its own loads `favicons()` from `{{SCOPE}}/config/vite` instead, as
+  `web/ssr` and `web/static` do, and keeps `publicDir` for its files.
 - The `vite.config.ts` points Vitest at `./testing/frontend.setup.ts`, inside the app.
 
 ## Left out
