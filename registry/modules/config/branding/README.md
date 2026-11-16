@@ -14,17 +14,17 @@ bunx bg add config/branding
 
 Everything is under `packages/config/`: 035 lets a package-homed module write nowhere else.
 
-| File                                              | What it is                                                            |
-| ------------------------------------------------- | --------------------------------------------------------------------- |
-| `package.json`                                    | `{{SCOPE}}/config`: the `exports`, the `typecheck` and `test` scripts |
-| `tsconfig.json`                                   | extends the project's, covers `src` and `scripts`                     |
-| `branding.json`                                   | the source of the constants; `npmScope` is the project's scope        |
-| `src/branding.generated.ts`                       | generated from `branding.json`: do not edit by hand                   |
-| `src/branding.types.ts`, `src/gen-branding.ts`    | the `Branding` type, the validation and the rendering                 |
-| `src/gen-branding.test.ts`                        | its six tests                                                         |
-| `src/index.ts`                                    | the public surface                                                    |
-| `scripts/gen-branding.ts`                         | reads `branding.json`, writes `src/branding.generated.ts`             |
-| `assets/favicons/favicon.svg`, `site.webmanifest` | the two favicon files the apps import                                 |
+| File                                           | What it is                                                                                                                                         |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `package.json`                                 | `{{SCOPE}}/config`: the `exports`, the `typecheck` and `test` scripts                                                                              |
+| `tsconfig.json`                                | extends the project's, covers `src` and `scripts`                                                                                                  |
+| `branding.json`                                | the source of the constants; `npmScope` is the project's scope                                                                                     |
+| `src/branding.generated.ts`                    | generated from `branding.json`: do not edit by hand                                                                                                |
+| `src/branding.types.ts`, `src/gen-branding.ts` | the `Branding` type, the validation and the rendering                                                                                              |
+| `src/gen-branding.test.ts`                     | its six tests                                                                                                                                      |
+| `src/index.ts`                                 | the public surface                                                                                                                                 |
+| `scripts/gen-branding.ts`                      | reads `branding.json`, writes `src/branding.generated.ts`                                                                                          |
+| `assets/favicons/*`                            | the favicons: `favicon.svg`, `favicon.ico`, the PNG sizes, the touch icon and the two Android icons, and `site.webmanifest`, which names those two |
 
 ### Exports
 
@@ -34,9 +34,19 @@ Everything is under `packages/config/`: 035 lets a package-homed module write no
 | `./branding` | `./src/branding.generated.ts` |
 | `./assets/*` | `./assets/*`                  |
 
-The apps import the favicons as `{{SCOPE}}/config/assets/favicons/favicon.svg`. Legacy imports them
-as `@acme/assets/favicons/...` through a `tsconfig` `paths` entry into a root `assets/` directory,
-which a module cannot ship (`web` modules rewrite that import).
+The apps reach the favicons as `{{SCOPE}}/config/assets/favicons/<file>`. Legacy imported them as
+`@acme/assets/favicons/...` through a `tsconfig` `paths` entry into a root `assets/` directory, which a
+module cannot ship (`web` modules rewrite that import).
+
+The seven binaries (`favicon.ico`, `favicon-16x16.png`, `favicon-32x32.png`, `favicon-48x48.png`,
+`apple-touch-icon.png`, `android-chrome-192x192.png`, `android-chrome-512x512.png`) are the first binary
+template files ([035](../../../../docs/specs/035-module-registry.md)): copied byte for byte, recorded
+in `bg.json` by the sha256 of their bytes, checked by `bg doctor` like any file.
+
+`web/spa` serves this directory from the site root (its `vite.config.ts` sets `publicDir` to it), so
+`/site.webmanifest` and the `/android-chrome-*.png` it names are in the build, and `root.tsx` links the
+icons by those URLs. Golden reads the built `index.html`, finds the manifest and checks that every icon
+it names is a file of the build.
 
 ## The root `gen:branding` script (tier 2)
 
@@ -98,11 +108,13 @@ sits (`name`, `npmScope`), and two differences that follow from where a module m
 
 ## Known gaps
 
-- **The seven binary favicons are not carried**: `favicon.ico` and the PNGs (`favicon-16x16`,
-  `favicon-32x32`, `favicon-48x48`, `apple-touch-icon`, `android-chrome-192x192`, `-512x512`). A
-  template is read as UTF-8 and rendered as text, so a binary would be corrupted, and `bg.json` hashes
-  the text. Nothing in legacy imports them (the apps import `favicon.svg` and `site.webmanifest`),
-  and `site.webmanifest` points at root URLs that no app serves. They stay in `assets/favicons/` until
-  the pipeline carries bytes.
+- **`web/ssr` and `web/static` do not serve the manifest's icons.** They import `favicon.svg` and
+  `site.webmanifest` through the bundler, which inlines both as `data:` URLs (observed on the `web/spa`
+  build before it was changed): a `data:` manifest cannot resolve `/android-chrome-*.png`, and neither
+  app links the PNGs. Each already owns a `public/` (`robots.txt`), and Vite takes one `publicDir`, so
+  pointing it at the favicons would drop that file: they need the favicons merged into `public/`, which
+  is not decided.
+- **`site.webmanifest` is the legacy one**: `"lang": "fr"`, no `name` from `branding.json`. It is a
+  static file, and the generator renders `src/branding.generated.ts` only.
 - **`displayName` is "My App"**, not the project's name: `create` renders `{{DISPLAY_NAME}}` in the
   base files only. Edit `packages/config/branding.json` and run `bun run gen:branding`.

@@ -203,6 +203,28 @@ describe("readPlanFiles", () => {
 });
 
 describe("a module planned from github", () => {
+  test("config/branding's seven favicons are planned as the bytes of the registry's files, fetched over HTTP", async () => {
+    const raw = serve();
+    const catalog = await loadNamedModules(await remote(raw), ["config/branding"]);
+    const refs = [{ category: "config" as const, id: "branding" }];
+
+    const [plan] = await resolveModulePlans(catalog, refs, PROJECT);
+
+    expect(plan?.binaries.map(({ target }) => target.split("/").pop())).toEqual([
+      "android-chrome-192x192.png",
+      "android-chrome-512x512.png",
+      "apple-touch-icon.png",
+      "favicon-16x16.png",
+      "favicon-32x32.png",
+      "favicon-48x48.png",
+      "favicon.ico",
+    ]);
+    for (const { target, bytes } of plan?.binaries ?? []) {
+      const source = join(REPO_REGISTRY, "modules/config/branding/template", target);
+      expect(Buffer.from(bytes).equals(await Bun.file(source).bytes())).toBe(true);
+    }
+  });
+
   test("a file that is not text is planned as the same bytes as from a local registry", async () => {
     // A PNG signature, the placeholder as ASCII, and a byte that UTF-8 text cannot hold.
     const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, ...Buffer.from("{{SCOPE}}"), 0xff, 0x00]);

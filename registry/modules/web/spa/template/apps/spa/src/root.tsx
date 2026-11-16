@@ -16,14 +16,18 @@ import useLoadApp from "./hooks/use-load-app";
 import "@fontsource-variable/urbanist/wght.css";
 import "@fontsource-variable/faustina/wght.css";
 
-import faviconSvg from "{{SCOPE}}/config/assets/favicons/favicon.svg";
-import siteManifest from "{{SCOPE}}/config/assets/favicons/site.webmanifest";
-
 import "{{SCOPE}}/ui/globals.css";
 
+// The favicons are served from the site root: vite.config.ts makes the config package's favicons
+// the `publicDir`, since a web manifest names its icons by URL and a bundled asset is renamed.
 export const links: Route.LinksFunction = () => [
-  { rel: "icon", type: "image/svg+xml", href: faviconSvg },
-  { rel: "manifest", href: siteManifest },
+  { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+  { rel: "icon", type: "image/x-icon", sizes: "48x48", href: "/favicon.ico" },
+  { rel: "icon", type: "image/png", sizes: "16x16", href: "/favicon-16x16.png" },
+  { rel: "icon", type: "image/png", sizes: "32x32", href: "/favicon-32x32.png" },
+  { rel: "icon", type: "image/png", sizes: "48x48", href: "/favicon-48x48.png" },
+  { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
+  { rel: "manifest", href: "/site.webmanifest" },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {

@@ -12,12 +12,12 @@ bunx bg add web/spa
 
 ## Peers and variants
 
-| Peer       | Allow-list | Why                                                                                                                      |
-| ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `provider` | any        | the SPA is deployed differently on each: a Pages config, or the container that serves `build/client`                     |
-| `config`   | `branding` | `features/home/pages/home-page.tsx` reads `branding`, and `root.tsx` imports the favicons from `{{SCOPE}}/config/assets` |
-| `api`      | `elysia`   | `lib/api.ts` types the Eden client with `type App` from `{{SCOPE}}/api/app`                                              |
-| `ui`       | `shadcn`   | `root.tsx` imports `{{SCOPE}}/ui/globals.css`                                                                            |
+| Peer       | Allow-list | Why                                                                                                                                     |
+| ---------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `provider` | any        | the SPA is deployed differently on each: a Pages config, or the container that serves `build/client`                                    |
+| `config`   | `branding` | `features/home/pages/home-page.tsx` reads `branding`, and `vite.config.ts` serves the favicons of `{{SCOPE}}/config` from the site root |
+| `api`      | `elysia`   | `lib/api.ts` types the Eden client with `type App` from `{{SCOPE}}/api/app`                                                             |
+| `ui`       | `shadcn`   | `root.tsx` imports `{{SCOPE}}/ui/globals.css`                                                                                           |
 
 One variant per provider, which list the same files except `wrangler.jsonc`, and differ in what
 `scripts.merge` (spec 060) adds to the vendored `apps/spa/package.json`:
@@ -82,9 +82,14 @@ why `routes.ts` carries no region and `bg doctor` has nothing to say about it.
   home page as the index until one takes it over.
 - `lib/api.ts` exports `api`, not `apiV1`: the shell has no `/v1` group, so `.v1` would not
   typecheck. The group comes with the first module that mounts a route under it.
-- The favicons are `{{SCOPE}}/config/assets/favicons/…` and the stylesheet is
-  `{{SCOPE}}/ui/globals.css`, the paths the two packages export. The `tsconfig` `paths` into
-  other trees are gone: `{{SCOPE}}/api` is reached through its `exports`.
+- The favicons are the files of `{{SCOPE}}/config/assets/favicons`, found through that package's
+  export and served from the site root: `vite.config.ts` sets `publicDir` to the directory and
+  `root.tsx` links the icons and the manifest by root URL. Legacy imported `favicon.svg` and the
+  manifest through the bundler, which inlined both as `data:` URLs, so the manifest's icons were never
+  served. The stylesheet is `{{SCOPE}}/ui/globals.css`, the path the `ui` package exports. The `tsconfig` `paths`
+  into other trees are gone: `{{SCOPE}}/api` is reached through its `exports`.
+- The app has no `public/` of its own: the favicons are its `publicDir`, and Vite takes one. An app
+  that needs static files of its own has to merge them with the favicons in `vite.config.ts`.
 - The `vite.config.ts` points Vitest at `./testing/frontend.setup.ts`, inside the app.
 
 ## Left out

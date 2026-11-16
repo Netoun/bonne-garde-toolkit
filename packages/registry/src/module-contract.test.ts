@@ -553,6 +553,13 @@ describe("module contract", () => {
         "packages/config/tsconfig.json",
         "packages/config/branding.json",
         "packages/config/scripts/gen-branding.ts",
+        "packages/config/assets/favicons/android-chrome-192x192.png",
+        "packages/config/assets/favicons/android-chrome-512x512.png",
+        "packages/config/assets/favicons/apple-touch-icon.png",
+        "packages/config/assets/favicons/favicon-16x16.png",
+        "packages/config/assets/favicons/favicon-32x32.png",
+        "packages/config/assets/favicons/favicon-48x48.png",
+        "packages/config/assets/favicons/favicon.ico",
         "packages/config/assets/favicons/favicon.svg",
         "packages/config/assets/favicons/site.webmanifest",
         "packages/config/src/branding.generated.ts",
@@ -564,6 +571,53 @@ describe("module contract", () => {
       expect(variant.dependencies ?? {}).toEqual({});
       expect(variant.devDependencies ?? {}).toEqual({});
       expect(variant.intent ?? []).toEqual([]);
+    });
+
+    test("the favicons are the seven binaries and the two text files, and the manifest names only icons the module ships", async () => {
+      const favicons = "packages/config/assets/favicons";
+      const shipped = await readdir(join(TEMPLATE, favicons));
+      expect(shipped.sort()).toEqual([
+        "android-chrome-192x192.png",
+        "android-chrome-512x512.png",
+        "apple-touch-icon.png",
+        "favicon-16x16.png",
+        "favicon-32x32.png",
+        "favicon-48x48.png",
+        "favicon.ico",
+        "favicon.svg",
+        "site.webmanifest",
+      ]);
+
+      const manifest: unknown = JSON.parse(await text(`${favicons}/site.webmanifest`));
+      const icons =
+        isRecord(manifest) && Array.isArray(manifest.icons) ? manifest.icons.filter(isRecord) : [];
+      expect(icons.length).toBeGreaterThan(0);
+      // The manifest is served from the site root (web/spa's publicDir is this directory), so a
+      // root URL names a file of it.
+      for (const { src } of icons) {
+        expect(typeof src === "string" && src.startsWith("/")).toBe(true);
+        expect(shipped).toContain(String(src).slice(1));
+      }
+    });
+
+    test("web/spa serves that directory from the site root and links only files of it", async () => {
+      const spa = join(MODULES, "web/spa/template/apps/spa");
+      const root = await readFile(join(spa, "src/root.tsx"), "utf8");
+      const config = await readFile(join(spa, "vite.config.ts"), "utf8");
+      const shipped = await readdir(join(TEMPLATE, "packages/config/assets/favicons"));
+
+      expect(config).toContain("{{SCOPE}}/config/assets/favicons/");
+      expect(config).toMatch(/publicDir:/);
+      const linked = [...root.matchAll(/href: "\/([^"]+)"/g)].flatMap(([, file]) => file ?? []);
+      expect(linked.length).toBeGreaterThan(0);
+      for (const file of linked) {
+        expect(shipped).toContain(file);
+      }
+      // Everything but the two icons only the manifest names is linked: the svg, the ico, the PNG
+      // sizes, the touch icon and the manifest.
+      for (const file of shipped.filter((name) => !name.startsWith("android-chrome-"))) {
+        expect(linked).toContain(file);
+      }
     });
 
     test("its package.json carries exports and scripts and no dependency map (the variant has none to merge)", async () => {
