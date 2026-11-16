@@ -380,9 +380,22 @@ Every legacy test has its copy in a module, with the reason written down for eac
 - `golden` installs the 16 modules and 34 items, with one provider per configuration and no `--force`. The `cloudflare` project runs 217 tests, against a floor of 110. The docker phase builds and runs.
 - `packages/` holds only `cli`, `registry` and `schema`.
 
-**Not deleted:** `assets/`. Its seven binary favicons ride in no module, because templates carry only UTF-8.
+**After the dissolution, done 2026-11-16, on the user's answers:**
+
+- **Binary templates (`a8364ff`..`960c4c8`).** A template file whose bytes are not valid UTF-8 is binary. It is copied byte for byte, hashed by its bytes, and fetched as bytes from `github:` (035, 020, 060, 050). Items stay text-only (030).
+- **Favicons.** `config/branding` ships the seven favicons. The SPA serves them from the site root, so the manifest's icons are in the build. Golden proves this up to the container, and `assets/` is deleted.
+- **Cleanup (`1bf2a30`..`aebb357`).**
+  - 070 and 080 no longer mention `*:legacy`.
+  - The root package is `bonne-garde-toolkit`.
+  - knip ignores the registry templates, is green, and runs in `verify`.
 
 **Open after the dissolution:**
+
+- `docs/AGENTING.md` line 25: Claude Code 2.1.325 loads a root `AGENTS.md` when there is no `CLAUDE.md`, observed by the sibling session.
+- `web/ssr` and `web/static` still inline the manifest as a `data:` URL, whose icons do not resolve.
+- `site.webmanifest` is the legacy static file (`lang: fr`, no name from `branding.json`).
+- knip's `ignoreExportsUsedInFile` is repo-wide and could narrow to types.
+- The stage 5 and 6 items listed above are still open.
 
 - `assets/`;
 - the stale `*:legacy` row in spec 070 and `test:legacy` in 080;
