@@ -239,3 +239,147 @@ describe("searchCatalog", () => {
     expect(searchCatalog(catalog, "button").map((i) => i.name)).toEqual(["button"]);
   });
 });
+
+const FEATURE_ITEMS: RegistryCatalog = {
+  ...catalog,
+  items: [
+    ...catalog.items,
+    {
+      name: "sign-in",
+      type: "registry:block",
+      registryDependencies: ["button"],
+      files: [
+        {
+          path: "/tmp/sign-in.tsx",
+          type: "registry:file",
+          target: "apps/spa/src/features/auth/pages/auth-sign-in-page.tsx",
+        },
+      ],
+    },
+    {
+      name: "welcome",
+      type: "registry:block",
+      files: [
+        {
+          path: "/tmp/welcome.tsx",
+          type: "registry:file",
+          target: "apps/ssr/src/features/home/components/welcome.tsx",
+        },
+      ],
+    },
+  ],
+};
+
+const BETTER_AUTH = [{ category: "auth", id: "better-auth" }] as const;
+
+function projectWith(modules: { ui?: boolean; auth?: boolean }): ProjectManifest {
+  const manifest = project(modules.ui === true);
+  if (modules.auth === true) {
+    manifest.modules.auth = [
+      {
+        id: "better-auth",
+        variant: "default",
+        version: "0.1.0",
+        installedAt: "2026-01-01T00:00:00.000Z",
+        options: {},
+        patches: [],
+        intentions: { applied: [], skipped: {} },
+      },
+    ];
+  }
+  return manifest;
+}
+
+describe("resolveInstallPlan: an item that lands in apps/<app>/src/features needs the auth module (030)", () => {
+  test("`bg add sign-in` in a project with ui and no auth fails, naming auth/better-auth and the command to run", () => {
+    const message = failure(() =>
+      resolveInstallPlan(FEATURE_ITEMS, ["sign-in"], projectWith({ ui: true })),
+    );
+
+    expect(message).toBe(
+      "sign-in needs the auth module, and none is installed or named in this call; run: bg add auth/better-auth sign-in",
+    );
+  });
+
+  test("a project with neither module is told about both at once, not one after the other", () => {
+    const message = failure(() => resolveInstallPlan(FEATURE_ITEMS, ["sign-in"], project()));
+
+    expect(message).toBe(
+      "sign-in needs the ui and auth modules, and none is installed or named in this call; run: bg add ui/shadcn auth/better-auth sign-in",
+    );
+  });
+
+  test("the module is named from the catalog when it lists one", () => {
+    const withModule: RegistryCatalog = {
+      ...FEATURE_ITEMS,
+      modules: [
+        {
+          dir: "/tmp/modules/auth/better-auth",
+          manifest: {
+            id: "better-auth",
+            category: "auth",
+            title: "Better Auth",
+            description: "x",
+            peers: {},
+            variants: [{ key: "default", match: {} }],
+          },
+        },
+      ],
+    };
+
+    expect(
+      failure(() => resolveInstallPlan(withModule, ["sign-in"], projectWith({ ui: true }))),
+    ).toContain("bg add auth/better-auth sign-in");
+  });
+
+  test("it passes when bg.json records an auth module", () => {
+    const plan = resolveInstallPlan(
+      FEATURE_ITEMS,
+      ["sign-in"],
+      projectWith({ ui: true, auth: true }),
+    );
+
+    expect(plan.items.map((i) => i.name)).toEqual(["utils", "button", "sign-in"]);
+  });
+
+  test("it passes when an auth module is named in the same call", () => {
+    const plan = resolveInstallPlan(
+      FEATURE_ITEMS,
+      ["sign-in"],
+      projectWith({ ui: true }),
+      BETTER_AUTH,
+    );
+
+    expect(plan.items.map((i) => i.name)).toEqual(["utils", "button", "sign-in"]);
+  });
+
+  test("another module named in the call does not stand in for it", () => {
+    expect(() =>
+      resolveInstallPlan(FEATURE_ITEMS, ["sign-in"], projectWith({ ui: true }), SHADCN),
+    ).toThrow(/auth\/better-auth/);
+  });
+
+  test("any app's features folder counts, and the item needs nothing else", () => {
+    expect(failure(() => resolveInstallPlan(FEATURE_ITEMS, ["welcome"], project()))).toBe(
+      "welcome needs the auth module, and none is installed or named in this call; run: bg add auth/better-auth welcome",
+    );
+  });
+
+  test("a file in an app's src outside features needs no auth module", () => {
+    expect(
+      resolveInstallPlan(FEATURE_ITEMS, ["shell"], projectWith({ ui: true })).items.map(
+        (i) => i.name,
+      ),
+    ).toEqual(["config", "utils", "button", "shell"]);
+  });
+
+  test("an item that needs both names every requested item that needs either", () => {
+    const message = failure(() =>
+      resolveInstallPlan(FEATURE_ITEMS, ["config", "button", "sign-in"], project()),
+    );
+
+    expect(message).toBe(
+      "button, sign-in need the ui and auth modules, and none is installed or named in this call; run: bg add ui/shadcn auth/better-auth config button sign-in",
+    );
+  });
+});
