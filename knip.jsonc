@@ -8,8 +8,6 @@
   },
 
   "ignore": [
-    // Claude Code worktrees nested in the checkout: each one is a whole copy of the repository.
-    ".claude/worktrees/**",
     // Source material the registry ships. It runs in a generated project, where its imports and
     // dependencies exist; golden verifies it there (070), and knip cannot resolve it here.
     "registry/**/template/**",

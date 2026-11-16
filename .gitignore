@@ -37,3 +37,6 @@ coverage/
 
 # Tasks (local only)
 task/
+
+# Claude Code worktrees nested in the checkout: each one is a whole copy of the repository
+.claude/worktrees/
