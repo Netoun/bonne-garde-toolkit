@@ -555,6 +555,87 @@ describe("bg record: the files an install intention edited (060 Region ownership
   });
 });
 
+describe("bg record: an intention the module ships, with no .bg/ and no failed patch to read it from (065 Recording)", () => {
+  // The real registry's email module: its `better-auth` variant ships the intention, which adapts auth's mailer.
+  const ID = "email/resend/wire-email-into-auth";
+  const REGION = `intent[${ID}]`;
+  const MAILER = "packages/auth/src/mailer.ts";
+
+  /** A project that has email on `variant`, the intention recorded as `skipped`, no `.bg/`, and auth's mailer. */
+  async function skippedProject(prefix: string, variant: string): Promise<string> {
+    const target = await freshProject(prefix);
+    const bg = JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as Record<
+      string,
+      unknown
+    >;
+    const record = {
+      id: "resend",
+      variant,
+      version: "0.0.0",
+      installedAt: "2026-01-01T00:00:00.000Z",
+      options: {},
+      patches: [],
+      intentions: { applied: [], skipped: { [ID]: "not now" } },
+    };
+    await writeFile(
+      join(target, "bg.json"),
+      `${JSON.stringify({ ...bg, modules: { email: [record] } }, null, 2)}\n`,
+    );
+    await mkdir(join(target, MAILER, ".."), { recursive: true });
+    await writeFile(join(target, MAILER), "// the project's\n");
+    return target;
+  }
+
+  const recorded = async (target: string) =>
+    JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as {
+      modules: { email: { intentions: { applied: string[]; skipped: Record<string, string> } }[] };
+      regions: Record<string, Record<string, string>>;
+    };
+
+  test("a skipped intention is applied later: the paths come from the registry's own document, and the file it edited is marked", async () => {
+    const target = await skippedProject("bg-cli-record-registry-", "better-auth");
+    expect(existsSync(join(target, ".bg"))).toBe(false);
+
+    const { stdout, stderr, code } = await runBg(target, "record", ID);
+
+    expect(code).toBe(0);
+    expect(stdout).toContain(`recorded ${ID} as applied in email/resend`);
+    expect(stdout).toContain(MAILER);
+    expect(stderr).toContain("not staged");
+    const bg = await recorded(target);
+    expect(bg.modules.email[0]?.intentions).toEqual({ applied: [ID], skipped: {} });
+    expect(bg.regions).toEqual({ [MAILER]: { [REGION]: "email/resend" } });
+  });
+
+  test("the registry is read for the variant the project installed: a variant that ships no such intention leaves the refusal, and nothing is written", async () => {
+    const target = await skippedProject("bg-cli-record-variant-", "default");
+    const before = await readFile(join(target, "bg.json"), "utf8");
+
+    const { stdout, stderr, code } = await runBg(target, "record", ID);
+
+    expect(code).toBe(1);
+    expect(stdout).toBe("");
+    expect(stderr).toContain(`cannot record ${ID} as applied`);
+    expect(stderr).toContain("the registry");
+    expect(await readFile(join(target, "bg.json"), "utf8")).toBe(before);
+  });
+
+  test("--skip still reads nothing: a registry that cannot be reached does not stop a skip", async () => {
+    const target = await skippedProject("bg-cli-record-skip-offline-", "better-auth");
+    const bg = JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as {
+      registries: Record<string, string>;
+    };
+    await writeFile(
+      join(target, "bg.json"),
+      `${JSON.stringify({ ...bg, registries: { "@bg": "local:./nowhere" } }, null, 2)}\n`,
+    );
+
+    const { code } = await runBg(target, "record", ID, "--skip", "still not now");
+
+    expect(code).toBe(0);
+  });
+});
+
 /** Every path under `root` with its content, so two trees compare whole. */
 async function snapshot(root: string): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
@@ -1625,19 +1706,42 @@ describe("bg add: the intentions a module authors (065)", () => {
     expect(last.stderr).not.toContain("pending intention");
   });
 
-  test("bg record refuses once .bg/ is gone, and the add the refusal names stages the intention again", async () => {
+  test("bg record reads the module's own document once .bg/ is gone, so it needs no second add", async () => {
+    const target = await projectWithLauncher();
+    await runBg(target, "add", "dev/launcher", "--yes", "--no-install");
+    await rm(join(target, ".bg"), { recursive: true });
+
+    const recorded = await runBg(target, "record", ID);
+
+    expect(recorded.code).toBe(0);
+    expect(recorded.stderr).toContain("not staged");
+    expect((await runBg(target, "doctor", "--strict")).code).toBe(0);
+  });
+
+  test("bg record refuses once .bg/ is gone and the registry cannot give the document, and the add the refusal names stages the intention again", async () => {
     const target = await projectWithLauncher();
     await runBg(target, "add", "dev/launcher", "--yes", "--no-install");
     await rm(join(target, ".bg"), { recursive: true });
     const before = await readFile(join(target, "bg.json"), "utf8");
+    const unreachable = `${JSON.stringify(
+      {
+        ...(JSON.parse(before) as Record<string, unknown>),
+        registries: { "@bg": "local:./nowhere" },
+      },
+      null,
+      2,
+    )}\n`;
+    await writeFile(join(target, "bg.json"), unreachable);
 
     const refused = await runBg(target, "record", ID);
 
     expect(refused.code).toBe(1);
+    expect(refused.stderr).toContain("the registry gave none");
     expect(refused.stderr).toContain("bg add dev/launcher");
-    expect(await readFile(join(target, "bg.json"), "utf8")).toBe(before);
+    expect(await readFile(join(target, "bg.json"), "utf8")).toBe(unreachable);
 
-    // The intention is still pending, so that add stages it again, and then it records.
+    // The registry is back and the intention is still pending, so that add stages it again, and then it records.
+    await writeFile(join(target, "bg.json"), before);
     const again = await runBg(target, "add", "dev/launcher", "--yes", "--no-install");
     expect(again.code).toBe(0);
     expect(await readFile(join(target, ".bg/add/01-wire-launcher.md"), "utf8")).toBe(

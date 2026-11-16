@@ -14,6 +14,7 @@ export {
 } from "./load-registry";
 export {
   classifyNames,
+  readAuthoredIntention,
   resolveModulePlans,
   type ModulePlan,
   type ModuleRef,

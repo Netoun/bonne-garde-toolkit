@@ -299,6 +299,31 @@ async function authoredIntentions(
   return authored;
 }
 
+/**
+ * One intention a module authors, for a project that has the module installed already (065): the
+ * document of `id` among the intentions of the variant `bg.json` records, read from the registry and
+ * rendered as `add` staged it. `null` when the catalog does not hold the module or the variant, or the
+ * variant ships no such intention. A variant whose `intent/` is broken is refused, as planning it is.
+ */
+export async function readAuthoredIntention(
+  catalog: RegistryCatalog,
+  ref: ModuleRef,
+  variantKey: string,
+  id: string,
+  scope: string,
+): Promise<AuthoredIntention | null> {
+  const module = catalog.modules.find(
+    ({ manifest }) => manifest.category === ref.category && manifest.id === ref.id,
+  );
+  const variant = module?.manifest.variants.find(({ key }) => key === variantKey);
+  if (module === undefined || variant === undefined) {
+    return null;
+  }
+  return (
+    (await authoredIntentions(module, variant, scope)).find((entry) => entry.id === id) ?? null
+  );
+}
+
 async function isDirectory(path: string): Promise<boolean> {
   try {
     return (await stat(path)).isDirectory();

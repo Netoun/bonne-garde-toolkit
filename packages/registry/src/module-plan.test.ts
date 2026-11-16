@@ -9,7 +9,7 @@ import {
   type ProjectManifest,
 } from "@bonne-garde/schema";
 import { loadLocalRegistry } from "./load-registry";
-import { classifyNames, resolveModulePlans } from "./module-plan";
+import { classifyNames, readAuthoredIntention, resolveModulePlans } from "./module-plan";
 import type { RegistryCatalog } from "./types";
 
 const dirs: string[] = [];
@@ -1585,5 +1585,48 @@ describe("resolveModulePlans: the intentions a module authors under intent/ (065
     await expect(plan(catalog, { auth: ["better-auth"] })).rejects.toThrow(
       /email\/resend: 01-wire-email-into-auth\.md: id must be email\/resend\/wire-email-into-auth, got email\/other\/wire/,
     );
+  });
+
+  describe("readAuthoredIntention: one intention of the variant a project has installed", () => {
+    const ID = "email/resend/wire-email-into-auth";
+    const EMAIL_REF = { category: "email", id: "resend" } as const;
+
+    test("is the document of that id, with the scope rendered, as add planned it", async () => {
+      const catalog = await email({ "01-wire-email-into-auth.md": wire() });
+
+      expect(await readAuthoredIntention(catalog, EMAIL_REF, "with-auth", ID, "@demo")).toEqual({
+        id: ID,
+        module: "email/resend",
+        title: "Send auth's emails through @demo/email",
+        document: wire().replaceAll("{{SCOPE}}", "@demo"),
+      });
+    });
+
+    test("is null when the variant installed ships no such intention, the variant or the module is not in the registry, or the id is another's", async () => {
+      const catalog = await email({ "01-wire-email-into-auth.md": wire() });
+
+      expect(await readAuthoredIntention(catalog, EMAIL_REF, "default", ID, "@demo")).toBeNull();
+      expect(await readAuthoredIntention(catalog, EMAIL_REF, "gone", ID, "@demo")).toBeNull();
+      expect(
+        await readAuthoredIntention(catalog, EMAIL_REF, "with-auth", "email/resend/other", "@demo"),
+      ).toBeNull();
+      expect(
+        await readAuthoredIntention(
+          catalog,
+          { category: "auth", id: "better-auth" },
+          "default",
+          ID,
+          "@demo",
+        ),
+      ).toBeNull();
+    });
+
+    test("refuses a variant whose intent/ is broken, as planning it does", async () => {
+      const catalog = await email({});
+
+      await expect(
+        readAuthoredIntention(catalog, EMAIL_REF, "with-auth", ID, "@demo"),
+      ).rejects.toThrow(/which its intent\/ does not hold/);
+    });
   });
 });

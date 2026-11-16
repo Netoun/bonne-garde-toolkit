@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serveGithubRaw, type GithubRawServer } from "@bonne-garde/registry/testing";
 import { addItems, listItems, searchItems, viewItem } from "./add";
 import { createProject } from "./create";
 import { findRepoRoot, platformPackageVersion } from "./paths";
+import { recordIntentionOutcome } from "./record";
 
 const REGISTRY_DIR = join(findRepoRoot() ?? "", "registry");
 const REF = "feat/platform-cli-registry";
@@ -332,6 +333,85 @@ describe("bg add from a github source", () => {
       }),
     ).rejects.toThrow(/pin a ref/);
     expect(raw.requested).toEqual([]);
+  });
+
+  describe("bg record, with no .bg/ and no failed patch to read the intention from (065)", () => {
+    const ID = "email/resend/wire-email-into-auth";
+    const MAILER = "packages/auth/src/mailer.ts";
+
+    /** A project on the github source that has email on its `better-auth` variant and the intention skipped. */
+    async function skipped(patches: unknown[] = []): Promise<string> {
+      const root = await project(SOURCE);
+      const bg = JSON.parse(await readFile(join(root, "bg.json"), "utf8")) as Record<
+        string,
+        unknown
+      >;
+      const record = {
+        id: "resend",
+        variant: "better-auth",
+        version: "0.0.0",
+        installedAt: "2026-01-01T00:00:00.000Z",
+        options: {},
+        patches,
+        intentions: { applied: [], skipped: { [ID]: "not now" } },
+      };
+      await writeFile(
+        join(root, "bg.json"),
+        `${JSON.stringify({ ...bg, modules: { email: [record] } }, null, 2)}\n`,
+      );
+      await mkdir(join(root, MAILER, ".."), { recursive: true });
+      await writeFile(join(root, MAILER), "// the project's\n");
+      return root;
+    }
+
+    test("the module's intent/ is fetched from the source, and the file it adapts is marked", async () => {
+      const raw = serve();
+      const root = await skipped();
+
+      await recordIntentionOutcome(root, ID, { status: "applied" }, { baseUrl: raw.baseUrl });
+
+      expect(raw.requested).toContain("modules/email/resend/intent/01-wire-email-into-auth.md");
+      const bg = JSON.parse(await readFile(join(root, "bg.json"), "utf8")) as {
+        regions: Record<string, Record<string, string>>;
+      };
+      expect(bg.regions).toEqual({ [MAILER]: { [`intent[${ID}]`]: "email/resend" } });
+    });
+
+    test("nothing is fetched when a failed patch of bg.json already names the file: the registry is the last source", async () => {
+      const raw = serve();
+      const root = await skipped([
+        {
+          type: "package.dependencies",
+          file: MAILER,
+          status: "failed",
+          reason: "x",
+          intention: ID,
+        },
+      ]);
+
+      await recordIntentionOutcome(root, ID, { status: "applied" }, { baseUrl: raw.baseUrl });
+
+      expect(raw.requested).toEqual([]);
+    });
+
+    test("a source that cannot be read is the refusal, naming why, and bg.json is as it was", async () => {
+      const raw = serve();
+      const root = await skipped();
+      const before = await readFile(join(root, "bg.json"), "utf8");
+      raw.missing.add("modules/email/resend/module.json");
+
+      const failure = await recordIntentionOutcome(
+        root,
+        ID,
+        { status: "applied" },
+        { baseUrl: raw.baseUrl },
+      ).catch((error: unknown) => error);
+
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as Error).message).toContain(`cannot record ${ID} as applied`);
+      expect((failure as Error).message).toContain("the registry gave none");
+      expect(await readFile(join(root, "bg.json"), "utf8")).toBe(before);
+    });
   });
 
   test("sends the token it is given", async () => {
