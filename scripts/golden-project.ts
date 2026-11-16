@@ -16,6 +16,8 @@
  *     in every other table (a media with an author and no organization among them), `db:reset`, which has
  *     to empty every table of the barrel, `db:seed` again, and once more on the seeded database, which has
  *     to say so, exit 0 and change no row
+ *   → for a configuration with the deploy module: the workflow parsed, the plan of its dry run, and the
+ *     module refused, naming the provider, in the configuration on the other one
  *   → bun run check → the `checks` of every installed module
  *   → for the configuration that ships a Dockerfile, docker build, docker run, and the container's answers
  *
@@ -248,6 +250,201 @@ export function expectPeerRefusal(attempt: Attempt, name: string, category: stri
     throw new Error(
       `\`bg add ${name}\` was refused without naming the missing peer category ${category}; it printed: ${attempt.stderr.trim() || "(nothing)"}`,
     );
+  }
+}
+
+/** The module that ships the deploy workflow, the provider it accepts, and the root script its workflow calls. */
+export const DEPLOY_MODULE = "deploy/cloudflare-actions";
+const DEPLOY_PROVIDER = "provider/cloudflare";
+const DEPLOY_WORKFLOW = ".github/workflows/deploy.yml";
+const DEPLOY_SCRIPT = "deploy:cloudflare";
+
+/** Whether the configuration installs the deploy module, so golden checks the plan its script prints. */
+export function hasDeploy(configuration: Configuration): boolean {
+  return configuration.modules.includes(DEPLOY_MODULE);
+}
+
+/** Whether the configuration is on a provider the deploy module does not accept, so golden has to see it refused. */
+export function refusesDeploy(configuration: Configuration): boolean {
+  return !configuration.modules.includes(DEPLOY_PROVIDER);
+}
+
+/**
+ * What `bun run deploy:cloudflare --dry-run` has to plan in each configuration that installs the
+ * module, one `<phase> <cwd>: <command>` per step. The order is the contract: every build before the
+ * first deploy, the database's app first with its migration right before it, the others by directory.
+ * `my-app-*` are the Pages project names the web modules' wrangler configs carry.
+ */
+export const DEPLOY_PLAN: Readonly<Record<string, readonly string[]>> = {
+  cloudflare: [
+    "build apps/api: bun run build",
+    "build apps/spa: bun run build",
+    "build apps/ssr: bun run build",
+    "build apps/static: bun run build",
+    "migrate apps/api: bun run db:migrate:remote --env production",
+    "deploy apps/api: bun run deploy --env production",
+    "deploy apps/spa: bun run deploy --project-name my-app-spa --branch main",
+    "deploy apps/ssr: bun run deploy --env production",
+    "deploy apps/static: bun run deploy --project-name my-app-static --branch main",
+  ],
+};
+
+/** The plan the dry run printed: each step as `<phase> <cwd>: <command>`, the apps once each in order, the build variables it names. */
+export type DeployPlan = { steps: string[]; apps: string[]; buildVars: string[] };
+
+export function readDeployPlan(stdout: string): DeployPlan {
+  let printed: unknown;
+  try {
+    printed = JSON.parse(stdout);
+  } catch {
+    throw new Error(`the dry run printed output that is not JSON: ${stdout.trim() || "(nothing)"}`);
+  }
+  if (!isRecord(printed) || !Array.isArray(printed.steps) || !isStringArray(printed.buildVars)) {
+    throw new Error("the dry run printed no `steps` and `buildVars`");
+  }
+  const steps: string[] = [];
+  const apps: string[] = [];
+  for (const step of printed.steps) {
+    if (
+      !isRecord(step) ||
+      typeof step.phase !== "string" ||
+      typeof step.cwd !== "string" ||
+      !isStringArray(step.argv)
+    ) {
+      throw new Error(
+        `the dry run printed a step with no phase, cwd and argv: ${JSON.stringify(step)}`,
+      );
+    }
+    steps.push(`${step.phase} ${step.cwd}: ${step.argv.join(" ")}`);
+    if (!apps.includes(step.cwd)) {
+      apps.push(step.cwd);
+    }
+  }
+  return { steps, apps, buildVars: printed.buildVars };
+}
+
+/** The plan is the expected list, in the expected order: names the first step that differs. */
+export function expectDeployPlan(planned: readonly string[], expected: readonly string[]): void {
+  for (let index = 0; index < Math.max(planned.length, expected.length); index += 1) {
+    if (planned[index] !== expected[index]) {
+      throw new Error(
+        `the deploy plan differs at step ${index + 1}: expected \`${expected[index] ?? "(nothing)"}\`, planned \`${planned[index] ?? "(missing)"}\``,
+      );
+    }
+  }
+}
+
+/** An app the plan deploys has a wrangler config it can deploy from, and a `deploy` script to run. */
+export function expectDeployableApp(
+  app: string,
+  wrangler: string | undefined,
+  manifest: string | undefined,
+): void {
+  if (wrangler === undefined) {
+    throw new Error(`${app} is planned and has no wrangler.jsonc`);
+  }
+  let config: unknown;
+  try {
+    config = Bun.JSONC.parse(wrangler);
+  } catch {
+    throw new Error(`${app}/wrangler.jsonc is not valid JSONC`);
+  }
+  if (!isRecord(config) || typeof config.name !== "string" || config.name === "") {
+    throw new Error(`${app}/wrangler.jsonc has no name`);
+  }
+  if (!isRecord(config.env) || !isRecord(config.env.production)) {
+    throw new Error(`${app}/wrangler.jsonc has no env.production`);
+  }
+  if (manifest === undefined) {
+    throw new Error(`${app} is planned and has no package.json`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(manifest);
+  } catch {
+    throw new Error(`${app}/package.json is not valid JSON`);
+  }
+  const scripts = isRecord(parsed) ? parsed.scripts : undefined;
+  if (!isRecord(scripts) || typeof scripts.deploy !== "string") {
+    throw new Error(`${app}/package.json has no deploy script`);
+  }
+}
+
+/** An app of the project with a wrangler config that the plan leaves out would be a deploy nobody chose to skip. */
+export function expectEveryAppPlanned(
+  planned: readonly string[],
+  withWrangler: readonly string[],
+): void {
+  const left = withWrangler.filter((app) => !planned.includes(app));
+  if (left.length > 0) {
+    throw new Error(`${left.join(", ")} has a wrangler.jsonc and is not planned`);
+  }
+  const bare = planned.filter((app) => !withWrangler.includes(app));
+  if (bare.length > 0) {
+    throw new Error(`${bare.join(", ")} is planned and has no wrangler.jsonc`);
+  }
+}
+
+/**
+ * The workflow as installed: it parses as YAML, runs on dispatch only, has the deploy job, and every
+ * `bun run <script>` it makes is a script of the project's root `package.json`, the one that deploys
+ * included. `rootScripts` is what that file holds after the install, which is what the runner sees.
+ */
+export function expectWorkflow(text: string, rootScripts: readonly string[]): void {
+  let workflow: unknown;
+  try {
+    workflow = Bun.YAML.parse(text);
+  } catch {
+    throw new Error(`${DEPLOY_WORKFLOW} is not valid YAML`);
+  }
+  if (!isRecord(workflow) || workflow.on !== "workflow_dispatch") {
+    throw new Error(
+      `${DEPLOY_WORKFLOW} has to run on workflow_dispatch only, it has \`on: ${JSON.stringify(isRecord(workflow) ? workflow.on : undefined)}\``,
+    );
+  }
+  const jobs = isRecord(workflow.jobs) ? workflow.jobs : {};
+  const runsOf = (job: unknown): string[] =>
+    isRecord(job) && Array.isArray(job.steps)
+      ? job.steps.flatMap((step: unknown) =>
+          isRecord(step) && typeof step.run === "string" ? [step.run] : [],
+        )
+      : [];
+  if (!isRecord(jobs.deploy)) {
+    throw new Error(`${DEPLOY_WORKFLOW} has no deploy job`);
+  }
+  for (const run of Object.values(jobs).flatMap(runsOf)) {
+    const script = /^bun run (\S+)/.exec(run)?.[1];
+    if (script !== undefined && !rootScripts.includes(script)) {
+      throw new Error(
+        `${DEPLOY_WORKFLOW} runs \`bun run ${script}\`, and the project's package.json has no such script`,
+      );
+    }
+  }
+  if (!runsOf(jobs.deploy).includes(`bun run ${DEPLOY_SCRIPT}`)) {
+    throw new Error(
+      `the deploy job of ${DEPLOY_WORKFLOW} does not run \`bun run ${DEPLOY_SCRIPT}\``,
+    );
+  }
+}
+
+/** `bg add` of a module on a provider it does not accept fails and names the provider that is installed (035: a peer outside the allow-list). */
+export function expectProviderRefusal(
+  attempt: Attempt,
+  module: string,
+  allowed: string,
+  installed: string,
+): void {
+  if (attempt.code === 0) {
+    throw new Error(
+      `\`bg add ${module}\` succeeded in a project on provider/${installed}: it accepts only ${allowed}, so it must be refused`,
+    );
+  }
+  for (const named of [`accepts only ${allowed}`, `provider/${installed}`]) {
+    if (!attempt.stderr.includes(named)) {
+      throw new Error(
+        `\`bg add ${module}\` was refused without saying \`${named}\`; it printed: ${attempt.stderr.trim() || "(nothing)"}`,
+      );
+    }
   }
 }
 
@@ -1562,6 +1759,24 @@ async function configured(
       }
     }
   });
+  // A module that accepts one provider is refused on the other, naming it, and writes nothing.
+  if (refusesDeploy(configuration)) {
+    await step("deploy: refuse", async () => {
+      const before = await snapshot(project);
+      expectProviderRefusal(
+        await attempt(bg("add", DEPLOY_MODULE, "--yes", "--no-install"), project),
+        DEPLOY_MODULE,
+        DEPLOY_PROVIDER.split("/")[1] ?? "",
+        modules.find((module) => module.startsWith("provider/"))?.split("/")[1] ?? "",
+      );
+      const changed = diffTrees(before, await snapshot(project));
+      if (changed.length > 0) {
+        throw new Error(
+          `the refused \`bg add ${DEPLOY_MODULE}\` changed the project: ${changed.join(", ")}`,
+        );
+      }
+    });
+  }
   // What an executor does with each pending intention (065), once every install is known to be stable:
   // the edit its document describes, and the test its Validation names. Recording waits for that
   // Validation, which is the project's own typecheck, tests and check below.
@@ -1611,6 +1826,9 @@ async function configured(
     });
   }
   await step("doctor", () => run(bg("doctor", "--strict"), project));
+  if (hasDeploy(configuration)) {
+    await deployPlanned(project, timings, name);
+  }
   // The owner of the file the edit landed in, and the module that shipped the intention, asked for again:
   // the edit is the project's by now, so each has to keep it, skip its patches, stage nothing and change nothing.
   if (pending.length > 0) {
@@ -1728,6 +1946,68 @@ async function refusedPeer(
     if (changed.length > 0) {
       throw new Error(
         `the refused \`bg add better-auth\` changed the project: ${changed.join(", ")}`,
+      );
+    }
+  });
+}
+
+/**
+ * What deploying would do, proved with no account and no network: the workflow parses and only calls
+ * scripts the project has, the script's dry run plans exactly the expected steps in order, every app
+ * in it has a wrangler config and a deploy script and every app with a config is in it, and a
+ * `VITE_*` variable handed to the script is named in the plan and its value never printed.
+ */
+async function deployPlanned(project: string, timings: Timing[], name: string): Promise<void> {
+  await phase(timings, `${name}: deploy plan`, async () => {
+    const expected = DEPLOY_PLAN[name];
+    if (expected === undefined) {
+      throw new Error(`no expected deploy plan for the ${name} configuration (DEPLOY_PLAN)`);
+    }
+    const root: unknown = JSON.parse(await Bun.file(join(project, "package.json")).text());
+    const scripts = isRecord(root) && isRecord(root.scripts) ? Object.keys(root.scripts) : [];
+    expectWorkflow(await Bun.file(join(project, DEPLOY_WORKFLOW)).text(), scripts);
+
+    const dryRun = [BUN, "run", DEPLOY_SCRIPT, "--dry-run"];
+    const plan = readDeployPlan(await capture(dryRun, project));
+    expectDeployPlan(plan.steps, expected);
+    if (plan.buildVars.length > 0) {
+      throw new Error(
+        `the dry run forwards ${plan.buildVars.join(", ")} with no variable handed to it`,
+      );
+    }
+
+    const optional = async (path: string): Promise<string | undefined> => {
+      const file = Bun.file(join(project, path));
+      return (await file.exists()) ? file.text() : undefined;
+    };
+    for (const app of plan.apps) {
+      expectDeployableApp(
+        app,
+        await optional(`${app}/wrangler.jsonc`),
+        await optional(`${app}/package.json`),
+      );
+    }
+    const withWrangler: string[] = [];
+    for (const dir of await readdir(join(project, "apps"))) {
+      if ((await optional(`apps/${dir}/wrangler.jsonc`)) !== undefined) {
+        withWrangler.push(`apps/${dir}`);
+      }
+    }
+    expectEveryAppPlanned(plan.apps, withWrangler);
+
+    // The workflow hands the environment's variables over as JSON: only the ones Vite exposes are
+    // forwarded to a build, and the plan names them without their values.
+    const secretish = "https://golden.invalid";
+    const forwarded = await capture(dryRun, project, {
+      VARS_JSON: JSON.stringify({ VITE_API_URL: secretish, API_URL: secretish }),
+    });
+    if (forwarded.includes(secretish)) {
+      throw new Error("the dry run printed the value of a variable it was handed");
+    }
+    const { buildVars } = readDeployPlan(forwarded);
+    if (buildVars.length !== 1 || buildVars[0] !== "VITE_API_URL") {
+      throw new Error(
+        `the dry run forwards ${JSON.stringify(buildVars)}, expected only VITE_API_URL`,
       );
     }
   });

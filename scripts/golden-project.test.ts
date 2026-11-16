@@ -72,6 +72,16 @@ import {
   STORAGE_MIN_TESTS,
   testCounts,
   until,
+  DEPLOY_MODULE,
+  DEPLOY_PLAN,
+  expectDeployableApp,
+  expectDeployPlan,
+  expectEveryAppPlanned,
+  expectProviderRefusal,
+  expectWorkflow,
+  hasDeploy,
+  readDeployPlan,
+  refusesDeploy,
   type AddedModule,
 } from "./golden-project";
 
@@ -655,6 +665,258 @@ describe("buildsImage (golden builds the image of the configuration that ships a
     expect(
       CONFIGURATIONS.filter((configuration) => buildsImage(configuration)).map(({ name }) => name),
     ).toEqual(["dockerfile"]);
+  });
+});
+
+describe("the deploy phases (what golden proves of deploy/cloudflare-actions with no account and no network)", () => {
+  const cloudflare = CONFIGURATIONS.find(({ name }) => name === "cloudflare");
+  const dockerfile = CONFIGURATIONS.find(({ name }) => name === "dockerfile");
+
+  test("the cloudflare configuration installs the module, and the dockerfile one has to refuse it", () => {
+    expect(CONFIGURATIONS.filter(hasDeploy).map(({ name }) => name)).toEqual(["cloudflare"]);
+    expect(CONFIGURATIONS.filter(refusesDeploy).map(({ name }) => name)).toEqual(["dockerfile"]);
+    // Every configuration either installs it or is checked to refuse it: none is left unexamined.
+    for (const configuration of CONFIGURATIONS) {
+      expect(hasDeploy(configuration) !== refusesDeploy(configuration)).toBe(true);
+    }
+    expect(dockerfile?.modules).not.toContain(DEPLOY_MODULE);
+  });
+
+  test("DEPLOY_PLAN is the ordered plan of each configuration that installs it, and follows from the modules installed", () => {
+    expect(Object.keys(DEPLOY_PLAN)).toEqual(
+      CONFIGURATIONS.filter(hasDeploy).map(({ name }) => name),
+    );
+    expect(DEPLOY_PLAN.cloudflare).toEqual([
+      "build apps/api: bun run build",
+      "build apps/spa: bun run build",
+      "build apps/ssr: bun run build",
+      "build apps/static: bun run build",
+      "migrate apps/api: bun run db:migrate:remote --env production",
+      "deploy apps/api: bun run deploy --env production",
+      "deploy apps/spa: bun run deploy --project-name my-app-spa --branch main",
+      "deploy apps/ssr: bun run deploy --env production",
+      "deploy apps/static: bun run deploy --project-name my-app-static --branch main",
+    ]);
+    // One build and one deploy per app module of the configuration, and a migration because it has db/d1.
+    const modules = cloudflare?.modules ?? [];
+    const apps = modules.flatMap((name) =>
+      name === "api/elysia" || name.startsWith("web/") ? [name.split("/")[1] ?? ""] : [],
+    );
+    const apiApp = (id: string) => (id === "elysia" ? "api" : id);
+    const plan = DEPLOY_PLAN.cloudflare ?? [];
+    for (const id of apps.map(apiApp)) {
+      expect(plan.filter((step) => step.startsWith(`build apps/${id}:`))).toHaveLength(1);
+      expect(plan.filter((step) => step.startsWith(`deploy apps/${id}:`))).toHaveLength(1);
+    }
+    expect(plan.filter((step) => step.startsWith("migrate "))).toHaveLength(
+      modules.includes("db/d1") ? 1 : 0,
+    );
+    expect(plan).toHaveLength(apps.length * 2 + 1);
+  });
+
+  describe("readDeployPlan (what `bun run deploy:cloudflare --dry-run` prints)", () => {
+    const printed = JSON.stringify({
+      environment: "production",
+      buildVars: ["VITE_API_URL"],
+      steps: [
+        { phase: "build", app: "api", cwd: "apps/api", argv: ["bun", "run", "build"] },
+        {
+          phase: "deploy",
+          app: "api",
+          cwd: "apps/api",
+          argv: ["bun", "run", "deploy", "--env", "production"],
+        },
+        { phase: "build", app: "spa", cwd: "apps/spa", argv: ["bun", "run", "build"] },
+      ],
+    });
+
+    test("reads each step as `<phase> <cwd>: <command>`, the apps once each in order, and the variable names", () => {
+      expect(readDeployPlan(printed)).toEqual({
+        steps: [
+          "build apps/api: bun run build",
+          "deploy apps/api: bun run deploy --env production",
+          "build apps/spa: bun run build",
+        ],
+        apps: ["apps/api", "apps/spa"],
+        buildVars: ["VITE_API_URL"],
+      });
+    });
+
+    test("fails on what is not a plan, and says what it printed", () => {
+      expect(() => readDeployPlan("deploy: nothing to deploy")).toThrow(
+        /not JSON.*nothing to deploy/s,
+      );
+      expect(() => readDeployPlan("[]")).toThrow(/steps/);
+      expect(() =>
+        readDeployPlan(JSON.stringify({ steps: [{ phase: "build" }], buildVars: [] })),
+      ).toThrow(/step/);
+    });
+  });
+
+  describe("expectDeployPlan", () => {
+    const expected = [
+      "build apps/api: bun run build",
+      "deploy apps/api: bun run deploy --env production",
+    ];
+
+    test("passes the same list in the same order", () => {
+      expect(() => expectDeployPlan(expected, expected)).not.toThrow();
+    });
+
+    test("fails a different order, a missing step and an extra one, naming the first difference", () => {
+      expect(() => expectDeployPlan([...expected].reverse(), expected)).toThrow(
+        /step 1.*deploy apps\/api/s,
+      );
+      expect(() => expectDeployPlan(expected.slice(0, 1), expected)).toThrow(/step 2.*missing/s);
+      expect(() =>
+        expectDeployPlan([...expected, "deploy apps/x: bun run deploy"], expected),
+      ).toThrow(/step 3.*deploy apps\/x/s);
+    });
+  });
+
+  describe("expectDeployableApp (every app the script would deploy has a wrangler config it can deploy from)", () => {
+    const wrangler = `{ // a Worker
+      "name": "my-app-api",
+      "main": "src/index.ts",
+      "env": { "production": { "name": "my-app-api", }, },
+    }`;
+    const manifest = JSON.stringify({ scripts: { deploy: "wrangler deploy" } });
+
+    test("passes a JSONC config with a name and a production environment, and a deploy script", () => {
+      expect(() => expectDeployableApp("apps/api", wrangler, manifest)).not.toThrow();
+    });
+
+    test("fails a missing config, a config that is not JSONC, and one with no name or no production environment", () => {
+      expect(() => expectDeployableApp("apps/api", undefined, manifest)).toThrow(
+        /apps\/api.*wrangler\.jsonc/s,
+      );
+      expect(() => expectDeployableApp("apps/api", "{ nope", manifest)).toThrow(
+        /apps\/api.*JSONC/s,
+      );
+      expect(() =>
+        expectDeployableApp("apps/api", `{ "env": { "production": {} } }`, manifest),
+      ).toThrow(/apps\/api.*name/s);
+      expect(() => expectDeployableApp("apps/api", `{ "name": "x" }`, manifest)).toThrow(
+        /apps\/api.*env\.production/s,
+      );
+    });
+
+    test("fails a missing package.json and one with no deploy script", () => {
+      expect(() => expectDeployableApp("apps/api", wrangler, undefined)).toThrow(
+        /apps\/api.*package\.json/s,
+      );
+      expect(() =>
+        expectDeployableApp("apps/api", wrangler, JSON.stringify({ scripts: {} })),
+      ).toThrow(/apps\/api.*deploy script/s);
+    });
+  });
+
+  describe("expectEveryAppPlanned (an app with a wrangler config that the plan leaves out is a deploy nobody asked to skip)", () => {
+    test("passes when the apps with a config are the apps in the plan", () => {
+      expect(() =>
+        expectEveryAppPlanned(["apps/api", "apps/spa"], ["apps/spa", "apps/api"]),
+      ).not.toThrow();
+    });
+
+    test("fails an app with a config that is not planned, and a planned app with no config", () => {
+      expect(() => expectEveryAppPlanned(["apps/api"], ["apps/api", "apps/ssr"])).toThrow(
+        /apps\/ssr.*not planned/s,
+      );
+      expect(() => expectEveryAppPlanned(["apps/api", "apps/x"], ["apps/api"])).toThrow(
+        /apps\/x.*no wrangler/s,
+      );
+    });
+  });
+
+  describe("expectWorkflow (deploy.yml, as installed, against the project's own scripts)", () => {
+    const real = async () =>
+      Bun.file(
+        join(
+          resolve(import.meta.dir, ".."),
+          "registry/modules/deploy/cloudflare-actions/template/.github/workflows/deploy.yml",
+        ),
+      ).text();
+    const scripts = ["check", "typecheck", "test", "deploy:cloudflare"];
+
+    test("passes the workflow the module ships, in a project with the scripts it runs", async () => {
+      const workflow = await real();
+
+      expect(() => expectWorkflow(workflow, scripts)).not.toThrow();
+    });
+
+    test("fails a script the project does not have, naming it", async () => {
+      const workflow = await real();
+
+      expect(() => expectWorkflow(workflow, ["check", "typecheck", "deploy:cloudflare"])).toThrow(
+        /bun run test/,
+      );
+    });
+
+    test("fails a workflow that is not YAML, one that runs on push, and one with no deploy job", async () => {
+      const workflow = await real();
+
+      expect(() => expectWorkflow("jobs: [", scripts)).toThrow(/YAML/);
+      expect(() =>
+        expectWorkflow(workflow.replace("on: workflow_dispatch", "on: push"), scripts),
+      ).toThrow(/workflow_dispatch/);
+      expect(() =>
+        expectWorkflow("on: workflow_dispatch\njobs:\n  validate:\n    steps: []\n", scripts),
+      ).toThrow(/deploy/);
+    });
+
+    test("fails a deploy job that does not run the script the project has for it", async () => {
+      const workflow = await real();
+
+      expect(() =>
+        expectWorkflow(
+          workflow.replace("run: bun run deploy:cloudflare\n", "run: wrangler deploy\n"),
+          scripts,
+        ),
+      ).toThrow(/deploy:cloudflare/);
+    });
+  });
+
+  describe("expectProviderRefusal (035: a peer outside the allow-list names the incompatible module)", () => {
+    const stderr =
+      "deploy/cloudflare-actions accepts only cloudflare for provider, but provider/dockerfile is present\n";
+
+    test("passes a refusal that names the module, the provider it accepts and the one installed", () => {
+      expect(() =>
+        expectProviderRefusal(
+          { code: 1, stderr },
+          "deploy/cloudflare-actions",
+          "cloudflare",
+          "dockerfile",
+        ),
+      ).not.toThrow();
+    });
+
+    test("fails an install that succeeded, and a refusal that does not name the installed provider", () => {
+      expect(() =>
+        expectProviderRefusal(
+          { code: 0, stderr: "" },
+          "deploy/cloudflare-actions",
+          "cloudflare",
+          "dockerfile",
+        ),
+      ).toThrow(/succeeded.*dockerfile/s);
+      expect(() =>
+        expectProviderRefusal(
+          { code: 1, stderr: "deploy/cloudflare-actions accepts only cloudflare for provider\n" },
+          "deploy/cloudflare-actions",
+          "cloudflare",
+          "dockerfile",
+        ),
+      ).toThrow(/provider\/dockerfile/);
+      expect(() =>
+        expectProviderRefusal(
+          { code: 1, stderr: "deploy/cloudflare-actions: no variant matches\n" },
+          "deploy/cloudflare-actions",
+          "cloudflare",
+          "dockerfile",
+        ),
+      ).toThrow(/accepts only cloudflare/);
+    });
   });
 });
 
