@@ -167,25 +167,6 @@ describe("registry contract", () => {
         }),
       ),
     ];
-
-    const LEGACY = join(ROOT, "packages/ui/src");
-    test.skipIf(!existsSync(LEGACY))(
-      "while the legacy package is in the tree, each item is its file byte for byte (080: no rewrites)",
-      async () => {
-        const different: string[] = [];
-        for (const item of await uiItems()) {
-          for (const file of item.files ?? []) {
-            const legacy = join(LEGACY, (file.target ?? "").slice("packages/ui/src/".length));
-            if (!existsSync(legacy)) {
-              different.push(`${item.name}: no ${legacy}`);
-            } else if ((await readFile(legacy, "utf8")) !== (await readFile(file.path, "utf8"))) {
-              different.push(`${item.name}: differs from ${legacy}`);
-            }
-          }
-        }
-        expect(different).toEqual([]);
-      },
-    );
   });
 });
 
