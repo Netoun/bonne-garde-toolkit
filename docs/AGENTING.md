@@ -17,12 +17,21 @@ Deep detail stays in `docs/` (`RULES.md`, `TESTING.md`, …). Agents must load t
 
 ## Tool matrix
 
-| Tool                                                          | Entry                                    | Notes                                                                 |
-| ------------------------------------------------------------- | ---------------------------------------- | --------------------------------------------------------------------- |
-| [OpenAI Codex](https://agents.md/)                            | `AGENTS.md`                              | Native standard                                                       |
-| [OpenCode](https://opencode.ai/docs/rules/)                   | `AGENTS.md`                              | If both exist, `AGENTS.md` wins over `CLAUDE.md`                      |
-| [Cursor](https://cursor.com/)                                 | `AGENTS.md` + `.cursor/rules/agents.mdc` | Rule file only points at `AGENTS.md`                                  |
-| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `CLAUDE.md`                              | Must start with `@AGENTS.md` (Claude does not read `AGENTS.md` alone) |
+| Tool                                                          | Entry                                    | Notes                                                             |
+| ------------------------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------- |
+| [OpenAI Codex](https://agents.md/)                            | `AGENTS.md`                              | Native standard                                                   |
+| [OpenCode](https://opencode.ai/docs/rules/)                   | `AGENTS.md`                              | If both exist, `AGENTS.md` wins over `CLAUDE.md`                  |
+| [Cursor](https://cursor.com/)                                 | `AGENTS.md` + `.cursor/rules/agents.mdc` | Rule file only points at `AGENTS.md`                              |
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `CLAUDE.md`                              | Starts with `@AGENTS.md`; see "Claude Code and `AGENTS.md`" below |
+
+### Claude Code and `AGENTS.md`
+
+Observed on Claude Code 2.1.325, and not checked on any other version:
+
+- A root `AGENTS.md` is loaded when the project has no `CLAUDE.md`.
+- A nested `apps/<app>/AGENTS.md` is not loaded from the project root, which is why `templates/base/AGENTS.md` tells the agent to read an app's or a package's own `AGENTS.md`.
+
+Nothing was observed about a project that has both a `CLAUDE.md` and an `AGENTS.md`: this repo keeps `CLAUDE.md` as the file that imports `AGENTS.md`.
 
 Optional OpenCode config: [`opencode.json`](../opencode.json). Prefer lazy links from `AGENTS.md` over an always-on `instructions` array (those files are injected every session and inflate context).
 
@@ -32,7 +41,7 @@ Optional OpenCode config: [`opencode.json`](../opencode.json). Prefer lazy links
 2. Add a Claude-only quirk → put it **below** `@AGENTS.md` in `CLAUDE.md`.
 3. Add a Cursor file-scoped quirk → new `.cursor/rules/*.mdc` with `globs`, **without** duplicating `AGENTS.md`.
 4. After changing commands/scripts → run `bun run gen:commands` (and architecture gen if needed).
-5. Do **not** symlink `CLAUDE.md` → `AGENTS.md` on this repo: Claude needs `@` import; OpenCode already prefers `AGENTS.md`.
+5. Do **not** symlink `CLAUDE.md` → `AGENTS.md` on this repo: `CLAUDE.md` is the file that imports `AGENTS.md` and holds the Claude-only quirks (rule 2); OpenCode already prefers `AGENTS.md`.
 
 ## Project skills for Claude Code
 

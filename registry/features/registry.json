@@ -1,0 +1,265 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "items": [
+    {
+      "name": "spa-auth",
+      "type": "registry:block",
+      "title": "SPA auth",
+      "description": "Sign-in, sign-up, forgot and reset password and email verification pages for the SPA, the Better Auth client and the session hooks, with the theme toggle their layout uses. Declares its routes in features/auth/routes.ts.",
+      "dependencies": [
+        "@acme/auth@workspace:*",
+        "@acme/config",
+        "@hookform/resolvers@5.7.1",
+        "better-auth@1.6.26",
+        "lucide-react",
+        "motion@13.0.0",
+        "react",
+        "react-hook-form@7.84.0",
+        "react-router",
+        "zod@4.4.3"
+      ],
+      "devDependencies": ["@react-router/dev", "vite-plus"],
+      "registryDependencies": ["alert", "button", "dropdown-menu", "input", "label"],
+      "meta": {
+        "needsModules": ["auth", "web/spa"]
+      },
+      "files": [
+        {
+          "path": "spa-auth/features/auth/components/theme-toggle.tsx",
+          "type": "registry:component",
+          "target": "apps/spa/src/features/auth/components/theme-toggle.tsx"
+        },
+        {
+          "path": "spa-auth/features/auth/hooks/use-auth-redirect.ts",
+          "type": "registry:hook",
+          "target": "apps/spa/src/features/auth/hooks/use-auth-redirect.ts"
+        },
+        {
+          "path": "spa-auth/features/auth/hooks/use-session.ts",
+          "type": "registry:hook",
+          "target": "apps/spa/src/features/auth/hooks/use-session.ts"
+        },
+        {
+          "path": "spa-auth/features/auth/lib/auth.ts",
+          "type": "registry:lib",
+          "target": "apps/spa/src/features/auth/lib/auth.ts"
+        },
+        {
+          "path": "spa-auth/features/auth/lib/types.ts",
+          "type": "registry:lib",
+          "target": "apps/spa/src/features/auth/lib/types.ts"
+        },
+        {
+          "path": "spa-auth/features/auth/lib/validation.test.ts",
+          "type": "registry:file",
+          "target": "apps/spa/src/features/auth/lib/validation.test.ts"
+        },
+        {
+          "path": "spa-auth/features/auth/lib/validation.ts",
+          "type": "registry:lib",
+          "target": "apps/spa/src/features/auth/lib/validation.ts"
+        },
+        {
+          "path": "spa-auth/features/auth/pages/auth-forgot-password-page.tsx",
+          "type": "registry:page",
+          "target": "apps/spa/src/features/auth/pages/auth-forgot-password-page.tsx"
+        },
+        {
+          "path": "spa-auth/features/auth/pages/auth-layout.tsx",
+          "type": "registry:page",
+          "target": "apps/spa/src/features/auth/pages/auth-layout.tsx"
+        },
+        {
+          "path": "spa-auth/features/auth/pages/auth-login-page.tsx",
+          "type": "registry:page",
+          "target": "apps/spa/src/features/auth/pages/auth-login-page.tsx"
+        },
+        {
+          "path": "spa-auth/features/auth/pages/auth-register-page.tsx",
+          "type": "registry:page",
+          "target": "apps/spa/src/features/auth/pages/auth-register-page.tsx"
+        },
+        {
+          "path": "spa-auth/features/auth/pages/auth-reset-password-page.tsx",
+          "type": "registry:page",
+          "target": "apps/spa/src/features/auth/pages/auth-reset-password-page.tsx"
+        },
+        {
+          "path": "spa-auth/features/auth/pages/auth-verify-email-page.tsx",
+          "type": "registry:page",
+          "target": "apps/spa/src/features/auth/pages/auth-verify-email-page.tsx"
+        },
+        {
+          "path": "spa-auth/features/auth/routes.ts",
+          "type": "registry:file",
+          "target": "apps/spa/src/features/auth/routes.ts"
+        }
+      ]
+    },
+    {
+      "name": "spa-backoffice",
+      "type": "registry:block",
+      "title": "SPA backoffice",
+      "description": "The signed-in shell of the SPA: a sidebar layout with an organization switcher, a dashboard and the organization pages (list, create, settings with logo upload, members). Declares its routes in features/layout/routes.ts, and takes over the index route.",
+      "dependencies": [
+        "@acme/config",
+        "@tanstack/react-form@1.33.3",
+        "@tanstack/react-pacer@0.22.1",
+        "@tanstack/react-query",
+        "@tanstack/react-table@9.0.0",
+        "@tanstack/react-virtual@3.14.9",
+        "lucide-react",
+        "react",
+        "react-router"
+      ],
+      "devDependencies": ["@react-router/dev"],
+      "registryDependencies": [
+        "spa-auth",
+        "avatar",
+        "badge",
+        "button",
+        "card",
+        "dialog",
+        "dropdown-menu",
+        "input",
+        "label",
+        "select",
+        "separator",
+        "sidebar",
+        "table",
+        "tabs",
+        "tooltip"
+      ],
+      "meta": {
+        "needsModules": ["auth", "storage", "web/spa"]
+      },
+      "files": [
+        {
+          "path": "spa-backoffice/features/dashboard/pages/dashboard-page.tsx",
+          "type": "registry:page",
+          "target": "apps/spa/src/features/dashboard/pages/dashboard-page.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/dashboard/pages/dashboard-redirect.tsx",
+          "type": "registry:page",
+          "target": "apps/spa/src/features/dashboard/pages/dashboard-redirect.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/layout/components/layout-app-sidebar.tsx",
+          "type": "registry:component",
+          "target": "apps/spa/src/features/layout/components/layout-app-sidebar.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/layout/components/layout-dynamic-breadcrumb.tsx",
+          "type": "registry:component",
+          "target": "apps/spa/src/features/layout/components/layout-dynamic-breadcrumb.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/layout/components/layout-entity-detail-header.tsx",
+          "type": "registry:component",
+          "target": "apps/spa/src/features/layout/components/layout-entity-detail-header.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/layout/components/layout-nav-main.tsx",
+          "type": "registry:component",
+          "target": "apps/spa/src/features/layout/components/layout-nav-main.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/layout/components/layout-nav-user.tsx",
+          "type": "registry:component",
+          "target": "apps/spa/src/features/layout/components/layout-nav-user.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/layout/components/layout-org-switcher.tsx",
+          "type": "registry:component",
+          "target": "apps/spa/src/features/layout/components/layout-org-switcher.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/layout/components/layout-page-header.tsx",
+          "type": "registry:component",
+          "target": "apps/spa/src/features/layout/components/layout-page-header.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/layout/hooks/use-breadcrumbs.ts",
+          "type": "registry:hook",
+          "target": "apps/spa/src/features/layout/hooks/use-breadcrumbs.ts"
+        },
+        {
+          "path": "spa-backoffice/features/layout/hooks/use-route-header.ts",
+          "type": "registry:hook",
+          "target": "apps/spa/src/features/layout/hooks/use-route-header.ts"
+        },
+        {
+          "path": "spa-backoffice/features/layout/lib/types.ts",
+          "type": "registry:lib",
+          "target": "apps/spa/src/features/layout/lib/types.ts"
+        },
+        {
+          "path": "spa-backoffice/features/layout/pages/layout-app-layout.tsx",
+          "type": "registry:page",
+          "target": "apps/spa/src/features/layout/pages/layout-app-layout.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/layout/routes.ts",
+          "type": "registry:file",
+          "target": "apps/spa/src/features/layout/routes.ts"
+        },
+        {
+          "path": "spa-backoffice/features/organization/components/organization-card.tsx",
+          "type": "registry:component",
+          "target": "apps/spa/src/features/organization/components/organization-card.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/organization/components/organization-form.tsx",
+          "type": "registry:component",
+          "target": "apps/spa/src/features/organization/components/organization-form.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/organization/components/organization-header.tsx",
+          "type": "registry:component",
+          "target": "apps/spa/src/features/organization/components/organization-header.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/organization/components/organization-invite-member-dialog.tsx",
+          "type": "registry:component",
+          "target": "apps/spa/src/features/organization/components/organization-invite-member-dialog.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/organization/components/organization-members-table.tsx",
+          "type": "registry:component",
+          "target": "apps/spa/src/features/organization/components/organization-members-table.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/organization/components/organization-virtualized-list.tsx",
+          "type": "registry:component",
+          "target": "apps/spa/src/features/organization/components/organization-virtualized-list.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/organization/hooks/use-organization.ts",
+          "type": "registry:hook",
+          "target": "apps/spa/src/features/organization/hooks/use-organization.ts"
+        },
+        {
+          "path": "spa-backoffice/features/organization/pages/organization-members-page.tsx",
+          "type": "registry:page",
+          "target": "apps/spa/src/features/organization/pages/organization-members-page.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/organization/pages/organization-new-page.tsx",
+          "type": "registry:page",
+          "target": "apps/spa/src/features/organization/pages/organization-new-page.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/organization/pages/organization-page.tsx",
+          "type": "registry:page",
+          "target": "apps/spa/src/features/organization/pages/organization-page.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/organization/pages/organization-settings-page.tsx",
+          "type": "registry:page",
+          "target": "apps/spa/src/features/organization/pages/organization-settings-page.tsx"
+        }
+      ]
+    }
+  ]
+}

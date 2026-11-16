@@ -1,0 +1,26 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        # Baked into the SPA bundle at build time; keep it equal to APP_URL below.
+        VITE_API_URL: ${APP_URL:-http://localhost:5172}
+    restart: unless-stopped
+    ports:
+      - "5172:5172"
+    volumes:
+      - app-data:/data
+    # The project's .env reaches the container whole, so a module's key needs nothing named here. Copy
+    # .env.example to .env and fill it. Optional (Compose 2.24 or later), and `environment` below wins.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      APP_URL: ${APP_URL:-http://localhost:5172}
+      # Name the header your reverse proxy overwrites with the client's address (x-forwarded-for) when
+      # one sits in front: every client shares the proxy's address without it. Leave it blank when the
+      # port is published to clients directly, where a client could set that header itself.
+      TRUSTED_PROXY_HEADER: ${TRUSTED_PROXY_HEADER:-}
+
+volumes:
+  app-data:

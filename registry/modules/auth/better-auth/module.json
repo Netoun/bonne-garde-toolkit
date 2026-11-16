@@ -1,0 +1,109 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "better-auth",
+  "category": "auth",
+  "version": "0.1.0",
+  "title": "Better Auth",
+  "description": "Session auth with email and password, email verification and organizations, over the installed database.",
+  "peers": {
+    "provider": [],
+    "api": [],
+    "db": ["d1"],
+    "orm": ["drizzle"]
+  },
+  "checks": ["cd packages/auth && bun run typecheck && bun run test"],
+  "variants": [
+    {
+      "key": "default",
+      "match": {},
+      "workspace": { "name": "{{SCOPE}}/auth", "path": "packages/auth" },
+      "dependencies": {
+        "@better-auth/drizzle-adapter": "1.6.26",
+        "better-auth": "1.6.26",
+        "drizzle-orm": "0.45.2",
+        "elysia": "1.4.29",
+        "{{SCOPE}}/api": "workspace:*",
+        "{{SCOPE}}/api-runtime": "workspace:*",
+        "{{SCOPE}}/db": "workspace:*"
+      },
+      "copy": [
+        "packages/auth/package.json",
+        "packages/auth/src/auth.cli.test.ts",
+        "packages/auth/src/auth.cli.ts",
+        "packages/auth/src/auth.config.test.ts",
+        "packages/auth/src/auth.config.ts",
+        "packages/auth/src/auth.flow.test.ts",
+        "packages/auth/src/auth.module.ts",
+        "packages/auth/src/auth.organization.test.ts",
+        "packages/auth/src/auth.rate-limit.test.ts",
+        "packages/auth/src/auth.schema.test.ts",
+        "packages/auth/src/auth.seed.test.ts",
+        "packages/auth/src/base-path.ts",
+        "packages/auth/src/client.ts",
+        "packages/auth/src/env.test.ts",
+        "packages/auth/src/env.ts",
+        "packages/auth/src/exports.test.ts",
+        "packages/auth/src/index.ts",
+        "packages/auth/src/mailer.test.ts",
+        "packages/auth/src/mailer.ts",
+        "packages/auth/src/password.test.ts",
+        "packages/auth/src/password.ts",
+        "packages/auth/src/schema.ts",
+        "packages/auth/src/seed.ts",
+        "packages/auth/src/testing.ts",
+        "packages/auth/tsconfig.json",
+        "packages/auth/tsconfig.test.json"
+      ],
+      "env": [{ "name": "BETTER_AUTH_SECRET", "required": true, "example": "" }],
+      "patch": [
+        {
+          "type": "package.dependencies",
+          "file": "apps/api/package.json",
+          "dependencies": { "{{SCOPE}}/auth": "workspace:*" },
+          "intent": "Declare the project's auth package as a dependency of the API app."
+        },
+        {
+          "type": "ts.addImport",
+          "file": "apps/api/src/app.ts",
+          "moduleSpecifier": "{{SCOPE}}/auth",
+          "namedImports": ["authModule"],
+          "intent": "Import authModule from the project's auth package in the API app."
+        },
+        {
+          "type": "ts.elysiaUse",
+          "file": "apps/api/src/app.ts",
+          "targetName": "app",
+          "argument": "authModule",
+          "intent": "Register authModule on the API app after its last .use and before its routes: it mounts Better Auth and adds the auth macro."
+        },
+        {
+          "type": "package.dependencies",
+          "file": "packages/db/package.json",
+          "dependencies": { "{{SCOPE}}/auth": "workspace:*" },
+          "intent": "Declare the project's auth package as a dependency of the db package, whose schema barrel re-exports its tables."
+        },
+        {
+          "type": "ts.addNamedExport",
+          "file": "packages/db/src/schema/index.ts",
+          "moduleSpecifier": "{{SCOPE}}/auth/schema",
+          "exports": [
+            "account",
+            "accountRelations",
+            "invitation",
+            "invitationRelations",
+            "member",
+            "memberRelations",
+            "organization",
+            "organizationRelations",
+            "session",
+            "sessionRelations",
+            "user",
+            "userRelations",
+            "verification"
+          ],
+          "intent": "Re-export every table and relation of the auth package from the schema barrel, so db:generate and createDB see them."
+        }
+      ]
+    }
+  ]
+}

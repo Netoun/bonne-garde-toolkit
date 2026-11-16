@@ -1,0 +1,22 @@
+{
+  "name": "my-app-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "API_URL": "http://localhost:5172",
+    "SPA_URL": "http://localhost:5173",
+    "SSR_URL": "http://localhost:5174",
+  },
+  "env": {
+    "production": {
+      "name": "my-app-api",
+      "routes": [{ "pattern": "api.my-app.com", "custom_domain": true }],
+      "vars": {
+        "API_URL": "https://api.my-app.com",
+        "SPA_URL": "https://spa.my-app.com",
+        "SSR_URL": "https://ssr.my-app.com",
+      },
+    },
+  },
+}

@@ -1,0 +1,15 @@
+{
+  "name": "{{SCOPE}}/db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The project's database: the D1 binding and the ORM built on it",
+  "type": "module",
+  "exports": {
+    "./d1": "./src/d1.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && bun run typecheck:test",
+    "typecheck:test": "tsc --project tsconfig.test.json --noEmit",
+    "test": "bun test"
+  }
+}

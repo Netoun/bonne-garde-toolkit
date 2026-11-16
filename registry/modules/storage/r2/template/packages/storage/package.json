@@ -1,0 +1,16 @@
+{
+  "name": "{{SCOPE}}/storage",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The project's object storage: media uploads over an R2 bucket",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && bun run typecheck:test",
+    "typecheck:test": "tsc --project tsconfig.test.json --noEmit",
+    "test": "bun test"
+  }
+}

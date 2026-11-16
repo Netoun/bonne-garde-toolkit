@@ -1,20 +1,21 @@
 # Tests — Patterns & Setup
 
 > Agents: start from [`AGENTS.md`](../AGENTS.md). General TDD rules → [`RULES.md`](./RULES.md#2-tdd--test-driven-development).
+>
+> The API and front sections describe the code the registry ships, in the paths of a project `bg` generated (`apps/api` from `api/elysia`, `apps/spa` from `web/spa`, `{{SCOPE}}` the project's npm scope). That code runs under `bun run golden`, not under this repository's `bun run test`.
 
 ---
 
 ## Stack
 
-| App           | Runner               | Env                    | HTTP Mock      | Command                |
-| ------------- | -------------------- | ---------------------- | -------------- | ---------------------- |
-| `apps/api`    | `bun:test` (native)  | `bun:sqlite` in-memory | None (real DB) | `bun test`             |
-| `apps/spa`    | Vite+ (Vitest) + RTL | `jsdom`                | MSW            | `bun run test`         |
-| `apps/ssr`    | Vite+ (Vitest) + RTL | `jsdom`                | MSW            | `bun run test`         |
-| `apps/static` | Vite+ (Vitest) + RTL | `jsdom`                | MSW            | `bun run test`         |
-| `scripts`     | `bun:test`           | Temporary directories  | None           | `bun run test:scripts` |
+| Code                             | Runner               | Env                    | HTTP Mock      | Command                |
+| -------------------------------- | -------------------- | ---------------------- | -------------- | ---------------------- |
+| `apps/api` (generated)           | `bun:test` (native)  | `bun:sqlite` in-memory | None (real DB) | `bun test`             |
+| `apps/spa` (generated)           | Vite+ (Vitest) + RTL | `jsdom`                | MSW            | `bun run test`         |
+| `packages/{cli,registry,schema}` | `bun:test`           | Temporary directories  | None           | `bun run test`         |
+| `scripts`                        | `bun:test`           | Temporary directories  | None           | `bun run test:scripts` |
 
-From root: `bun run test` runs scripts first, then all workspace test scripts in parallel. `bun run verify` is the full CI gate (check, typecheck, test, build).
+From root: `bun run test` runs scripts first, then all workspace test scripts in parallel. `bun run verify` is the repo gate (check, knip, typecheck, test, intentions lint, registry build); CI then runs `bun run golden`, which scaffolds a fresh project from the packed CLI, installs its modules and items, and runs the quality gate (`bun run check`, then each module's `checks`) in it; for the `dockerfile` configuration it then builds the image, runs the container and asks it for `/health`, `/`, a hashed asset and a client route, and says so when `docker` is unavailable and skips it, unless `GOLDEN_REQUIRE_DOCKER` is set, as in CI, where an unavailable `docker` fails the run; it needs npm.
 
 ---
 
@@ -25,31 +26,18 @@ From root: `bun run test` runs scripts first, then all workspace test scripts in
 ### Principle
 
 - **Real DB** via `bun:sqlite` (memory) — never mock Drizzle.
-- Drizzle migrations run at test startup → schema always in sync with prod.
+- `createTestDb()` builds the tables from the schema barrel at test startup, so a test never waits for `bun run db:generate`.
 - Routes tested via `treaty(app)` (Eden) **without** starting an HTTP server.
 - One `createTestDb()` per `beforeEach` → total test isolation.
 
 ### Shared Setup
 
-File: `apps/api/src/modules/test/db.test.ts`
+File: `packages/db/src/testing.ts` (the `orm/drizzle` module), imported as `{{SCOPE}}/db/testing`. It returns a fresh in-memory `bun:sqlite` database, which is what D1 is, with the tables of the project's schema barrel, or of the schema a test passes in.
 
 ```typescript
-import { Database } from "bun:sqlite";
-import { drizzle } from "drizzle-orm/bun-sqlite";
-import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import * as authSchema from "../db/schemas/db.auth-schema";
+import { createTestDb } from "{{SCOPE}}/db/testing";
 
-const schema = { ...authSchema };
-
-export function createTestDb() {
-  const sqlite = new Database(":memory:");
-  const db = drizzle(sqlite, { schema });
-  const migrationsDir = new URL("../db/migrations", import.meta.url).pathname;
-  migrate(db, { migrationsFolder: migrationsDir });
-  return db;
-}
-
-export type TestDb = ReturnType<typeof createTestDb>;
+const db = await createTestDb();
 ```
 
 ### Route E2E Pattern
@@ -58,7 +46,7 @@ export type TestDb = ReturnType<typeof createTestDb>;
 import { describe, it, expect, beforeEach } from "bun:test";
 import { Elysia } from "elysia";
 import { treaty } from "@elysiajs/eden";
-import { createTestDb, type TestDb } from "../test/db.test";
+import { createTestDb, type TestDb } from "{{SCOPE}}/db/testing";
 import { OrganizationService } from "./organizations.service";
 
 describe("Organizations API (E2E)", () => {
@@ -66,7 +54,7 @@ describe("Organizations API (E2E)", () => {
   let api: ReturnType<typeof treaty>;
 
   beforeEach(async () => {
-    db = createTestDb();
+    db = await createTestDb();
 
     // minimal seed (user + session)
     await db.insert(user).values({/* ... */});
@@ -111,7 +99,7 @@ Applies to all three fronts. Each app's `vite.config.ts` contains the test block
 
 ### Setup
 
-Shared setup: `testing/frontend.setup.ts`. It extends matchers, cleans up React renders, resets MSW handlers after each test and stops the server at the end. Import lifecycle/assertion APIs from `vite-plus/test`.
+Setup: each web module ships its own `apps/<front>/testing/frontend.setup.ts`, which extends matchers and cleans up React renders. `web/ssr` also ships `testing/server.ts`, and its setup resets MSW handlers after each test and stops the server at the end; `web/spa` and `web/static` ship no MSW server. Import lifecycle/assertion APIs from `vite-plus/test`.
 
 ```typescript
 import { beforeAll, afterEach, afterAll } from "vite-plus/test";
@@ -124,7 +112,7 @@ afterAll(() => server.close());
 
 ### MSW Handler
 
-Register endpoint handlers in a test via `server.use(...)` (`testing/server.ts`). No default catch-all handler: unexpected HTTP calls fail.
+Register endpoint handlers in a test via `server.use(...)` (`apps/ssr/testing/server.ts`). No default catch-all handler: unexpected HTTP calls fail.
 
 ```typescript
 import { http, HttpResponse } from "msw";
@@ -192,7 +180,7 @@ describe("loader — /resources/:slug", () => {
 
 Cover: **nominal case + all error cases** (404, 401, 500…).
 
-Set `cloudflareContext` on the provider when the loader needs Worker bindings. The runnable example in `apps/ssr/src/lib/api.server.test.ts` verifies URL resolution and cookie forwarding through the real Eden client and MSW. The snippet above illustrates a future resource route; no such domain route is shipped.
+Set `cloudflareContext` on the provider when the loader needs Worker bindings. The runnable example in the `web/ssr` module (`registry/modules/web/ssr/template/apps/ssr/src/lib/api.server.test.ts`, which golden runs) verifies URL resolution and cookie forwarding through the real Eden client and MSW. The snippet above illustrates a future resource route; no such domain route is shipped.
 
 ### Front Checklist
 
@@ -206,7 +194,7 @@ Set `cloudflareContext` on the provider when the loader needs Worker bindings. T
 
 ## Package
 
-`packages/config` and `packages/emails` have Bun unit tests. `packages/ui` has no dedicated suite yet; its components can be covered through frontend behavior tests. For additional packages:
+The packages the modules ship (`packages/auth`, `packages/storage`, `packages/email`, `packages/db`, `packages/config`, `packages/api-runtime`) have Bun unit tests; `packages/ui` has no dedicated suite, its components are covered through frontend behavior tests. For additional packages:
 
 - Use `bun:test` for unit/utility packages
 - Use Vitest + RTL for UI components
@@ -217,14 +205,12 @@ Set `cloudflareContext` on the provider when the loader needs Worker bindings. T
 ## Commands
 
 ```bash
-# All (from root)
+# All (from root; in a generated project it runs every workspace)
 bun run test
 
 # Per app
-bun run --filter @acme/api test
-bun run --filter @acme/spa test
-bun run --filter @acme/ssr test
-bun run --filter @acme/static test
+bun run --filter {{SCOPE}}/api test
+bun run --filter {{SCOPE}}/spa test
 bun run test:scripts
 
 # Watch mode (from the app)

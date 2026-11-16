@@ -1,0 +1,102 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "resend",
+  "category": "email",
+  "version": "0.1.0",
+  "title": "Resend",
+  "description": "Transactional email: React templates for auth's verification and password reset, a memory adapter for tests and Resend over its HTTP API.",
+  "peers": {
+    "provider": [],
+    "config": ["branding"]
+  },
+  "checks": ["cd packages/email && bun run typecheck && bun run test"],
+  "variants": [
+    {
+      "key": "default",
+      "match": {},
+      "workspace": { "name": "{{SCOPE}}/email", "path": "packages/email" },
+      "dependencies": {
+        "@react-email/render": "2.1.0",
+        "react": "19.2.8",
+        "react-dom": "19.2.8",
+        "{{SCOPE}}/api-runtime": "workspace:*",
+        "{{SCOPE}}/config": "workspace:*"
+      },
+      "devDependencies": {
+        "@types/react": "19.2.18"
+      },
+      "copy": [
+        "packages/email/package.json",
+        "packages/email/tsconfig.json",
+        "packages/email/tsconfig.test.json",
+        "packages/email/src/auth-mailer.test.ts",
+        "packages/email/src/auth-mailer.ts",
+        "packages/email/src/env.test.ts",
+        "packages/email/src/env.ts",
+        "packages/email/src/index.test.ts",
+        "packages/email/src/index.ts",
+        "packages/email/src/providers/memory.provider.ts",
+        "packages/email/src/providers/resend.provider.test.ts",
+        "packages/email/src/providers/resend.provider.ts",
+        "packages/email/src/render.ts",
+        "packages/email/src/runtime.test.ts",
+        "packages/email/src/runtime.ts",
+        "packages/email/src/send.ts",
+        "packages/email/src/templates/reset-password.template.ts",
+        "packages/email/src/templates/verify-email.template.ts",
+        "packages/email/src/templates/welcome.template.ts",
+        "packages/email/src/testing.ts",
+        "packages/email/src/types.ts"
+      ],
+      "env": [{ "name": "RESEND_API_KEY", "required": true, "example": "" }]
+    },
+    {
+      "key": "better-auth",
+      "match": { "auth": "better-auth" },
+      "workspace": { "name": "{{SCOPE}}/email", "path": "packages/email" },
+      "dependencies": {
+        "@react-email/render": "2.1.0",
+        "react": "19.2.8",
+        "react-dom": "19.2.8",
+        "{{SCOPE}}/api-runtime": "workspace:*",
+        "{{SCOPE}}/config": "workspace:*"
+      },
+      "devDependencies": {
+        "@types/react": "19.2.18"
+      },
+      "copy": [
+        "packages/email/package.json",
+        "packages/email/tsconfig.json",
+        "packages/email/tsconfig.test.json",
+        "packages/email/src/auth-mailer.test.ts",
+        "packages/email/src/auth-mailer.ts",
+        "packages/email/src/env.test.ts",
+        "packages/email/src/env.ts",
+        "packages/email/src/index.test.ts",
+        "packages/email/src/index.ts",
+        "packages/email/src/providers/memory.provider.ts",
+        "packages/email/src/providers/resend.provider.test.ts",
+        "packages/email/src/providers/resend.provider.ts",
+        "packages/email/src/render.ts",
+        "packages/email/src/runtime.test.ts",
+        "packages/email/src/runtime.ts",
+        "packages/email/src/send.ts",
+        "packages/email/src/templates/reset-password.template.ts",
+        "packages/email/src/templates/verify-email.template.ts",
+        "packages/email/src/templates/welcome.template.ts",
+        "packages/email/src/testing.ts",
+        "packages/email/src/types.ts"
+      ],
+      "env": [{ "name": "RESEND_API_KEY", "required": true, "example": "" }],
+      "patch": [
+        {
+          "type": "package.dependencies",
+          "file": "packages/auth/package.json",
+          "dependencies": { "{{SCOPE}}/email": "workspace:*" },
+          "intent": "Declare the project's email package as a dependency of the auth package, whose mailer is sent through it."
+        }
+      ],
+      "intent": ["01-wire-email-into-auth.md"]
+    }
+  ]
+}

@@ -1,3 +1,0 @@
-# Cloudflare Worker secrets — copy to .dev.vars (do not commit)
-BETTER_AUTH_SECRET=changeme-minimum-32-characters-long
-RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxxxxxx

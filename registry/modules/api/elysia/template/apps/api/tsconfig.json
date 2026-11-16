@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "noUncheckedIndexedAccess": false,
+    "types": ["bun"]
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
+}

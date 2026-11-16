@@ -1,0 +1,106 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "r2",
+  "category": "storage",
+  "version": "0.1.0",
+  "title": "Cloudflare R2",
+  "description": "Media uploads over an R2 bucket: the BUCKET binding, the medias table and the /v1/media routes, in packages/storage.",
+  "peers": {
+    "provider": ["cloudflare"],
+    "db": ["d1"],
+    "orm": ["drizzle"],
+    "auth": ["better-auth"]
+  },
+  "checks": ["cd packages/storage && bun run typecheck && bun run test"],
+  "variants": [
+    {
+      "key": "cloudflare",
+      "match": { "provider": "cloudflare" },
+      "workspace": { "name": "{{SCOPE}}/storage", "path": "packages/storage" },
+      "dependencies": {
+        "drizzle-orm": "0.45.2",
+        "elysia": "1.4.29",
+        "{{SCOPE}}/api-runtime": "workspace:*",
+        "{{SCOPE}}/auth": "workspace:*",
+        "{{SCOPE}}/db": "workspace:*"
+      },
+      "devDependencies": {
+        "@cloudflare/workers-types": "5.20260804.1",
+        "@elysiajs/eden": "1.4.9",
+        "miniflare": "5.20260801.0-alpha"
+      },
+      "copy": [
+        "packages/storage/package.json",
+        "packages/storage/tsconfig.json",
+        "packages/storage/tsconfig.test.json",
+        "packages/storage/src/bucket.test.ts",
+        "packages/storage/src/bucket.ts",
+        "packages/storage/src/env.test.ts",
+        "packages/storage/src/env.ts",
+        "packages/storage/src/exports.test.ts",
+        "packages/storage/src/index.ts",
+        "packages/storage/src/media.contract.ts",
+        "packages/storage/src/media.e2e.test.ts",
+        "packages/storage/src/media.module.test.ts",
+        "packages/storage/src/media.module.ts",
+        "packages/storage/src/media.routes.test.ts",
+        "packages/storage/src/media.routes.ts",
+        "packages/storage/src/media.service.ts",
+        "packages/storage/src/r2.test.ts",
+        "packages/storage/src/r2.ts",
+        "packages/storage/src/schema.ts",
+        "packages/storage/src/testing.ts"
+      ],
+      "env": [{ "name": "R2_PUBLIC_URL", "required": true, "example": "" }],
+      "patch": [
+        {
+          "type": "jsonc.merge",
+          "file": "apps/api/wrangler.jsonc",
+          "value": {
+            "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "my-app-media" }],
+            "env": {
+              "production": {
+                "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "my-app-media" }],
+                "vars": { "R2_PUBLIC_URL": "https://api.my-app.com/v1/media/file" }
+              }
+            }
+          },
+          "intent": "Declare the BUCKET R2 binding in the Worker's wrangler.jsonc, for the default environment and for production, and the R2_PUBLIC_URL variable for production only: in development the module derives it from API_URL."
+        },
+        {
+          "type": "package.dependencies",
+          "file": "apps/api/package.json",
+          "dependencies": { "{{SCOPE}}/storage": "workspace:*" },
+          "intent": "Declare the project's storage package as a dependency of the API app."
+        },
+        {
+          "type": "ts.addImport",
+          "file": "apps/api/src/app.ts",
+          "moduleSpecifier": "{{SCOPE}}/storage",
+          "namedImports": ["mediaModule"],
+          "intent": "Import mediaModule from the project's storage package in the API app."
+        },
+        {
+          "type": "ts.elysiaUse",
+          "file": "apps/api/src/app.ts",
+          "targetName": "app",
+          "argument": "mediaModule",
+          "intent": "Register mediaModule on the API app after its last .use and before its routes: it serves the media routes under /v1/media."
+        },
+        {
+          "type": "package.dependencies",
+          "file": "packages/db/package.json",
+          "dependencies": { "{{SCOPE}}/storage": "workspace:*" },
+          "intent": "Declare the project's storage package as a dependency of the db package, whose schema barrel re-exports its table."
+        },
+        {
+          "type": "ts.addNamedExport",
+          "file": "packages/db/src/schema/index.ts",
+          "moduleSpecifier": "{{SCOPE}}/storage/schema",
+          "exports": ["medias", "mediasRelations"],
+          "intent": "Re-export the medias table and its relations of the storage package from the schema barrel, so db:generate and createDB see them."
+        }
+      ]
+    }
+  ]
+}

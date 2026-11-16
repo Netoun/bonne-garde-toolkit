@@ -5,29 +5,17 @@
       "entry": ["scripts/*.ts"],
       "project": ["scripts/**/*.ts"],
     },
-    "apps/api": {
-      "entry": ["src/test-setup.ts"],
-    },
-    "apps/spa": {
-      "project": ["src/**/*.{ts,tsx,css}"],
-    },
-    "apps/ssr": {
-      "project": ["src/**/*.{ts,tsx,css}"],
-    },
-    "apps/static": {
-      "project": ["src/**/*.{ts,tsx,css}"],
-    },
-    "packages/emails": {
-      "project": ["src/**/*.{ts,tsx}"],
-    },
-    "packages/config": {
-      "project": ["src/**/*.{ts,tsx}"],
-    },
-    "packages/ui": {
-      "project": ["src/**/*.{ts,tsx,css}"],
-    },
   },
 
-  "ignoreDependencies": ["@types/qrcode", "miniflare", "tsx", "module-alias"],
+  "ignore": [
+    // Source material the registry ships. It runs in a generated project, where its imports and
+    // dependencies exist; golden verifies it there (070), and knip cannot resolve it here.
+    "registry/**/template/**",
+  ],
+
+  // A type a file uses itself is part of its contract even when nobody imports it by name: the type
+  // of a returned report. A value is not: an export nobody imports is un-exported, not ignored.
+  "ignoreExportsUsedInFile": { "type": true, "interface": true },
+
   "bun": true,
 }

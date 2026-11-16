@@ -1,0 +1,21 @@
+{
+  "name": "{{SCOPE}}/auth",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The project's authentication: Better Auth over the project's database",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts",
+    "./schema": "./src/schema.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && bun run typecheck:test",
+    "typecheck:test": "tsc --project tsconfig.test.json --noEmit",
+    "test": "bun test",
+    "auth:generate": "bunx auth@1.6.26 generate --config ./src/auth.cli.ts --output ./src/schema.ts --adapter drizzle --dialect sqlite --yes && vp fmt --write ./src/schema.ts",
+    "auth:secret": "bunx auth@1.6.26 secret",
+    "db:seed": "bun run src/seed.ts"
+  }
+}

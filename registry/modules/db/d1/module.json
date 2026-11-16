@@ -1,0 +1,65 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "d1",
+  "category": "db",
+  "version": "0.1.0",
+  "title": "Cloudflare D1",
+  "description": "The D1 binding of the Worker and the database handle the ORM is built on, in packages/db.",
+  "peers": { "provider": ["cloudflare"] },
+  "checks": ["cd packages/db && bun run typecheck && bun run test"],
+  "variants": [
+    {
+      "key": "cloudflare",
+      "match": { "provider": "cloudflare" },
+      "workspace": { "name": "{{SCOPE}}/db", "path": "packages/db" },
+      "dependencies": { "{{SCOPE}}/api-runtime": "workspace:*" },
+      "devDependencies": {
+        "@cloudflare/workers-types": "5.20260804.1",
+        "miniflare": "5.20260801.0-alpha"
+      },
+      "copy": [
+        "packages/db/package.json",
+        "packages/db/tsconfig.json",
+        "packages/db/tsconfig.test.json",
+        "packages/db/src/d1.ts",
+        "packages/db/src/d1.test.ts"
+      ],
+      "patch": [
+        {
+          "type": "jsonc.merge",
+          "file": "apps/api/wrangler.jsonc",
+          "value": {
+            "d1_databases": [
+              {
+                "binding": "DB",
+                "database_name": "my-app-db",
+                "database_id": "00000000-0000-0000-0000-000000000000",
+                "migrations_dir": "../../packages/db/migrations"
+              }
+            ],
+            "env": {
+              "production": {
+                "d1_databases": [
+                  {
+                    "binding": "DB",
+                    "database_name": "my-app-db",
+                    "database_id": "00000000-0000-0000-0000-000000000000",
+                    "migrations_dir": "../../packages/db/migrations"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "type": "scripts.merge",
+          "file": "apps/api/package.json",
+          "scripts": {
+            "db:migrate:local": "wrangler d1 migrations apply DB --local",
+            "db:migrate:remote": "wrangler d1 migrations apply DB --remote"
+          }
+        }
+      ]
+    }
+  ]
+}
