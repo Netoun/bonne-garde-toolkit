@@ -3,10 +3,16 @@ import { join } from "node:path";
 import type { FileRecord, ProjectManifest } from "@bonne-garde/schema";
 import { ApplyError } from "./apply-error";
 import { isMissing, readDisk } from "./disk";
-import type { ModulePlan } from "./module-plan";
+import { keyOf, type ModulePlan, type Reselected } from "./module-plan";
 import { sha256Hex } from "./sha256";
 import type { PendingIntention } from "./pending-intentions";
-import { ownVersion, stagePatches, type PatchOwner, type PatchReport } from "./stage-patches";
+import {
+  ownVersion,
+  stagePatches,
+  type Collision,
+  type PatchOwner,
+  type PatchReport,
+} from "./stage-patches";
 import type { StagedFile } from "./write-tree";
 
 /**
@@ -25,6 +31,34 @@ function collision(target: string, owner: string, recorded: FileRecord | undefin
   return recorded.owner === owner
     ? `${target} was modified since ${owner} wrote it`
     : `${target} is owned by ${recorded.owner}, and ${owner} would replace it`;
+}
+
+/**
+ * The refusal for what `--force` overwrites. The collisions of a module the call plans again without
+ * naming it are reported apart: `--force` does not reach them, so the first line's advice would be
+ * false for them, and the error says who added the module and carries it for the caller to name.
+ */
+function collisionError(collisions: Collision[], reselected: Map<string, Reselected>): ApplyError {
+  const listed = (list: Collision[]) => list.map(({ message }) => `\n  ${message}`).join("");
+  const named = collisions.filter(({ owner }) => !reselected.has(owner));
+  const parts =
+    named.length > 0
+      ? [
+          `${named.length === 1 ? "this file is" : "these files are"} in the way (use --force to overwrite):${listed(named)}`,
+        ]
+      : [];
+  const nameToForce: string[] = [];
+  for (const [key, { from, to, because }] of reselected) {
+    const mine = collisions.filter(({ owner }) => owner === key);
+    if (mine.length === 0) {
+      continue;
+    }
+    nameToForce.push(key);
+    parts.push(
+      `${key}, installed on variant ${from}, is planned again on variant ${to} because ${because.join(", ")} ${because.length === 1 ? "is" : "are"} added, and --force reaches only what the call names; ${mine.length === 1 ? "this file of it is" : "these files of it are"} in the way:${listed(mine)}`,
+    );
+  }
+  return new ApplyError(`nothing was written; ${parts.join("\n")}`, nameToForce);
 }
 
 /** A file whose recorded owner changed because another owner now writes it. */
@@ -163,7 +197,9 @@ async function stageEnv(
  * - differs, recorded for this module and still at the recorded sha: untouched, so overwritten.
  * - differs otherwise (edited since, owned by another owner, or not recorded): a collision that
  *   `--force` overwrites, the module becoming the owner. 060's table is silent on a file owned by
- *   another module, so it follows the row for a file that differs from its recorded sha.
+ *   another module, so it follows the row for a file that differs from its recorded sha. `--force`
+ *   reaches the modules the call names and not the ones it plans again (050 step 7): their collisions
+ *   are refused, and the error says to name them.
  * - differs and carries regions of another module: rewriting would drop them, so refused, `--force`
  *   or not (060: a region owned by another module is an error always).
  * - recorded for this module, carrying recorded regions of any module, and changed since it was
@@ -181,8 +217,12 @@ export async function stageModules(options: {
   /** The items of this call that add dependencies (030): their patches run in the same virtual tree, after the modules'. */
   itemPatches?: PatchOwner[];
   force: boolean;
+  /** The installed modules `plans` holds because a module the call adds changes their variant, and that the call does not name. */
+  reselected: Reselected[];
 }): Promise<ModuleStaging> {
   const { projectRoot, manifest, plans, claimed, force } = options;
+  const reselected = new Map(options.reselected.map((entry) => [keyOf(entry.ref), entry]));
+  const forces = (owner: string) => force && !reselected.has(owner);
   const patchOwners: PatchOwner[] = [...plans, ...(options.itemPatches ?? [])];
   const staging: ModuleStaging = {
     staged: [],
@@ -197,7 +237,7 @@ export async function stageModules(options: {
     pending: [],
   };
   const refused: string[] = [];
-  const collisions: string[] = [];
+  const collisions: Collision[] = [];
 
   // Who writes what, whole: a path two claimants name is refused, and every other target is kept.
   const owners = new Map<string, string>();
@@ -228,7 +268,7 @@ export async function stageModules(options: {
 
   const templates = new Map(contents);
   const stagePatchesOn = (tierOne: Map<string, string>) =>
-    stagePatches({ projectRoot, manifest, plans: patchOwners, tierOne, claimed, force });
+    stagePatches({ projectRoot, manifest, plans: patchOwners, tierOne, claimed, forces });
   let patches = await stagePatchesOn(contents);
 
   // A tier-1 file that carries recorded regions and that the project changed since the module wrote
@@ -312,13 +352,13 @@ export async function stageModules(options: {
         );
       } else if (recorded?.owner === owner && sha256Hex(disk.bytes) === recorded.sha256) {
         stage();
-      } else if (force) {
+      } else if (forces(owner)) {
         if (recorded !== undefined && recorded.owner !== owner) {
           staging.tookOver.push({ path: target, from: recorded.owner, by: owner });
         }
         stage();
       } else {
-        collisions.push(collision(target, owner, recorded));
+        collisions.push({ owner, message: collision(target, owner, recorded) });
       }
     }
   }
@@ -347,13 +387,13 @@ export async function stageModules(options: {
       staging.files[target] = { owner: recorded?.owner ?? owner, sha256 };
     } else if (recorded?.owner === owner && sha256Hex(disk.bytes) === recorded.sha256) {
       stage();
-    } else if (force) {
+    } else if (forces(owner)) {
       if (recorded !== undefined && recorded.owner !== owner) {
         staging.tookOver.push({ path: target, from: recorded.owner, by: owner });
       }
       stage();
     } else {
-      collisions.push(collision(target, owner, recorded));
+      collisions.push({ owner, message: collision(target, owner, recorded) });
     }
   }
 
@@ -377,9 +417,7 @@ export async function stageModules(options: {
     );
   }
   if (collisions.length > 0) {
-    throw new ApplyError(
-      `nothing was written; ${collisions.length === 1 ? "this file is" : "these files are"} in the way (use --force to overwrite):\n  ${collisions.join("\n  ")}`,
-    );
+    throw collisionError(collisions, reselected);
   }
 
   const { env, regions } = await stageEnv(projectRoot, plans, claimed, staging.staged);

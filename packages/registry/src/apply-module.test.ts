@@ -8,7 +8,7 @@ import {
   type ProjectManifest,
 } from "@bonne-garde/schema";
 import { ApplyError, applyInstallPlan } from "./apply-plan";
-import type { ModulePlan } from "./module-plan";
+import type { ModulePlan, Reselected } from "./module-plan";
 import { sha256Hex } from "./sha256";
 import type { RegistryItem } from "./types";
 
@@ -96,7 +96,7 @@ async function install(
   projectRoot: string,
   manifest: ProjectManifest,
   modules: ModulePlan[],
-  extra: { force?: boolean; dryRun?: boolean } = {},
+  extra: { force?: boolean; dryRun?: boolean; reselected?: Reselected[] } = {},
 ) {
   return applyInstallPlan({
     projectRoot,
@@ -386,6 +386,92 @@ describe("applyInstallPlan: modules (050 steps 10-12)", () => {
   });
 });
 
+describe("applyInstallPlan: --force reaches what the call names, not a module it plans again (050 step 7)", () => {
+  const auth = (content = "v1") =>
+    modulePlan({
+      category: "auth",
+      id: "better-auth",
+      key: "auth/better-auth",
+      files: [{ target: "auth.txt", content }],
+    });
+  const email = (content: string) =>
+    modulePlan({
+      category: "email",
+      id: "resend",
+      key: "email/resend",
+      variant: "better-auth",
+      files: [{ target: "email.txt", content }],
+    });
+  const RESELECTED = {
+    ref: { category: "email", id: "resend" },
+    from: "default",
+    to: "better-auth",
+    because: ["auth/better-auth"],
+  } satisfies Reselected;
+
+  test("a planned-again module's edited file is not overwritten under --force: nothing is written, and the error names it, who added it, and what to name", async () => {
+    const { projectRoot, manifest } = await freshProject();
+    const first = await install(projectRoot, manifest, [email("v1")]);
+    await writeFile(join(projectRoot, "email.txt"), "edited by the user");
+    const before = await snapshot(projectRoot);
+
+    const attempt = install(projectRoot, first.manifest, [auth(), email("v2")], {
+      force: true,
+      reselected: [RESELECTED],
+    });
+
+    await expect(attempt).rejects.toBeInstanceOf(ApplyError);
+    await expect(attempt).rejects.toThrow(
+      /^nothing was written; email\/resend, installed on variant default, is planned again on variant better-auth because auth\/better-auth is added, and --force reaches only what the call names; this file of it is in the way:\n {2}email\.txt was modified since email\/resend wrote it$/,
+    );
+    await expect(attempt).rejects.toMatchObject({ nameToForce: ["email/resend"] });
+    expect(await snapshot(projectRoot)).toEqual(before);
+
+    // Naming it in the same call, which is what the error asks for, is what --force reaches.
+    const named = await install(projectRoot, first.manifest, [auth(), email("v2")], {
+      force: true,
+    });
+    expect(named.written).toEqual(["auth.txt", "email.txt"]);
+    expect(await readFile(join(projectRoot, "email.txt"), "utf8")).toBe("v2");
+  });
+
+  test("a named module's collision keeps the message it had, and the planned-again one's follows it in the same error", async () => {
+    const { projectRoot, manifest } = await freshProject();
+    const first = await install(projectRoot, manifest, [auth(), email("v1")]);
+    await writeFile(join(projectRoot, "auth.txt"), "edited by the user");
+    await writeFile(join(projectRoot, "email.txt"), "edited by the user");
+
+    const attempt = install(projectRoot, first.manifest, [auth("v2"), email("v2")], {
+      reselected: [RESELECTED],
+    });
+
+    await expect(attempt).rejects.toThrow(
+      /^nothing was written; this file is in the way \(use --force to overwrite\):\n {2}auth\.txt was modified since auth\/better-auth wrote it\nemail\/resend, installed on variant default, is planned again on variant better-auth because auth\/better-auth is added, and --force reaches only what the call names; this file of it is in the way:\n {2}email\.txt was modified since email\/resend wrote it$/,
+    );
+    await expect(attempt).rejects.toMatchObject({ nameToForce: ["email/resend"] });
+  });
+
+  test("a planned-again module with nothing in the way is installed under --force, and an error that is not its own does not mention it", async () => {
+    const { projectRoot, manifest } = await freshProject();
+    const first = await install(projectRoot, manifest, [auth(), email("v1")]);
+    await writeFile(join(projectRoot, "auth.txt"), "edited by the user");
+
+    const attempt = install(projectRoot, first.manifest, [auth("v2"), email("v2")], {
+      reselected: [RESELECTED],
+    });
+    await expect(attempt).rejects.toThrow(
+      /^nothing was written; this file is in the way \(use --force to overwrite\):\n {2}auth\.txt was modified since auth\/better-auth wrote it$/,
+    );
+    await expect(attempt).rejects.toMatchObject({ nameToForce: [] });
+
+    const forced = await install(projectRoot, first.manifest, [auth("v2"), email("v2")], {
+      force: true,
+      reselected: [RESELECTED],
+    });
+    expect(forced.written).toEqual(["auth.txt", "email.txt"]);
+  });
+});
+
 describe("applyInstallPlan: binary files (035)", () => {
   // A PNG signature, the placeholder as ASCII, and the byte 0xff, which UTF-8 text cannot hold.
   const ICON = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, ...Buffer.from("{{SCOPE}}"), 0xff, 0x00]);
@@ -467,6 +553,31 @@ describe("applyInstallPlan: binary files (035)", () => {
     const forced = await install(projectRoot, first.manifest, [withIcon(ICON)], { force: true });
     expect(forced.written).toEqual([TARGET]);
     expect((await onDisk(projectRoot)).equals(ICON)).toBe(true);
+  });
+
+  test("an edited binary file of a module the call plans again is not overwritten under --force", async () => {
+    const { projectRoot, manifest } = await freshProject();
+    const first = await install(projectRoot, manifest, [withIcon(ICON)]);
+    await writeFile(join(projectRoot, TARGET), LOOKALIKE);
+    const before = await hashes(projectRoot);
+
+    const attempt = install(projectRoot, first.manifest, [withIcon(ICON)], {
+      force: true,
+      reselected: [
+        {
+          ref: { category: "provider", id: "cloudflare" },
+          from: "default",
+          to: "better-auth",
+          because: ["auth/better-auth"],
+        },
+      ],
+    });
+
+    await expect(attempt).rejects.toThrow(
+      /^nothing was written; provider\/cloudflare, installed on variant default, is planned again on variant better-auth because auth\/better-auth is added, .*in the way:\n {2}assets\/icon\.png was modified since provider\/cloudflare wrote it$/s,
+    );
+    await expect(attempt).rejects.toMatchObject({ nameToForce: ["provider/cloudflare"] });
+    expect(await hashes(projectRoot)).toEqual(before);
   });
 
   test("a file bg.json does not record is refused when its bytes differ, and recorded when they are the same", async () => {

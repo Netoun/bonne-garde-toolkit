@@ -42,6 +42,9 @@ export type PatchReport = {
   regions: RegionReport[];
 };
 
+/** A file or a region in the way, and the owner whose write it blocks: `--force` reaches the owner or not. */
+export type Collision = { owner: string; message: string };
+
 export type PatchStaging = {
   reports: PatchReport[];
   /** The regions to merge into `bg.json`: file to region to owner. */
@@ -52,8 +55,8 @@ export type PatchStaging = {
   pending: PendingIntention[];
   /** Conflicts `--force` does not bypass. */
   refused: string[];
-  /** Conflicts `--force` overwrites. */
-  collisions: string[];
+  /** Conflicts `--force` overwrites, for the owners it reaches. */
+  collisions: Collision[];
 };
 
 type Text = { ok: true; text: string } | { ok: false; reason: string };
@@ -96,7 +99,8 @@ export function ownVersion(
  *
  * Per script, 060's conflict table: a region owned by another module is refused always; present and
  * equal is skipped (and claimed, as an identical file is); present and differing, or written by the
- * project with no region recorded, is a collision that `force` overwrites; absent is written.
+ * project with no region recorded, is a collision that `--force` overwrites when it reaches the owner;
+ * absent is written.
  */
 export async function stagePatches(options: {
   projectRoot: string;
@@ -106,9 +110,10 @@ export async function stagePatches(options: {
   tierOne: Map<string, string>;
   /** Target to owner for everything this call writes whole, items included. */
   claimed: Map<string, string>;
-  force: boolean;
+  /** Whether `--force` reaches the patches of this owner. */
+  forces: (owner: string) => boolean;
 }): Promise<PatchStaging> {
-  const { projectRoot, manifest, plans, tierOne, claimed, force } = options;
+  const { projectRoot, manifest, plans, tierOne, claimed, forces } = options;
   const staging: PatchStaging = {
     reports: [],
     regions: {},
@@ -208,13 +213,14 @@ export async function stagePatches(options: {
           report.regions.push({ region, status: "applied" });
         } else if (state.kind === "equal") {
           report.regions.push({ region, status: "skipped" });
-        } else if (force) {
+        } else if (forces(plan.key)) {
           write.add(region);
           report.regions.push({ region, status: "applied", replaced: state.current });
         } else {
-          staging.collisions.push(
-            `${region} of ${file} is ${state.shown}, which differs from what ${plan.key} declares (${declared})`,
-          );
+          staging.collisions.push({
+            owner: plan.key,
+            message: `${region} of ${file} is ${state.shown}, which differs from what ${plan.key} declares (${declared})`,
+          });
           conflicted = true;
           continue;
         }

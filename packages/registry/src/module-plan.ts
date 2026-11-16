@@ -54,7 +54,7 @@ export type ModulePlan = {
   checks: string[];
 };
 
-const keyOf = (ref: ModuleRef): string => `${ref.category}/${ref.id}`;
+export const keyOf = (ref: ModuleRef): string => `${ref.category}/${ref.id}`;
 
 function qualifiedForms(modules: RegistryModule[]): string {
   return modules.map(({ manifest }) => keyOf(manifest)).join(", ");

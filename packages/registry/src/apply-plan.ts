@@ -8,7 +8,7 @@ import {
   type ProjectManifest,
 } from "@bonne-garde/schema";
 import { ApplyError } from "./apply-error";
-import type { ModulePlan } from "./module-plan";
+import type { ModulePlan, Reselected } from "./module-plan";
 import { itemDependencyPatches } from "./item-dependencies";
 import { itemFileTarget, itemFileText, type InstallPlan } from "./resolve-plan";
 import { sha256Hex } from "./sha256";
@@ -26,7 +26,10 @@ export type ApplyOptions = {
   /** Modules to install in the same all-or-nothing apply, in plan order. */
   modules?: ModulePlan[];
   sourceLabel: string;
+  /** Overwrites what is in the way of the items and the modules named in the call, not of `reselected` ones. */
   force?: boolean;
+  /** The entries of `modules` that the call plans again without naming them (050 step 7). */
+  reselected?: Reselected[];
   dryRun?: boolean;
   now?: () => string;
 };
@@ -192,6 +195,7 @@ export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResu
     claimed,
     itemPatches,
     force: options.force ?? false,
+    reselected: options.reselected ?? [],
   });
   staged.push(...staging.staged);
   written.push(...staging.written);
