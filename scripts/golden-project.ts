@@ -293,6 +293,19 @@ export const DEPLOY_PLAN: Readonly<Record<string, readonly string[]>> = {
   ],
 };
 
+/**
+ * What each app the plan builds needs of the workflow's variables, in each configuration that installs the
+ * deploy module, by the directory it is built in. Written out by hand, not read from the files the script
+ * reads: the SPA and the static site read `VITE_API_URL` when they build and throw at load without it; the
+ * Worker `ssr` reads `API_URL` from its wrangler config at run time and needs no build variable; and the
+ * optional `VITE_APP_URL` of `web/static` is read by nothing, so it is not asked for.
+ */
+export const DEPLOY_BUILD_NEEDS: Readonly<
+  Record<string, Readonly<Record<string, readonly string[]>>>
+> = {
+  cloudflare: { "apps/spa": ["VITE_API_URL"], "apps/static": ["VITE_API_URL"] },
+};
+
 /** The plan the dry run printed: each step as `<phase> <cwd>: <command>`, the apps once each in order, the build variables it names. */
 export type DeployPlan = { steps: string[]; apps: string[]; buildVars: string[] };
 
@@ -325,6 +338,69 @@ export function readDeployPlan(stdout: string): DeployPlan {
     }
   }
   return { steps, apps, buildVars: printed.buildVars };
+}
+
+/** The variables each build needs, as the dry run prints them (`requiredBuildVars`: names, by app directory). */
+export function readDeployNeeds(stdout: string): Record<string, string[]> {
+  let printed: unknown;
+  try {
+    printed = JSON.parse(stdout);
+  } catch {
+    throw new Error(`the dry run printed output that is not JSON: ${stdout.trim() || "(nothing)"}`);
+  }
+  const needs = isRecord(printed) ? printed.requiredBuildVars : undefined;
+  if (!isRecord(needs) || !Object.values(needs).every(isStringArray)) {
+    throw new Error(
+      "the dry run printed no `requiredBuildVars`, an object of variable names by app",
+    );
+  }
+  return Object.fromEntries(
+    Object.entries(needs).flatMap(([app, names]) => (isStringArray(names) ? [[app, names]] : [])),
+  );
+}
+
+/** What the script derives from the installed apps is what golden expects each build to need: names the first app that differs. */
+export function expectBuildNeeds(
+  planned: Readonly<Record<string, readonly string[]>>,
+  expected: Readonly<Record<string, readonly string[]>>,
+): void {
+  for (const app of [...new Set([...Object.keys(planned), ...Object.keys(expected)])].sort()) {
+    const got = (planned[app] ?? []).join(", ") || "(nothing)";
+    const want = (expected[app] ?? []).join(", ") || "(nothing)";
+    if (got !== want) {
+      throw new Error(`${app} needs ${got} to build, golden expects ${want}`);
+    }
+  }
+}
+
+/**
+ * A dry run handed variables that lack what a build needs is refused: it exits non-zero, names each app
+ * and each variable it lacks, and prints none of the values it was handed (`secrets`).
+ */
+export function expectBuildVarsRefusal(
+  result: { code: number; output: string },
+  expected: Readonly<Record<string, readonly string[]>>,
+  secrets: readonly string[],
+): void {
+  if (result.code === 0) {
+    throw new Error(
+      "the dry run passed variables that lack what a build needs: it must be refused",
+    );
+  }
+  for (const [app, names] of Object.entries(expected)) {
+    for (const name of [app, ...names]) {
+      if (!result.output.includes(name)) {
+        throw new Error(
+          `the refusal does not name ${name}; it printed: ${result.output.trim() || "(nothing)"}`,
+        );
+      }
+    }
+  }
+  for (const secret of secrets) {
+    if (result.output.includes(secret)) {
+      throw new Error("the refusal printed the value of a variable it was handed");
+    }
+  }
 }
 
 /** The plan is the expected list, in the expected order: names the first step that differs. */
@@ -2075,6 +2151,27 @@ async function captureBoth(
   return { stdout, stderr };
 }
 
+/** A command that has to fail, run with some variables set, and everything it printed: the deploy script logs its refusals on stdout. */
+async function refused(
+  argv: string[],
+  cwd: string,
+  env: Record<string, string>,
+): Promise<{ code: number; output: string }> {
+  const proc = Bun.spawn(argv, {
+    cwd,
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, ...env },
+  });
+  const [code, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  return { code, output: `${stdout}${stderr}` };
+}
+
 async function attempt(argv: string[], cwd: string, timeoutMs?: number): Promise<Attempt> {
   const proc = Bun.spawn(argv, {
     cwd,
@@ -2608,8 +2705,9 @@ async function reselected(
 /**
  * What deploying would do, proved with no account and no network: the workflow parses and only calls
  * scripts the project has, the script's dry run plans exactly the expected steps in order, every app
- * in it has a wrangler config and a deploy script and every app with a config is in it, and a
- * `VITE_*` variable handed to the script is named in the plan and its value never printed.
+ * in it has a wrangler config and a deploy script and every app with a config is in it, a
+ * `VITE_*` variable handed to the script is named in the plan and its value never printed, and the
+ * plan names the variable each build needs, refusing variables that lack it.
  */
 async function deployPlanned(project: string, timings: Timing[], name: string): Promise<void> {
   await phase(timings, `${name}: deploy plan`, async () => {
@@ -2621,9 +2719,17 @@ async function deployPlanned(project: string, timings: Timing[], name: string): 
     const scripts = isRecord(root) && isRecord(root.scripts) ? Object.keys(root.scripts) : [];
     expectWorkflow(await Bun.file(join(project, DEPLOY_WORKFLOW)).text(), scripts);
 
+    const needs = DEPLOY_BUILD_NEEDS[name];
+    if (needs === undefined) {
+      throw new Error(
+        `no expected build variables for the ${name} configuration (DEPLOY_BUILD_NEEDS)`,
+      );
+    }
     const dryRun = [BUN, "run", DEPLOY_SCRIPT, "--dry-run"];
-    const plan = readDeployPlan(await capture(dryRun, project));
+    const printed = await capture(dryRun, project);
+    const plan = readDeployPlan(printed);
     expectDeployPlan(plan.steps, expected);
+    expectBuildNeeds(readDeployNeeds(printed), needs);
     if (plan.buildVars.length > 0) {
       throw new Error(
         `the dry run forwards ${plan.buildVars.join(", ")} with no variable handed to it`,
@@ -2663,6 +2769,17 @@ async function deployPlanned(project: string, timings: Timing[], name: string): 
       throw new Error(
         `the dry run forwards ${JSON.stringify(buildVars)}, expected only VITE_API_URL`,
       );
+    }
+
+    // A front built without its API URL deploys and is broken: handed variables that lack what a build
+    // needs (none at all, an unrelated one, an empty one), the dry run refuses. The real run does the
+    // same before its first build; golden does not start it, since a regression would reach Cloudflare.
+    for (const VARS_JSON of [
+      "{}",
+      JSON.stringify({ API_URL: secretish }),
+      JSON.stringify({ VITE_API_URL: "" }),
+    ]) {
+      expectBuildVarsRefusal(await refused(dryRun, project, { VARS_JSON }), needs, [secretish]);
     }
   });
 }

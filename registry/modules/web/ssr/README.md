@@ -35,7 +35,10 @@ from `README.md` (placeholder text) and `.env.example`, which `env` replaces wit
   `wrangler.jsonc`, `public/robots.txt`.
 - `workers/app.ts`: the Worker entry. It hands the `env` and `ctx` of the request to the loaders
   through `cloudflareContext`.
-- `src/root.tsx`, `src/routes.ts`, `src/entry.server.tsx`, `src/vite-env.d.ts`.
+- `src/root.tsx`, `src/routes.ts`, `src/entry.server.tsx`, `src/vite-env.d.ts`: the last one is Vite's client types
+  and nothing else. The legacy file typed a `VITE_API_URL` that no code of the app reads, and
+  `deploy/cloudflare-actions` asks for the `VITE_*` variables an app types there, so a project with this app and no
+  front that builds with one would be refused a deploy for a variable it does not need.
 - `src/lib/{api.server,cloudflare-context,utils}.ts`, `src/components/client-only.tsx`.
 - `src/features/home/pages/home-page.tsx`.
 - Four tests: `home-page.test.tsx`, and the three of `lib/api.server.test.ts`.

@@ -100,14 +100,18 @@ import {
   STORAGE_MIN_TESTS,
   testCounts,
   until,
+  DEPLOY_BUILD_NEEDS,
   DEPLOY_MODULE,
   DEPLOY_PLAN,
+  expectBuildNeeds,
+  expectBuildVarsRefusal,
   expectDeployableApp,
   expectDeployPlan,
   expectEveryAppPlanned,
   expectProviderRefusal,
   expectWorkflow,
   hasDeploy,
+  readDeployNeeds,
   readDeployPlan,
   refusesDeploy,
   type AddedModule,
@@ -900,6 +904,87 @@ describe("the deploy phases (what golden proves of deploy/cloudflare-actions wit
       expect(() =>
         readDeployPlan(JSON.stringify({ steps: [{ phase: "build" }], buildVars: [] })),
       ).toThrow(/step/);
+    });
+  });
+
+  describe("the variables a build needs", () => {
+    const needs = { "apps/spa": ["VITE_API_URL"], "apps/static": ["VITE_API_URL"] };
+
+    test("golden expects the SPA and the static site to need the API URL, and no other app a variable", () => {
+      expect(DEPLOY_BUILD_NEEDS.cloudflare).toEqual(needs);
+    });
+
+    test("reads them from the plan the dry run printed, by app", () => {
+      expect(
+        readDeployNeeds(JSON.stringify({ steps: [], buildVars: [], requiredBuildVars: needs })),
+      ).toEqual(needs);
+      expect(readDeployNeeds(JSON.stringify({ requiredBuildVars: {} }))).toEqual({});
+    });
+
+    test("fails on a plan that does not say, and on output that is not a plan", () => {
+      expect(() => readDeployNeeds(JSON.stringify({ steps: [] }))).toThrow(/requiredBuildVars/);
+      expect(() =>
+        readDeployNeeds(JSON.stringify({ requiredBuildVars: { "apps/spa": 1 } })),
+      ).toThrow(/requiredBuildVars/);
+      expect(() => readDeployNeeds("deploy: nothing to deploy")).toThrow(/not JSON/);
+    });
+
+    test("passes the plan whose needs are the expected ones, whatever the order of the apps", () => {
+      expect(() => expectBuildNeeds(needs, { ...needs })).not.toThrow();
+      expect(() =>
+        expectBuildNeeds({ "apps/static": ["VITE_API_URL"], "apps/spa": ["VITE_API_URL"] }, needs),
+      ).not.toThrow();
+    });
+
+    test("names the app that needs more, less or another variable than golden expects", () => {
+      expect(() => expectBuildNeeds({ "apps/spa": ["VITE_API_URL"] }, needs)).toThrow(
+        /apps\/static.*\(nothing\).*VITE_API_URL/s,
+      );
+      expect(() => expectBuildNeeds({ ...needs, "apps/ssr": ["VITE_API_URL"] }, needs)).toThrow(
+        /apps\/ssr needs VITE_API_URL.*expects \(nothing\)/s,
+      );
+      expect(() => expectBuildNeeds({ ...needs, "apps/spa": ["VITE_OTHER"] }, needs)).toThrow(
+        /apps\/spa needs VITE_OTHER.*expects VITE_API_URL/s,
+      );
+    });
+
+    describe("expectBuildVarsRefusal", () => {
+      const refusal = {
+        code: 1,
+        output:
+          "deploy: a build is missing a variable it needs: apps/spa needs VITE_API_URL; apps/static needs VITE_API_URL",
+      };
+
+      test("passes a refusal that names every app and variable and prints no value", () => {
+        expect(() =>
+          expectBuildVarsRefusal(refusal, needs, ["https://golden.invalid"]),
+        ).not.toThrow();
+      });
+
+      test("fails a dry run that passed", () => {
+        expect(() => expectBuildVarsRefusal({ code: 0, output: "{}" }, needs, [])).toThrow(
+          /must be refused/,
+        );
+      });
+
+      test("fails a refusal that does not name an app or a variable", () => {
+        expect(() =>
+          expectBuildVarsRefusal({ code: 1, output: "apps/spa needs VITE_API_URL" }, needs, []),
+        ).toThrow(/apps\/static/);
+        expect(() =>
+          expectBuildVarsRefusal({ code: 1, output: "deploy: failed" }, needs, []),
+        ).toThrow(/apps\/spa.*failed/s);
+      });
+
+      test("fails a refusal that printed a value it was handed", () => {
+        expect(() =>
+          expectBuildVarsRefusal(
+            { ...refusal, output: `${refusal.output} (https://golden.invalid)` },
+            needs,
+            ["https://golden.invalid"],
+          ),
+        ).toThrow(/value/);
+      });
     });
   });
 
