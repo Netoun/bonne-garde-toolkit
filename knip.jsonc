@@ -15,9 +15,9 @@
     "registry/**/template/**",
   ],
 
-  // An export a file uses itself is part of its contract even when nobody imports it by name:
-  // the types of a returned report, the constant that names a file.
-  "ignoreExportsUsedInFile": true,
+  // A type a file uses itself is part of its contract even when nobody imports it by name: the type
+  // of a returned report. A value is not: an export nobody imports is un-exported, not ignored.
+  "ignoreExportsUsedInFile": { "type": true, "interface": true },
 
   "bun": true,
 }

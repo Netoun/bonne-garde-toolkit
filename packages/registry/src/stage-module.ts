@@ -14,7 +14,7 @@ import type { StagedFile } from "./write-tree";
  * `.env.example` and gives no rule for choosing; a fixed name keeps provider technology out of the
  * CLI (035: a category, and so the code that handles it, names no provider's tooling).
  */
-export const ENV_EXAMPLE_FILE = ".env.example";
+const ENV_EXAMPLE_FILE = ".env.example";
 const ENV_KEY = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/;
 
 /** Why a file that differs from what a module would write is in the way (060's conflict table). */
