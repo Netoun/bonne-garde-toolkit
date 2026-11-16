@@ -8,6 +8,6 @@
   },
 
   "ignore": [".claude/worktrees/**"],
-  "ignoreDependencies": ["@types/qrcode", "miniflare", "tsx", "module-alias"],
+  "ignoreDependencies": ["miniflare"],
   "bun": true,
 }
