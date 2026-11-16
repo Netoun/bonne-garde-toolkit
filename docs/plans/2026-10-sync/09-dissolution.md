@@ -406,11 +406,23 @@ Every legacy test has its copy in a module, with the reason written down for eac
 
 Golden runs 239 tests in the `cloudflare` project: storage 75, auth 55, api 33, db 21, email 19, config 16, spa 8, api-runtime 7, ssr 4, static 1.
 
+**Polish 2026-11-16** (`1816bac`..`814d980`):
+
+- **CI.** Golden read the spa as running 0 tests in CI, where Vitest and bun's filter print colours, so CI was red from `83eee60` to `4006d54`; `testCounts` strips them (`1816bac`).
+- **Web.** `config/branding` exports `faviconLinks`, held to the files `favicons()` emits in both directions; `web/spa` loads `favicons()` like ssr and static, and its `publicDir` is free; the three shells render their icon links from `faviconLinks` and set `<html lang>` from `branding.lang` (`a9bb2a9`..`c679040`).
+- **Engine.** `--force` reaches only the modules and items a call names. A module planned again because of an added one is refused when something is in the way, and `bg add` prints the call that names it, which succeeds (`a71de1e`, `814d980`, 050 step 7).
+- **Hygiene.** `no-console` is off for `bg`'s entry files and the scripts modules ship, so `check` reports no warning; `.claude/worktrees/` is in `.gitignore` instead of knip's ignore; `VITE_APP_URL`, which nothing read, is gone from `web/static` and `dev/portless` (`89758f3`..`1f2dc07`).
+- **Kept on purpose.** `orm/drizzle`'s `db:reset` and `auth/better-auth`'s `db:seed` each run `wrangler` with their own fifteen lines: sharing them would make `auth` import a dev tool from `orm`.
+
+Golden runs 242 tests in the `cloudflare` project (config 19); the portless suite is 36.
+
 **Still open:**
 
 - a second `web` module cannot peer on another `web` module under the strict order test;
 - two items cannot pin the same package, because a region has one owner;
-- 030's validation of every `registry.json` against the published shadcn schema is not built.
+- 030's validation of every `registry.json` against the published shadcn schema is not built;
+- the generated project's `check` warns `no-useless-empty-export` on `packages/db/src/schema/index.ts` (`export {};`);
+- an item pulled in through `registryDependencies` is still overwritten under `--force`, though the call does not name it.
 
 **Everything but the deletions done 2026-11-16** (`b24c0c4`..`2b9f681`):
 
