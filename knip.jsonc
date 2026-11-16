@@ -5,12 +5,6 @@
       "entry": ["scripts/*.ts"],
       "project": ["scripts/**/*.ts"],
     },
-    "apps/api": {
-      "entry": ["src/test-setup.ts"],
-    },
-    "apps/spa": {
-      "project": ["src/**/*.{ts,tsx,css}"],
-    },
     "packages/emails": {
       "project": ["src/**/*.{ts,tsx}"],
     },
