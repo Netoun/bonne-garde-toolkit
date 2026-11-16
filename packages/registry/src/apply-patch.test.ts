@@ -43,6 +43,7 @@ function modulePlan(overrides: Partial<ModulePlan> = {}): ModulePlan {
     variant: "default",
     options: {},
     files: [],
+    binaries: [],
     patches: [patch()],
     intentions: [],
     env: [],

@@ -18,11 +18,14 @@ import { plannedPatches, type PlannedPatch } from "./patch-plan";
 import { mapLimit } from "./pool";
 import { PlanError, searchCatalog } from "./resolve-plan";
 import type { RegistryCatalog, RegistryModule } from "./types";
+import { utf8Text } from "./utf8";
 
 /** A module named on the command line, once classified (050 step 3). */
 export type ModuleRef = { category: ModuleCategory; id: string };
 
 export type PlannedFile = { target: string; content: string };
+/** A tier-1 file that is not text (035): its bytes land as they are, and no patch or placeholder touches it. */
+type PlannedBinary = { target: string; bytes: Uint8Array };
 export type PlannedEnvKey = { name: string; required: boolean; example: string };
 
 /** One module's share of an install plan: everything decided before any file is looked at (050 steps 4-8). */
@@ -36,6 +39,8 @@ export type ModulePlan = {
   options: Record<string, ModuleOptionValue>;
   /** Tier 1, as it will land: paths relative to the project, content with `{{SCOPE}}` rendered. */
   files: PlannedFile[];
+  /** Tier 1 files that are not valid UTF-8, copied byte for byte; `{{SCOPE}}` is not rendered in them. */
+  binaries: PlannedBinary[];
   env: PlannedEnvKey[];
   /** Tier 2, as declared and checked: applied in the virtual tree, after every tier-1 file is known. */
   patches: PlannedPatch[];
@@ -318,12 +323,15 @@ function remoteCopyTarget(module: RegistryModule, label: string, pattern: string
   return pattern;
 }
 
-/** Tier 1: `copy` entries, relative to `template/`, which mirrors the target tree (spec 035). */
+/**
+ * Tier 1: `copy` entries, relative to `template/`, which mirrors the target tree (spec 035). A file
+ * whose bytes are valid UTF-8 is text and has `{{SCOPE}}` rendered; any other is binary and is kept as it is.
+ */
 async function copiedFiles(
   module: RegistryModule,
   variant: ModuleVariant,
   scope: string,
-): Promise<PlannedFile[]> {
+): Promise<{ files: PlannedFile[]; binaries: PlannedBinary[] }> {
   const key = keyOf(module.manifest);
   const { reader } = module;
   const targets = new Set<string>();
@@ -352,13 +360,14 @@ async function copiedFiles(
     }
   }
 
-  const readTarget = async (target: string): Promise<string> => {
+  const readTarget = async (target: string): Promise<Uint8Array> => {
     if (!reader) {
-      return readFile(join(module.dir, "template", target), "utf8");
+      const bytes = await readFile(join(module.dir, "template", target));
+      return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     }
     const path = posix.join(module.dir, "template", target);
     try {
-      return await reader.read(path);
+      return await reader.readBytes(path);
     } catch (error) {
       if (error instanceof RegistryFileNotFoundError) {
         throw new PlanError(
@@ -369,11 +378,19 @@ async function copiedFiles(
     }
   };
   const sorted = [...targets].sort();
-  const texts = await mapLimit(sorted, FETCH_CONCURRENCY, readTarget);
-  return sorted.map((target, index) => ({
-    target,
-    content: (texts[index] ?? "").replaceAll("{{SCOPE}}", scope),
-  }));
+  const read = await mapLimit(sorted, FETCH_CONCURRENCY, readTarget);
+  const files: PlannedFile[] = [];
+  const binaries: PlannedBinary[] = [];
+  for (const [index, target] of sorted.entries()) {
+    const bytes = read[index] ?? new Uint8Array();
+    const text = utf8Text(bytes);
+    if (text === null) {
+      binaries.push({ target, bytes });
+    } else {
+      files.push({ target, content: text.replaceAll("{{SCOPE}}", scope) });
+    }
+  }
+  return { files, binaries };
 }
 
 /** npm's four dependency maps: 035 declares a dependency once, in the variant, so a vendored file carries none. */
@@ -504,10 +521,10 @@ async function planModule(
   const intentions = await authoredIntentions(module, variant, project.scope);
 
   const copied = await copiedFiles(module, variant, project.scope);
-  const packageJson = workspacePackageJson(manifest, variant, project.scope, copied);
+  const packageJson = workspacePackageJson(manifest, variant, project.scope, copied.files);
   const files = packageJson
-    ? [...copied.filter((file) => file.target !== packageJson.target), packageJson]
-    : copied;
+    ? [...copied.files.filter((file) => file.target !== packageJson.target), packageJson]
+    : copied.files;
   files.sort((a, b) => (a.target < b.target ? -1 : a.target > b.target ? 1 : 0));
 
   return {
@@ -517,6 +534,7 @@ async function planModule(
     variant: variant.key,
     options: resolveOptions(manifest),
     files,
+    binaries: copied.binaries,
     patches,
     intentions,
     env: (variant.env ?? []).map((entry) => ({

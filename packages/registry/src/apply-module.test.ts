@@ -28,6 +28,7 @@ function modulePlan(overrides: Partial<ModulePlan> = {}): ModulePlan {
     variant: "default",
     options: {},
     files: [{ target: "apps/api/wrangler.jsonc", content: '{ "name": "api" }\n' }],
+    binaries: [],
     env: [],
     patches: [],
     intentions: [],
@@ -382,6 +383,130 @@ describe("applyInstallPlan: modules (050 steps 10-12)", () => {
     ).rejects.toThrow();
 
     expect(await snapshot(projectRoot)).toEqual(before);
+  });
+});
+
+describe("applyInstallPlan: binary files (035)", () => {
+  // A PNG signature, the placeholder as ASCII, and the byte 0xff, which UTF-8 text cannot hold.
+  const ICON = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, ...Buffer.from("{{SCOPE}}"), 0xff, 0x00]);
+  // The same but for that byte. Read as UTF-8, both decode to the same text, so a comparison of
+  // decoded text cannot tell them apart and a comparison of bytes can.
+  const LOOKALIKE = Uint8Array.from(ICON, (byte) => (byte === 0xff ? 0xfe : byte));
+  const TARGET = "assets/icon.png";
+
+  const withIcon = (bytes: Uint8Array) =>
+    modulePlan({ files: [], binaries: [{ target: TARGET, bytes }] });
+  const onDisk = async (root: string) => Buffer.from(await readFile(join(root, TARGET)));
+
+  /** Every file of a tree by the sha256 of its bytes: a snapshot of text would call two lookalikes equal. */
+  async function hashes(root: string): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    for await (const path of new Bun.Glob("**/*").scan({ cwd: root, dot: true, onlyFiles: true })) {
+      out[path] = sha256Hex(await readFile(join(root, path)));
+    }
+    return out;
+  }
+
+  test("is written byte for byte, and bg.json records the sha256 of its bytes", async () => {
+    const { projectRoot, manifest } = await freshProject();
+
+    const result = await install(projectRoot, manifest, [withIcon(ICON)]);
+
+    expect((await onDisk(projectRoot)).equals(ICON)).toBe(true);
+    expect(result.written).toEqual([TARGET]);
+    expect(result.manifest.files[TARGET]).toEqual({
+      owner: "provider/cloudflare",
+      sha256: sha256Hex(ICON),
+    });
+  });
+
+  test("--dry-run lists it and writes nothing", async () => {
+    const { projectRoot, manifest } = await freshProject();
+
+    const result = await install(projectRoot, manifest, [withIcon(ICON)], { dryRun: true });
+
+    expect(result.written).toEqual([TARGET]);
+    expect(await hashes(projectRoot)).toEqual({});
+  });
+
+  test("a second add skips it and changes nothing", async () => {
+    const { projectRoot, manifest } = await freshProject();
+    const first = await install(projectRoot, manifest, [withIcon(ICON)]);
+    const before = await hashes(projectRoot);
+
+    const second = await install(projectRoot, first.manifest, [withIcon(ICON)]);
+
+    expect(second.written).toEqual([]);
+    expect(second.skippedIdentical).toEqual([TARGET]);
+    expect(second.manifest.files).toEqual(first.manifest.files);
+    expect(await hashes(projectRoot)).toEqual(before);
+  });
+
+  test("a changed template overwrites a file nobody touched", async () => {
+    const { projectRoot, manifest } = await freshProject();
+    const first = await install(projectRoot, manifest, [withIcon(ICON)]);
+
+    const updated = await install(projectRoot, first.manifest, [withIcon(LOOKALIKE)]);
+
+    expect(updated.written).toEqual([TARGET]);
+    expect((await onDisk(projectRoot)).equals(LOOKALIKE)).toBe(true);
+    expect(updated.manifest.files[TARGET]?.sha256).toBe(sha256Hex(LOOKALIKE));
+  });
+
+  test("an edit of one byte is the user's: a re-add fails naming the file, and --force overwrites it", async () => {
+    const { projectRoot, manifest } = await freshProject();
+    const first = await install(projectRoot, manifest, [withIcon(ICON)]);
+    await writeFile(join(projectRoot, TARGET), LOOKALIKE);
+    const before = await hashes(projectRoot);
+
+    await expect(install(projectRoot, first.manifest, [withIcon(ICON)])).rejects.toThrow(
+      /assets\/icon\.png was modified since provider\/cloudflare wrote it/,
+    );
+    expect(await hashes(projectRoot)).toEqual(before);
+
+    const forced = await install(projectRoot, first.manifest, [withIcon(ICON)], { force: true });
+    expect(forced.written).toEqual([TARGET]);
+    expect((await onDisk(projectRoot)).equals(ICON)).toBe(true);
+  });
+
+  test("a file bg.json does not record is refused when its bytes differ, and recorded when they are the same", async () => {
+    const { projectRoot, manifest } = await freshProject();
+    await mkdir(join(projectRoot, "assets"));
+    await writeFile(join(projectRoot, TARGET), LOOKALIKE);
+    const before = await hashes(projectRoot);
+
+    await expect(install(projectRoot, manifest, [withIcon(ICON)])).rejects.toThrow(
+      /assets\/icon\.png exists and is not recorded in bg\.json/,
+    );
+    expect(await hashes(projectRoot)).toEqual(before);
+
+    await writeFile(join(projectRoot, TARGET), ICON);
+    const result = await install(projectRoot, manifest, [withIcon(ICON)]);
+    expect(result.skippedIdentical).toEqual([TARGET]);
+    expect(result.manifest.files[TARGET]?.sha256).toBe(sha256Hex(ICON));
+  });
+
+  test("one named by two modules in the same call fails, and --force does not decide between them", async () => {
+    const { projectRoot, manifest } = await freshProject();
+
+    await expect(
+      install(
+        projectRoot,
+        manifest,
+        [
+          withIcon(ICON),
+          modulePlan({
+            category: "tooling",
+            id: "fmt",
+            key: "tooling/fmt",
+            files: [],
+            binaries: [{ target: TARGET, bytes: ICON }],
+          }),
+        ],
+        { force: true },
+      ),
+    ).rejects.toThrow(/assets\/icon\.png is named by both provider\/cloudflare and tooling\/fmt/);
+    expect(await hashes(projectRoot)).toEqual({});
   });
 });
 

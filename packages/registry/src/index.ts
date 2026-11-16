@@ -47,6 +47,7 @@ export { loadNamedModules, readPlanFiles } from "./remote-install";
 export { readInstalledModuleManifest, type ModuleManifestLookup } from "./read-module-manifest";
 export {
   itemFileTarget,
+  itemFileText,
   PlanError,
   resolveInstallPlan,
   searchCatalog,

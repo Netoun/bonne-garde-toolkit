@@ -24,12 +24,12 @@ type ModuleSpec = {
   /** Everything in `module.json` but `id`, `category`, `title` and `description`. */
   json?: Record<string, unknown>;
   /** Files under `template/`, by path. */
-  template?: Record<string, string>;
+  template?: Record<string, string | Uint8Array>;
   /** Files under `intent/`, by file name. */
   intent?: Record<string, string>;
 };
 
-async function write(path: string, content: string): Promise<void> {
+async function write(path: string, content: string | Uint8Array): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, content);
 }
@@ -575,6 +575,53 @@ describe("resolveModulePlans: the plan (050 step 8)", () => {
     );
 
     expect(plan?.files[0]?.content).toBe("RUN bun run --filter '@shop/spa' build\n");
+  });
+
+  test("a file whose bytes are not valid UTF-8 is planned as bytes, never rendered, apart from the text files", async () => {
+    // A PNG signature, the scope placeholder as ASCII, and a byte no UTF-8 text holds.
+    const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, ...Buffer.from("{{SCOPE}}"), 0xff, 0x00]);
+    const catalog = await registry([
+      {
+        category: "provider",
+        id: "docker",
+        json: { variants: [{ key: "default", match: {}, copy: ["assets/**", "Dockerfile"] }] },
+        template: {
+          Dockerfile: "RUN bun run --filter '{{SCOPE}}/spa' build\n",
+          "assets/icon.png": png,
+        },
+      },
+    ]);
+
+    const [plan] = await resolveModulePlans(
+      catalog,
+      [{ category: "provider", id: "docker" }],
+      project({}, "@shop"),
+    );
+
+    expect(plan?.files.map((f) => f.target)).toEqual(["Dockerfile"]);
+    expect(plan?.binaries.map((f) => f.target)).toEqual(["assets/icon.png"]);
+    expect(Buffer.from(plan?.binaries[0]?.bytes ?? []).equals(png)).toBe(true);
+  });
+
+  test("a text file keeps its byte order mark, and a file of any extension is binary by its bytes alone", async () => {
+    const bom = '\uFEFFexport const scope = "{{SCOPE}}";\n';
+    const catalog = await registry([
+      {
+        category: "provider",
+        id: "docker",
+        json: { variants: [{ key: "default", match: {}, copy: ["a.ts", "b.txt"] }] },
+        template: { "a.ts": bom, "b.txt": Uint8Array.from([0xc3, 0x28]) },
+      },
+    ]);
+
+    const [plan] = await resolveModulePlans(
+      catalog,
+      [{ category: "provider", id: "docker" }],
+      project({}, "@shop"),
+    );
+
+    expect(plan?.files[0]?.content).toBe('\uFEFFexport const scope = "@shop";\n');
+    expect(plan?.binaries.map((f) => f.target)).toEqual(["b.txt"]);
   });
 
   test("a glob that matches nothing fails, naming the glob", async () => {

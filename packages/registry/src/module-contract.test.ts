@@ -24,6 +24,7 @@ import { resolveModulePlans, type ModuleRef } from "./module-plan";
 import { patchRegions, writePatch } from "./patch-ops";
 import { plannedPatches } from "./patch-plan";
 import { addNamedExport } from "./ts-patches";
+import { utf8Text } from "./utf8";
 
 const ROOT = join(import.meta.dir, "../../..");
 const MODULES = join(ROOT, "registry/modules");
@@ -2922,6 +2923,19 @@ describe("module contract", () => {
     }
 
     expect(unmatched).toEqual([]);
+  });
+
+  test("a template file that is an image, a font or an archive is binary by its bytes: 035 decides on them, and text would be rendered", async () => {
+    const extensions = /\.(png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf|pdf|zip|wasm)$/i;
+    const text: string[] = [];
+
+    for await (const path of new Bun.Glob("**/template/**/*").scan({ cwd: MODULES, dot: true })) {
+      if (extensions.test(path) && utf8Text(await readFile(join(MODULES, path))) !== null) {
+        text.push(path);
+      }
+    }
+
+    expect(text).toEqual([]);
   });
 
   test("no module id is also an item name, since `bg add <name>` would be ambiguous", async () => {

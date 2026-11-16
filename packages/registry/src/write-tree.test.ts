@@ -52,6 +52,26 @@ describe("writeAllOrNothing", () => {
     });
   });
 
+  test("writes the bytes of a binary file as they are, and puts them back when a later write fails", async () => {
+    const root = await freshDir();
+    const old = Uint8Array.from([0x89, 0xff, 0x00, 0xfe]);
+    const next = Uint8Array.from([0x89, 0xfe, 0x00, 0xff]);
+    await writeFile(join(root, "icon.png"), old);
+    await writeFile(join(root, "blocker"), "a file in the way");
+
+    await writeAllOrNothing([{ path: join(root, "icon.png"), bytes: next }]);
+    expect(Buffer.from(await readFile(join(root, "icon.png"))).equals(next)).toBe(true);
+
+    await writeFile(join(root, "icon.png"), old);
+    await expect(
+      writeAllOrNothing([
+        { path: join(root, "icon.png"), bytes: next },
+        { path: join(root, "blocker/last.txt"), content: "x" },
+      ]),
+    ).rejects.toThrow();
+    expect(Buffer.from(await readFile(join(root, "icon.png"))).equals(old)).toBe(true);
+  });
+
   test("keeps the mode of a file it replaces", async () => {
     const root = await freshDir();
     await writeFile(join(root, "run.sh"), "#!/bin/sh\n", { mode: 0o755 });

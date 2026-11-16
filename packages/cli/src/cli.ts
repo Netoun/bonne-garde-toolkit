@@ -207,7 +207,7 @@ export async function runCli(argv: string[]): Promise<number> {
             module: module.key,
             variant: module.variant,
             options: module.options,
-            files: module.files.map((file) => file.target),
+            files: [...module.files, ...module.binaries].map((file) => file.target).sort(),
             env: module.env.map(({ name, required }) => ({
               name,
               required,

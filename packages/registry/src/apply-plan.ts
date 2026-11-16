@@ -10,7 +10,7 @@ import {
 import { ApplyError } from "./apply-error";
 import type { ModulePlan } from "./module-plan";
 import { itemDependencyPatches } from "./item-dependencies";
-import { itemFileTarget, type InstallPlan } from "./resolve-plan";
+import { itemFileTarget, itemFileText, type InstallPlan } from "./resolve-plan";
 import { sha256Hex } from "./sha256";
 import { stageModules, type EnvResult, type TookOver } from "./stage-module";
 import type { AuthoredIntention, PendingIntention } from "./pending-intentions";
@@ -156,7 +156,7 @@ export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResu
       const relTarget = itemFileTarget(item, file);
       claimed.set(relTarget, item.name);
       const absTarget = join(options.projectRoot, relTarget);
-      const raw = file.content ?? (await readFile(file.path, "utf8"));
+      const raw = file.content ?? itemFileText(item.name, file.path, await readFile(file.path));
       const content = raw.split("@acme").join(options.manifest.scope);
       const sha256 = sha256Hex(content);
       if (await pathExists(absTarget)) {

@@ -37,8 +37,8 @@ async function remote(raw: GithubRawServer) {
   return loadRegistryFromSource("github:acme/bg@v1", "/", { github: { baseUrl: raw.baseUrl } });
 }
 
-/** A registry on disk: `files` maps a registry-relative path to its text. */
-async function registryOf(files: Record<string, string>): Promise<string> {
+/** A registry on disk: `files` maps a registry-relative path to its text, or to its bytes. */
+async function registryOf(files: Record<string, string | Uint8Array>): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "bg-remote-"));
   temp.push(root);
   for (const [path, text] of Object.entries(files)) {
@@ -164,6 +164,28 @@ describe("readPlanFiles", () => {
     expect(raw.requested).not.toContain("ui/card.tsx");
   });
 
+  test("a file that is not valid UTF-8 fails the whole read, naming the item: items are text-only (030)", async () => {
+    const dir = await registryOf({
+      "registry.json": JSON.stringify({ name: "r", include: ["items/registry.json"] }),
+      "items/registry.json": JSON.stringify({
+        items: [
+          {
+            name: "icon",
+            type: "registry:file",
+            files: [{ path: "icon.png", type: "registry:file", target: "src/icon.png" }],
+          },
+        ],
+      }),
+      "items/icon.png": Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0xff, 0x00]),
+    });
+    const catalog = await remote(serve(dir));
+    const plan = resolveInstallPlan(catalog, ["icon"], PROJECT);
+
+    await expect(readPlanFiles(catalog, plan)).rejects.toThrow(
+      /item icon .*registry\/items\/icon\.png.*not valid UTF-8.*items are text-only/s,
+    );
+  });
+
   test("a file the registry does not have fails the whole read, naming it and the ref", async () => {
     const raw = serve();
     const catalog = await remote(raw);
@@ -181,6 +203,25 @@ describe("readPlanFiles", () => {
 });
 
 describe("a module planned from github", () => {
+  test("a file that is not text is planned as the same bytes as from a local registry", async () => {
+    // A PNG signature, the placeholder as ASCII, and a byte that UTF-8 text cannot hold.
+    const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, ...Buffer.from("{{SCOPE}}"), 0xff, 0x00]);
+    const dir = await registryOf({
+      "registry.json": JSON.stringify({ name: "r", items: [] }),
+      "modules/config/icons/module.json": moduleJson("icons", "config", ["packages/icons/a.png"]),
+      "modules/config/icons/template/packages/icons/a.png": png,
+    });
+    const refs = [{ category: "config" as const, id: "icons" }];
+    const catalog = await loadNamedModules(await remote(serve(dir)), ["config/icons"]);
+
+    const [plan] = await resolveModulePlans(catalog, refs, PROJECT);
+
+    const local = await loadRegistryFromSource(`local:${dir}`, "/");
+    const [expected] = await resolveModulePlans(local, refs, PROJECT);
+    expect(plan).toEqual(expected);
+    expect(Buffer.from(plan?.binaries[0]?.bytes ?? []).equals(png)).toBe(true);
+  });
+
   test("plans the same files as from a local registry, fetching only the variant's copy", async () => {
     const raw = serve();
     const catalog = await loadNamedModules(await remote(raw), ["provider/cloudflare"]);

@@ -60,7 +60,7 @@ Define the consumer-project state file written by `create`, updated by `add` / `
 | `apps`       | Declared apps: `id`, `dir` (traversal-safe, repo-relative), `kind`. Written by app-homed modules                                                                                |
 | `modules`    | Category → installed module records. `cardinality: one` categories MUST hold at most one record                                                                                 |
 | `items`      | shadcn UI items — see [030](./030-ui-registry.md)                                                                                                                               |
-| `files`      | Every tier-1 file written: owner + SHA-256 of what was written                                                                                                                  |
+| `files`      | Every tier-1 file written: owner + SHA-256 of what was written, of its bytes for a binary file ([035](./035-module-registry.md))                                                |
 | `regions`    | Tier-2 region ownership, the owner a module (`<category>/<id>`) or, for the dependencies an item wrote into a `package.json`, an item — see [060](./060-patches-and-regions.md) |
 
 **No `capabilities` field.** It was a second, hand-maintained naming of what `modules` already states. Compatibility is decided by category + peers ([035](./035-module-registry.md)); UI item edges are decided by shadcn `registryDependencies`.

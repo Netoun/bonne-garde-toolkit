@@ -49,7 +49,7 @@ Reads `bg.json` and the tree, no network. Reports:
 | Check      | Signal                                                                                                                                                  |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Manifest   | Schema version, module and item counts                                                                                                                  |
-| Files      | Missing, user-modified (sha mismatch), untracked-but-expected. A file with recorded regions is checked by region, not by sha                            |
+| Files      | Missing, user-modified (sha mismatch, of the bytes), untracked-but-expected. A file with recorded regions is checked by region, not by sha              |
 | Regions    | Present / missing / owned by another module / foreign edit. An `intent[<id>]` region is present when its module's record lists the intention as applied |
 | Patches    | Recorded `failed` outcomes                                                                                                                              |
 | Intentions | Pending (staged, unresolved), applied, skipped                                                                                                          |

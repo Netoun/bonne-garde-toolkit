@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { isModuleCategory, type ModuleCategory, type ProjectManifest } from "@bonne-garde/schema";
 import type { ModuleRef } from "./module-plan";
 import type { RegistryCatalog, RegistryFile, RegistryItem } from "./types";
+import { utf8Text } from "./utf8";
 
 export type InstallPlan = {
   items: RegistryItem[];
@@ -14,6 +15,21 @@ export class PlanError extends Error {
     super(message);
     this.name = "PlanError";
   }
+}
+
+/**
+ * The text of an item's file. Items are text-only (030): the shadcn schema holds a file as a string,
+ * and `@acme` is rewritten in it, so a file that is not valid UTF-8 is refused where it would be
+ * corrupted. A binary file belongs to a module (035).
+ */
+export function itemFileText(item: string, path: string, bytes: Uint8Array): string {
+  const text = utf8Text(bytes);
+  if (text === null) {
+    throw new PlanError(
+      `item ${item} ships ${path}, which is not valid UTF-8: items are text-only (spec 030), and a binary file belongs to a module (spec 035)`,
+    );
+  }
+  return text;
 }
 
 /** Where `add` writes an item's file: its `target`, or the place its type implies. */

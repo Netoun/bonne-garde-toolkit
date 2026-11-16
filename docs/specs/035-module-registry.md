@@ -140,6 +140,7 @@ The combinatorial explosion is data, not branching code. A module ships one vari
 - A dependency is declared once, in the variant's `dependencies` / `devDependencies`. A vendored `package.json` MAY carry `exports` and `scripts` but no dependency maps; the planner merges the variant's maps into it. Without a vendored `package.json`, the workspace one is generated from the variant.
 - A variant selects among files at distinct paths. A file every provider ships but that differs per provider belongs to the provider module, or to one module per implementation (`db/d1`, `db/libsql`) with a `peers.provider` allow-list.
 - A module MUST declare peers by category, never by capability string.
+- A `template/` file is **binary** when its bytes are not valid UTF-8, and text otherwise: the bytes decide, not the extension. A text file has `{{SCOPE}}` rendered; a binary file is listed in `copy` like any other and copied byte for byte, and is never rendered, formatted or patched. A `github:` source serves it as bytes.
 
 ## Errors
 
@@ -157,4 +158,5 @@ The combinatorial explosion is data, not branching code. A module ships one vari
 - `bg add better-auth` on a project without an `orm` fails naming the missing peer.
 - Installing a second `auth` module fails without any `conflicts` field existing in the schema.
 - A module with only `copy` and `patch` installs non-interactively in CI.
+- A binary template file lands byte-identical from a `local:` and from a `github:` source, `bg doctor --strict` is green after the add, and a second add skips it.
 - Contract tests reject a module whose `match` set is ambiguous or whose category is unknown.

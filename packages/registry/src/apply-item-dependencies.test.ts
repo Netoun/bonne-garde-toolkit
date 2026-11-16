@@ -50,6 +50,7 @@ function shell(): ModulePlan {
     variant: "default",
     options: {},
     files: [{ target: APP_PACKAGE, content: SHELL_PACKAGE }],
+    binaries: [],
     env: [],
     patches: [
       {

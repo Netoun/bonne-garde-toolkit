@@ -77,6 +77,8 @@ For every copied file, `bg.json` records the owner and the SHA-256 of what was w
 | differs              | user-modified   | see the conflict policy: `add` fails, `upgrade` keeps |
 | file absent          | deleted by user | report in `doctor`; re-create only on explicit `add`  |
 
+A binary file ([035](./035-module-registry.md)) is hashed and compared by its bytes, with the same three states and the same conflict policy, and `{{SCOPE}}` is never rendered in one. It carries no region, so no patch targets it.
+
 **A file with recorded regions is checked region by region.** A patch rewrites a file whose tier-1 sha `bg.json` recorded, so the whole-file sha no longer matches and says nothing about a user edit. `doctor` skips the sha check for that file and reports its regions instead ([Region ownership](#region-ownership)). The conflict policy below classifies it by region too: the sha rows apply to a file without recorded regions. The sha recorded is that of the file as its owner wrote it, the owner's own patches included and no other module's, whether those run in the same call or a later one, so the owner added alone again keeps a file another module patched and replaces one nobody touched. An `intent[<id>]` region counts as a region: the file another module's intention edited is region-checked like a patched file, and `bg record` leaves its recorded sha as the owner wrote it. Recording the edited file's new sha instead would let the owner's re-add see an untouched file, and overwrite the edit as soon as its template changes.
 
 ## Patch outcomes

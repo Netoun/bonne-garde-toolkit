@@ -3,7 +3,7 @@ import { FETCH_CONCURRENCY, RegistryFileNotFoundError } from "./github-source";
 import { parseModuleFile } from "./module-catalog";
 import type { ModuleRef } from "./module-plan";
 import { mapLimit } from "./pool";
-import type { InstallPlan } from "./resolve-plan";
+import { itemFileText, type InstallPlan } from "./resolve-plan";
 import type { RegistryCatalog, RegistryModule } from "./types";
 
 const MODULE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -74,18 +74,19 @@ export async function readPlanFiles(
   if (reader === undefined) {
     return plan;
   }
-  const paths = [
-    ...new Set(
-      plan.items.flatMap((item) =>
-        (item.files ?? []).filter((file) => file.content === undefined).map((file) => file.path),
-      ),
+  const owners = new Map(
+    plan.items.flatMap((item) =>
+      (item.files ?? [])
+        .filter((file) => file.content === undefined)
+        .map((file) => [file.path, item.name] as const),
     ),
-  ];
+  );
   const content = new Map(
     await mapLimit(
-      paths,
+      [...owners],
       FETCH_CONCURRENCY,
-      async (path) => [path, await reader.read(path)] as const,
+      async ([path, item]) =>
+        [path, itemFileText(item, path, await reader.readBytes(path))] as const,
     ),
   );
   return {

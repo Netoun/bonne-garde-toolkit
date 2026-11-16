@@ -1,8 +1,8 @@
 import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-/** A file to put on disk: an absolute path and what it will hold. */
-export type StagedFile = { path: string; content: string };
+/** A file to put on disk: an absolute path and what it will hold, as text or, for a binary file, as bytes. */
+export type StagedFile = { path: string; content: string } | { path: string; bytes: Uint8Array };
 
 type Undo = () => Promise<void>;
 
@@ -39,7 +39,7 @@ async function place(file: StagedFile, index: number, undo: Undo[]): Promise<voi
   // was or what it is meant to be, never half-written.
   const temp = `${file.path}.${process.pid}.${index}.tmp`;
   undo.push(() => rm(temp, { force: true }));
-  await writeFile(temp, file.content, "utf8");
+  await writeFile(temp, "bytes" in file ? file.bytes : file.content, "utf8");
   if (prior !== null) {
     await chmod(temp, prior.mode);
   }

@@ -23,6 +23,7 @@ Our components _are_ shadcn components. Forking the schema for them buys nothing
 - File paths are relative to the declaring `registry.json`.
 - `files[].target` of a UI item places components inside the `ui` module's package (`packages/ui/src/...`).
 - `files[].target` of a feature item places files inside a front app (`apps/<web>/src/features/**`).
+- Items are text-only: the shadcn schema holds a file as a string. `bg add` and `registry:build` refuse an item file that is not valid UTF-8, and `dist/r` carries item files only. A binary file ships in a module ([035](./035-module-registry.md)).
 - A feature item with pages ships their routes as `apps/<web>/src/features/<feature>/routes.ts`, a default export of route entries with paths relative to `src`, which the app's `routes.ts` composes. No item edits a file a module owns.
 
 ## Item kinds

@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { loadLocalRegistry } from "./load-registry";
 import type { RegistryItem } from "./types";
+import { utf8Text } from "./utf8";
 
 const ROOT = join(import.meta.dir, "../../..");
 
@@ -24,6 +25,19 @@ describe("registry contract", () => {
         expect(file.type.length).toBeGreaterThan(0);
       }
     }
+  });
+
+  test("no item ships a file that is not valid UTF-8: items are text-only, a binary file belongs to a module (030)", async () => {
+    const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+    const binary: string[] = [];
+    for (const item of catalog.items) {
+      for (const file of item.files ?? []) {
+        if (file.content === undefined && utf8Text(await readFile(file.path)) === null) {
+          binary.push(`${item.name}: ${file.path}`);
+        }
+      }
+    }
+    expect(binary).toEqual([]);
   });
 
   test("the only meta an item carries is needsModules, on a feature item: provides, requires, conflicts and transforms are gone (030)", async () => {

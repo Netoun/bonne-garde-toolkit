@@ -17,6 +17,16 @@ import type { StagedFile } from "./write-tree";
 export const ENV_EXAMPLE_FILE = ".env.example";
 const ENV_KEY = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/;
 
+/** Why a file that differs from what a module would write is in the way (060's conflict table). */
+function collision(target: string, owner: string, recorded: FileRecord | undefined): string {
+  if (recorded === undefined) {
+    return `${target} exists and is not recorded in bg.json`;
+  }
+  return recorded.owner === owner
+    ? `${target} was modified since ${owner} wrote it`
+    : `${target} is owned by ${recorded.owner}, and ${owner} would replace it`;
+}
+
 /** A file whose recorded owner changed because another owner now writes it. */
 export type TookOver = { path: string; from: string; by: string };
 export type EnvResult = {
@@ -192,17 +202,27 @@ export async function stageModules(options: {
   // Who writes what, whole: a path two claimants name is refused, and every other target is kept.
   const owners = new Map<string, string>();
   let contents = new Map<string, string>();
+  const binaries = new Map<string, { owner: string; bytes: Uint8Array }>();
   for (const plan of plans) {
     await assertWorkspaceCovered(projectRoot, plan);
-    for (const { target, content } of plan.files) {
+    const named = [
+      ...plan.files.map(({ target, content }) => ({ target, content })),
+      ...plan.binaries.map(({ target, bytes }) => ({ target, bytes })),
+    ];
+    for (const file of named) {
+      const { target } = file;
       const rival = claimed.get(target);
       if (rival !== undefined && rival !== plan.key) {
         refused.push(`${target} is named by both ${rival} and ${plan.key} in this call`);
         continue;
       }
       claimed.set(target, plan.key);
-      owners.set(target, plan.key);
-      contents.set(target, content);
+      if ("bytes" in file) {
+        binaries.set(target, { owner: plan.key, bytes: file.bytes });
+      } else {
+        owners.set(target, plan.key);
+        contents.set(target, file.content);
+      }
     }
   }
 
@@ -229,7 +249,7 @@ export async function stageModules(options: {
     if (
       disk.kind === "file" &&
       disk.content !== content &&
-      sha256Hex(disk.content) !== recorded.sha256
+      sha256Hex(disk.bytes) !== recorded.sha256
     ) {
       kept.set(target, disk.content);
     }
@@ -290,20 +310,50 @@ export async function stageModules(options: {
         refused.push(
           `${target} carries ${names}, owned by ${others}; writing ${owner}'s version would drop ${foreign.length === 1 ? "it" : "them"}`,
         );
-      } else if (recorded?.owner === owner && sha256Hex(disk.content) === recorded.sha256) {
+      } else if (recorded?.owner === owner && sha256Hex(disk.bytes) === recorded.sha256) {
         stage();
       } else if (force) {
         if (recorded !== undefined && recorded.owner !== owner) {
           staging.tookOver.push({ path: target, from: recorded.owner, by: owner });
         }
         stage();
-      } else if (recorded === undefined) {
-        collisions.push(`${target} exists and is not recorded in bg.json`);
-      } else if (recorded.owner === owner) {
-        collisions.push(`${target} was modified since ${owner} wrote it`);
       } else {
-        collisions.push(`${target} is owned by ${recorded.owner}, and ${owner} would replace it`);
+        collisions.push(collision(target, owner, recorded));
       }
+    }
+  }
+
+  // A binary file is a tier-1 file with no text to patch and no region to record, so only the
+  // rows of 060's table for a copied file apply, decided on the bytes: a decoded text would call
+  // two files that differ by an invalid byte the same.
+  for (const [target, { owner, bytes }] of binaries) {
+    const sha256 = sha256Hex(bytes);
+    const disk = await readDisk(join(projectRoot, target));
+    const recorded = manifest.files[target];
+    const stage = () => {
+      staging.staged.push({ path: join(projectRoot, target), bytes });
+      staging.written.push(target);
+      staging.files[target] = { owner, sha256 };
+    };
+    if (disk.kind === "other") {
+      refused.push(`${target} exists and is not a regular file`);
+    } else if (disk.kind === "absent") {
+      if (recorded !== undefined && recorded.owner !== owner) {
+        staging.tookOver.push({ path: target, from: recorded.owner, by: owner });
+      }
+      stage();
+    } else if (sha256Hex(disk.bytes) === sha256) {
+      staging.skippedIdentical.push(target);
+      staging.files[target] = { owner: recorded?.owner ?? owner, sha256 };
+    } else if (recorded?.owner === owner && sha256Hex(disk.bytes) === recorded.sha256) {
+      stage();
+    } else if (force) {
+      if (recorded !== undefined && recorded.owner !== owner) {
+        staging.tookOver.push({ path: target, from: recorded.owner, by: owner });
+      }
+      stage();
+    } else {
+      collisions.push(collision(target, owner, recorded));
     }
   }
 
