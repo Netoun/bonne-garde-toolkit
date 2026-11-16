@@ -16,6 +16,7 @@ import {
 import {
   assertBranding,
   renderBrandingModule,
+  renderWebManifest,
 } from "../../../registry/modules/config/branding/template/packages/config/src/gen-branding";
 import { formatWithProjectFormatter } from "../test-support/project-formatter";
 import { applyInstallPlan } from "./apply-plan";
@@ -693,6 +694,24 @@ describe("module contract", () => {
         expect(branding.npmScope).toBe(scope);
         expect(renderBrandingModule(branding)).toBe(rendered(generated, scope));
       }
+    });
+
+    test("the shipped manifest is what the generator renders from branding.json, and says what branding.json says", async () => {
+      const json = await text("packages/config/branding.json");
+      const shipped = await text("packages/config/assets/favicons/site.webmanifest");
+
+      // The manifest holds no scope, so one is enough: it is `bg.json`'s sha256 of this file that a
+      // drift would break, as for the generated module above.
+      const branding = assertBranding(JSON.parse(rendered(json, "@acme")));
+      expect(renderWebManifest(branding)).toBe(shipped);
+      expect(JSON.parse(shipped)).toMatchObject({
+        name: branding.displayName,
+        short_name: branding.shortName,
+        description: branding.description,
+        lang: branding.lang,
+        theme_color: branding.themeColor,
+        background_color: branding.backgroundColor,
+      });
     });
 
     test("its tsconfig extends the project's and covers the generator script", async () => {

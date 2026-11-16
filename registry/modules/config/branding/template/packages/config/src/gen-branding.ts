@@ -24,6 +24,10 @@ export function assertBranding(value: unknown): Branding {
   return {
     displayName: record.displayName as string,
     shortName: record.shortName as string,
+    description: record.description as string,
+    lang: record.lang as string,
+    themeColor: record.themeColor as string,
+    backgroundColor: record.backgroundColor as string,
     npmScope,
     publicOrigin: record.publicOrigin as string,
     supportEmail: record.supportEmail as string,
@@ -45,6 +49,39 @@ ${body}
 
 export type { Branding };
 `;
+}
+
+/** The two sizes an installable web app needs, named by root URL: the favicons are served from the site root. */
+const MANIFEST_ICONS = [
+  {
+    src: "/android-chrome-192x192.png",
+    sizes: "192x192",
+    type: "image/png",
+    purpose: "maskable any",
+  },
+  {
+    src: "/android-chrome-512x512.png",
+    sizes: "512x512",
+    type: "image/png",
+    purpose: "maskable any",
+  },
+];
+
+export function renderWebManifest(branding: Branding): string {
+  const manifest = {
+    name: branding.displayName,
+    short_name: branding.shortName,
+    description: branding.description,
+    start_url: "/",
+    display: "standalone",
+    background_color: branding.backgroundColor,
+    theme_color: branding.themeColor,
+    orientation: "portrait",
+    scope: "/",
+    lang: branding.lang,
+    icons: MANIFEST_ICONS,
+  };
+  return `${JSON.stringify(manifest, null, 2)}\n`;
 }
 
 export function formatEmailFrom(legalOrDisplayName: string, address: string): string {

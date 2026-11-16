@@ -1,8 +1,9 @@
 # config/branding
 
 The branding every app imports: `packages/config`, with the typed constants (`displayName`,
-`shortName`, `npmScope`, `publicOrigin`, `supportEmail`, `legalName`), the generator that renders
-them from `branding.json`, and the favicons. Extracted from this repo's legacy `packages/config`,
+`shortName`, `description`, `lang`, `themeColor`, `backgroundColor`, `npmScope`, `publicOrigin`,
+`supportEmail`, `legalName`), the generator that renders them and the web manifest from
+`branding.json`, and the favicons. Extracted from this repo's legacy `packages/config`,
 root `branding.json`, `scripts/gen-branding.ts` and `assets/favicons`
 ([080](../../../../docs/specs/080-existing-code-migration.md)).
 
@@ -14,17 +15,17 @@ bunx bg add config/branding
 
 Everything is under `packages/config/`: 035 lets a package-homed module write nowhere else.
 
-| File                                           | What it is                                                                                                                                         |
-| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `package.json`                                 | `{{SCOPE}}/config`: the `exports`, the `typecheck` and `test` scripts                                                                              |
-| `tsconfig.json`                                | extends the project's, covers `src` and `scripts`                                                                                                  |
-| `branding.json`                                | the source of the constants; `npmScope` is the project's scope                                                                                     |
-| `src/branding.generated.ts`                    | generated from `branding.json`: do not edit by hand                                                                                                |
-| `src/branding.types.ts`, `src/gen-branding.ts` | the `Branding` type, the validation and the rendering                                                                                              |
-| `src/gen-branding.test.ts`                     | its six tests                                                                                                                                      |
-| `src/index.ts`                                 | the public surface                                                                                                                                 |
-| `scripts/gen-branding.ts`                      | reads `branding.json`, writes `src/branding.generated.ts`                                                                                          |
-| `assets/favicons/*`                            | the favicons: `favicon.svg`, `favicon.ico`, the PNG sizes, the touch icon and the two Android icons, and `site.webmanifest`, which names those two |
+| File                                           | What it is                                                                                                                                                          |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `package.json`                                 | `{{SCOPE}}/config`: the `exports`, the `typecheck` and `test` scripts                                                                                               |
+| `tsconfig.json`                                | extends the project's, covers `src` and `scripts`                                                                                                                   |
+| `branding.json`                                | the source of the constants and of the manifest; `npmScope` is the project's scope                                                                                  |
+| `src/branding.generated.ts`                    | generated from `branding.json`: do not edit by hand                                                                                                                 |
+| `src/branding.types.ts`, `src/gen-branding.ts` | the `Branding` type, the validation and the rendering                                                                                                               |
+| `src/gen-branding.test.ts`                     | its twelve tests, among them the one that holds `site.webmanifest` to what the generator renders                                                                    |
+| `src/index.ts`                                 | the public surface                                                                                                                                                  |
+| `scripts/gen-branding.ts`                      | reads `branding.json`, writes `src/branding.generated.ts` and `assets/favicons/site.webmanifest`                                                                    |
+| `assets/favicons/*`                            | the favicons: `favicon.svg`, `favicon.ico`, the PNG sizes, the touch icon and the two Android icons, and `site.webmanifest`, which names those two and is generated |
 
 ### Exports
 
@@ -106,6 +107,11 @@ sits (`name`, `npmScope`), and two differences that follow from where a module m
   `scripts/gen-branding.ts` with its paths moved; `module-contract.test.ts` pins exactly which lines.
 - `package.json` has no `devDependencies`: `typescript` is the project root's, as for `ui/shadcn`.
 
+The manifest is the one file that is not the legacy one: `site.webmanifest` was a static file with
+`"lang": "fr"` and an empty `description`, and `gen:branding` now renders it. `branding.json` gained the
+four keys it needs, `description`, `lang`, `themeColor` and `backgroundColor`, which are `branding`
+constants too; the two icons, the display mode and the other fixed members are in `renderWebManifest`.
+
 ## Known gaps
 
 - **`web/ssr` and `web/static` do not serve the manifest's icons.** They import `favicon.svg` and
@@ -114,7 +120,5 @@ sits (`name`, `npmScope`), and two differences that follow from where a module m
   app links the PNGs. Each already owns a `public/` (`robots.txt`), and Vite takes one `publicDir`, so
   pointing it at the favicons would drop that file: they need the favicons merged into `public/`, which
   is not decided.
-- **`site.webmanifest` is the legacy one**: `"lang": "fr"`, no `name` from `branding.json`. It is a
-  static file, and the generator renders `src/branding.generated.ts` only.
 - **`displayName` is "My App"**, not the project's name: `create` renders `{{DISPLAY_NAME}}` in the
   base files only. Edit `packages/config/branding.json` and run `bun run gen:branding`.
