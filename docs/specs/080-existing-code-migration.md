@@ -32,7 +32,7 @@ Every extracted piece MUST be assigned a category from [035](./035-module-regist
 ## Rules
 
 - MUST preserve behavior; no feature rewrites during extraction.
-- MUST keep `test:platform` green throughout; `test:legacy` may lag ([070](./070-testing-and-release.md)).
+- MUST keep `test:platform` green throughout ([070](./070-testing-and-release.md)).
 - Module source lives under `registry/modules/<category>/<id>/template/`, mirroring the target tree.
 - Consumer placeholders (`{{SCOPE}}`, `{{DISPLAY_NAME}}`) are rendered at copy time — never patched into project-owned files ([060](./060-patches-and-regions.md)).
 - Every extracted module MUST declare its `peers`, at least one `variant`, and its `checks`.

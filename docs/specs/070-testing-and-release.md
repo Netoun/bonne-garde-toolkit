@@ -21,17 +21,17 @@ Every test file MUST be reachable from `bun run test`. Two failure modes are for
 - Tests under `scripts/` MUST be run. They are outside the `apps/*` / `packages/*` workspace globs, so the root `test` script MUST target them explicitly — a release-tooling test that never runs is worse than none.
 - A bare `bun test` at the root MUST NOT sweep `registry/` or `templates/`: those trees are **source material**, not workspaces, and their imports resolve only after install into a consumer project. They are verified through golden projects.
 
-### Platform vs legacy
+### Verification scripts
 
-While the legacy monorepo remains in-tree ([080](./080-existing-code-migration.md)), verification MUST be split so platform work is not held hostage:
+The platform scripts cover the code the repository ships as tooling, `packages/{cli,registry,schema}` and `scripts/`. The registry and template trees are verified through golden projects, never swept directly (above).
 
 | Script                                                    | Scope                                        |
 | --------------------------------------------------------- | -------------------------------------------- |
 | `typecheck:platform` / `test:platform` / `check:platform` | `packages/{cli,registry,schema}`, `scripts/` |
-| `typecheck:legacy` / `test:legacy` / `check:legacy`       | Legacy apps and packages pending extraction  |
-| `typecheck` / `test` / `check`                            | Both, for local use                          |
+| `typecheck` / `test`                                      | The platform scripts above                   |
+| `check`                                                   | The whole repository (format and lint)       |
 
-CI MUST run them as independent jobs. A legacy failure MUST NOT block a platform change, and vice versa.
+CI MUST run `verify` (the gate for the code above), then `golden` (the generated projects).
 
 ## TDD
 
