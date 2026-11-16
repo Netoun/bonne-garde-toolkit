@@ -1,5 +1,7 @@
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
-import { branding } from "{{SCOPE}}/config";
+// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// oxfmt-ignore
+import { branding, faviconLinks } from "{{SCOPE}}/config";
 
 import urbanistFont from "@fontsource-variable/urbanist/files/urbanist-latin-wght-normal.woff2?url";
 import fastinaFont from "@fontsource-variable/faustina/files/faustina-latin-wght-normal.woff2?url";
@@ -19,14 +21,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <link rel="preload" as="font" type="font/woff2" href={fastinaFont} crossOrigin="" />
         <meta name="robots" content="index, follow" />
         <meta name="author" content={branding.legalName} />
-        {/* Served from the site root: vite.config.ts adds the config package's favicons to the build. */}
-        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-        <link rel="icon" type="image/x-icon" sizes="48x48" href="/favicon.ico" />
-        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-        <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png" />
-        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-        <link rel="manifest" href="/site.webmanifest" />
+        {faviconLinks.map((link) => (
+          <link key={link.href} {...link} />
+        ))}
         <link rel="stylesheet" href={appCss} />
         <Meta />
         <Links />

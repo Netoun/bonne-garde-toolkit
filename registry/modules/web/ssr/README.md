@@ -55,9 +55,10 @@ Each file is the legacy one with `@acme` rendered as `{{SCOPE}}`, except:
 - The favicons and the manifest are files of the build, served from the site root, which the Worker
   serves from its assets. `vite.config.ts` loads `favicons()` from `{{SCOPE}}/config/vite`, which adds
   them to the client build and keeps `public/robots.txt` (Vite takes one `publicDir`), and `root.tsx`
-  links them by root URL, as `web/spa` does. Legacy imported `favicon.svg` and the manifest through the
-  bundler, which inlined both as `data:` URLs: the manifest's icons were never served. The page's
-  `theme-color` is `branding.themeColor`, the manifest's.
+  links them from `faviconLinks` of `{{SCOPE}}/config`, as `web/spa` does. Legacy imported
+  `favicon.svg` and the manifest through the bundler, which inlined both as `data:` URLs: the
+  manifest's icons were never served. The page's `theme-color` is `branding.themeColor`, the
+  manifest's.
 - `root.tsx` imports the stylesheet as `{{SCOPE}}/ui/globals.css`: the path the `ui` package exports.
 - `lib/api.server.ts` returns `treaty<App>(…)`, not `treaty<App>(…).v1`, and
   `lib/api.server.test.ts` calls `api.health.get()` where it called `api.media({ id }).get()`. The API

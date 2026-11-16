@@ -48,7 +48,8 @@ template files ([035](../../../../docs/specs/035-module-registry.md)): copied by
 in `bg.json` by the sha256 of their bytes, checked by `bg doctor` like any file.
 
 All three shells serve this directory from the site root, so `/site.webmanifest` and the
-`/android-chrome-*.png` it names are in the build, and each `root.tsx` links the icons by those URLs:
+`/android-chrome-*.png` it names are in the build, and each `root.tsx` links the icons from
+`faviconLinks`, whose URLs `favicon-links.test.ts` holds to the files `favicons()` emits:
 
 | Shell        | How the favicons reach its build                                                                                |
 | ------------ | --------------------------------------------------------------------------------------------------------------- |

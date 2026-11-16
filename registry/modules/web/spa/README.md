@@ -85,9 +85,10 @@ why `routes.ts` carries no region and `bg doctor` has nothing to say about it.
 - The favicons are the files of `{{SCOPE}}/config/assets/favicons`, found through that package's
   export and served from the site root: `vite.config.ts` loads `favicons()` from
   `{{SCOPE}}/config/vite`, which adds the directory to the build, and `root.tsx` links the icons and
-  the manifest by root URL. Legacy imported `favicon.svg` and the manifest through the bundler, which
-  inlined both as `data:` URLs, so the manifest's icons were never served. The stylesheet is `{{SCOPE}}/ui/globals.css`, the path the `ui` package exports. The `tsconfig` `paths`
-  into other trees are gone: `{{SCOPE}}/api` is reached through its `exports`.
+  the manifest from `faviconLinks` of `{{SCOPE}}/config`, by root URL. Legacy imported `favicon.svg`
+  and the manifest through the bundler, which inlined both as `data:` URLs, so the manifest's icons
+  were never served. The stylesheet is `{{SCOPE}}/ui/globals.css`, the path the `ui` package exports.
+  The `tsconfig` `paths` into other trees are gone: `{{SCOPE}}/api` is reached through its `exports`.
 - The app has no `public/` of its own, and `favicons()` leaves `publicDir` free for one, as in
   `web/ssr` and `web/static`.
 - The `vite.config.ts` points Vitest at `./testing/frontend.setup.ts`, inside the app.

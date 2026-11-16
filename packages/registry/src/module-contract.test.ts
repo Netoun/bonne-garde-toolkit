@@ -605,30 +605,29 @@ describe("module contract", () => {
       }
     });
 
-    test("web/spa adds those favicons to its build with the package's Vite plugin, which leaves publicDir free, and links only files of the package", async () => {
+    /**
+     * A shell names its icons by `faviconLinks` of the config package, which `favicon-links.test.ts`
+     * holds to the files `favicons()` emits: no shell lists a link of its own.
+     */
+    const expectIconLinksFromConfig = (root: string): void => {
+      expect(root).toMatch(/import \{[^}]*\bfaviconLinks\b[^}]*\} from "\{\{SCOPE\}\}\/config";/);
+      expect(root).not.toMatch(/\brel(?::\s|=)"(?:icon|apple-touch-icon|manifest)"/);
+      expect(root).not.toMatch(/\bhref(?::\s|=)"\//);
+    };
+
+    test("web/spa adds those favicons to its build with the package's Vite plugin, which leaves publicDir free, and links them from faviconLinks", async () => {
       const spa = join(MODULES, "web/spa/template/apps/spa");
       const root = await readFile(join(spa, "src/root.tsx"), "utf8");
       const config = await readFile(join(spa, "vite.config.ts"), "utf8");
-      const shipped = await readdir(join(TEMPLATE, "packages/config/assets/favicons"));
 
       expect(config).toContain('import { favicons } from "{{SCOPE}}/config/vite";');
       expect(config).toMatch(/\bfavicons\(\)/);
       // Vite takes one `publicDir`: the plugin adds the favicons, so the app is free to have its own.
       expect(config).not.toContain("publicDir");
-      const linked = [...root.matchAll(/href: "\/([^"]+)"/g)].flatMap(([, file]) => file ?? []);
-      expect(linked.length).toBeGreaterThan(0);
-      for (const file of linked) {
-        expect(shipped).toContain(file);
-      }
-      // Everything but the two icons only the manifest names is linked: the svg, the ico, the PNG
-      // sizes, the touch icon and the manifest.
-      for (const file of shipped.filter((name) => !name.startsWith("android-chrome-"))) {
-        expect(linked).toContain(file);
-      }
+      expectIconLinksFromConfig(root);
     });
 
-    test("web/ssr and web/static add those favicons to their build with the package's Vite plugin, keep their own public/, and link only files of the package", async () => {
-      const shipped = await readdir(join(TEMPLATE, "packages/config/assets/favicons"));
+    test("web/ssr and web/static add those favicons to their build with the package's Vite plugin, keep their own public/, and link them from faviconLinks", async () => {
       const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
 
       for (const id of ["ssr", "static"]) {
@@ -648,17 +647,7 @@ describe("module contract", () => {
         expect(root).not.toMatch(/import \w+ from "[^"]*\.(?:svg|webmanifest)"/);
         expect(root).toContain("branding.themeColor");
         expect(root).not.toContain('content="#000000"');
-
-        const linked = [...root.matchAll(/href(?::\s|=)"\/([^"]+)"/g)].flatMap(
-          ([, file]) => file ?? [],
-        );
-        for (const file of linked) {
-          expect(shipped).toContain(file);
-        }
-        // Everything but the two icons only the manifest names is linked, the manifest included.
-        for (const file of shipped.filter((name) => !name.startsWith("android-chrome-"))) {
-          expect(linked).toContain(file);
-        }
+        expectIconLinksFromConfig(root);
       }
     });
 

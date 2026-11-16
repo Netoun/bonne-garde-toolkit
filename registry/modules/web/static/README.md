@@ -48,10 +48,10 @@ Each file is the legacy one with `@acme` rendered as `{{SCOPE}}`, except:
 
 - The favicons and the manifest are files of the build, served from the site root. `vite.config.ts`
   loads `favicons()` from `{{SCOPE}}/config/vite`, which adds them to `build/client` and keeps
-  `public/robots.txt` (Vite takes one `publicDir`), and `root.tsx` links them by root URL, as `web/spa`
-  does. Legacy imported them as `@acme/assets/…` through the bundler, which inlined `favicon.svg` and the
-  manifest as `data:` URLs: the manifest's icons were never served. The page's `theme-color` is
-  `branding.themeColor`, the manifest's.
+  `public/robots.txt` (Vite takes one `publicDir`), and `root.tsx` links them from `faviconLinks` of
+  `{{SCOPE}}/config`, as `web/spa` does. Legacy imported them as `@acme/assets/…` through the bundler,
+  which inlined `favicon.svg` and the manifest as `data:` URLs: the manifest's icons were never served.
+  The page's `theme-color` is `branding.themeColor`, the manifest's.
 - `app.css` imports `{{SCOPE}}/ui/globals.css`, not `../../../packages/ui/src/styles/globals.css`:
   a path into another package's `src` is not something 035 lets a module write.
 - `lib/api.ts` exports `api`, not `apiV1`: the API shell has no `/v1` group, so `.v1` would not
