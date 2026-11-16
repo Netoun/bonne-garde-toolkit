@@ -75,7 +75,7 @@ bun run publish:cli                       # publish create-bonne-garde to npm
 bun run gen:playground                    # smoke consumer in ./playground
 bun run typecheck && bun run test         # platform packages + scripts
 bun run check                             # vp check (fmt + lint via Vite+)
-bun run verify                            # check + typecheck + test + intentions lint + registry build (CI gate)
+bun run verify                            # check + knip + typecheck + test + intentions lint + registry build (CI gate)
 bun run golden                            # fresh project: create → add modules + items → install → typecheck → test → build → doctor --strict → check → each module's checks → dockerfile configuration: docker build + run (skipped without docker, a failure when GOLDEN_REQUIRE_DOCKER is set) (needs npm)
 ```
 

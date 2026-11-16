@@ -38,7 +38,7 @@
 | `typecheck`          | `bun run typecheck:platform`                                                                                                                 |
 | `typecheck:platform` | `bun run typecheck:scripts && bun run --parallel --filter '@bonne-garde/*' typecheck`                                                        |
 | `typecheck:scripts`  | `tsc --project scripts/tsconfig.json --noEmit`                                                                                               |
-| `verify`             | `bun run check && bun run typecheck && bun run test && bun run intentions:lint && bun run registry:build`                                    |
+| `verify`             | `bun run check && bun run knip && bun run typecheck && bun run test && bun run intentions:lint && bun run registry:build`                    |
 
 ---
 

@@ -67,7 +67,7 @@ Toolchain: **Vite+** (Vite, Vitest, Oxlint, Oxfmt).
 
 ## Verification
 
-`bun run verify` runs formatting/lint checks, typechecking (platform packages and scripts), the script, registry-contract and platform package tests, the migration-intentions lint and the registry build.
+`bun run verify` runs formatting/lint checks, knip (unused files, exports and dependencies in the platform code), typechecking (platform packages and scripts), the script, registry-contract and platform package tests, the migration-intentions lint and the registry build.
 
 `bun run golden` is what runs the code the registry ships: it creates a fresh project, installs every module and item with one provider, then typechecks, tests, builds and runs `bg doctor --strict` on it (it also builds and runs the `provider/dockerfile` image when docker is available).
 
