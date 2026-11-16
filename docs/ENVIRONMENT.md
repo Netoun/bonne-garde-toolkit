@@ -1,6 +1,6 @@
 # Environment Variables
 
-Source of truth: `apps/*/.env.example` and `apps/api/.dev.vars.example`. This file documents conventions only, not variable values.
+Source of truth: the `.env.example` of a generated project, which `bg add` writes from the `env` entries of each module (one line per key, owned by the module that declares it). This file documents conventions only, not variable values.
 
 ## Conventions
 
@@ -11,13 +11,13 @@ Source of truth: `apps/*/.env.example` and `apps/api/.dev.vars.example`. This fi
 | Client-exposed | `VITE_` prefix mandatory for SPA                               |
 | Prod secrets   | `wrangler secret put <NAME>` from the app directory            |
 
-CI uses public localhost URLs explicitly; it never runs the interactive init wizard, creates production secrets or seeds the demo admin. Local `bun run build` requires the front `.env` files created by init (or equivalent exported variables).
+This repository's CI sets no variables, creates no production secrets and seeds no demo admin: `bun run golden` builds a generated project with the variables its modules give it. In a project, `bun run build` reads the front variables (`VITE_API_URL`) from the front's `.env` or from exported variables.
 
-Deployment is manual by default (`.github/workflows/deploy.yml`). Before deploying, provision your own D1/R2 resources, replace example resource IDs/domains in Wrangler config, and configure the GitHub `cloudflare` environment. Production migrations must target `--env production`; never run the local demo seed against production.
+Deployment is manual by default: the `deploy/cloudflare-actions` module writes `.github/workflows/deploy.yml` (`workflow_dispatch` only) into a project. Before deploying, provision your own D1/R2 resources, replace example resource IDs/domains in Wrangler config, and configure the GitHub `cloudflare` environment. Production migrations must target `--env production`; never run the local demo seed against production.
 
 ## Secret generation
 
 ```bash
-cd apps/api && bun run auth:secret     # BETTER_AUTH_SECRET
+cd packages/auth && bun run auth:secret   # BETTER_AUTH_SECRET (auth/better-auth)
 openssl rand -base64 32                # generic
 ```

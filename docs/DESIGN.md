@@ -1,6 +1,6 @@
 # Design system & theming
 
-Shared UI lives in `@acme/ui`. Visual identity is split between **global styles** (Tailwind setup, base rules, utilities, animations) and **theme packs** (colors, type, radius, shadows, motion tokens).
+Shared UI lives in `{{SCOPE}}/ui` (`packages/ui` of a project with the `ui/shadcn` module, whose template is `registry/modules/ui/shadcn/template/packages/ui/`). Visual identity is split between **global styles** (Tailwind setup, base rules, utilities, animations) and **theme packs** (colors, type, radius, shadows, motion tokens).
 
 ---
 
@@ -14,13 +14,13 @@ Shared UI lives in `@acme/ui`. Visual identity is split between **global styles*
 Apps import the bundle once:
 
 ```ts
-import "@acme/ui/globals.css";
+import "{{SCOPE}}/ui/globals.css";
 ```
 
 To depend on a theme file directly (e.g. custom globals that re-import Tailwind yourself):
 
 ```ts
-import "@acme/ui/themes/default.css";
+import "{{SCOPE}}/ui/themes/default.css";
 ```
 
 ---
@@ -133,7 +133,7 @@ These stay in `globals.css` so any theme reuses the same behavior:
 
 ---
 
-## 8. Components (shadcn / `@acme/ui`)
+## 8. Components (shadcn / `{{SCOPE}}/ui`)
 
 Buttons, badges, cards, and layout primitives follow the active theme tokens. Variants map to semantic colors (`primary`, `secondary`, `tertiary`, `destructive`, `outline`, `ghost`). Prefer one strong primary action per view; use size and variant for hierarchy, not one-off hex values.
 

@@ -82,6 +82,8 @@ Prefer extending existing API route types rather than re-declaring contracts.
 
 ## 4. Product Conventions — Non-Negotiable
 
+These hold for the code the registry ships; `packages/ui` and `apps/*` below are the paths of a generated project.
+
 | Domain       | Rule                                                             |
 | ------------ | ---------------------------------------------------------------- |
 | API Types    | Always via **Eden Treaty**, never manual fetch                   |
@@ -109,7 +111,7 @@ Editors, maps and QR generation are optional product capabilities, not requireme
 
 ## 5. Scope & Tasks
 
-- **Read before writing**: [`AGENTS.md`](../AGENTS.md) + the task + legacy code (via `git show main:<path>`) + relevant existing code.
+- **Read before writing**: [`AGENTS.md`](../AGENTS.md) + the task + relevant existing code.
 - **Do not exceed the scope** of the assigned task — a task is not a pretext to refactor elsewhere.
 - **Mark task Done**: add `## ✅ Done` at the end of the task file when finished.
 - If a choice is not in `AGENTS.md` → **ask the question**, don't improvise.
@@ -131,11 +133,10 @@ Complete list of scripts → [`COMMANDS.md`](./COMMANDS.md) (generated).
 ## 7. Checklist Before Rendering a Task
 
 - [ ] `bun run typecheck` passes
-- [ ] `bun run test` passes (API + concerned fronts)
+- [ ] `bun run test` passes
 - [ ] `bun run check` passes (Vite+ formatting + lint)
-- [ ] `bun run build` passes for affected apps
+- [ ] `bun run golden` passes when `registry/` or `templates/` changed
 - [ ] No `any`, no `as` Eden
-- [ ] Eden types up to date if API changed
-- [ ] New env vars → corresponding `.example` file(s)
+- [ ] New env vars → the module's `env` entry (it writes the project's `.env.example`)
 - [ ] No files outside scope modified
 - [ ] Issue/PR annotated with outcome
