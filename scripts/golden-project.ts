@@ -1723,15 +1723,26 @@ export function ranTests(output: string): number {
   return Number(ran);
 }
 
-/** One app of the launcher's plan, as golden expects it: its directory, its portless name and the command. */
-export type ExpectedPortlessApp = { dir: string; name: string; cmd: string[] };
+/**
+ * One app of the launcher's plan, as golden expects it: its directory, its portless name and the
+ * command, and whether it is a Worker or a Pages project that a Vite command runs, which has to be
+ * told to read the URLs from its process environment.
+ */
+export type ExpectedPortlessApp = {
+  dir: string;
+  name: string;
+  cmd: string[];
+  includesProcessEnv?: true;
+};
 
 /**
  * What `scripts/dev-portless.ts --dry-run` has to plan in a configuration, written out by hand and not
  * by the launcher's own rules, for a project whose root package is `slug` and a proxy serving `tld`: the
  * apps the modules install, and for each the command that follows from its `dev` script. The Worker API
  * runs through wrangler with the free port and every sibling's URL, the Bun API reads PORT, and a front
- * runs through `bunx react-router`, which portless recognises.
+ * runs through `bunx react-router`, which portless recognises. The fronts of the cloudflare configuration
+ * each have a wrangler config, so each is told `CLOUDFLARE_INCLUDE_PROCESS_ENV`: the Cloudflare Vite plugin
+ * ignores the process environment otherwise, and `ssr` would keep the `localhost` API_URL of its config.
  */
 export function expectedPortlessApps(
   configuration: string,
@@ -1744,7 +1755,10 @@ export function expectedPortlessApps(
     cmd: ["portless", "run", "--name", `${dir}.${slug}`, ...run],
   });
   const url = (dir: string, path = "") => `https://${dir}.${slug}.${tld}${path}`;
-  const front = (dir: string) => app(dir, ["bunx", "react-router", "dev"]);
+  const front = (dir: string): ExpectedPortlessApp => ({
+    ...app(dir, ["bunx", "react-router", "dev"]),
+    ...(configuration === "cloudflare" ? { includesProcessEnv: true as const } : {}),
+  });
 
   if (configuration === "cloudflare") {
     return [
@@ -1825,7 +1839,8 @@ function readPortlessPlan(stdout: string): PlannedPortlessApp[] {
 /**
  * The launcher's dry run planned exactly the apps `expected` names, each with the name, the address under
  * `tld`, the directory and the command golden expects, and told every app but the API where the API is
- * (`API_URL` and `VITE_API_URL`: a Worker is told through `--var`, which the command carries).
+ * (`API_URL` and `VITE_API_URL`: a Worker is told through `--var`, which the command carries). An app with a
+ * wrangler config that a Vite command runs is told `CLOUDFLARE_INCLUDE_PROCESS_ENV=true`, and no other app is.
  */
 export function expectPortlessPlan(
   stdout: string,
@@ -1872,6 +1887,15 @@ export function expectPortlessPlan(
           `${app.dir}: ${key} is ${app.env[key] ?? "not set"}, expected the API's ${api?.url}`,
         );
       }
+    }
+  }
+  for (const want of expected) {
+    const includes =
+      planned.find(({ dir }) => dir === want.dir)?.env.CLOUDFLARE_INCLUDE_PROCESS_ENV === "true";
+    if (includes !== (want.includesProcessEnv === true)) {
+      throw new Error(
+        `${want.dir}: CLOUDFLARE_INCLUDE_PROCESS_ENV is ${includes ? "set" : "not set"}, expected it ${want.includesProcessEnv === true ? "set" : "not set"}`,
+      );
     }
   }
 }

@@ -55,6 +55,28 @@ describe("discoverApps", () => {
     ]);
   });
 
+  it("notes which apps hold a wrangler config, whatever its format", () => {
+    const root = project("acme", {
+      api: { dev: "wrangler dev" },
+      ssr: { dev: "react-router dev" },
+      legacy: { dev: "react-router dev" },
+      toml: { dev: "react-router dev" },
+      spa: { dev: "react-router dev" },
+    });
+    writeFileSync(join(root, "apps", "ssr", "wrangler.jsonc"), "{}");
+    writeFileSync(join(root, "apps", "legacy", "wrangler.json"), "{}");
+    writeFileSync(join(root, "apps", "toml", "wrangler.toml"), "");
+    writeFileSync(join(root, "apps", "api", "wrangler.jsonc"), "{}");
+
+    expect(discoverApps(root).map(({ dir, wrangler }) => [dir, wrangler === true])).toEqual([
+      ["api", true],
+      ["legacy", true],
+      ["spa", false],
+      ["ssr", true],
+      ["toml", true],
+    ]);
+  });
+
   it("finds nothing when the project has no apps directory", () => {
     expect(discoverApps(project("acme", {}))).toEqual([]);
   });
@@ -222,7 +244,14 @@ describe("planStack", () => {
   describe("the four apps a cloudflare project has", () => {
     const stack = planStack({
       slug: "acme",
-      apps: [WORKER, FRONT("spa"), FRONT("ssr"), { dir: "static", dev: "react-router dev" }],
+      // Every shipped front has a wrangler config: a Worker built with the Cloudflare Vite plugin
+      // (ssr) or a Pages project (spa, static).
+      apps: [
+        { ...WORKER, wrangler: true },
+        { ...FRONT("spa"), wrangler: true },
+        { ...FRONT("ssr"), wrangler: true },
+        { dir: "static", dev: "react-router dev", wrangler: true },
+      ],
       urlOf: url,
     });
     const app = (dir: string) => stack.find((entry) => entry.dir === dir)!;
@@ -278,6 +307,19 @@ describe("planStack", () => {
       }
       expect(app("static").env.VITE_APP_URL).toBe("https://spa.acme.localhost");
     });
+
+    // A Worker the Cloudflare Vite plugin runs reads the vars of its wrangler config, not the process
+    // environment, unless wrangler is told to include it (verified under `react-router dev`: without
+    // the flag the Worker keeps the config's `localhost` API_URL).
+    it("lets the Worker a Vite command runs read the URLs it is given, by asking wrangler to include the process environment", () => {
+      for (const dir of ["spa", "ssr", "static"]) {
+        expect(app(dir).env.CLOUDFLARE_INCLUDE_PROCESS_ENV).toBe("true");
+      }
+    });
+
+    it("tells a wrangler process nothing but through its --var flags: it has no use for the flag", () => {
+      expect(app("api").env).toEqual({});
+    });
   });
 
   describe("the two apps a dockerfile project has", () => {
@@ -296,6 +338,12 @@ describe("planStack", () => {
         SPA_URL: "https://spa.acme.localhost",
       });
       expect(stack[1]?.env.VITE_API_URL).toBe("https://api.acme.localhost");
+    });
+
+    it("names no Cloudflare variable where no app has a wrangler config", () => {
+      for (const { env } of stack) {
+        expect(Object.keys(env).filter((name) => name.startsWith("CLOUDFLARE_"))).toEqual([]);
+      }
     });
   });
 

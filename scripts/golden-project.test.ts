@@ -1252,8 +1252,12 @@ describe("the launcher phase (dev/portless)", () => {
         ...app,
         url: `https://${app.name}.${tld}`,
         cwd: `apps/${app.dir}`,
-        // A Worker is told through `--var`, every other app through its environment.
-        env: app.dir === "api" ? {} : { API_URL: apiUrl, VITE_API_URL: apiUrl },
+        // A Worker is told through `--var`, every other app through its environment: the Worker a
+        // Vite command runs also asked to read it.
+        env:
+          app.dir === "api"
+            ? {}
+            : { API_URL: apiUrl, VITE_API_URL: apiUrl, CLOUDFLARE_INCLUDE_PROCESS_ENV: "true" },
         ...overrides[app.dir],
       })),
     });
@@ -1377,6 +1381,38 @@ describe("the launcher phase (dev/portless)", () => {
 
       expect(() => expectPortlessPlan(blind, expected, "localhost")).toThrow(/spa.*API_URL/s);
       expect(() => expectPortlessPlan(noVite, expected, "localhost")).toThrow(/ssr.*VITE_API_URL/s);
+    });
+
+    test("expects the Worker a Vite command runs, and no other app, to be told to read the process environment", () => {
+      expect(expected.filter((app) => app.includesProcessEnv).map(({ dir }) => dir)).toEqual([
+        "spa",
+        "ssr",
+        "static",
+      ]);
+      expect(
+        expectedPortlessApps("dockerfile", "golden-dockerfile", "localhost"),
+      ).not.toContainEqual(expect.objectContaining({ includesProcessEnv: true }));
+    });
+
+    test("names the front that was not told to, whose Worker would keep the API_URL of its config", () => {
+      const apiUrl = `https://api.${SLUG}.localhost`;
+      const unaware = printed("localhost", {
+        ssr: { env: { API_URL: apiUrl, VITE_API_URL: apiUrl } },
+      });
+
+      expect(() => expectPortlessPlan(unaware, expected, "localhost")).toThrow(
+        /ssr.*CLOUDFLARE_INCLUDE_PROCESS_ENV.*not set/s,
+      );
+    });
+
+    test("names an app that was told to when golden did not expect it", () => {
+      const told = printed("localhost", {
+        api: { env: { CLOUDFLARE_INCLUDE_PROCESS_ENV: "true" } },
+      });
+
+      expect(() => expectPortlessPlan(told, expected, "localhost")).toThrow(
+        /api.*CLOUDFLARE_INCLUDE_PROCESS_ENV.*set, expected it not set/s,
+      );
     });
   });
 
