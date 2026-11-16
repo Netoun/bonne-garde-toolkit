@@ -362,6 +362,35 @@ orm/drizzle auth/better-auth storage/r2 email/resend`) with no `--force`, and ty
 
 ### Stage 6: what 080 does not list, then the deletions.
 
+**The deletions are done, 2026-11-16, and so is the dissolution** (`3dc3486`..`669ed1b`). 186 files are gone:
+
+- `apps/spa` (57) and `apps/api` (54), so `apps/` no longer exists;
+- `packages/{ui,emails,config,api-runtime}` (62);
+- `testing/`, the scripts `init`, `brand` and `gen-branding`, `branding.json`, `.bonnegarde-init.json`, `tsconfig.base.json` and the root `.env.example`;
+- the repo's `deploy.yml`, which `deploy/cloudflare-actions` replaces in generated projects;
+- every `*:legacy` script, plus the root `dev` and `build` scripts, which no platform package has.
+
+The front rules of the root `vite.config.ts` keep their content and now target the shipped sources: `registry/modules/web/*/template/apps/**`, `registry/features/**`, and the UI sources for kebab-case. A deliberate violation set them off, and was reverted.
+
+Every legacy test has its copy in a module, with the reason written down for each renaming or split. `AGENTS.md`, `README.md` and the docs describe the platform, and `ARCHITECTURE.md` and `COMMANDS.md` were regenerated.
+
+**Accept met.**
+
+- `verify` exits 0 with no `*:legacy` script.
+- `golden` installs the 16 modules and 34 items, with one provider per configuration and no `--force`. The `cloudflare` project runs 217 tests, against a floor of 110. The docker phase builds and runs.
+- `packages/` holds only `cli`, `registry` and `schema`.
+
+**Not deleted:** `assets/`. Its seven binary favicons ride in no module, because templates carry only UTF-8.
+
+**Open after the dissolution:**
+
+- `assets/`;
+- the stale `*:legacy` row in spec 070 and `test:legacy` in 080;
+- the root package name `acme`;
+- knip, which is red and outside `verify`, and which counts the registry templates;
+- `docs/AGENTING.md` line 25: Claude Code 2.1.325 loads a root `AGENTS.md` when there is no `CLAUDE.md`, observed by the sibling session;
+- the stage 5 and 6 items listed above.
+
 **Everything but the deletions done 2026-11-16** (`b24c0c4`..`2b9f681`):
 
 - **The user's `chore/route-structure-check`** (`b24c0c4`, `9ab38fc`, `da2c84f`): `tooling/vite-plus` ships the oxlint rule `structure/route-modules`. A routed file lives in `features/<f>/pages/` and is named `-page`, `-layout` or `-redirect`. It is declared in the app's `routes.ts` or in a feature fragment `features/<f>/routes.ts`. The root config enforces the conventions of AGENTS.md.
