@@ -37,11 +37,12 @@
  * Any non-zero exit fails the run and names the phase. It needs a real `bun install` against npm,
  * so it is not part of `verify`; CI runs it as its own step.
  *
- * The CLI under test is the packed one (`bun run pack:cli`), driven as a subprocess so argv
- * parsing is exercised. It runs from a copy outside the repo: the packed `paths.ts` still walks up
- * to find the repo root, and `templateBaseDir()` falls back to the repo's `templates/base`, so in
- * place under `dist/` a pack that dropped its `templates/` would still pass. From a copy under the
- * temp directory, `bg create` can only use what the pack carries.
+ * The CLI under test is the packed one (`bun run pack:cli`), driven by node as a subprocess so argv
+ * parsing is exercised and so the path a user of npm, pnpm or yarn takes is the one proven (it needs
+ * Node 22.12 or later on PATH). It runs from a copy outside the repo: the packed `paths.ts` still
+ * walks up to find the repo root, and `templateBaseDir()` falls back to the repo's `templates/base`,
+ * so in place under `dist/` a pack that dropped its `templates/` would still pass. From a copy under
+ * the temp directory, `bg create` can only use what the pack carries.
  *
  * Usage:
  *   bun run golden
@@ -55,8 +56,10 @@ import { basename, join, relative, resolve } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
 const ROOT = resolve(import.meta.dir, "..");
-const PACKED_CLI = join(ROOT, "dist/npm/create-bonne-garde");
+const PACKED_CLI = join(ROOT, "dist/npm/bonne-garde");
 const BUN = "bun";
+/** The packed CLI is run by node, as `npx`, `pnpm dlx` and `yarn dlx` run it: golden proves that path. */
+const NODE = "node";
 
 /**
  * The project's npm scope. Registry files are authored for `@acme` and `add` rewrites the scope at
@@ -2200,13 +2203,13 @@ async function phase<T>(timings: Timing[], name: string, body: () => Promise<T>)
 
 async function golden(work: string, timings: Timing[]): Promise<void> {
   const cli = join(work, "cli");
-  const bg = (...args: string[]) => [BUN, join(cli, "src/bin.ts"), ...args];
+  const bg = (...args: string[]) => [NODE, join(cli, "bin.js"), ...args];
   const registry = `local:${join(ROOT, "registry")}`;
 
   await phase(timings, "pack", async () => {
     await run([BUN, "run", "pack:cli"], ROOT);
     await cp(PACKED_CLI, cli, { recursive: true });
-    // What `bunx create-bonne-garde` does first: the packed package has dependencies of its own,
+    // What `npx bonne-garde` does first: the packed package has dependencies of its own,
     // and this copy sits in a temp directory with no node_modules to find them in.
     await run([BUN, "install"], cli);
   });

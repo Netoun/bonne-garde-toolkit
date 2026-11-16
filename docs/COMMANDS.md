@@ -29,8 +29,8 @@
 | `lint:fix`           | `vp lint --fix`                                                                                                                              |
 | `pack:cli`           | `bun scripts/pack-cli.ts`                                                                                                                    |
 | `prepare`            | `husky`                                                                                                                                      |
-| `publish:cli`        | `bun scripts/pack-cli.ts && bun publish --cwd dist/npm/create-bonne-garde`                                                                   |
-| `publish:cli:dry`    | `bun scripts/pack-cli.ts && bun pm pack --cwd dist/npm/create-bonne-garde`                                                                   |
+| `publish:cli`        | `bun scripts/pack-cli.ts && bun publish --cwd dist/npm/bonne-garde`                                                                          |
+| `publish:cli:dry`    | `bun scripts/pack-cli.ts && bun pm pack --cwd dist/npm/bonne-garde`                                                                          |
 | `registry:build`     | `bun scripts/build-registry.ts`                                                                                                              |
 | `test`               | `bun run test:platform`                                                                                                                      |
 | `test:platform`      | `bun run test:scripts && bun run --parallel --filter '@bonne-garde/*' test`                                                                  |

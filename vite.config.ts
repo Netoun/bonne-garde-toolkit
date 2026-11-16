@@ -64,7 +64,6 @@ export default defineConfig({
           "scripts/**",
           "packages/cli/src/cli.ts",
           "packages/cli/src/bin.ts",
-          "packages/cli/src/create-bin.ts",
           "registry/modules/*/*/template/scripts/**",
           "registry/modules/*/*/template/packages/config/scripts/**",
         ],
