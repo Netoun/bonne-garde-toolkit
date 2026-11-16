@@ -59,6 +59,8 @@ Each file is the legacy one with `@acme` rendered as `{{SCOPE}}`, except:
   `favicon.svg` and the manifest through the bundler, which inlined both as `data:` URLs: the
   manifest's icons were never served. The page's `theme-color` is `branding.themeColor`, the
   manifest's.
+- `root.tsx` sets `<html lang>` from `branding.lang`, the language the manifest declares, where legacy
+  wrote `en`.
 - `root.tsx` imports the stylesheet as `{{SCOPE}}/ui/globals.css`: the path the `ui` package exports.
 - `lib/api.server.ts` returns `treaty<App>(…)`, not `treaty<App>(…).v1`, and
   `lib/api.server.test.ts` calls `api.health.get()` where it called `api.media({ id }).get()`. The API

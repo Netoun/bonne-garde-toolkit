@@ -8,7 +8,9 @@ import {
   Scripts,
   ScrollRestoration,
 } from "react-router";
-import { faviconLinks } from "{{SCOPE}}/config";
+// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// oxfmt-ignore
+import { branding, faviconLinks } from "{{SCOPE}}/config";
 import { QueryProvider } from "./providers/query-provider";
 import { AppLoader } from "./components/app-loader";
 import { useInitTheme } from "./hooks/use-init-theme";
@@ -23,7 +25,7 @@ export const links: Route.LinksFunction = () => [...faviconLinks];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang={branding.lang}>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />

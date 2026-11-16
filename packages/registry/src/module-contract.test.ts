@@ -651,6 +651,19 @@ describe("module contract", () => {
       }
     });
 
+    test("every web shell sets <html lang> from branding.lang, the language the manifest declares", async () => {
+      for (const id of ["spa", "ssr", "static"]) {
+        const root = await readFile(
+          join(MODULES, `web/${id}/template/apps/${id}/src/root.tsx`),
+          "utf8",
+        );
+
+        expect(root).toMatch(/import \{[^}]*\bbranding\b[^}]*\} from "\{\{SCOPE\}\}\/config";/);
+        expect(root).toContain("<html lang={branding.lang}>");
+        expect(root).not.toMatch(/\blang="/);
+      }
+    });
+
     test("its package.json carries exports and scripts and no dependency map (the variant has none to merge)", async () => {
       const body: unknown = JSON.parse(await text("packages/config/package.json"));
 

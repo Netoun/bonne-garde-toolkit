@@ -91,6 +91,8 @@ why `routes.ts` carries no region and `bg doctor` has nothing to say about it.
   The `tsconfig` `paths` into other trees are gone: `{{SCOPE}}/api` is reached through its `exports`.
 - The app has no `public/` of its own, and `favicons()` leaves `publicDir` free for one, as in
   `web/ssr` and `web/static`.
+- `root.tsx` sets `<html lang>` from `branding.lang`, the language the manifest declares, where legacy
+  wrote `en`.
 - The `vite.config.ts` points Vitest at `./testing/frontend.setup.ts`, inside the app.
 
 ## Left out
