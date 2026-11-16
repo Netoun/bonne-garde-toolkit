@@ -6,7 +6,7 @@ import { isMissing, readDisk } from "./disk";
 import type { ModulePlan } from "./module-plan";
 import { sha256Hex } from "./sha256";
 import type { PendingIntention } from "./pending-intentions";
-import { ownVersion, stagePatches, type PatchReport } from "./stage-patches";
+import { ownVersion, stagePatches, type PatchOwner, type PatchReport } from "./stage-patches";
 import type { StagedFile } from "./write-tree";
 
 /**
@@ -168,9 +168,12 @@ export async function stageModules(options: {
   plans: ModulePlan[];
   /** Target path to owner, for what the items of this call already stage. */
   claimed: Map<string, string>;
+  /** The items of this call that add dependencies (030): their patches run in the same virtual tree, after the modules'. */
+  itemPatches?: PatchOwner[];
   force: boolean;
 }): Promise<ModuleStaging> {
   const { projectRoot, manifest, plans, claimed, force } = options;
+  const patchOwners: PatchOwner[] = [...plans, ...(options.itemPatches ?? [])];
   const staging: ModuleStaging = {
     staged: [],
     written: [],
@@ -205,7 +208,7 @@ export async function stageModules(options: {
 
   const templates = new Map(contents);
   const stagePatchesOn = (tierOne: Map<string, string>) =>
-    stagePatches({ projectRoot, manifest, plans, tierOne, claimed, force });
+    stagePatches({ projectRoot, manifest, plans: patchOwners, tierOne, claimed, force });
   let patches = await stagePatchesOn(contents);
 
   // A tier-1 file that carries recorded regions and that the project changed since the module wrote

@@ -199,6 +199,10 @@ export async function runCli(argv: string[]): Promise<number> {
         {
           dryRun,
           items: plan.items.map((i) => i.name),
+          // The dependencies an item adds to the package.json its files land in (030): a patch each, owned by the item.
+          itemPatches: result.patches
+            .filter((patch) => plan.items.some((item) => item.name === patch.module))
+            .map(({ module, ...patch }) => ({ item: module, ...patch })),
           modules: modulePlans.map((module) => ({
             module: module.key,
             variant: module.variant,

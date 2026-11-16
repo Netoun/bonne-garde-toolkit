@@ -248,6 +248,7 @@ const FEATURE_ITEMS: RegistryCatalog = {
       name: "sign-in",
       type: "registry:block",
       registryDependencies: ["button"],
+      meta: { needsModules: ["auth", "web/spa"] },
       files: [
         {
           path: "/tmp/sign-in.tsx",
@@ -257,6 +258,19 @@ const FEATURE_ITEMS: RegistryCatalog = {
       ],
     },
     {
+      name: "uploads",
+      type: "registry:block",
+      meta: { needsModules: ["auth", "storage", "web/spa"] },
+      files: [
+        {
+          path: "/tmp/uploads.tsx",
+          type: "registry:file",
+          target: "apps/spa/src/features/media/components/uploads.tsx",
+        },
+      ],
+    },
+    {
+      // Declares nothing: a file in a features folder is not what says which modules an item needs.
       name: "welcome",
       type: "registry:block",
       files: [
@@ -270,116 +284,169 @@ const FEATURE_ITEMS: RegistryCatalog = {
   ],
 };
 
-const BETTER_AUTH = [{ category: "auth", id: "better-auth" }] as const;
+const BETTER_AUTH = { category: "auth", id: "better-auth" } as const;
+const WEB_SPA = { category: "web", id: "spa" } as const;
+const R2 = { category: "storage", id: "r2" } as const;
 
-function projectWith(modules: { ui?: boolean; auth?: boolean }): ProjectManifest {
-  const manifest = project(modules.ui === true);
-  if (modules.auth === true) {
-    manifest.modules.auth = [
-      {
-        id: "better-auth",
-        variant: "default",
-        version: "0.1.0",
-        installedAt: "2026-01-01T00:00:00.000Z",
-        options: {},
-        patches: [],
-        intentions: { applied: [], skipped: {} },
-      },
-    ];
-  }
+type Needed = { ui?: boolean; auth?: boolean; storage?: boolean; web?: string };
+
+function record(id: string) {
+  return {
+    id,
+    variant: "default",
+    version: "0.1.0",
+    installedAt: "2026-01-01T00:00:00.000Z",
+    options: {},
+    patches: [],
+    intentions: { applied: [], skipped: {} },
+  };
+}
+
+function projectWith(installed: Needed): ProjectManifest {
+  const manifest = project(installed.ui === true);
+  if (installed.auth === true) manifest.modules.auth = [record("better-auth")];
+  if (installed.storage === true) manifest.modules.storage = [record("r2")];
+  if (installed.web !== undefined) manifest.modules.web = [record(installed.web)];
   return manifest;
 }
 
-describe("resolveInstallPlan: an item that lands in apps/<app>/src/features needs the auth module (030)", () => {
-  test("`bg add sign-in` in a project with ui and no auth fails, naming auth/better-auth and the command to run", () => {
+const ALL: Needed = { ui: true, auth: true, storage: true, web: "spa" };
+
+describe("resolveInstallPlan: an item names the modules it needs, in meta.needsModules (030)", () => {
+  test("a module the project lacks is refused by its category, or by its id when the item needs that one", () => {
     const message = failure(() =>
       resolveInstallPlan(FEATURE_ITEMS, ["sign-in"], projectWith({ ui: true })),
     );
 
     expect(message).toBe(
-      "sign-in needs the auth module, and none is installed or named in this call; run: bg add auth/better-auth sign-in",
+      "sign-in needs the auth and web/spa modules, and none is installed or named in this call; run: bg add auth/better-auth web/spa sign-in",
     );
   });
 
-  test("a project with neither module is told about both at once, not one after the other", () => {
+  test("a project with none of them is told about every one at once, ui included", () => {
     const message = failure(() => resolveInstallPlan(FEATURE_ITEMS, ["sign-in"], project()));
 
     expect(message).toBe(
-      "sign-in needs the ui and auth modules, and none is installed or named in this call; run: bg add ui/shadcn auth/better-auth sign-in",
+      "sign-in needs the ui, auth and web/spa modules, and none is installed or named in this call; run: bg add ui/shadcn auth/better-auth web/spa sign-in",
     );
   });
 
-  test("the module is named from the catalog when it lists one", () => {
-    const withModule: RegistryCatalog = {
+  test("only the missing ones are named: the others are in bg.json", () => {
+    expect(
+      failure(() =>
+        resolveInstallPlan(
+          FEATURE_ITEMS,
+          ["uploads"],
+          projectWith({ ui: true, auth: true, web: "spa" }),
+        ),
+      ),
+    ).toBe(
+      "uploads needs the storage module, and none is installed or named in this call; run: bg add storage/r2 uploads",
+    );
+  });
+
+  test("a module is named from the catalog when it lists one", () => {
+    const listed = (category: "auth" | "storage", id: string) => ({
+      dir: `/tmp/modules/${category}/${id}`,
+      manifest: {
+        id,
+        category,
+        title: id,
+        description: "x",
+        peers: {},
+        variants: [{ key: "default", match: {} }],
+      },
+    });
+    const withModules: RegistryCatalog = {
       ...FEATURE_ITEMS,
-      modules: [
-        {
-          dir: "/tmp/modules/auth/better-auth",
-          manifest: {
-            id: "better-auth",
-            category: "auth",
-            title: "Better Auth",
-            description: "x",
-            peers: {},
-            variants: [{ key: "default", match: {} }],
-          },
-        },
-      ],
+      modules: [listed("auth", "better-auth"), listed("auth", "lucia"), listed("storage", "s3")],
     };
 
     expect(
-      failure(() => resolveInstallPlan(withModule, ["sign-in"], projectWith({ ui: true }))),
-    ).toContain("bg add auth/better-auth sign-in");
-  });
-
-  test("it passes when bg.json records an auth module", () => {
-    const plan = resolveInstallPlan(
-      FEATURE_ITEMS,
-      ["sign-in"],
-      projectWith({ ui: true, auth: true }),
+      failure(() => resolveInstallPlan(withModules, ["uploads"], projectWith({ ui: true }))),
+    ).toBe(
+      "uploads needs the auth, storage and web/spa modules, and none is installed or named in this call; run: bg add auth/better-auth or auth/lucia storage/s3 web/spa uploads",
     );
-
-    expect(plan.items.map((i) => i.name)).toEqual(["utils", "button", "sign-in"]);
   });
 
-  test("it passes when an auth module is named in the same call", () => {
-    const plan = resolveInstallPlan(
-      FEATURE_ITEMS,
-      ["sign-in"],
-      projectWith({ ui: true }),
+  test("it passes when bg.json records every module", () => {
+    const plan = resolveInstallPlan(FEATURE_ITEMS, ["uploads"], projectWith(ALL));
+
+    expect(plan.items.map((i) => i.name)).toEqual(["uploads"]);
+  });
+
+  test("it passes when the modules are named in the same call", () => {
+    const plan = resolveInstallPlan(FEATURE_ITEMS, ["uploads"], projectWith({ ui: true }), [
       BETTER_AUTH,
-    );
+      R2,
+      WEB_SPA,
+    ]);
 
-    expect(plan.items.map((i) => i.name)).toEqual(["utils", "button", "sign-in"]);
+    expect(plan.items.map((i) => i.name)).toEqual(["uploads"]);
   });
 
-  test("another module named in the call does not stand in for it", () => {
-    expect(() =>
-      resolveInstallPlan(FEATURE_ITEMS, ["sign-in"], projectWith({ ui: true }), SHADCN),
-    ).toThrow(/auth\/better-auth/);
+  test("a category is met by any module of it", () => {
+    const manifest = projectWith({ ui: true, web: "spa" });
+    manifest.modules.auth = [record("lucia")];
+
+    expect(resolveInstallPlan(FEATURE_ITEMS, ["sign-in"], manifest).items).toHaveLength(3);
   });
 
-  test("any app's features folder counts, and the item needs nothing else", () => {
-    expect(failure(() => resolveInstallPlan(FEATURE_ITEMS, ["welcome"], project()))).toBe(
-      "welcome needs the auth module, and none is installed or named in this call; run: bg add auth/better-auth welcome",
-    );
-  });
-
-  test("a file in an app's src outside features needs no auth module", () => {
+  test("web/spa is not met by another web module: the item lands in apps/spa", () => {
     expect(
-      resolveInstallPlan(FEATURE_ITEMS, ["shell"], projectWith({ ui: true })).items.map(
-        (i) => i.name,
+      failure(() =>
+        resolveInstallPlan(
+          FEATURE_ITEMS,
+          ["sign-in"],
+          projectWith({ ui: true, auth: true, web: "ssr" }),
+        ),
       ),
-    ).toEqual(["config", "utils", "button", "shell"]);
+    ).toBe(
+      "sign-in needs the web/spa module, and none is installed or named in this call; run: bg add web/spa sign-in",
+    );
+    expect(
+      failure(() =>
+        resolveInstallPlan(FEATURE_ITEMS, ["sign-in"], projectWith({ ui: true, auth: true }), [
+          { category: "web", id: "ssr" },
+        ]),
+      ),
+    ).toContain("web/spa");
   });
 
-  test("an item that needs both names every requested item that needs either", () => {
+  test("another module named in the call does not stand in", () => {
+    expect(() =>
+      resolveInstallPlan(FEATURE_ITEMS, ["sign-in"], projectWith({ ui: true }), [BETTER_AUTH]),
+    ).toThrow(/web\/spa/);
+  });
+
+  test("a features folder is not what makes an item need a module: only meta.needsModules does", () => {
+    expect(resolveInstallPlan(FEATURE_ITEMS, ["welcome"], project()).items).toHaveLength(1);
+  });
+
+  test("an item that needs both the ui module and others names every requested item that needs any", () => {
     const message = failure(() =>
       resolveInstallPlan(FEATURE_ITEMS, ["config", "button", "sign-in"], project()),
     );
 
     expect(message).toBe(
-      "button, sign-in need the ui and auth modules, and none is installed or named in this call; run: bg add ui/shadcn auth/better-auth config button sign-in",
+      "button, sign-in need the ui, auth and web/spa modules, and none is installed or named in this call; run: bg add ui/shadcn auth/better-auth web/spa config button sign-in",
+    );
+  });
+
+  test("a need that is no category, or no <category>/<id>, is an authoring error that names the item", () => {
+    const broken = (needsModules: unknown): RegistryCatalog => ({
+      ...catalog,
+      items: [{ name: "odd", type: "registry:block", meta: { needsModules } }],
+    });
+
+    expect(failure(() => resolveInstallPlan(broken(["authentication"]), ["odd"], project()))).toBe(
+      'odd declares meta.needsModules "authentication": a module category (auth) or <category>/<id> (web/spa)',
+    );
+    expect(failure(() => resolveInstallPlan(broken(["web/"]), ["odd"], project()))).toContain(
+      'meta.needsModules "web/"',
+    );
+    expect(failure(() => resolveInstallPlan(broken("auth"), ["odd"], project()))).toBe(
+      "odd declares meta.needsModules that is not a list of strings",
     );
   });
 });

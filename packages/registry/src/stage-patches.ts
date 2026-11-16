@@ -1,10 +1,23 @@
 import { join } from "node:path";
 import type { PatchStatus, ProjectManifest } from "@bonne-garde/schema";
 import { readDisk } from "./disk";
-import type { ModulePlan } from "./module-plan";
 import { inspectPatch, patchRegions, writePatch } from "./patch-ops";
 import type { PlannedPatch } from "./patch-plan";
 import { pendingIntention, type PendingIntention } from "./pending-intentions";
+
+/**
+ * Whoever declares patches: a module, or an item that declares dependencies (030). They are applied
+ * the same way. What differs is a patch that cannot be: a module's becomes a pending intention
+ * (060 "Degradation"), and an item has no record to keep one in (`bg.json` has intentions for
+ * modules only), so it refuses the install instead.
+ */
+export type PatchOwner = {
+  /** `<category>/<id>` for a module, the item's name for an item: the owner `bg.json` records. */
+  key: string;
+  patches: PlannedPatch[];
+  checks: string[];
+  kind?: "item";
+};
 
 /** What one region of a patch did. `replaced` is the text `--force` overwrote (`null`: it was not a string). */
 export type RegionReport = {
@@ -51,7 +64,11 @@ type Text = { ok: true; text: string } | { ok: false; reason: string };
  * sha256 of, so that the record is the same whether another module's patches land in the same call or
  * in a later one, and a file nobody else touched still counts as untouched.
  */
-export function ownVersion(plan: ModulePlan, target: string, template: string): string {
+export function ownVersion(
+  plan: Pick<PatchOwner, "patches">,
+  target: string,
+  template: string,
+): string {
   return plan.patches
     .filter(({ file }) => file === target)
     .reduce((text, patch) => {
@@ -84,7 +101,7 @@ export function ownVersion(plan: ModulePlan, target: string, template: string): 
 export async function stagePatches(options: {
   projectRoot: string;
   manifest: ProjectManifest;
-  plans: ModulePlan[];
+  plans: PatchOwner[];
   /** Target to content for the module files of this call. Rewritten in place when a patch edits one. */
   tierOne: Map<string, string>;
   /** Target to owner for everything this call writes whole, items included. */
@@ -137,6 +154,12 @@ export async function stagePatches(options: {
       };
       staging.reports.push(report);
       const fail = (reason: string) => {
+        if (plan.kind === "item") {
+          report.status = "failed";
+          report.reason = reason;
+          staging.refused.push(`${plan.key} cannot add its dependencies: ${reason}`);
+          return;
+        }
         const intention = pendingIntention(plan.key, plan.checks, patch, reason);
         report.status = "failed";
         report.reason = reason;

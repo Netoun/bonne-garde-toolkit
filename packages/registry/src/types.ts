@@ -15,6 +15,8 @@ export type RegistryItem = {
   dependencies?: string[];
   devDependencies?: string[];
   registryDependencies?: string[];
+  /** Free-form in the shadcn schema. The only key this platform reads is `needsModules` (030). */
+  meta?: Record<string, unknown>;
   files?: RegistryFile[];
 };
 

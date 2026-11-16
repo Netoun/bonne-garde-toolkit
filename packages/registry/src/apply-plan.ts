@@ -9,6 +9,7 @@ import {
 } from "@bonne-garde/schema";
 import { ApplyError } from "./apply-error";
 import type { ModulePlan } from "./module-plan";
+import { itemDependencyPatches } from "./item-dependencies";
 import { itemFileTarget, type InstallPlan } from "./resolve-plan";
 import { sha256Hex } from "./sha256";
 import { stageModules, type EnvResult, type TookOver } from "./stage-module";
@@ -178,11 +179,18 @@ export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResu
   }
 
   const modules = options.modules ?? [];
+  const itemPatches = options.plan.items.flatMap((item) => {
+    const patches = itemDependencyPatches(item, options.manifest.scope);
+    return patches.length === 0
+      ? []
+      : [{ key: item.name, patches, checks: [], kind: "item" as const }];
+  });
   const staging = await stageModules({
     projectRoot: options.projectRoot,
     manifest: options.manifest,
     plans: modules,
     claimed,
+    itemPatches,
     force: options.force ?? false,
   });
   staged.push(...staging.staged);

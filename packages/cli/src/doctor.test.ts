@@ -600,6 +600,46 @@ describe("runDoctor: regions", () => {
     expect(codes(report, "regions")).toEqual([]);
   });
 
+  describe("a dependency an item wrote into a package.json (030, 060)", () => {
+    /** `button` owns `dependencies.zod` of the root package.json, as an item that declares `zod@4.4.3` would. */
+    async function itemDependencyProject(): Promise<string> {
+      const root = await projectWithButton();
+      const path = join(root, "package.json");
+      const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
+      await writeFile(
+        path,
+        `${JSON.stringify({ ...(parsed as object), dependencies: { zod: "4.4.3" } }, null, 2)}\n`,
+      );
+      await editManifest(root, (m) => ({
+        ...m,
+        regions: { "package.json": { "dependencies.zod": "button" } },
+      }));
+      return root;
+    }
+
+    test("is a region owned by the item: present is fine, and strict is green", async () => {
+      const root = await itemDependencyProject();
+
+      const report = await runDoctor(root);
+
+      expect(codes(report, "regions")).toEqual([]);
+      expect(report.checks.regions.details).toMatchObject({
+        checked: ["package.json#dependencies.zod"],
+      });
+      expect(doctorExitCode(report, true)).toBe(0);
+    });
+
+    test("deleted from the package.json, it is an error that names it and its owner", async () => {
+      const root = await itemDependencyProject();
+      await writeFile(join(root, "package.json"), `${JSON.stringify({ name: "x" }, null, 2)}\n`);
+
+      const report = await runDoctor(root);
+
+      expect(codes(report, "regions")).toEqual(["region-missing"]);
+      expect(report.checks.regions.findings[0]?.message).toContain("recorded for button");
+    });
+  });
+
   test("says what it cannot see: a foreign edit leaves no trace in bg.json", async () => {
     const report = await runDoctor(await projectWithButton());
     expect(report.checks.regions.notes.join(" ")).toMatch(/foreign edit/);

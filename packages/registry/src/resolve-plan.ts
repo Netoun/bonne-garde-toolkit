@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { ModuleCategory, ProjectManifest } from "@bonne-garde/schema";
+import { isModuleCategory, type ModuleCategory, type ProjectManifest } from "@bonne-garde/schema";
 import type { ModuleRef } from "./module-plan";
 import type { RegistryCatalog, RegistryFile, RegistryItem } from "./types";
 
@@ -31,33 +31,51 @@ export function itemFileTarget(item: RegistryItem, file: RegistryFile): string {
   return base;
 }
 
+/** A module an item needs: any module of `category`, or the one named `id`. */
+type Need = { category: ModuleCategory; id?: string };
+
+const needLabel = (need: Need): string =>
+  need.id === undefined ? need.category : `${need.category}/${need.id}`;
+
+const NEED_SHAPE = "a module category (auth) or <category>/<id> (web/spa)";
+
 /**
- * Spec 030: an item is tier 1 and does not create what it lands in, so a module has to. One rule,
- * keyed on where the item's files land and not on a field: a UI item lands in the `ui` module's
- * package, a feature item in a front app's `features` folder and calls the auth client.
+ * The modules a feature item needs (spec 030): `meta.needsModules`, each entry a category or a
+ * `<category>/<id>`. It carries a rule and no second naming of an edge: `registryDependencies` stays
+ * the only way an item names another item, and `meta.bg` is still gone.
  */
-type Host = {
-  lands: (target: string) => boolean;
-  category: ModuleCategory;
-  fallback: string;
-};
-
-const HOSTS: readonly Host[] = [
-  {
-    lands: (target) => target.startsWith("packages/ui/"),
-    category: "ui",
-    fallback: "ui/shadcn",
-  },
-  {
-    lands: (target) => /^apps\/[^/]+\/src\/features\//.test(target),
-    category: "auth",
-    fallback: "auth/better-auth",
-  },
-];
-
-function landsIn(item: RegistryItem, host: Host): boolean {
-  return (item.files ?? []).some((file) => host.lands(itemFileTarget(item, file)));
+function needsOf(item: RegistryItem): Need[] {
+  const declared = item.meta?.needsModules;
+  if (declared === undefined) {
+    return [];
+  }
+  if (!Array.isArray(declared) || declared.some((entry) => typeof entry !== "string")) {
+    throw new PlanError(`${item.name} declares meta.needsModules that is not a list of strings`);
+  }
+  return declared.map((entry: string): Need => {
+    const [category, id, ...rest] = entry.split("/");
+    if (
+      !isModuleCategory(category) ||
+      rest.length > 0 ||
+      (id !== undefined && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id))
+    ) {
+      throw new PlanError(
+        `${item.name} declares meta.needsModules ${JSON.stringify(entry)}: ${NEED_SHAPE}`,
+      );
+    }
+    return id === undefined ? { category } : { category, id };
+  });
 }
+
+/** Where an item's files land, which needs a module whether or not it says so: UI items go in `packages/ui` (030). */
+const UI_HOME = { prefix: "packages/ui/", need: { category: "ui" } satisfies Need };
+
+/** What the refusal suggests for a category when the catalog lists no module of it (a github source lists none). */
+const SUGGESTED: Readonly<Partial<Record<ModuleCategory, string>>> = {
+  ui: "ui/shadcn",
+  auth: "auth/better-auth",
+  storage: "storage/r2",
+};
 
 /** The names of the items `requested` pulls in, itself included, through `registryDependencies`. */
 function closureOf(catalog: RegistryCatalog, name: string, seen = new Set<string>()): Set<string> {
@@ -71,7 +89,7 @@ function closureOf(catalog: RegistryCatalog, name: string, seen = new Set<string
   return seen;
 }
 
-type MissingHost = { host: Host; needing: readonly RegistryItem[] };
+type Missing = { need: Need; needing: RegistryItem[] };
 
 /**
  * The refusal for items that need modules nobody installed or named: it names every one at once, so
@@ -83,26 +101,29 @@ function missingModules(
   catalog: RegistryCatalog,
   requested: string[],
   modules: readonly ModuleRef[],
-  missing: readonly MissingHost[],
+  missing: readonly Missing[],
 ): PlanError {
   const names = new Set(missing.flatMap(({ needing }) => needing.map((item) => item.name)));
   const asked = requested.filter((name) =>
     [...closureOf(catalog, name)].some((dep) => names.has(dep)),
   );
-  const hosts = missing.map(({ host }) => {
+  const hosts = missing.map(({ need }) => {
+    if (need.id !== undefined) {
+      return needLabel(need);
+    }
     const known = catalog.modules
-      .filter(({ manifest: module }) => module.category === host.category)
+      .filter(({ manifest: module }) => module.category === need.category)
       .map(({ manifest: module }) => `${module.category}/${module.id}`);
-    return known.length > 0 ? known.join(" or ") : host.fallback;
+    return known.length > 0 ? known.join(" or ") : (SUGGESTED[need.category] ?? need.category);
   });
   const named = modules.map((ref) => `${ref.category}/${ref.id}`);
   const verb = asked.length > 1 ? "need" : "needs";
-  const categories = missing.map(({ host }) => host.category);
+  const labels = missing.map(({ need }) => needLabel(need));
   const list =
-    categories.length > 1
-      ? `${categories.slice(0, -1).join(", ")} and ${categories.at(-1)}`
-      : (categories[0] ?? "");
-  const noun = categories.length > 1 ? "modules" : "module";
+    labels.length > 1
+      ? `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`
+      : (labels[0] ?? "");
+  const noun = labels.length > 1 ? "modules" : "module";
   return new PlanError(
     `${asked.join(", ")} ${verb} the ${list} ${noun}, and none is installed or named in this call; run: bg add ${[...hosts, ...named, ...requested].join(" ")}`,
   );
@@ -111,13 +132,15 @@ function missingModules(
 const hasModule = (
   manifest: ProjectManifest,
   modules: readonly ModuleRef[],
-  category: ModuleCategory,
+  { category, id }: Need,
 ): boolean =>
-  (manifest.modules[category] ?? []).length > 0 || modules.some((ref) => ref.category === category);
+  (manifest.modules[category] ?? []).some((record) => id === undefined || record.id === id) ||
+  modules.some((ref) => ref.category === category && (id === undefined || ref.id === id));
 
 /**
- * Fails when an item writes into a place whose module is neither installed nor named in this
- * call. `requested` are the names the caller typed.
+ * Fails when an item needs a module that is neither installed nor named in this call: the `ui`
+ * module for an item that lands in its package, and every module an item names in
+ * `meta.needsModules`. `requested` are the names the caller typed.
  */
 function checkHostModules(
   catalog: RegistryCatalog,
@@ -126,12 +149,28 @@ function checkHostModules(
   manifest: ProjectManifest,
   modules: readonly ModuleRef[],
 ): void {
-  const missing = HOSTS.map((host) => ({
-    host,
-    needing: ordered.filter((item) => landsIn(item, host)),
-  })).filter(
-    ({ host, needing }) => needing.length > 0 && !hasModule(manifest, modules, host.category),
-  );
+  const missing: Missing[] = [];
+  const need = (wanted: Need, item: RegistryItem) => {
+    if (hasModule(manifest, modules, wanted)) {
+      return;
+    }
+    const known = missing.find(({ need: other }) => needLabel(other) === needLabel(wanted));
+    if (known === undefined) {
+      missing.push({ need: wanted, needing: [item] });
+    } else if (!known.needing.includes(item)) {
+      known.needing.push(item);
+    }
+  };
+  for (const item of ordered) {
+    if ((item.files ?? []).some((file) => itemFileTarget(item, file).startsWith(UI_HOME.prefix))) {
+      need(UI_HOME.need, item);
+    }
+  }
+  for (const item of ordered) {
+    for (const wanted of needsOf(item)) {
+      need(wanted, item);
+    }
+  }
   if (missing.length > 0) {
     throw missingModules(catalog, requested, modules, missing);
   }
