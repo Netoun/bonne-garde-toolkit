@@ -228,14 +228,14 @@ describe("buildVars", () => {
   test("keeps the variables Vite exposes to a build, and drops every other one", () => {
     const json = JSON.stringify({
       VITE_API_URL: "https://api.example.com",
-      VITE_APP_URL: "https://example.com",
+      VITE_ANALYTICS_ID: "ga-1",
       API_URL: "https://api.example.com",
       BETTER_AUTH_SECRET: "oops",
     });
 
     expect(buildVars(json)).toEqual({
       VITE_API_URL: "https://api.example.com",
-      VITE_APP_URL: "https://example.com",
+      VITE_ANALYTICS_ID: "ga-1",
     });
   });
 
@@ -485,7 +485,7 @@ interface Unrelated {
 
 interface ImportMetaEnv {
   // readonly VITE_COMMENTED_OUT: string;
-  readonly VITE_APP_URL?: string;
+  readonly VITE_ANALYTICS_ID?: string;
   readonly API_URL: string;
   readonly VITE_B: string;
   readonly VITE_A: string;

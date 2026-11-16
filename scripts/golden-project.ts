@@ -297,9 +297,8 @@ export const DEPLOY_PLAN: Readonly<Record<string, readonly string[]>> = {
 /**
  * What each app the plan builds needs of the workflow's variables, in each configuration that installs the
  * deploy module, by the directory it is built in. Written out by hand, not read from the files the script
- * reads: the SPA and the static site read `VITE_API_URL` when they build and throw at load without it; the
- * Worker `ssr` reads `API_URL` from its wrangler config at run time and needs no build variable; and the
- * optional `VITE_APP_URL` of `web/static` is read by nothing, so it is not asked for.
+ * reads: the SPA and the static site read `VITE_API_URL` when they build and throw at load without it; and
+ * the Worker `ssr` reads `API_URL` from its wrangler config at run time and needs no build variable.
  */
 export const DEPLOY_BUILD_NEEDS: Readonly<
   Record<string, Readonly<Record<string, readonly string[]>>>
@@ -1789,7 +1788,7 @@ export function hasPortless(configuration: Configuration): boolean {
  * How many tests the launcher runs in the project (`bun test ./scripts/dev-portless.test.ts`: it is a
  * root script, so the root `test` fan-out over workspaces never reaches it); fewer means they went.
  */
-export const PORTLESS_MIN_TESTS = 38;
+export const PORTLESS_MIN_TESTS = 36;
 
 /** The count in the `Ran N tests across M files` line `bun test` prints on stderr. */
 export function ranTests(output: string): number {

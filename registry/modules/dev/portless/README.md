@@ -53,17 +53,10 @@ from its `dev` script:
 ## What each app is told of the others
 
 Every app gets `<DIR>_URL` and `VITE_<DIR>_URL` for each app of the project (`API_URL`, `SPA_URL`,
-`VITE_API_URL`, …). One name a shipped module reads does not follow from a directory, so it is an alias,
-left out when the app it points at is not installed:
-
-| Variable       | Value               | Read by      |
-| -------------- | ------------------- | ------------ |
-| `VITE_APP_URL` | the `spa` app's URL | `web/static` |
-
-The launcher names no key of a module that reads it from the runtime. `storage/r2`'s `R2_PUBLIC_URL` used to
-be one (the `api` app's URL + `/v1/media/file`, passed to the API as a `--var`); the module now derives it from
-`API_URL` under `wrangler dev`, so a launcher, or none, only has to give the API its origin
-([`storage/r2`](../../storage/r2/README.md#environment)).
+`VITE_API_URL`, …), and nothing else: the launcher names no key of a module that reads it from the
+runtime. `storage/r2`'s `R2_PUBLIC_URL` used to be one (the `api` app's URL + `/v1/media/file`, passed to
+the API as a `--var`); the module now derives it from `API_URL` under `wrangler dev`, so a launcher, or
+none, only has to give the API its origin ([`storage/r2`](../../storage/r2/README.md#environment)).
 
 A Worker started by `wrangler` gets these as `--var` flags (without the `VITE_` ones, which only Vite reads);
 every other app gets them in its environment.

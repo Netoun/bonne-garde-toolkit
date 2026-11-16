@@ -123,16 +123,10 @@ export function needsProxyRestart(currentUrl: string, lan: boolean): boolean {
 }
 
 /**
- * Names a shipped module reads that an app's directory does not give: `web/static` reads the SPA's
- * URL as `VITE_APP_URL`. An alias is left out when the app it points at is not installed. A key that
- * only has a default to derive (`storage/r2`'s public url, from `API_URL`) is not here: the module
- * that reads it derives it, so this file names no module's key but the fronts'.
- */
-const ALIASES: readonly { name: string; app: string }[] = [{ name: "VITE_APP_URL", app: "spa" }];
-
-/**
  * What every app learns of the others, by the directory of the app whose URL it is: `<DIR>_URL` for a
  * server (`API_URL`, `SPA_URL`) and `VITE_<DIR>_URL` for a Vite front, which only exposes `VITE_*`.
+ * It names no key of a module: one that only has a default to derive (`storage/r2`'s public url, from
+ * `API_URL`) is derived by the module that reads it.
  */
 export function urlEnv(urls: Readonly<Record<string, string>>): Record<string, string> {
   const env: Record<string, string> = {};
@@ -140,12 +134,6 @@ export function urlEnv(urls: Readonly<Record<string, string>>): Record<string, s
     const key = dir.toUpperCase().replace(/[^A-Z0-9]+/g, "_");
     env[`${key}_URL`] = url;
     env[`VITE_${key}_URL`] = url;
-  }
-  for (const { name, app } of ALIASES) {
-    const url = urls[app];
-    if (url !== undefined) {
-      env[name] = url;
-    }
   }
   return env;
 }

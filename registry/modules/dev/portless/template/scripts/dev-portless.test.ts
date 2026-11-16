@@ -148,10 +148,6 @@ describe("urlEnv", () => {
     });
   });
 
-  it("adds the one name a shipped module reads that no directory gives", () => {
-    expect(urlEnv(urls)).toMatchObject({ VITE_APP_URL: urls.spa });
-  });
-
   it("names nothing else: a key a module reads from the runtime is that module's to default, not the launcher's to know", () => {
     expect(Object.keys(urlEnv(urls)).sort()).toEqual([
       "API_URL",
@@ -159,17 +155,10 @@ describe("urlEnv", () => {
       "SSR_URL",
       "STATIC_SITE_URL",
       "VITE_API_URL",
-      "VITE_APP_URL",
       "VITE_SPA_URL",
       "VITE_SSR_URL",
       "VITE_STATIC_SITE_URL",
     ]);
-  });
-
-  it("leaves an alias out when the app it points at is not installed", () => {
-    const env = urlEnv({ ssr: urls.ssr });
-
-    expect(Object.keys(env).sort()).toEqual(["SSR_URL", "VITE_SSR_URL"]);
   });
 });
 
@@ -314,7 +303,6 @@ describe("planStack", () => {
           VITE_API_URL: "https://api.acme.localhost",
         });
       }
-      expect(app("static").env.VITE_APP_URL).toBe("https://spa.acme.localhost");
     });
 
     // A Worker the Cloudflare Vite plugin runs reads the vars of its wrangler config, not the process

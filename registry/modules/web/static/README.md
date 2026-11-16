@@ -40,7 +40,7 @@ apart from `.env.example`, which `env` replaces:
 - `testing/{frontend.setup.ts,matchers.d.ts}`: the Vitest setup with the `jest-dom` matchers. Legacy
   shared `testing/` at the repo root with `server.ts` (MSW), which this site's one test does not use.
 
-`env` adds `VITE_APP_URL` and `VITE_API_URL` to `.env.example`. `bun run test` runs one test.
+`env` adds `VITE_API_URL` to `.env.example`. `bun run test` runs one test.
 
 ## What changed from the legacy `apps/static`
 

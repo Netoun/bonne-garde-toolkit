@@ -44,10 +44,7 @@
         "vite-plus": "0.2.8",
         "wrangler": "4.119.0"
       },
-      "env": [
-        { "name": "VITE_APP_URL", "required": false, "example": "http://localhost:5173" },
-        { "name": "VITE_API_URL", "required": true, "example": "http://localhost:5172" }
-      ],
+      "env": [{ "name": "VITE_API_URL", "required": true, "example": "http://localhost:5172" }],
       "copy": [
         "apps/static/package.json",
         "apps/static/tsconfig.json",

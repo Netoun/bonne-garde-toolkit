@@ -111,8 +111,7 @@ VITE_API_URL; apps/static needs VITE_API_URL. Set each one as a variable of the 
 What an app needs is the `VITE_*` members of `interface ImportMetaEnv` in its `src/vite-env.d.ts` that have no
 `?`: the file `web/spa` and `web/static` ship to type what their build reads. The script names no variable and no
 app, so a front that reads another one, or a module that drops one, changes the refusal with no edit here. A member
-with a `?` is optional and not asked for (`web/static`'s `VITE_APP_URL` is declared in its `env` as
-`required: false`, and is not in its `vite-env.d.ts`); `web/ssr` declares none, since it reads `API_URL` from its
+with a `?` is optional and not asked for; `web/ssr` declares none, since it reads `API_URL` from its
 Worker config at run time. A value counts as missing when it is empty. A variable in the environment of a local run
 counts too, since a build is given that environment.
 
