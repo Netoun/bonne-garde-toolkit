@@ -48,6 +48,7 @@
  *   bun scripts/golden-project.ts
  */
 
+import { createHash } from "node:crypto";
 import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -970,12 +971,17 @@ export function diffTrees(
   });
 }
 
-/** Every file of a project with its text, `node_modules` and `.git` left out. */
-async function snapshot(root: string): Promise<Record<string, string>> {
+/**
+ * Every file of a project, `node_modules` and `.git` left out: `bg.json` as text, which `diffTrees` settles,
+ * and any other by the sha256 of its bytes. Decoded as text, two icons that differ by an invalid byte
+ * read the same, and a re-add that changed one would pass for a re-add that changed nothing.
+ */
+export async function snapshot(root: string): Promise<Record<string, string>> {
   const tree: Record<string, string> = {};
   for await (const path of new Bun.Glob("**/*").scan({ cwd: root, dot: true, onlyFiles: true })) {
     if (!/^(?:node_modules|\.git)\//.test(path)) {
-      tree[path] = await Bun.file(join(root, path)).text();
+      const file = Bun.file(join(root, path));
+      tree[path] = path === "bg.json" ? await file.text() : sha256(await file.bytes());
     }
   }
   return tree;
@@ -998,6 +1004,149 @@ export function addArguments(modules: readonly string[], items: readonly string[
     throw new Error(`named twice in one \`bg add\`: ${[...new Set(twice)].join(", ")}`);
   }
   return ["add", ...names, "--yes", "--no-install"];
+}
+
+const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+
+/** Where `config/branding` puts the favicons in a project. */
+export const FAVICONS_DIR = "packages/config/assets/favicons";
+
+/**
+ * The favicons that are binary template files (035): the first the registry ships. `favicon.svg` and
+ * `site.webmanifest` are text, and the project holds those like any other file.
+ */
+export const BINARY_FAVICONS = [
+  "android-chrome-192x192.png",
+  "android-chrome-512x512.png",
+  "apple-touch-icon.png",
+  "favicon-16x16.png",
+  "favicon-32x32.png",
+  "favicon-48x48.png",
+  "favicon.ico",
+] as const;
+
+/** Whether the configuration installs the favicons and the SPA that serves them, so golden reads them in the build. */
+export function hasFavicons(configuration: Configuration): boolean {
+  return (
+    configuration.modules.includes("config/branding") && configuration.modules.includes("web/spa")
+  );
+}
+
+/**
+ * Each binary favicon of the project is the registry's, byte for byte, and `bg.json` records the sha256 of
+ * those bytes: the file survived the transport, and what `doctor` hashes is what was written. Names every
+ * favicon that is not, so one run shows them all.
+ */
+export async function expectFaviconsIdentical(registry: string, project: string): Promise<void> {
+  const manifest: unknown = JSON.parse(await Bun.file(join(project, "bg.json")).text());
+  const recorded = isRecord(manifest) && isRecord(manifest.files) ? manifest.files : {};
+  const problems: string[] = [];
+  for (const name of BINARY_FAVICONS) {
+    const path = `${FAVICONS_DIR}/${name}`;
+    const written = Bun.file(join(project, path));
+    if (!(await written.exists())) {
+      problems.push(`${path} is missing from the project`);
+      continue;
+    }
+    const actual = sha256(await written.bytes());
+    const expected = sha256(
+      await Bun.file(join(registry, "modules/config/branding/template", path)).bytes(),
+    );
+    if (actual !== expected) {
+      problems.push(`${path} differs from the registry's: sha256 ${actual}, expected ${expected}`);
+    }
+    const record = recorded[path];
+    const sha = isRecord(record) ? record.sha256 : undefined;
+    if (sha === undefined) {
+      problems.push(`bg.json records no sha256 for ${path}`);
+    } else if (sha !== actual) {
+      problems.push(
+        `bg.json records sha256 ${String(sha)} for ${path}, and the file's is ${actual}`,
+      );
+    }
+  }
+  if (problems.length > 0) {
+    throw new Error(problems.join("; "));
+  }
+}
+
+/**
+ * The `href` of the manifest a built `index.html` links, which has to be a root URL: a `data:` URL is what
+ * Vite makes of a manifest it bundles, and no path in it, the icons' included, resolves against it.
+ */
+export function manifestHref(html: string): string {
+  for (const [tag] of html.matchAll(/<link\b[^>]*>/g)) {
+    if (!/\brel="manifest"/.test(tag)) {
+      continue;
+    }
+    const href = /\bhref="([^"]*)"/.exec(tag)?.[1];
+    if (href === undefined || href.startsWith("data:")) {
+      throw new Error(
+        `index.html links its manifest as ${href === undefined ? "nothing" : "a data: URL"}, not as a file of the build`,
+      );
+    }
+    if (!href.startsWith("/")) {
+      throw new Error(`index.html links its manifest as ${href}, which is not a root URL`);
+    }
+    return href;
+  }
+  throw new Error("index.html links no manifest");
+}
+
+/** The path of the build that each icon of a web manifest names, resolved against the manifest's own URL as a browser does. */
+export function manifestIconPaths(manifest: string, href: string): string[] {
+  const parsed: unknown = JSON.parse(manifest);
+  const icons = isRecord(parsed) && Array.isArray(parsed.icons) ? parsed.icons : [];
+  if (icons.length === 0) {
+    throw new Error(`the manifest ${href} names no icons`);
+  }
+  const origin = "http://site.test";
+  return icons.map((icon: unknown) => {
+    const src = isRecord(icon) ? icon.src : undefined;
+    if (typeof src !== "string") {
+      throw new Error(`an icon of the manifest ${href} has no src`);
+    }
+    const url = new URL(src, `${origin}${href}`);
+    if (url.origin !== origin) {
+      throw new Error(`the icon ${src} of the manifest ${href} is not a path of the build`);
+    }
+    return url.pathname;
+  });
+}
+
+/**
+ * The built client (`build/client`) serves what its `index.html` links: the manifest is a file of it, and every
+ * icon the manifest names is one too. With `source`, the favicons directory it was copied from, each icon is
+ * also that file byte for byte. Names every icon the build lacks, and returns the paths of the icons.
+ */
+export async function expectManifestEmitted(client: string, source?: string): Promise<string[]> {
+  const href = manifestHref(await Bun.file(join(client, "index.html")).text());
+  const manifest = Bun.file(join(client, href));
+  if (!(await manifest.exists())) {
+    throw new Error(`the manifest ${href} is not in the build`);
+  }
+  const icons = manifestIconPaths(await manifest.text(), href);
+  const problems: string[] = [];
+  for (const icon of icons) {
+    const built = Bun.file(join(client, icon));
+    if (!(await built.exists())) {
+      problems.push(`${icon} is not in the build`);
+      continue;
+    }
+    const name = icon.split("/").pop() ?? icon;
+    if (
+      source !== undefined &&
+      sha256(await built.bytes()) !== sha256(await Bun.file(join(source, name)).bytes())
+    ) {
+      problems.push(`${name} of the build differs from ${join(source, name)}`);
+    }
+  }
+  if (problems.length > 0) {
+    throw new Error(
+      `the manifest ${href} names icons the build does not serve: ${problems.join("; ")}`,
+    );
+  }
+  return icons;
 }
 
 /** The module whose package is `<scope>/email`, whose tests golden counts. */
@@ -1954,6 +2103,18 @@ async function configured(
     );
   });
   await step("build", () => run([BUN, "run", "build"], project));
+  // The binary favicons are the registry's bytes, and the build the SPA made serves the manifest it
+  // links and the icons that manifest names, from the files the project holds.
+  if (hasFavicons(configuration)) {
+    await step("favicons", async () => {
+      await expectFaviconsIdentical(join(ROOT, "registry"), project);
+      const icons = await expectManifestEmitted(
+        join(project, "apps/spa/build/client"),
+        join(project, FAVICONS_DIR),
+      );
+      console.log(`golden: the build serves the manifest's icons: ${icons.join(", ")}`);
+    });
+  }
   // Typecheck, test and build passed with the edit and its test in place, and the formatter has to
   // accept the edit too: that is the intention's Validation, so it is recorded now and not before.
   if (pending.length > 0) {
@@ -2398,6 +2559,14 @@ async function answers(project: string, docker: string): Promise<void> {
   expectServed("GET /", home, 200, "text/html");
   const asset = assetPath(home.body);
   expectServed(`GET ${asset}`, await get(asset), 200, "text/javascript");
+  // The favicons are files of the build: the container serves the manifest the page links and each
+  // icon it names, and not the index.html it answers a route with when it finds no file.
+  const manifestUrl = manifestHref(home.body);
+  const manifest = await get(manifestUrl);
+  expectServed(`GET ${manifestUrl}`, manifest, 200, "application/manifest+json");
+  for (const icon of manifestIconPaths(manifest.body, manifestUrl)) {
+    expectServed(`GET ${icon}`, await get(icon), 200, "image/png");
+  }
   // A client route has no file: the runtime answers a navigation with the SPA's index.html.
   const route = "/golden/unknown-client-route";
   const client = await get(route, "text/html");

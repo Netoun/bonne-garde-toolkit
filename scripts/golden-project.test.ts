@@ -1,9 +1,19 @@
-import { describe, expect, test } from "bun:test";
-import { join, resolve } from "node:path";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { loadLocalRegistry, patchRegions, plannedPatches } from "../packages/registry/src/index";
+import { sha256Hex } from "../packages/registry/src/index";
 import {
   addArguments,
   assetPath,
+  BINARY_FAVICONS,
+  expectFaviconsIdentical,
+  expectManifestEmitted,
+  FAVICONS_DIR,
+  hasFavicons,
+  manifestHref,
+  manifestIconPaths,
   AUTH_TABLES,
   buildsImage,
   CONFIGURATIONS,
@@ -66,6 +76,7 @@ import {
   readAddedItems,
   readAddedModules,
   readKept,
+  snapshot,
   readCounts,
   resetTables,
   SEEDED_ADMIN,
@@ -1936,5 +1947,156 @@ describe("the storage phases", () => {
     expect(() =>
       expectRan({ "@app/storage": STORAGE_MIN_TESTS - 1 }, "@app/storage", STORAGE_MIN_TESTS),
     ).toThrow(new RegExp(`ran ${STORAGE_MIN_TESTS - 1} tests`));
+  });
+});
+
+describe("the favicons config/branding ships, binary template files", () => {
+  const dirs: string[] = [];
+  afterAll(async () => {
+    await Promise.all(dirs.map((dir) => rm(dir, { recursive: true, force: true })));
+  });
+
+  async function put(root: string, path: string, content: string | Uint8Array): Promise<void> {
+    await mkdir(dirname(join(root, path)), { recursive: true });
+    await writeFile(join(root, path), content);
+  }
+
+  // A PNG signature, and the byte 0xff, which UTF-8 text cannot hold. Its lookalike differs by that
+  // byte alone: both read as the same text, and only the bytes tell them apart.
+  const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0xff, 0x00]);
+  const LOOKALIKE = Uint8Array.from(PNG, (byte) => (byte === 0xff ? 0xfe : byte));
+  const SOURCE = "modules/config/branding/template";
+
+  /** A registry and a project that hold the seven favicons, the project's `bg.json` recording their sha256. */
+  async function pair(): Promise<{ registry: string; project: string }> {
+    const root = await mkdtemp(join(tmpdir(), "bg-golden-favicons-"));
+    dirs.push(root);
+    const registry = join(root, "registry");
+    const project = join(root, "project");
+    const files: Record<string, { owner: string; sha256: string }> = {};
+    for (const name of BINARY_FAVICONS) {
+      await put(registry, `${SOURCE}/${FAVICONS_DIR}/${name}`, PNG);
+      await put(project, `${FAVICONS_DIR}/${name}`, PNG);
+      files[`${FAVICONS_DIR}/${name}`] = { owner: "config/branding", sha256: sha256Hex(PNG) };
+    }
+    await put(project, "bg.json", JSON.stringify({ files }));
+    return { registry, project };
+  }
+
+  test("there are seven, each a binary the registry holds, and every configuration with the module and the spa is asked for them", () => {
+    expect(BINARY_FAVICONS).toHaveLength(7);
+    expect(new Set(BINARY_FAVICONS).size).toBe(7);
+    for (const configuration of CONFIGURATIONS) {
+      expect(hasFavicons(configuration)).toBe(
+        configuration.modules.includes("config/branding") &&
+          configuration.modules.includes("web/spa"),
+      );
+    }
+    expect(CONFIGURATIONS.filter(hasFavicons).map(({ name }) => name)).toEqual([
+      "cloudflare",
+      "dockerfile",
+    ]);
+  });
+
+  test("the generated project holds each of them byte for byte as the registry does, and bg.json records that sha256", async () => {
+    const { registry, project } = await pair();
+
+    await expect(expectFaviconsIdentical(registry, project)).resolves.toBeUndefined();
+  });
+
+  test("a favicon that differs by a byte that decoded text cannot tell apart is named", async () => {
+    const { registry, project } = await pair();
+    await put(project, `${FAVICONS_DIR}/favicon.ico`, LOOKALIKE);
+
+    await expect(expectFaviconsIdentical(registry, project)).rejects.toThrow(
+      /favicon\.ico differs from the registry's/,
+    );
+  });
+
+  test("a favicon bg.json records another sha256 for, or the project lacks, is named", async () => {
+    const { registry, project } = await pair();
+    await put(project, "bg.json", JSON.stringify({ files: {} }));
+    await expect(expectFaviconsIdentical(registry, project)).rejects.toThrow(
+      /bg\.json records no sha256 for .*favicon-16x16\.png/,
+    );
+
+    const { registry: other, project: bare } = await pair();
+    await rm(join(bare, FAVICONS_DIR, "apple-touch-icon.png"));
+    await expect(expectFaviconsIdentical(other, bare)).rejects.toThrow(
+      /apple-touch-icon\.png is missing/,
+    );
+  });
+
+  test("the manifest of a built index.html is a root URL to a file, never a data: URL", () => {
+    expect(
+      manifestHref(
+        '<head><link rel="icon" href="/a.svg"/><link rel="manifest" href="/site.webmanifest"/></head>',
+      ),
+    ).toBe("/site.webmanifest");
+    expect(manifestHref('<link href="/assets/site-abc.webmanifest" rel="manifest">')).toBe(
+      "/assets/site-abc.webmanifest",
+    );
+    expect(() =>
+      manifestHref('<link rel="manifest" href="data:application/manifest+json;base64,e30="/>'),
+    ).toThrow(/data: URL/);
+    expect(() => manifestHref('<link rel="icon" href="/a.svg"/>')).toThrow(/links no manifest/);
+  });
+
+  test("each icon of a manifest resolves against the manifest's own URL, as a browser does", () => {
+    const manifest = JSON.stringify({
+      icons: [{ src: "/android-chrome-192x192.png" }, { src: "icons/a.png" }, { src: "../b.png" }],
+    });
+
+    expect(manifestIconPaths(manifest, "/assets/site.webmanifest")).toEqual([
+      "/android-chrome-192x192.png",
+      "/assets/icons/a.png",
+      "/b.png",
+    ]);
+    expect(() => manifestIconPaths("{}", "/site.webmanifest")).toThrow(/names no icons/);
+    expect(() =>
+      manifestIconPaths(JSON.stringify({ icons: [{ src: "https://cdn.test/a.png" }] }), "/m"),
+    ).toThrow(/not a path of the build/);
+  });
+
+  test("the built client holds the manifest the index links and every icon it names, and an icon the build lacks is named", async () => {
+    const root = await mkdtemp(join(tmpdir(), "bg-golden-built-"));
+    dirs.push(root);
+    const manifest = JSON.stringify({
+      icons: [{ src: "/android-chrome-192x192.png" }, { src: "/android-chrome-512x512.png" }],
+    });
+    await put(root, "index.html", '<link rel="manifest" href="/site.webmanifest"/>');
+    await put(root, "site.webmanifest", manifest);
+    await put(root, "android-chrome-192x192.png", PNG);
+
+    await expect(expectManifestEmitted(root)).rejects.toThrow(
+      /android-chrome-512x512\.png.*is not in the build/,
+    );
+
+    await put(root, "android-chrome-512x512.png", PNG);
+    expect(await expectManifestEmitted(root)).toEqual([
+      "/android-chrome-192x192.png",
+      "/android-chrome-512x512.png",
+    ]);
+
+    // Emitted from the project's own favicons: an icon of the build that is not theirs is named.
+    await put(root, "android-chrome-512x512.png", LOOKALIKE);
+    const source = join(root, "source");
+    await put(source, "android-chrome-192x192.png", PNG);
+    await put(source, "android-chrome-512x512.png", PNG);
+    await expect(expectManifestEmitted(root, source)).rejects.toThrow(
+      /android-chrome-512x512\.png of the build differs/,
+    );
+  });
+
+  test("a snapshot tells two files apart by their bytes, and keeps bg.json as text", async () => {
+    const root = await mkdtemp(join(tmpdir(), "bg-golden-snapshot-"));
+    dirs.push(root);
+    await put(root, "icon.png", PNG);
+    await put(root, "bg.json", '{"installedAt": "2026-01-01"}');
+    const before = await snapshot(root);
+    await put(root, "icon.png", LOOKALIKE);
+
+    expect(diffTrees(before, await snapshot(root))).toEqual(["icon.png changed"]);
+    expect(before["bg.json"]).toBe('{"installedAt": "2026-01-01"}');
   });
 });
