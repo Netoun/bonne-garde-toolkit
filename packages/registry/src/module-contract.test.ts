@@ -565,6 +565,8 @@ describe("module contract", () => {
         "packages/config/assets/favicons/site.webmanifest",
         "packages/config/src/branding.generated.ts",
         "packages/config/src/branding.types.ts",
+        "packages/config/src/favicon-links.test.ts",
+        "packages/config/src/favicon-links.ts",
         "packages/config/src/gen-branding.test.ts",
         "packages/config/src/gen-branding.ts",
         "packages/config/src/index.ts",
