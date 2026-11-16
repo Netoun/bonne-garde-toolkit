@@ -116,4 +116,11 @@ describe("dev/portless is the launcher of the apps' named HTTPS URLs (035, 060)"
     // The legacy item was `AppKey = "api" | "spa" | "ssr" | "static"` and a list of four workspaces.
     expect(source).not.toMatch(/AppKey|apps\/(?:api|spa|ssr|static)\b/);
   });
+
+  test("names no key of a module that reads it from the runtime: storage/r2 derives its own public url (035, 07)", async () => {
+    const { dir } = await portless();
+    const source = await readFile(join(dir, "template/scripts/dev-portless.ts"), "utf8");
+
+    expect(source).not.toMatch(/R2_|BUCKET|v1\/media/);
+  });
 });

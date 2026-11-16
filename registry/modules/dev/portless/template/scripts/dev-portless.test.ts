@@ -148,11 +148,22 @@ describe("urlEnv", () => {
     });
   });
 
-  it("adds the two names the shipped modules read that the directories do not give", () => {
-    expect(urlEnv(urls)).toMatchObject({
-      VITE_APP_URL: urls.spa,
-      R2_PUBLIC_URL: `${urls.api}/v1/media/file`,
-    });
+  it("adds the one name a shipped module reads that no directory gives", () => {
+    expect(urlEnv(urls)).toMatchObject({ VITE_APP_URL: urls.spa });
+  });
+
+  it("names nothing else: a key a module reads from the runtime is that module's to default, not the launcher's to know", () => {
+    expect(Object.keys(urlEnv(urls)).sort()).toEqual([
+      "API_URL",
+      "SPA_URL",
+      "SSR_URL",
+      "STATIC_SITE_URL",
+      "VITE_API_URL",
+      "VITE_APP_URL",
+      "VITE_SPA_URL",
+      "VITE_SSR_URL",
+      "VITE_STATIC_SITE_URL",
+    ]);
   });
 
   it("leaves an alias out when the app it points at is not installed", () => {
@@ -274,7 +285,7 @@ describe("planStack", () => {
       ]);
     });
 
-    it("gives wrangler the free port and every sibling's public URL, the API's media path included", () => {
+    it("gives wrangler the free port and every sibling's public URL", () => {
       expect(app("api").cmd).toEqual([
         "portless",
         "run",
@@ -286,8 +297,6 @@ describe("planStack", () => {
         "wrangler",
         "--var",
         "API_URL:https://api.acme.localhost",
-        "--var",
-        "R2_PUBLIC_URL:https://api.acme.localhost/v1/media/file",
         "--var",
         "SPA_URL:https://spa.acme.localhost",
         "--var",

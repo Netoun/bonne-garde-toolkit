@@ -2452,16 +2452,10 @@ describe("module contract", () => {
       }
     });
 
-    test("R2_PUBLIC_URL is its env key, and the only one, with the local media route as its example", async () => {
+    test("R2_PUBLIC_URL is its env key, and the only one, with no example: it is written down for production and derived in development", async () => {
       const { variant } = await storageModule();
 
-      expect(variant.env).toEqual([
-        {
-          name: "R2_PUBLIC_URL",
-          required: true,
-          example: "http://localhost:5172/v1/media/file",
-        },
-      ]);
+      expect(variant.env).toEqual([{ name: "R2_PUBLIC_URL", required: true, example: "" }]);
     });
 
     test("no provider and no api module declares R2_PUBLIC_URL: a key belongs to the module that reads it (035, 07)", async () => {
@@ -2483,7 +2477,7 @@ describe("module contract", () => {
       expect(config).not.toContain("R2_PUBLIC_URL");
     });
 
-    test("the Worker's wrangler.jsonc gets the BUCKET binding the code reads, and the public url, for both environments", async () => {
+    test("the Worker's wrangler.jsonc gets the BUCKET binding the code reads for both environments, and the public url for production only", async () => {
       const { variant } = await storageModule();
       const value = wranglerValue(variant);
       const production =
@@ -2496,12 +2490,21 @@ describe("module contract", () => {
       expect(binding).toBe("BUCKET");
       for (const scope of [value, production]) {
         expect(scope.r2_buckets).toEqual([{ binding: "BUCKET", bucket_name: "my-app-media" }]);
-        expect(isRecord(scope.vars) ? Object.keys(scope.vars) : []).toEqual(["R2_PUBLIC_URL"]);
       }
-      // The example of the env key is the local value, which `wrangler dev` reads.
-      expect(isRecord(value.vars) ? value.vars.R2_PUBLIC_URL : null).toBe(
-        variant.env?.[0]?.example,
-      );
+      expect(isRecord(production.vars) ? Object.keys(production.vars) : []).toEqual([
+        "R2_PUBLIC_URL",
+      ]);
+      // No default environment value: one would win over the origin the module derives under `wrangler dev`,
+      // and a launcher that moves the API would be wrong about every media url.
+      expect(value.vars).toBeUndefined();
+    });
+
+    test("hands the environment to resolveStorageEnv as `process.env.NODE_ENV`, the expression wrangler replaces: that is what keeps a deployed Worker strict", async () => {
+      const module = await storageText("packages/storage/src/media.module.ts");
+
+      // `wrangler deploy` defines it as "production" and `wrangler dev` as "development"; read through
+      // another name (a destructuring, an alias) it stays a runtime lookup and is undefined in a Worker.
+      expect(module).toContain("{ nodeEnv: process.env.NODE_ENV }");
     });
 
     test("the media route is the one the stored urls carry: /v1/media/file, under the module's own /v1 prefix", async () => {

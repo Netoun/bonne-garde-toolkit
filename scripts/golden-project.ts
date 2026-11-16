@@ -702,7 +702,6 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "exports[@app/storage/schema]",
       "imports[@app/storage]",
       "r2_buckets",
-      "vars.R2_PUBLIC_URL",
     ],
     "orm/drizzle": [
       "dependencies.@app/db",
@@ -1670,7 +1669,7 @@ export const AUTH_MIN_TESTS = 53;
  * How many tests the storage package runs in the project: the legacy media tests (r2, routes, e2e)
  * ported, and the ones the extraction added. Fewer means the root `test` stopped reaching them.
  */
-export const STORAGE_MIN_TESTS = 65;
+export const STORAGE_MIN_TESTS = 75;
 
 /** Whether the configuration installs the feature items, which need the auth module. */
 export function hasFeatures(configuration: Configuration): boolean {
@@ -1712,7 +1711,7 @@ export function hasPortless(configuration: Configuration): boolean {
  * How many tests the launcher runs in the project (`bun test ./scripts/dev-portless.test.ts`: it is a
  * root script, so the root `test` fan-out over workspaces never reaches it); fewer means they went.
  */
-export const PORTLESS_MIN_TESTS = 33;
+export const PORTLESS_MIN_TESTS = 38;
 
 /** The count in the `Ran N tests across M files` line `bun test` prints on stderr. */
 export function ranTests(output: string): number {
@@ -1754,7 +1753,7 @@ export function expectedPortlessApps(
     name: `${dir}.${slug}`,
     cmd: ["portless", "run", "--name", `${dir}.${slug}`, ...run],
   });
-  const url = (dir: string, path = "") => `https://${dir}.${slug}.${tld}${path}`;
+  const url = (dir: string) => `https://${dir}.${slug}.${tld}`;
   const front = (dir: string): ExpectedPortlessApp => ({
     ...app(dir, ["bunx", "react-router", "dev"]),
     ...(configuration === "cloudflare" ? { includesProcessEnv: true as const } : {}),
@@ -1769,8 +1768,6 @@ export function expectedPortlessApps(
         "wrangler",
         "--var",
         `API_URL:${url("api")}`,
-        "--var",
-        `R2_PUBLIC_URL:${url("api", "/v1/media/file")}`,
         "--var",
         `SPA_URL:${url("spa")}`,
         "--var",

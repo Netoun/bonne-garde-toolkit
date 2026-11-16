@@ -123,14 +123,12 @@ export function needsProxyRestart(currentUrl: string, lan: boolean): boolean {
 }
 
 /**
- * Names the shipped modules read that an app's directory does not give: `web/static` reads the SPA's
- * URL as `VITE_APP_URL`, and `storage/r2` serves its files under the API's `/v1/media/file`. An alias
- * is left out when the app it points at is not installed.
+ * Names a shipped module reads that an app's directory does not give: `web/static` reads the SPA's
+ * URL as `VITE_APP_URL`. An alias is left out when the app it points at is not installed. A key that
+ * only has a default to derive (`storage/r2`'s public url, from `API_URL`) is not here: the module
+ * that reads it derives it, so this file names no module's key but the fronts'.
  */
-const ALIASES: readonly { name: string; app: string; path: string }[] = [
-  { name: "VITE_APP_URL", app: "spa", path: "" },
-  { name: "R2_PUBLIC_URL", app: "api", path: "/v1/media/file" },
-];
+const ALIASES: readonly { name: string; app: string }[] = [{ name: "VITE_APP_URL", app: "spa" }];
 
 /**
  * What every app learns of the others, by the directory of the app whose URL it is: `<DIR>_URL` for a
@@ -143,10 +141,10 @@ export function urlEnv(urls: Readonly<Record<string, string>>): Record<string, s
     env[`${key}_URL`] = url;
     env[`VITE_${key}_URL`] = url;
   }
-  for (const { name, app, path } of ALIASES) {
+  for (const { name, app } of ALIASES) {
     const url = urls[app];
     if (url !== undefined) {
-      env[name] = `${url}${path}`;
+      env[name] = url;
     }
   }
   return env;

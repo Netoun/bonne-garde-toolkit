@@ -693,7 +693,6 @@ describe("the golden project and patches", () => {
           "exports[@app/storage/schema]",
           "imports[@app/storage]",
           "r2_buckets",
-          "vars.R2_PUBLIC_URL",
         ],
         "orm/drizzle": [
           "dependencies.@app/db",
@@ -1286,8 +1285,6 @@ describe("the launcher phase (dev/portless)", () => {
       "wrangler",
       "--var",
       `API_URL:https://api.${SLUG}.localhost`,
-      "--var",
-      `R2_PUBLIC_URL:https://api.${SLUG}.localhost/v1/media/file`,
       "--var",
       `SPA_URL:https://spa.${SLUG}.localhost`,
       "--var",

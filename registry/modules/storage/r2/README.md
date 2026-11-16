@@ -36,7 +36,7 @@ Everything in `packages/storage`, from explicit paths:
 | `package.json`          | `{{SCOPE}}/storage`: the `.` and `./schema` exports, the `typecheck` and `test` scripts               |
 | `src/r2.ts`             | `R2Error`, `validateFile`, `validateKey`, `generateKey`, `publicUrlFor`, `uploadToR2`, `deleteFromR2` |
 | `src/bucket.ts`         | `bindR2(env)` and `readR2()`: the `BUCKET` binding, or `undefined` (see below)                        |
-| `src/env.ts`            | `resolveStorageEnv`: `R2_PUBLIC_URL`, read from `readRuntimeEnv()`                                    |
+| `src/env.ts`            | `resolveStorageEnv`: `R2_PUBLIC_URL`, read from `readRuntimeEnv()`, and its default in development    |
 | `src/schema.ts`         | the `medias` table and its relations                                                                  |
 | `src/media.contract.ts` | the Elysia body and params of the routes                                                              |
 | `src/media.service.ts`  | `createMediaService(context)` and the plugin that puts `mediaService` on a route's context            |
@@ -44,7 +44,7 @@ Everything in `packages/storage`, from explicit paths:
 | `src/media.module.ts`   | `mediaModule`, which `apps/api` mounts, and `resolveRuntimeStorage()`, what a request runs against    |
 | `src/index.ts`          | what `apps/api` imports                                                                               |
 | `src/testing.ts`        | `startTestBucket()` and `createTestStorage()`, for this package's tests                               |
-| `src/*.test.ts`         | 65 tests: the legacy ones that travel, and the new ones                                               |
+| `src/*.test.ts`         | 75 tests: the legacy ones that travel, and the new ones                                               |
 
 Dependencies are exact: `drizzle-orm` and `elysia` at the releases `auth` and `orm/drizzle` pin (a
 contract test compares them), the project's `api-runtime`, `auth` and `db` as workspaces, and, for the
@@ -55,7 +55,7 @@ tests, `miniflare`, `@cloudflare/workers-types` (the same releases `db/d1` pins)
 Under `/v1/media`, as the legacy API did, and the `/v1` is the module's: `mediaModule` is an
 `Elysia({ prefix: "/v1" })` over routes with a `/media` prefix. The API shell has no `/v1` group, and the
 module does not wait for one, because the path is stored: `medias.url` is `<R2_PUBLIC_URL>/<key>`, and
-`R2_PUBLIC_URL` defaults to `<API_URL>/v1/media/file` (the `dockerfile` runtime derives the same path).
+`R2_PUBLIC_URL` defaults, in development only, to `<API_URL>/v1/media/file` (see [Environment](#environment)).
 Moving the routes would break every url already written to a database. A front calls them through
 Eden as `api.v1.media`.
 
@@ -83,9 +83,12 @@ declares it, in the default environment and in `production`:
 
 ```jsonc
 "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "my-app-media" }],
-"vars": { "R2_PUBLIC_URL": "http://localhost:5172/v1/media/file" },
-// and the same under env.production, with https://api.my-app.com/v1/media/file
+// and under env.production: the same binding, and
+"vars": { "R2_PUBLIC_URL": "https://api.my-app.com/v1/media/file" }
 ```
+
+The default environment has no `R2_PUBLIC_URL`: a value there would win over the one the module derives in
+development (see [Environment](#environment)).
 
 `my-app-media` and `api.my-app.com` are the placeholders the other modules use for the project's names
 (`bg add` renders `{{SCOPE}}` and nothing else): replace them by hand. The bucket itself is created with
@@ -93,12 +96,29 @@ declares it, in the default environment and in `production`:
 
 ## Environment
 
-The module declares `R2_PUBLIC_URL` (`required`, example the local media route) and reads it through
+The module declares `R2_PUBLIC_URL` (`required`, with a blank example) and reads it through
 `readRuntimeEnv()`, never through the shell's `app.config.ts`. A key belongs to the module that reads it
 (035), so neither provider nor `api/elysia` declares it, and the shell boots, and answers `/health`, without
-this module. The value is read **per request**, not at import: a missing one fails the request that needs it,
-naming the key (`Missing required environment variables: R2_PUBLIC_URL`). Under `NODE_ENV=test` it gets the
-local media route.
+this module. The value is read **per request**, not at import, and what a missing one does depends on the
+`NODE_ENV` the code runs under. `wrangler` replaces `process.env.NODE_ENV` in the bundle it builds
+(`"production"` for `wrangler deploy`, `"development"` for `wrangler dev`, unless the shell that runs it sets
+one), and `resolveStorageEnv` is given that value:
+
+| `NODE_ENV`    | `R2_PUBLIC_URL` unset or empty                                                                            |
+| ------------- | --------------------------------------------------------------------------------------------------------- |
+| `development` | `<API_URL>/v1/media/file`, the origin the API was given (`http://localhost:5172` when it has none)        |
+| `test`        | `http://localhost:5172/v1/media/file`, whatever `API_URL` holds, so a test needs nothing set              |
+| anything else | the request that needs it fails, naming the key (`Missing required environment variables: R2_PUBLIC_URL`) |
+
+Anything else is `production`, a deployed Worker, and a value nobody set: only `"development"` opens the
+default, so an unknown value stays strict. A media url is stored (`medias.url`), so one derived where it should
+have been written down would outlive the deploy that wrote it. The default is the API's origin and not the
+origin of the request: a `Host` or `X-Forwarded-*` header is the client's to set, and the API's `API_URL` is not.
+
+The consequence for a launcher is that it tells storage nothing. `dev/portless` gives the API its `API_URL`
+like any app and this module follows it, so `https://api.my-app.localhost` serves `https://api.my-app.localhost/v1/media/file`
+with no storage key in the launcher. In production, set `R2_PUBLIC_URL` in `env.production.vars` of the
+Worker's `wrangler.jsonc` (the module writes the placeholder there).
 
 The `dockerfile` runtime does not derive it: that provider has no bucket and this module has no variant for it,
 so nothing reads the value there, and a provider fills only the keys of the container itself (the origins, and
@@ -140,13 +160,13 @@ storage's table, storage reads `createDB`), like the one `auth` has; Bun, `tsc` 
 
 ## Tests
 
-65 tests in the project, against what is real: an R2 bucket from Miniflare (workerd's own, not a stand-in), an
+75 tests in the project, against what is real: an R2 bucket from Miniflare (workerd's own, not a stand-in), an
 in-memory SQLite that has the auth and media tables, and a Better Auth instance for the sessions (`createTestAuth` of
 `{{SCOPE}}/auth/testing`, given the media tables: storage keeps no sign-in flow of its own). Nothing is
 mocked. The legacy ones travel: `r2.test.ts`, the file route of `media.routes.test.ts`, and the service cases
 of `media.e2e.test.ts`, which now go through the real routes at `/v1/media` where the legacy file re-implemented
 the handlers in the test. New: `bucket.test.ts` (the binding, and a variable that is not one), `env.test.ts`,
-`media.module.test.ts` (what `apps/api` mounts, with no Worker: `BUCKET_NOT_CONFIGURED`, `401`), `exports.test.ts`
+`media.module.test.ts` (what `apps/api` mounts, with no Worker: `BUCKET_NOT_CONFIGURED`, `401`, and the public url in development and in production), `exports.test.ts`
 (the subpaths the project imports), and in `media.e2e.test.ts` the `401` of each guarded route, an admin deleting
 a member's media, `404` of `GET /v1/media/:id`, and the reset's statements over media rows.
 

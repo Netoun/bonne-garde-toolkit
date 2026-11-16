@@ -16,11 +16,15 @@ import type { ResolveStorage, StorageContext } from "./media.service";
 /**
  * What a request runs against, read from the runtime's environment when it is made: the D1 and R2
  * bindings, and `R2_PUBLIC_URL`, which a missing value fails the request that needs it, naming the
- * key. Nothing is read at import time, so the API shell boots and answers `/health` without it.
+ * key, except under `wrangler dev` (and test), where it has a default. Nothing is read at import time,
+ * so the API shell boots and answers `/health` without it.
+ *
+ * `process.env.NODE_ENV` is written out in full: wrangler replaces that expression in the bundle, by
+ * `"production"` for a deploy and `"development"` for `wrangler dev`.
  */
 export async function resolveRuntimeStorage(): Promise<StorageContext> {
   const env = await readRuntimeEnv();
-  const { R2_PUBLIC_URL } = resolveStorageEnv(env, { test: process.env.NODE_ENV === "test" });
+  const { R2_PUBLIC_URL } = resolveStorageEnv(env, { nodeEnv: process.env.NODE_ENV });
   return { db: createDB(bindD1(env)), bucket: bindR2(env), publicUrl: R2_PUBLIC_URL };
 }
 
