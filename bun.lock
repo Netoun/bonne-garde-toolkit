@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "treashunt",
+      "name": "bonne-garde-toolkit",
       "devDependencies": {
         "@types/bun": "1.3.14",
         "husky": "9.1.7",
