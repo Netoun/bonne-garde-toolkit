@@ -2,13 +2,16 @@
 /**
  * The golden project: what a consumer does, end to end, in a fresh directory, once per configuration.
  *
- *   bg create → bg add of a UI item, refused → bg add of the configuration's modules and every item in
- *   one call → the same bg add again, which must skip every patch and change nothing, and each module
- *   again on its own, which must too → bun install
+ *   bg create → bg add of a UI item, refused → bg add of a feature item, refused in a bare project and in
+ *   a project that lacks only auth, or only storage → bg add of the configuration's modules and every
+ *   item in one call (the feature items' dependencies written into apps/spa/package.json) → the same
+ *   bg add again, which must skip every patch and change nothing, and each module and each feature
+ *   item again on its own, which must too → bun install
  *   → typecheck → test → build → bg doctor --strict
  *   → for a configuration with a database: a table added to the schema barrel, `bun run db:generate`,
  *     the migration applied to a local D1 (`wrangler`, no network, no account), and what D1 holds read back,
  *     the tables of its modules (`medias`, storage's) in the migration and in D1 as well
+ *   → for a configuration with the feature items: the spa's tests counted, which are the shell's and theirs
  *   → for a configuration with storage: the tests of `@scope/storage` counted, since the media routes
  *     run only in the project (they import packages a project installs)
  *   → for a configuration with auth: `bun run auth:generate` again, which has to write the schema the
@@ -62,23 +65,11 @@ const BUN = "bun";
 export const SCOPE = "@app";
 
 /**
- * Why the feature items are not installed: what they write is wired into `apps/spa/src/routes.ts`,
- * `root.tsx` and `package.json`, which `web/spa` owns, and 09 stage 6 has not settled how an item
- * reaches them. Installed as they are, `bun run check` rejects their pages: `structure/route-modules`
- * reads only `routes.ts`. The refusal without `auth` is still checked, in the project that has no module.
- */
-const FEATURES_NOT_WIRED =
-  "its pages are not declared in routes.ts, and its dependencies and root.tsx wiring are not in web/spa: 09 stage 6 has not settled how an item reaches them";
-
-/**
  * Items `bg list` shows that stay out of the golden project, each with its reason. An entry for an
- * item the registry no longer lists fails the run, so this list cannot go stale. Otherwise empty on
- * purpose: every item the registry ships is installed, and a new one is a decision made here.
+ * item the registry no longer lists fails the run, so this list cannot go stale. Empty on purpose:
+ * every item the registry ships is installed, and a new one is a decision made here.
  */
-export const EXCLUDED: Readonly<Record<string, string>> = {
-  "spa-auth": FEATURES_NOT_WIRED,
-  "spa-backoffice": FEATURES_NOT_WIRED,
-};
+export const EXCLUDED: Readonly<Record<string, string>> = {};
 
 export type Excluded = { name: string; reason: string };
 
@@ -582,9 +573,49 @@ export const MODULES: readonly string[] = [
 const REFUSED_ITEM = "button";
 const REFUSED_MODULE = "ui/shadcn";
 
-/** The feature item `refuse` tries too, and the two modules a project without any needs for it. */
+/**
+ * The feature items (030, 080): front-app source in `apps/spa/src/features`, which need the modules
+ * their `meta.needsModules` names. A test pins this list to the registry's.
+ */
+export const FEATURE_ITEMS: readonly string[] = ["spa-auth", "spa-backoffice"];
+
+/** The feature item `refuse` tries too, and the modules a project without any needs for it. */
 export const REFUSED_FEATURE = "spa-auth";
-const REFUSED_FEATURE_MODULES = [REFUSED_MODULE, "auth/better-auth"] as const;
+const REFUSED_FEATURE_MODULES = [REFUSED_MODULE, "auth/better-auth", "web/spa"] as const;
+
+/**
+ * Projects that have every module a feature item needs but one: the refusal names that one alone, and
+ * writes nothing. `modules` is what the project is given, `item` what is refused, `missing` what the
+ * message has to name.
+ */
+export const FEATURE_REFUSALS: readonly {
+  label: string;
+  modules: readonly string[];
+  item: string;
+  missing: readonly string[];
+}[] = [
+  {
+    label: "auth",
+    modules: ["provider/cloudflare", "config/branding", "ui/shadcn", "api/elysia", "web/spa"],
+    item: "spa-auth",
+    missing: ["auth/better-auth"],
+  },
+  {
+    label: "storage",
+    modules: [
+      "provider/cloudflare",
+      "config/branding",
+      "ui/shadcn",
+      "api/elysia",
+      "db/d1",
+      "orm/drizzle",
+      "auth/better-auth",
+      "web/spa",
+    ],
+    item: "spa-backoffice",
+    missing: ["storage/r2"],
+  },
+];
 
 /**
  * Modules `bg list` shows that stay out of every configuration, each with its reason. An entry for
@@ -712,6 +743,32 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
   },
 };
 
+/**
+ * The patches the feature items make (030, 060): the `name@version` dependencies each writes into the
+ * package.json of the app its files land in, one region each, owned by the item. A bare name is not one.
+ * Golden checks that `bg add` reports exactly these as `applied` and, run again, as `skipped`.
+ */
+export const PATCHED_ITEMS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> =
+  {
+    cloudflare: {
+      "spa-auth": [
+        "dependencies.@app/auth",
+        "dependencies.@hookform/resolvers",
+        "dependencies.better-auth",
+        "dependencies.motion",
+        "dependencies.react-hook-form",
+        "dependencies.zod",
+      ],
+      "spa-backoffice": [
+        "dependencies.@tanstack/react-form",
+        "dependencies.@tanstack/react-pacer",
+        "dependencies.@tanstack/react-table",
+        "dependencies.@tanstack/react-virtual",
+      ],
+    },
+    dockerfile: {},
+  };
+
 /** One patch of a module, as `bg add` prints it (spec 060): its outcome and, per region, what it did. */
 export type AddedPatch = {
   type: string;
@@ -796,6 +853,31 @@ export function readAddedModules(stdout: string, expected: readonly string[]): A
     throw new Error(`bg add did not report ${missing.join(", ")}`);
   }
   return added;
+}
+
+/**
+ * The dependencies the items added, in the `itemPatches` `bg add` prints (030), shaped as the modules' are
+ * (an item is the owner of its regions) so `expectPatches` and `expectRegionsRecorded` read both alike.
+ */
+export function readAddedItems(stdout: string): AddedModule[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    throw new Error("bg add did not print JSON");
+  }
+  if (!isRecord(parsed) || !Array.isArray(parsed.itemPatches)) {
+    throw new Error("bg add printed no `itemPatches` array");
+  }
+  const byItem = new Map<string, AddedPatch[]>();
+  for (const entry of parsed.itemPatches as unknown[]) {
+    if (!isRecord(entry) || typeof entry.item !== "string") {
+      throw new Error("bg add printed an item patch with no `item` key");
+    }
+    const { item, ...patch } = entry;
+    byItem.set(item, [...(byItem.get(item) ?? []), readPatch(item, patch)]);
+  }
+  return [...byItem].map(([module, patches]) => ({ module, checks: [], patches }));
 }
 
 /**
@@ -1248,6 +1330,22 @@ export const AUTH_MIN_TESTS = 53;
  */
 export const STORAGE_MIN_TESTS = 65;
 
+/** Whether the configuration installs the feature items, which need the auth module. */
+export function hasFeatures(configuration: Configuration): boolean {
+  return configuration.items && hasAuth(configuration);
+}
+
+/** The shell's own tests in the spa: the home page, and the composed route table (3). */
+export const SPA_SHELL_MIN_TESTS = 4;
+
+/** What the features add to them: `spa-auth`'s validation tests. */
+export const SPA_FEATURE_MIN_TESTS = 4;
+
+/** How many tests the spa runs in a configuration; fewer means the root `test` stopped reaching it. */
+export function spaMinTests(configuration: Configuration): number {
+  return SPA_SHELL_MIN_TESTS + (hasFeatures(configuration) ? SPA_FEATURE_MIN_TESTS : 0);
+}
+
 /** The workspace ran at least `atLeast` tests: a workspace the root `test` skipped would otherwise pass in silence. */
 export function expectRan(
   counts: Readonly<Record<string, number>>,
@@ -1692,6 +1790,7 @@ async function configured(
   const { name, modules } = configuration;
   const installed = configuration.items ? options.items : [];
   const patched = PATCHED[name] ?? {};
+  const patchedItems = configuration.items ? (PATCHED_ITEMS[name] ?? {}) : {};
   const pending = PENDING[name] ?? [];
   const project = join(work, `golden-${name}`);
   const step = <T>(label: string, body: () => Promise<T>) =>
@@ -1744,11 +1843,16 @@ async function configured(
   if (first && hasAuth(configuration)) {
     await refusedPeer(work, timings, bg, registry);
   }
+  if (first && hasFeatures(configuration)) {
+    for (const refusal of FEATURE_REFUSALS) {
+      await refusedFeature(work, timings, bg, registry, refusal);
+    }
+  }
   const added = await step("add", async () => {
     const stdout = await capture(bg(...addArguments(modules, installed)), project);
     process.stdout.write(stdout);
-    const reported = readAddedModules(stdout, modules);
-    expectPatches(reported, "applied", patched);
+    const reported = [...readAddedModules(stdout, modules), ...readAddedItems(stdout)];
+    expectPatches(reported, "applied", { ...patched, ...patchedItems });
     expectPending(readPendingIntentions(stdout), pending);
     const manifest: unknown = JSON.parse(await Bun.file(join(project, "bg.json")).text());
     expectRegionsRecorded(manifest, reported);
@@ -1762,7 +1866,10 @@ async function configured(
   await step("re-add", async () => {
     const before = await snapshot(project);
     const stdout = await capture(bg(...addArguments(modules, installed)), project);
-    expectPatches(readAddedModules(stdout, modules), "skipped", patched);
+    expectPatches([...readAddedModules(stdout, modules), ...readAddedItems(stdout)], "skipped", {
+      ...patched,
+      ...patchedItems,
+    });
     // Staged again, and the same bytes: the intention is still pending, and nothing moved.
     expectPending(readPendingIntentions(stdout), pending);
     const changed = diffTrees(before, await snapshot(project));
@@ -1784,6 +1891,17 @@ async function configured(
       const changed = diffTrees(before, await snapshot(project));
       if (changed.length > 0) {
         throw new Error(`\`bg add ${module}\` alone changed the project: ${changed.join(", ")}`);
+      }
+    }
+    // Each feature item on its own too: its dependencies are in a file its module owns, the item
+    // finds them present and equal, and the project is as it was.
+    for (const item of installed.filter((name) => Object.hasOwn(patchedItems, name))) {
+      const before = await snapshot(project);
+      const stdout = await capture(bg("add", item, "--yes", "--no-install"), project);
+      expectPatches(readAddedItems(stdout), "skipped", { [item]: patchedItems[item] ?? [] });
+      const changed = diffTrees(before, await snapshot(project));
+      if (changed.length > 0) {
+        throw new Error(`\`bg add ${item}\` alone changed the project: ${changed.join(", ")}`);
       }
     }
   });
@@ -1829,6 +1947,7 @@ async function configured(
     if (hasStorage(configuration)) {
       expectRan(ran, `${SCOPE}/storage`, STORAGE_MIN_TESTS);
     }
+    expectRan(ran, `${SCOPE}/spa`, spaMinTests(configuration));
     const counts = Object.entries(ran);
     console.log(
       `golden: tests run: ${counts.map(([workspace, ran]) => `${workspace} ${ran}`).join(", ")}`,
@@ -2319,4 +2438,48 @@ async function main(): Promise<number> {
 
 if (import.meta.main) {
   process.exit(await main());
+}
+
+/**
+ * A feature item in a project that has every module it needs but one (030): refused, the one named in a
+ * command that fixes it, and nothing written. The packed CLI is what answers, as a consumer's agent reads it.
+ */
+async function refusedFeature(
+  work: string,
+  timings: Timing[],
+  bg: (...args: string[]) => string[],
+  registry: string,
+  refusal: (typeof FEATURE_REFUSALS)[number],
+): Promise<void> {
+  const { label, modules, item, missing } = refusal;
+  const project = join(work, `golden-feature-${label}`);
+  await phase(timings, `feature: ${label}: create`, async () => {
+    await run(
+      bg(
+        "create",
+        project,
+        "--yes",
+        "--no-git",
+        "--no-install",
+        "--scope",
+        SCOPE,
+        "--registry",
+        registry,
+      ),
+      work,
+    );
+    await run(bg("add", ...modules, "--yes", "--no-install"), project);
+  });
+  await phase(timings, `feature: ${label}: refuse`, async () => {
+    const before = await snapshot(project);
+    expectRefusal(
+      await attempt(bg("add", item, "--yes", "--no-install"), project),
+      item,
+      ...missing,
+    );
+    const changed = diffTrees(before, await snapshot(project));
+    if (changed.length > 0) {
+      throw new Error(`the refused \`bg add ${item}\` changed the project: ${changed.join(", ")}`);
+    }
+  });
 }

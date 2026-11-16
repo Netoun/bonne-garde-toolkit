@@ -7,6 +7,7 @@ import {
   AUTH_TABLES,
   buildsImage,
   CONFIGURATIONS,
+  type Configuration,
   countStatement,
   d1Rows,
   diffTrees,
@@ -28,6 +29,7 @@ import {
   expectPeerRefusal,
   expectRan,
   expectRefusal,
+  FEATURE_ITEMS,
   expectRegenerated,
   expectRows,
   expectAlreadySeeded,
@@ -60,6 +62,8 @@ import {
   PATCHED,
   publishedPort,
   ranTests,
+  hasFeatures,
+  readAddedItems,
   readAddedModules,
   readKept,
   readCounts,
@@ -70,6 +74,9 @@ import {
   SCOPE,
   selectItems,
   selectModules,
+  spaMinTests,
+  SPA_FEATURE_MIN_TESTS,
+  SPA_SHELL_MIN_TESTS,
   STORAGE_MIN_TESTS,
   testCounts,
   until,
@@ -134,7 +141,7 @@ describe("the golden project", () => {
     expect(selectItems(listing, EXCLUDED).items).toContain("button");
   });
 
-  test("leaves the feature items out until their routes and dependencies have a mechanism, and says why", async () => {
+  test("installs the feature items too, with the other items: nothing is left out", async () => {
     const catalog = await loadLocalRegistry(
       join(resolve(import.meta.dir, ".."), "registry/registry.json"),
     );
@@ -142,11 +149,41 @@ describe("the golden project", () => {
 
     const { items, excluded } = selectItems(listing, EXCLUDED);
 
-    expect(excluded.map(({ name }) => name)).toEqual(["spa-auth", "spa-backoffice"]);
-    expect(excluded.every(({ reason }) => reason.includes("routes.ts"))).toBe(true);
-    expect(items).not.toContain("spa-auth");
-    // The refusal golden checks needs the item to be in the registry, installed or not.
-    expect(REFUSED_FEATURE).toBe("spa-auth");
+    expect(EXCLUDED).toEqual({});
+    expect(excluded).toEqual([]);
+    expect(items).toEqual(expect.arrayContaining([...FEATURE_ITEMS]));
+    // The item `refuse` tries without any module is one of them.
+    expect(FEATURE_ITEMS).toContain(REFUSED_FEATURE);
+  });
+
+  test("the feature items are every item that lands in an app's features folder", async () => {
+    const catalog = await loadLocalRegistry(
+      join(resolve(import.meta.dir, ".."), "registry/registry.json"),
+    );
+
+    expect(
+      catalog.items
+        .filter((item) =>
+          (item.files ?? []).some((file) =>
+            /^apps\/[^/]+\/src\/features\//.test(file.target ?? ""),
+          ),
+        )
+        .map((item) => item.name),
+    ).toEqual([...FEATURE_ITEMS]);
+  });
+
+  test("a configuration has features when it installs the items and has the auth module they need", () => {
+    const [cloudflare, dockerfile] = CONFIGURATIONS;
+    expect(hasFeatures(cloudflare as Configuration)).toBe(true);
+    expect(hasFeatures(dockerfile as Configuration)).toBe(false);
+  });
+
+  test("the spa runs the shell's tests everywhere, and the features' too where they are installed", () => {
+    const [cloudflare, dockerfile] = CONFIGURATIONS;
+    expect(spaMinTests(dockerfile as Configuration)).toBe(SPA_SHELL_MIN_TESTS);
+    expect(spaMinTests(cloudflare as Configuration)).toBe(
+      SPA_SHELL_MIN_TESTS + SPA_FEATURE_MIN_TESTS,
+    );
   });
 
   test("uses a scope that is not `@acme`'s length, which the registry is formatted with", () => {
@@ -389,17 +426,82 @@ describe("expectRefusal", () => {
     ).toThrow(/bg add ui\/shadcn button.*unknown name: button/s);
   });
 
-  test("a feature item in a bare project is refused for the ui and the auth module, named in one command (030)", () => {
-    const both =
-      "spa-auth needs the ui and auth modules, and none is installed or named in this call; run: bg add ui/shadcn auth/better-auth spa-auth\n";
+  test("a feature item in a bare project is refused for every module it needs, named in one command (030)", () => {
+    const all =
+      "spa-auth needs the ui, auth and web/spa modules, and none is installed or named in this call; run: bg add ui/shadcn auth/better-auth web/spa spa-auth\n";
 
     expect(() =>
-      expectRefusal({ code: 1, stderr: both }, "spa-auth", "ui/shadcn", "auth/better-auth"),
+      expectRefusal(
+        { code: 1, stderr: all },
+        "spa-auth",
+        "ui/shadcn",
+        "auth/better-auth",
+        "web/spa",
+      ),
     ).not.toThrow();
-    // The ui module alone is not the whole fix: the auth module is what a feature item needs.
-    expect(() => expectRefusal({ code: 1, stderr: both }, "spa-auth", "ui/shadcn")).toThrow(
+    // A fix that leaves a module out is not the fix.
+    expect(() => expectRefusal({ code: 1, stderr: all }, "spa-auth", "ui/shadcn")).toThrow(
       /bg add ui\/shadcn spa-auth/,
     );
+  });
+
+  test("a project missing one module is refused for that one alone", () => {
+    const storage =
+      "spa-backoffice needs the storage module, and none is installed or named in this call; run: bg add storage/r2 spa-backoffice\n";
+
+    expect(() =>
+      expectRefusal({ code: 1, stderr: storage }, "spa-backoffice", "storage/r2"),
+    ).not.toThrow();
+    expect(() =>
+      expectRefusal({ code: 1, stderr: storage }, "spa-backoffice", "auth/better-auth"),
+    ).toThrow(/bg add auth\/better-auth spa-backoffice/);
+  });
+});
+
+describe("readAddedItems: the dependencies an item added (030)", () => {
+  const patch = {
+    item: "spa-auth",
+    type: "package.dependencies",
+    file: "apps/spa/package.json",
+    status: "applied",
+    regions: [{ region: "dependencies.zod", status: "applied" }],
+  };
+
+  test("reads each item's patches, as the modules' are, so one check covers both", () => {
+    const items = readAddedItems(JSON.stringify({ items: ["spa-auth"], itemPatches: [patch] }));
+
+    expect(items).toEqual([
+      {
+        module: "spa-auth",
+        checks: [],
+        patches: [
+          {
+            type: "package.dependencies",
+            file: "apps/spa/package.json",
+            status: "applied",
+            regions: [{ region: "dependencies.zod", status: "applied" }],
+          },
+        ],
+      },
+    ]);
+    expect(() =>
+      expectPatches(items, "applied", { "spa-auth": ["dependencies.zod"] }),
+    ).not.toThrow();
+    expect(() => expectPatches(items, "skipped", { "spa-auth": ["dependencies.zod"] })).toThrow(
+      /was applied/,
+    );
+  });
+
+  test("an item that adds nothing is no entry, and a missing list is a failed run", () => {
+    expect(readAddedItems(JSON.stringify({ items: ["button"], itemPatches: [] }))).toEqual([]);
+    expect(() => readAddedItems(JSON.stringify({ items: [] }))).toThrow(/itemPatches/);
+    expect(() => readAddedItems("not json")).toThrow(/did not print JSON/);
+  });
+
+  test("an item that patches a file but is not in PATCHED_ITEMS is a decision golden has not made", () => {
+    const items = readAddedItems(JSON.stringify({ itemPatches: [patch] }));
+
+    expect(() => expectPatches(items, "applied", {})).toThrow(/not in PATCHED/);
   });
 });
 
