@@ -52,6 +52,7 @@ import { createHash } from "node:crypto";
 import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, relative, resolve } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 
 const ROOT = resolve(import.meta.dir, "..");
 const PACKED_CLI = join(ROOT, "dist/npm/create-bonne-garde");
@@ -1725,10 +1726,11 @@ export function expectNothingToApply(stdout: string): void {
 /**
  * How many tests each workspace ran, read from the prefixed output of the root `test` script: the
  * `Ran N tests` line of `bun test` (which prints it on stderr) and the `Tests  N passed` line of Vitest.
+ * Vitest colours that line when `CI` is set, so the colours are stripped first.
  */
 export function testCounts(output: string): Record<string, number> {
   const counts: Record<string, number> = {};
-  for (const line of output.split("\n")) {
+  for (const line of stripVTControlCharacters(output).split("\n")) {
     const [, workspace, ran] =
       /^(\S+):test\s*\|\s*(?:Ran |Tests\s+)(\d+) (?:tests? |passed)/.exec(line) ?? [];
     if (workspace !== undefined && ran !== undefined) {

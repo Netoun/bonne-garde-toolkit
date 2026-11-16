@@ -1620,6 +1620,14 @@ describe("testCounts", () => {
 
     expect(testCounts(output)).toEqual({ "@app/config": 6, "@app/db": 12, "@app/ssr": 4 });
   });
+
+  test("reads Vitest's line when it is coloured, as it is in CI", () => {
+    // The line as GitHub Actions printed it: Vitest colours its output when CI is set.
+    const output =
+      "@app/spa:test         | \u001B[2m      Tests \u001B[22m \u001B[1m\u001B[32m8 passed\u001B[39m\u001B[22m\u001B[90m (8)\u001B[39m";
+
+    expect(testCounts(output)).toEqual({ "@app/spa": 8 });
+  });
 });
 
 describe("the auth phases", () => {
