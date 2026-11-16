@@ -18,8 +18,8 @@ import "@fontsource-variable/faustina/wght.css";
 
 import "{{SCOPE}}/ui/globals.css";
 
-// The favicons are served from the site root: vite.config.ts makes the config package's favicons
-// the `publicDir`, since a web manifest names its icons by URL and a bundled asset is renamed.
+// The favicons are served from the site root: vite.config.ts adds the config package's favicons to
+// the build, since a web manifest names its icons by URL and a bundled asset is renamed.
 export const links: Route.LinksFunction = () => [
   { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
   { rel: "icon", type: "image/x-icon", sizes: "48x48", href: "/favicon.ico" },

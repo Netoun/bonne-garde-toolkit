@@ -597,7 +597,7 @@ describe("module contract", () => {
       const icons =
         isRecord(manifest) && Array.isArray(manifest.icons) ? manifest.icons.filter(isRecord) : [];
       expect(icons.length).toBeGreaterThan(0);
-      // The manifest is served from the site root (web/spa's publicDir is this directory), so a
+      // The manifest is served from the site root (`favicons()` emits this directory there), so a
       // root URL names a file of it.
       for (const { src } of icons) {
         expect(typeof src === "string" && src.startsWith("/")).toBe(true);
@@ -605,14 +605,16 @@ describe("module contract", () => {
       }
     });
 
-    test("web/spa serves that directory from the site root and links only files of it", async () => {
+    test("web/spa adds those favicons to its build with the package's Vite plugin, which leaves publicDir free, and links only files of the package", async () => {
       const spa = join(MODULES, "web/spa/template/apps/spa");
       const root = await readFile(join(spa, "src/root.tsx"), "utf8");
       const config = await readFile(join(spa, "vite.config.ts"), "utf8");
       const shipped = await readdir(join(TEMPLATE, "packages/config/assets/favicons"));
 
-      expect(config).toContain("{{SCOPE}}/config/assets/favicons/");
-      expect(config).toMatch(/publicDir:/);
+      expect(config).toContain('import { favicons } from "{{SCOPE}}/config/vite";');
+      expect(config).toMatch(/\bfavicons\(\)/);
+      // Vite takes one `publicDir`: the plugin adds the favicons, so the app is free to have its own.
+      expect(config).not.toContain("publicDir");
       const linked = [...root.matchAll(/href: "\/([^"]+)"/g)].flatMap(([, file]) => file ?? []);
       expect(linked.length).toBeGreaterThan(0);
       for (const file of linked) {

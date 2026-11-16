@@ -52,7 +52,7 @@ All three shells serve this directory from the site root, so `/site.webmanifest`
 
 | Shell        | How the favicons reach its build                                                                                |
 | ------------ | --------------------------------------------------------------------------------------------------------------- |
-| `web/spa`    | `vite.config.ts` sets `publicDir` to this directory: the app has no `public/` of its own                        |
+| `web/spa`    | `vite.config.ts` loads `favicons()` from `{{SCOPE}}/config/vite`; the app has no `public/` of its own           |
 | `web/ssr`    | `vite.config.ts` loads `favicons()` from `{{SCOPE}}/config/vite`; its `public/robots.txt` stays its `publicDir` |
 | `web/static` | the same plugin, and the same `public/robots.txt`                                                               |
 

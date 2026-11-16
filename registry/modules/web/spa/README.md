@@ -83,14 +83,13 @@ why `routes.ts` carries no region and `bg doctor` has nothing to say about it.
 - `lib/api.ts` exports `api`, not `apiV1`: the shell has no `/v1` group, so `.v1` would not
   typecheck. The group comes with the first module that mounts a route under it.
 - The favicons are the files of `{{SCOPE}}/config/assets/favicons`, found through that package's
-  export and served from the site root: `vite.config.ts` sets `publicDir` to the directory and
-  `root.tsx` links the icons and the manifest by root URL. Legacy imported `favicon.svg` and the
-  manifest through the bundler, which inlined both as `data:` URLs, so the manifest's icons were never
-  served. The stylesheet is `{{SCOPE}}/ui/globals.css`, the path the `ui` package exports. The `tsconfig` `paths`
+  export and served from the site root: `vite.config.ts` loads `favicons()` from
+  `{{SCOPE}}/config/vite`, which adds the directory to the build, and `root.tsx` links the icons and
+  the manifest by root URL. Legacy imported `favicon.svg` and the manifest through the bundler, which
+  inlined both as `data:` URLs, so the manifest's icons were never served. The stylesheet is `{{SCOPE}}/ui/globals.css`, the path the `ui` package exports. The `tsconfig` `paths`
   into other trees are gone: `{{SCOPE}}/api` is reached through its `exports`.
-- The app has no `public/` of its own: the favicons are its `publicDir`, and Vite takes one. An app
-  that needs static files of its own loads `favicons()` from `{{SCOPE}}/config/vite` instead, as
-  `web/ssr` and `web/static` do, and keeps `publicDir` for its files.
+- The app has no `public/` of its own, and `favicons()` leaves `publicDir` free for one, as in
+  `web/ssr` and `web/static`.
 - The `vite.config.ts` points Vitest at `./testing/frontend.setup.ts`, inside the app.
 
 ## Left out
