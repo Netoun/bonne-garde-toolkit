@@ -61,6 +61,10 @@ import {
   PENDING,
   PORTLESS_MIN_TESTS,
   readPendingIntentions,
+  readReselected,
+  RESELECTED,
+  RESELECT_BASE,
+  expectReselected,
   RESOLUTIONS,
   wiredTest,
   wireEmailIntoAuth,
@@ -1757,6 +1761,62 @@ describe("the email phases", () => {
       expect(() => readPendingIntentions("{}")).toThrow(/no `pendingIntentions` array/);
       expect(() => readPendingIntentions(out([{}]))).toThrow(/without an id/);
     });
+  });
+
+  describe("readReselected", () => {
+    const out = (reselected: unknown) => JSON.stringify({ modules: [], reselected });
+
+    test("reads the modules `bg add` planned again, with the variant each left and took, and none when there are none", () => {
+      expect(
+        readReselected(
+          out([
+            {
+              module: "email/resend",
+              from: "default",
+              to: "better-auth",
+              because: ["auth/better-auth"],
+            },
+          ]),
+        ),
+      ).toEqual([{ module: "email/resend", from: "default", to: "better-auth" }]);
+      expect(readReselected(out([]))).toEqual([]);
+    });
+
+    test("fails on output that is not JSON, or has no list, or an entry without a module and its variants", () => {
+      expect(() => readReselected("nope")).toThrow(/did not print JSON/);
+      expect(() => readReselected("{}")).toThrow(/no `reselected` array/);
+      expect(() => readReselected(out([{ module: "email/resend" }]))).toThrow(
+        /without module, from and to/,
+      );
+    });
+  });
+
+  describe("expectReselected", () => {
+    const email = { module: "email/resend", from: "default", to: "better-auth" };
+
+    test("passes on the modules expected, and on none expected and none reported", () => {
+      expect(() => expectReselected([email], [email])).not.toThrow();
+      expect(() => expectReselected([], [])).not.toThrow();
+    });
+
+    test("fails on a module planned again that was not expected, one that was not planned again, and a variant that differs", () => {
+      expect(() => expectReselected([email], [])).toThrow(
+        /planned again \[email\/resend default -> better-auth\], golden expects \[\]/,
+      );
+      expect(() => expectReselected([], [email])).toThrow(
+        /golden expects \[email\/resend default -> better-auth\]/,
+      );
+      expect(() => expectReselected([{ ...email, to: "default" }], [email])).toThrow(
+        /planned again/,
+      );
+    });
+  });
+
+  test("the project that installs email first and auth second is the one golden checks the other order with", () => {
+    expect(RESELECT_BASE).toContain("email/resend");
+    expect(RESELECT_BASE).not.toContain("auth/better-auth");
+    expect(RESELECT_BASE).toEqual(expect.arrayContaining(WITHOUT_ORM));
+    expect(RESELECTED).toEqual({ module: "email/resend", from: "default", to: "better-auth" });
   });
 
   describe("expectPending", () => {

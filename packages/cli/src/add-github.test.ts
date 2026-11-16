@@ -299,6 +299,62 @@ describe("bg add from a github source", () => {
     expect(await snapshot(root)).toEqual(before);
   });
 
+  describe("an installed module selected again when a module its variants match on is added (050 step 7)", () => {
+    const BASE = [
+      "provider/cloudflare",
+      "config/branding",
+      "api/elysia",
+      "db/d1",
+      "orm/drizzle",
+      "email/resend",
+    ];
+
+    test("auth added after email plans email again over the network too, and fetches only the installed modules it needs", async () => {
+      const raw = serve();
+      const root = await project(SOURCE);
+      const github = { baseUrl: raw.baseUrl };
+      await addItems({ projectRoot: root, items: BASE, install: false, github });
+      raw.requested.length = 0;
+
+      const { reselected, modulePlans } = await addItems({
+        projectRoot: root,
+        items: ["auth/better-auth"],
+        install: false,
+        github,
+      });
+
+      expect(reselected).toEqual([
+        {
+          ref: { category: "email", id: "resend" },
+          from: "default",
+          to: "better-auth",
+          because: ["auth/better-auth"],
+        },
+      ]);
+      expect(modulePlans.map(({ key, variant }) => [key, variant])).toEqual([
+        ["auth/better-auth", "default"],
+        ["email/resend", "better-auth"],
+      ]);
+      expect(raw.requested).toContain("modules/email/resend/intent/01-wire-email-into-auth.md");
+      expect((await readBg(root)).modules.email?.[0]).toMatchObject({ variant: "better-auth" });
+      expect(Object.keys(await snapshot(root))).toContain(".bg/add/01-wire-email-into-auth.md");
+    });
+
+    test("an add that names no module does not fetch the installed ones", async () => {
+      const raw = serve();
+      const root = await project(SOURCE);
+      const github = { baseUrl: raw.baseUrl };
+      await addItems({ projectRoot: root, items: ["ui/shadcn"], install: false, github });
+      raw.requested.length = 0;
+
+      await addItems({ projectRoot: root, items: ["button"], install: false, github });
+
+      expect(
+        raw.requested.filter((path) => path.endsWith("module.json") && path.includes("ui/shadcn")),
+      ).toEqual([]);
+    });
+  });
+
   test("a source with no ref reads the platform tag of bg.json", async () => {
     const tag = `v${platformPackageVersion()}`;
     const raw = serve(tag);

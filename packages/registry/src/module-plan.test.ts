@@ -9,7 +9,12 @@ import {
   type ProjectManifest,
 } from "@bonne-garde/schema";
 import { loadLocalRegistry } from "./load-registry";
-import { classifyNames, readAuthoredIntention, resolveModulePlans } from "./module-plan";
+import {
+  classifyNames,
+  readAuthoredIntention,
+  reselectedModules,
+  resolveModulePlans,
+} from "./module-plan";
 import type { RegistryCatalog } from "./types";
 
 const dirs: string[] = [];
@@ -71,13 +76,15 @@ async function registry(modules: ModuleSpec[], itemNames: string[] = []): Promis
 function project(
   installed: Partial<Record<ModuleCategory, string[]>> = {},
   scope = "@demo",
+  /** The variant a module is recorded on, by `<category>/<id>`; `default` for the others. */
+  variants: Record<string, string> = {},
 ): ProjectManifest {
   const modules = Object.fromEntries(
     Object.entries(installed).map(([category, ids]) => [
       category,
       ids.map((id) => ({
         id,
-        variant: "default",
+        variant: variants[`${category}/${id}`] ?? "default",
         version: "0.1.0",
         installedAt: "2026-01-01T00:00:00.000Z",
         options: {},
@@ -94,6 +101,7 @@ function project(
 
 const CLOUDFLARE: ModuleSpec = { category: "provider", id: "cloudflare" };
 const DOCKERFILE: ModuleSpec = { category: "provider", id: "dockerfile" };
+const DOCKERFILE_REF = { category: "provider", id: "dockerfile" } as const;
 
 describe("classifyNames (050 step 3)", () => {
   test("a bare module id is a module, a bare item name is an item, order kept", async () => {
@@ -1628,5 +1636,98 @@ describe("resolveModulePlans: the intentions a module authors under intent/ (065
         readAuthoredIntention(catalog, EMAIL_REF, "with-auth", ID, "@demo"),
       ).rejects.toThrow(/which its intent\/ does not hold/);
     });
+  });
+});
+
+describe("reselectedModules: an installed module whose variant a module this call adds changes (050 step 7, 035 Variants)", () => {
+  // The email module of the real registry in miniature: `auth` is an optional peer, and the variant that
+  // matches on it comes with the wiring a project with no auth has no use for.
+  const EMAIL: ModuleSpec = {
+    category: "email",
+    id: "resend",
+    json: {
+      peers: { provider: [] },
+      variants: [
+        { key: "default", match: {} },
+        { key: "wired", match: { auth: "better-auth" } },
+      ],
+    },
+  };
+  const AUTH: ModuleSpec = { category: "auth", id: "better-auth" };
+  const AUTH_REF = { category: "auth", id: "better-auth" } as const;
+  const EMAIL_REF = { category: "email", id: "resend" } as const;
+  const INSTALLED = { provider: ["cloudflare"], email: ["resend"] };
+
+  test("an installed module on the variant it had before the peer is planned again, on the variant the peer selects", async () => {
+    const catalog = await registry([CLOUDFLARE, EMAIL, AUTH]);
+
+    expect(reselectedModules(catalog, [AUTH_REF], project(INSTALLED))).toEqual([
+      { ref: EMAIL_REF, from: "default", to: "wired", because: ["auth/better-auth"] },
+    ]);
+  });
+
+  test("the plan of the two together is the plan of one call that names both: auth first, then email on its wired variant", async () => {
+    const catalog = await registry([CLOUDFLARE, EMAIL, AUTH]);
+    const manifest = project(INSTALLED);
+
+    const plans = await resolveModulePlans(
+      catalog,
+      [AUTH_REF, ...reselectedModules(catalog, [AUTH_REF], manifest).map(({ ref }) => ref)],
+      manifest,
+    );
+
+    expect(plans.map(({ key, variant }) => [key, variant])).toEqual([
+      ["auth/better-auth", "default"],
+      ["email/resend", "wired"],
+    ]);
+  });
+
+  test("a module already on the variant the peer selects is left alone: adding auth again pulls nothing in", async () => {
+    const catalog = await registry([CLOUDFLARE, EMAIL, AUTH]);
+    const manifest = project({ ...INSTALLED, auth: ["better-auth"] }, "@demo", {
+      "email/resend": "wired",
+    });
+
+    expect(reselectedModules(catalog, [AUTH_REF], manifest)).toEqual([]);
+  });
+
+  test("a module the call names itself is not reported: it is planned already", async () => {
+    const catalog = await registry([CLOUDFLARE, EMAIL, AUTH]);
+
+    expect(reselectedModules(catalog, [AUTH_REF, EMAIL_REF], project(INSTALLED))).toEqual([]);
+  });
+
+  test("a module whose variants match on none of the modules added is left alone, whatever variant it is recorded on", async () => {
+    const catalog = await registry([CLOUDFLARE, EMAIL, AUTH, DOCKERFILE]);
+
+    expect(
+      reselectedModules(
+        catalog,
+        [DOCKERFILE_REF],
+        project(INSTALLED, "@demo", { "email/resend": "old" }),
+      ),
+    ).toEqual([]);
+  });
+
+  test("another module of the category the variant matches on does not select it", async () => {
+    const catalog = await registry([CLOUDFLARE, EMAIL, { category: "auth", id: "lucia" }]);
+
+    expect(
+      reselectedModules(catalog, [{ category: "auth", id: "lucia" }], project(INSTALLED)),
+    ).toEqual([]);
+  });
+
+  test("a module the registry does not hold cannot be selected again, and is skipped without a word", async () => {
+    const catalog = await registry([CLOUDFLARE, AUTH]);
+
+    expect(reselectedModules(catalog, [AUTH_REF], project(INSTALLED))).toEqual([]);
+  });
+
+  test("naming no module reselects nothing", async () => {
+    const catalog = await registry([CLOUDFLARE, EMAIL, AUTH]);
+
+    expect(
+      reselectedModules(catalog, [], project({ ...INSTALLED, auth: ["better-auth"] })),
+    ).toEqual([]);
   });
 });

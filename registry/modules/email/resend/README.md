@@ -124,10 +124,14 @@ through `createTestAuth({ mailer })` and reads the `outbox`), then `bg record
 email/resend/wire-email-into-auth`. Until then `mailer` is auth's own, which sends nothing and says so, and
 the module's `checks` are withheld (050 step 15).
 
-**Installed in the other order.** `bg add auth/better-auth` after email is installed does not wire
-anything: auth's install knows nothing of email. Run `bg add email/resend` again: the installed auth
-now selects the `better-auth` variant, which adds the patches and stages the intention. 035's order puts
-auth first, and golden installs it that way.
+**Installed in the other order.** `bg add auth/better-auth` after email is installed wires it all the
+same: auth's install knows nothing of email, but `bg add` selects the variants of the installed modules
+again (050 step 7), finds that the `better-auth` variant of email now matches, and plans email in the same
+call as a re-add. It reports it (`bg: email/resend, installed on variant default, is planned again on
+variant better-auth, which matches auth/better-auth`, and `reselected` in the JSON), applies the patch and
+stages the intention, as one call naming both would. A project that is already in that state, from before
+`bg add` did this, is fixed by `bg add email/resend`. Golden installs auth first in its configurations, and
+checks the other order in a project of its own.
 
 ## Not here
 

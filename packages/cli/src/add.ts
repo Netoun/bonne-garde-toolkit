@@ -2,9 +2,11 @@ import { resolve } from "node:path";
 import {
   applyInstallPlan,
   classifyNames,
+  loadInstalledModules,
   loadNamedModules,
   loadRegistryFromSource,
   readPlanFiles,
+  reselectedModules,
   resolveInstallPlan,
   resolveModulePlans,
   searchCatalog,
@@ -103,7 +105,17 @@ export async function addItems(options: AddOptions) {
   const catalog = await loadNamedModules(loaded, options.items);
   const { items, modules } = classifyNames(catalog, options.items);
   const plan = await readPlanFiles(catalog, resolveInstallPlan(catalog, items, manifest, modules));
-  const modulePlans = await resolveModulePlans(catalog, modules, manifest);
+  // 050 step 7: an installed module whose variant a module added here changes is planned again with
+  // them, so installing auth after email wires email as one call naming both would have. Only a call
+  // that adds a module can change one, so only it asks a github source for the installed modules.
+  const withInstalled =
+    modules.length === 0 ? catalog : await loadInstalledModules(catalog, manifest);
+  const reselected = reselectedModules(withInstalled, modules, manifest);
+  const modulePlans = await resolveModulePlans(
+    withInstalled,
+    [...modules, ...reselected.map(({ ref }) => ref)],
+    manifest,
+  );
   const { dryRun = false, force = false } = options;
   const result = await applyInstallPlan({
     projectRoot,
@@ -149,5 +161,5 @@ export async function addItems(options: AddOptions) {
     ? null
     : await stagePendingIntentions(projectRoot, [...result.pending, ...result.authored], resolved);
 
-  return { plan, modulePlans, result, migratedFrom, staged };
+  return { plan, modulePlans, result, migratedFrom, staged, reselected };
 }

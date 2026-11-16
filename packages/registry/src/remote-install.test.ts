@@ -2,12 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { createEmptyProjectManifest } from "@bonne-garde/schema";
+import { createEmptyProjectManifest, parseProjectManifest } from "@bonne-garde/schema";
 import { serveGithubRaw, type GithubRawServer } from "../test-support/github-raw-server";
 import { RegistrySourceError } from "./github-source";
 import { loadRegistryFromSource } from "./load-registry";
 import { classifyNames, resolveModulePlans } from "./module-plan";
-import { loadNamedModules, readPlanFiles } from "./remote-install";
+import { loadInstalledModules, loadNamedModules, readPlanFiles } from "./remote-install";
 import { resolveInstallPlan } from "./resolve-plan";
 
 const REPO_REGISTRY = join(import.meta.dir, "../../../registry");
@@ -132,6 +132,66 @@ describe("loadNamedModules", () => {
     expect(() => classifyNames(catalog, ["provider/nope"])).toThrow(
       /modules\/provider\/nope\/module\.json.*github:acme\/bg@v1/,
     );
+  });
+});
+
+describe("loadInstalledModules", () => {
+  const record = (id: string) => ({
+    id,
+    variant: "default",
+    version: "0.1.0",
+    installedAt: "2026-01-01T00:00:00.000Z",
+    options: {},
+    patches: [],
+    intentions: { applied: [], skipped: {} },
+  });
+  const project = (modules: Record<string, string[]>) =>
+    parseProjectManifest({
+      ...PROJECT,
+      modules: Object.fromEntries(
+        Object.entries(modules).map(([category, ids]) => [category, ids.map(record)]),
+      ),
+    });
+  const keys = (modules: { manifest: { category: string; id: string } }[]) =>
+    modules.map(({ manifest }) => `${manifest.category}/${manifest.id}`);
+
+  test("hands back a local catalog untouched, with no request", async () => {
+    const catalog = { name: "x", items: [], modules: [], rootDir: "/r" };
+
+    expect(await loadInstalledModules(catalog, project({ provider: ["cloudflare"] }))).toBe(
+      catalog,
+    );
+  });
+
+  test("fetches the module.json of each installed module the catalog lacks, and no other", async () => {
+    const raw = serve();
+    const catalog = await loadNamedModules(await remote(raw), ["email/resend"]);
+    raw.requested.length = 0;
+
+    const loaded = await loadInstalledModules(
+      catalog,
+      project({ provider: ["cloudflare"], email: ["resend"], db: ["d1"] }),
+    );
+
+    // email/resend is held already: it is not asked for twice.
+    expect([...raw.requested].sort()).toEqual([
+      "modules/db/d1/module.json",
+      "modules/provider/cloudflare/module.json",
+    ]);
+    expect(keys(loaded.modules).sort()).toEqual(["db/d1", "email/resend", "provider/cloudflare"]);
+    expect(loaded.modules.every((module) => module.reader === catalog.reader)).toBe(true);
+  });
+
+  test("a module the registry does not have is left out, and is not an error", async () => {
+    const raw = serve();
+    const catalog = await remote(raw);
+
+    const loaded = await loadInstalledModules(
+      catalog,
+      project({ provider: ["cloudflare"], auth: ["gone-from-registry"] }),
+    );
+
+    expect(keys(loaded.modules)).toEqual(["provider/cloudflare"]);
   });
 });
 

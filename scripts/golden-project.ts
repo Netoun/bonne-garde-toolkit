@@ -1203,6 +1203,53 @@ export function expectPending(reported: readonly string[], expected: readonly st
   }
 }
 
+/** A module `bg add` planned again though the command did not name it (050 step 7): the variant it left and the one it took. */
+export type Reselected = { module: string; from: string; to: string };
+
+/** The modules in the `reselected` list `bg add` prints. */
+export function readReselected(stdout: string): Reselected[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    throw new Error("bg add did not print JSON");
+  }
+  if (!isRecord(parsed) || !Array.isArray(parsed.reselected)) {
+    throw new Error("bg add printed no `reselected` array");
+  }
+  return parsed.reselected.map((entry: unknown) => {
+    if (
+      !isRecord(entry) ||
+      typeof entry.module !== "string" ||
+      typeof entry.from !== "string" ||
+      typeof entry.to !== "string"
+    ) {
+      throw new Error("bg add printed a reselected module without module, from and to");
+    }
+    return { module: entry.module, from: entry.from, to: entry.to };
+  });
+}
+
+/** The modules planned again are the ones golden expects: no more, which would be an add that touches what it was not asked to, and no fewer. */
+export function expectReselected(
+  reported: readonly Reselected[],
+  expected: readonly Reselected[],
+): void {
+  const show = (list: readonly Reselected[]) =>
+    list.map(({ module, from, to }) => `${module} ${from} -> ${to}`).join(", ");
+  if (JSON.stringify(reported) !== JSON.stringify(expected)) {
+    throw new Error(`bg add planned again [${show(reported)}], golden expects [${show(expected)}]`);
+  }
+}
+
+/**
+ * The other order (050 step 7, 035): email installed first, so on the variant that wires nothing, then
+ * auth, whose install has to plan email again on the variant that matches it. The configurations
+ * install auth first, which is the order 035 gives, so this has a project of its own.
+ */
+export const RESELECT_BASE: readonly string[] = [...WITHOUT_ORM, "orm/drizzle", "email/resend"];
+export const RESELECTED: Reselected = { module: EMAIL_MODULE, from: "default", to: "better-auth" };
+
 /**
  * The edit `email/resend/wire-email-into-auth` describes, as an executor makes it: `mailer` becomes
  * `emailMailer`, imported from the email package in place of the import of the logger that only the old
@@ -1992,6 +2039,9 @@ async function configured(
   if (first && hasAuth(configuration)) {
     await refusedPeer(work, timings, bg, registry);
   }
+  if (first && hasAuth(configuration) && hasEmail(configuration)) {
+    await reselected(work, timings, bg, registry);
+  }
   if (first && hasFeatures(configuration)) {
     for (const refusal of FEATURE_REFUSALS) {
       await refusedFeature(work, timings, bg, registry, refusal);
@@ -2255,6 +2305,80 @@ async function refusedPeer(
       throw new Error(
         `the refused \`bg add better-auth\` changed the project: ${changed.join(", ")}`,
       );
+    }
+  });
+}
+
+/**
+ * 035 and 050 step 7: `bg add auth/better-auth` in a project that has email on its default variant plans
+ * email again on the `better-auth` one, in the same plan, and says so. The patch that declares the email
+ * package in auth's package.json is applied, the wiring intention is staged and pending, and adding either
+ * module again afterwards changes nothing and plans nothing again. It needs a project of its own: the
+ * configuration under test installs auth first.
+ */
+async function reselected(
+  work: string,
+  timings: Timing[],
+  bg: (...args: string[]) => string[],
+  registry: string,
+): Promise<void> {
+  const project = join(work, "golden-reselect");
+  const [wired] = PENDING.cloudflare ?? [];
+  if (wired === undefined) {
+    throw new Error("the other-order check needs the wiring intention in PENDING.cloudflare");
+  }
+  await phase(timings, "reselect: create and add email first", async () => {
+    await run(
+      bg(
+        "create",
+        project,
+        "--yes",
+        "--no-git",
+        "--no-install",
+        "--scope",
+        SCOPE,
+        "--registry",
+        registry,
+      ),
+      work,
+    );
+    const stdout = await capture(bg(...addArguments(RESELECT_BASE, [])), project);
+    expectReselected(readReselected(stdout), []);
+    expectPending(readPendingIntentions(stdout), []);
+  });
+  await phase(timings, "reselect: add auth", async () => {
+    const stdout = await capture(bg("add", AUTH_MODULE, "--yes", "--no-install"), project);
+    expectReselected(readReselected(stdout), [RESELECTED]);
+    expectPending(readPendingIntentions(stdout), [wired]);
+    const reported = readAddedModules(stdout, [AUTH_MODULE, EMAIL_MODULE]);
+    const patched = PATCHED.cloudflare ?? {};
+    expectPatches(reported, "applied", {
+      [AUTH_MODULE]: patched[AUTH_MODULE] ?? [],
+      [EMAIL_MODULE]: patched[EMAIL_MODULE] ?? [],
+    });
+    const manifest: unknown = JSON.parse(await Bun.file(join(project, "bg.json")).text());
+    expectRegionsRecorded(manifest, reported);
+    expectNoIntentRegion(manifest, wired);
+    const email = isRecord(manifest) && isRecord(manifest.modules) ? manifest.modules.email : null;
+    if (!Array.isArray(email) || !isRecord(email[0]) || email[0].variant !== RESELECTED.to) {
+      throw new Error(`bg.json does not record email on variant ${RESELECTED.to}`);
+    }
+    const staged = await Bun.file(join(project, ".bg/add/session.md")).text();
+    if (!staged.includes(wired)) {
+      throw new Error(`.bg/add/session.md does not list ${wired}`);
+    }
+  });
+  await phase(timings, "reselect: add either again", async () => {
+    for (const name of [AUTH_MODULE, EMAIL_MODULE]) {
+      const before = await snapshot(project);
+      const stdout = await capture(bg("add", name, "--yes", "--no-install"), project);
+      expectReselected(readReselected(stdout), []);
+      const changed = diffTrees(before, await snapshot(project));
+      if (changed.length > 0) {
+        throw new Error(
+          `\`bg add ${name}\` after the other order changed the project: ${changed.join(", ")}`,
+        );
+      }
     }
   });
 }

@@ -153,7 +153,7 @@ export async function runCli(argv: string[]): Promise<number> {
     if (args.length === 0) {
       throw new Error("add requires at least one item or module");
     }
-    const { plan, modulePlans, result, migratedFrom, staged } = await addItems({
+    const { plan, modulePlans, result, migratedFrom, staged, reselected } = await addItems({
       items: args,
       source,
       dryRun,
@@ -162,6 +162,12 @@ export async function runCli(argv: string[]): Promise<number> {
     });
     if (migratedFrom !== null) {
       console.error(manifestMigrationNotice(dryRun));
+    }
+    // 050 step 7: a module this call did not name, planned again because one it did name changes its variant.
+    for (const { ref, from, to, because } of reselected) {
+      console.error(
+        `bg: ${ref.category}/${ref.id}, installed on variant ${from}, is planned again on variant ${to}, which matches ${because.join(", ")}`,
+      );
     }
     for (const { path, from, by } of result.tookOver) {
       console.error(`bg: ${path} was owned by ${from}; ${by} now owns it`);
@@ -203,6 +209,11 @@ export async function runCli(argv: string[]): Promise<number> {
           itemPatches: result.patches
             .filter((patch) => plan.items.some((item) => item.name === patch.module))
             .map(({ module, ...patch }) => ({ item: module, ...patch })),
+          // Modules of `modules` that this call did not name, planned again on another variant (050 step 7).
+          reselected: reselected.map(({ ref, ...variants }) => ({
+            module: `${ref.category}/${ref.id}`,
+            ...variants,
+          })),
           modules: modulePlans.map((module) => ({
             module: module.key,
             variant: module.variant,

@@ -581,6 +581,62 @@ async function planModule(
   };
 }
 
+/** An installed module that a call plans again, because a module it adds changes the variant selected for it. */
+export type Reselected = {
+  ref: ModuleRef;
+  /** The variant `bg.json` records for it. */
+  from: string;
+  /** The variant selected over the installed peers and the modules this call adds. */
+  to: string;
+  /** The modules of this call that the variant `to` matches on, as `<category>/<id>`. */
+  because: string[];
+};
+
+/**
+ * 050 step 7 for the modules already installed: one whose variants match on a module this call adds
+ * is selected again over the peers the project will hold, and is returned when that is not the variant
+ * `bg.json` records, so installing `auth` after `email` plans `email` again exactly as one call naming
+ * both would have. A module none of whose variants names a module added is left alone, whatever it is
+ * recorded on, and so is one the call names itself or the registry does not hold. The caller plans the
+ * returned modules with the requested ones, a re-add, so the rules of a re-add decide each file.
+ */
+export function reselectedModules(
+  catalog: RegistryCatalog,
+  requested: ModuleRef[],
+  project: ProjectManifest,
+): Reselected[] {
+  const named = new Set(requested.map(keyOf));
+  const present = presentModules(project, requested);
+  const reselected: Reselected[] = [];
+  for (const category of MODULE_CATEGORIES) {
+    for (const record of project.modules[category] ?? []) {
+      const ref = { category, id: record.id };
+      const module = catalog.modules.find(
+        ({ manifest }) => manifest.category === category && manifest.id === record.id,
+      );
+      const addedMatches = (variant: ModuleVariant) =>
+        requested.filter((added) => variant.match[added.category] === added.id);
+      if (
+        named.has(keyOf(ref)) ||
+        module === undefined ||
+        !module.manifest.variants.some((variant) => addedMatches(variant).length > 0)
+      ) {
+        continue;
+      }
+      const selected = selectVariant(module.manifest, present);
+      if (selected.key !== record.variant) {
+        reselected.push({
+          ref,
+          from: record.variant,
+          to: selected.key,
+          because: addedMatches(selected).map(keyOf),
+        });
+      }
+    }
+  }
+  return reselected;
+}
+
 /**
  * 050 steps 4-8 for modules, in category order (spec 035: topological, `provider` first), so a
  * peer named in the same call counts as installed. Reads the registry and the project manifest

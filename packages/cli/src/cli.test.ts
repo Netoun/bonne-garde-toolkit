@@ -672,6 +672,8 @@ type ModuleOutput = {
     patches: PatchOutput[];
   }[];
   failedPatches: (PatchOutput & { module: string })[];
+  /** The installed modules this call planned again, on the variant a module it adds selects. */
+  reselected: { module: string; from: string; to: string; because: string[] }[];
   pendingIntentions: {
     id: string;
     module: string;
@@ -1607,6 +1609,142 @@ describe("bg add: package.dependencies (060)", () => {
     ]);
     expect(out.pendingIntentions.map((pending) => pending.id)).toEqual([id]);
     expect(stderr).toContain("bg: PATCH FAILED package.dependencies on package.json (dev/wiring)");
+  });
+});
+
+describe("bg add: an installed module is selected again when a module its variants match on is added (050 step 7, 035 Variants)", () => {
+  const ID = "email/resend/wire-email-into-auth";
+  /** What email needs and what auth needs but email: so that auth comes second. */
+  const BASE = [
+    "provider/cloudflare",
+    "config/branding",
+    "api/elysia",
+    "db/d1",
+    "orm/drizzle",
+    "email/resend",
+  ];
+
+  async function emailFirst(prefix: string): Promise<string> {
+    const target = await freshProject(prefix);
+    const base = await runBg(target, "add", ...BASE, "--yes", "--no-install");
+    expect(base.code).toBe(0);
+    const out = JSON.parse(base.stdout) as ModuleOutput;
+    expect(out.modules.find(({ module }) => module === "email/resend")?.variant).toBe("default");
+    expect(out.reselected).toEqual([]);
+    expect(out.pendingIntentions).toEqual([]);
+    return target;
+  }
+
+  const emailRecord = async (target: string) =>
+    (
+      JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as {
+        modules: { email: { variant: string }[] };
+      }
+    ).modules.email[0];
+
+  test("auth added after email plans email again, on its better-auth variant, in the same plan, and stages the wiring", async () => {
+    const target = await emailFirst("bg-cli-reselect-");
+
+    const { stdout, stderr, code } = await runBg(
+      target,
+      "add",
+      "auth/better-auth",
+      "--yes",
+      "--no-install",
+    );
+
+    expect(code).toBe(0);
+    const out = JSON.parse(stdout) as ModuleOutput;
+    expect(out.reselected).toEqual([
+      { module: "email/resend", from: "default", to: "better-auth", because: ["auth/better-auth"] },
+    ]);
+    expect(stderr).toContain(
+      "bg: email/resend, installed on variant default, is planned again on variant better-auth, which matches auth/better-auth",
+    );
+    expect(out.modules.map(({ module, variant }) => [module, variant])).toEqual([
+      ["auth/better-auth", "default"],
+      ["email/resend", "better-auth"],
+    ]);
+    // The patch that declares the email package in auth's package.json lands in the same apply,
+    // on the file auth writes in this very call.
+    expect(out.modules.find(({ module }) => module === "email/resend")?.patches).toMatchObject([
+      { type: "package.dependencies", file: "packages/auth/package.json", status: "applied" },
+    ]);
+    expect(await readFile(join(target, "packages/auth/package.json"), "utf8")).toContain(
+      '"@cli-app/email": "workspace:*"',
+    );
+    expect(out.pendingIntentions.map(({ id, staged }) => [id, staged])).toEqual([
+      [ID, ".bg/add/01-wire-email-into-auth.md"],
+    ]);
+    expect(await readFile(join(target, ".bg/add/session.md"), "utf8")).toContain(ID);
+    expect((await emailRecord(target))?.variant).toBe("better-auth");
+  });
+
+  test("--dry-run reports it too, and writes nothing", async () => {
+    const target = await emailFirst("bg-cli-reselect-dry-");
+    const before = await snapshot(target);
+
+    const { stdout, code } = await runBg(
+      target,
+      "add",
+      "auth/better-auth",
+      "--dry-run",
+      "--yes",
+      "--no-install",
+    );
+
+    expect(code).toBe(0);
+    const out = JSON.parse(stdout) as ModuleOutput;
+    expect(out.reselected.map(({ module, to }) => [module, to])).toEqual([
+      ["email/resend", "better-auth"],
+    ]);
+    expect(out.pendingIntentions.map(({ id }) => id)).toEqual([ID]);
+    expect(await snapshot(target)).toEqual(before);
+  });
+
+  test("once planned again it stays so: auth added again, or email alone, selects nothing and changes nothing", async () => {
+    const target = await emailFirst("bg-cli-reselect-again-");
+    await runBg(target, "add", "auth/better-auth", "--yes", "--no-install");
+
+    // A re-add moves `installedAt` in bg.json and nothing else.
+    const tree = async () => {
+      const { "bg.json": _manifest, ...files } = await snapshot(target);
+      return files;
+    };
+    for (const name of ["auth/better-auth", "email/resend"]) {
+      const before = await tree();
+      const again = await runBg(target, "add", name, "--yes", "--no-install");
+      expect(again.code).toBe(0);
+      expect((JSON.parse(again.stdout) as ModuleOutput).reselected).toEqual([]);
+      expect(await tree()).toEqual(before);
+    }
+    expect((await emailRecord(target))?.variant).toBe("better-auth");
+  });
+
+  test("naming both in one call needs no re-selection: it is the plan that call is", async () => {
+    const target = await freshProject("bg-cli-reselect-both-");
+    await runBg(
+      target,
+      "add",
+      ...BASE.filter((name) => name !== "email/resend"),
+      "--yes",
+      "--no-install",
+    );
+
+    const { stdout } = await runBg(
+      target,
+      "add",
+      "email/resend",
+      "auth/better-auth",
+      "--yes",
+      "--no-install",
+    );
+
+    const out = JSON.parse(stdout) as ModuleOutput;
+    expect(out.reselected).toEqual([]);
+    expect(out.modules.find(({ module }) => module === "email/resend")?.variant).toBe(
+      "better-auth",
+    );
   });
 });
 
