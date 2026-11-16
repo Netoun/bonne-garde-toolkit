@@ -56,7 +56,18 @@ export default defineConfig({
         },
       },
       {
-        files: ["scripts/**"],
+        // Programs whose stderr and stdout are their interface: this repo's scripts, the entry
+        // files of `bg`, and the scripts the modules ship. The generated project turns the rule off
+        // for the same two script directories (tooling/vite-plus), so the template is held to what
+        // the project it lands in is held to.
+        files: [
+          "scripts/**",
+          "packages/cli/src/cli.ts",
+          "packages/cli/src/bin.ts",
+          "packages/cli/src/create-bin.ts",
+          "registry/modules/*/*/template/scripts/**",
+          "registry/modules/*/*/template/packages/config/scripts/**",
+        ],
         rules: {
           "no-console": "off",
         },
