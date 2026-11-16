@@ -73,6 +73,19 @@ export function d1Rows(stdout: string): Record<string, unknown>[] {
 /** `apps/api`, where `wrangler.jsonc` and the local D1 state are. */
 const API_DIRECTORY = new URL("../../../apps/api/", import.meta.url).pathname;
 
+/**
+ * What a failed `wrangler` call is reported as: the command and its exit code. The value of
+ * `--command` is the SQL, and the batch's inserts hold the admin's password hash, so the error that
+ * reaches a terminal or a CI log says how long the SQL was and not what it said. Wrangler explains the
+ * failure itself, on the stderr this process shares.
+ */
+export function wranglerFailure(args: string[], exitCode: number): string {
+  const shown = args.map((arg, index) =>
+    args[index - 1] === "--command" ? `<SQL withheld, ${arg.length} characters>` : arg,
+  );
+  return `wrangler ${shown.join(" ")} exited with ${exitCode}`;
+}
+
 /** Runs `wrangler` in `apps/api` and returns what it printed; `inherit` shows it instead, and returns "". */
 async function wrangler(args: string[], stdout: "pipe" | "inherit"): Promise<string> {
   const wranglerProcess = Bun.spawn(["bunx", "wrangler", ...args], {
@@ -83,8 +96,9 @@ async function wrangler(args: string[], stdout: "pipe" | "inherit"): Promise<str
     env: { ...Bun.env, WRANGLER_SEND_METRICS: "false" },
   });
   const printed = stdout === "pipe" ? await new Response(wranglerProcess.stdout).text() : "";
-  if ((await wranglerProcess.exited) !== 0) {
-    throw new Error(`wrangler ${args.join(" ")} failed`);
+  const exitCode = await wranglerProcess.exited;
+  if (exitCode !== 0) {
+    throw new Error(wranglerFailure(args, exitCode));
   }
   return printed;
 }
