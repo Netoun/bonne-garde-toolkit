@@ -72,10 +72,14 @@ bun run deploy:cloudflare --dry-run    # this, as JSON: nothing runs, no credent
   immediately before its deploy; the others follow by directory name.
 - **A Worker** is deployed with `--env production`, **a Pages app** (a `pages_build_output_dir` in its
   config) with its own `name` as the project and `main` as the branch. The `name` is read, not written
-  twice.
+  twice: Pages requires it at the top level of the config, "because environments target the same
+  project", and `--branch` is what picks the production deployment.
 - Every step runs with `CLOUDFLARE_ENV=production`. The config `web/ssr` builds carries the
   environment it was built for, and wrangler 4.119 (read in its source) refuses an `--env` that
   differs from it, so `--env production` after a `CLOUDFLARE_ENV=production` build agrees with it.
+  `wrangler pages deploy` refuses the `--env` flag, which is why a Pages app is given none, and
+  reads `CLOUDFLARE_ENV` like the others: it selects the config's `env.production`, the only
+  environment names Pages accepts being `preview` and `production`.
 - It stops at the first step that fails, and says which.
 
 Each `wrangler.jsonc` has to have a `name`, a `main` or a `pages_build_output_dir`, and an
