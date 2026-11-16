@@ -65,6 +65,7 @@ import {
   readCounts,
   resetTables,
   SEEDED_ADMIN,
+  REFUSED_FEATURE,
   requiresDocker,
   SCOPE,
   selectItems,
@@ -131,6 +132,21 @@ describe("the golden project", () => {
     const listing = catalog.items.map((item) => `${item.name}\t${item.type}`).join("\n");
 
     expect(selectItems(listing, EXCLUDED).items).toContain("button");
+  });
+
+  test("leaves the feature items out until their routes and dependencies have a mechanism, and says why", async () => {
+    const catalog = await loadLocalRegistry(
+      join(resolve(import.meta.dir, ".."), "registry/registry.json"),
+    );
+    const listing = catalog.items.map((item) => `${item.name}\t${item.type}`).join("\n");
+
+    const { items, excluded } = selectItems(listing, EXCLUDED);
+
+    expect(excluded.map(({ name }) => name)).toEqual(["spa-auth", "spa-backoffice"]);
+    expect(excluded.every(({ reason }) => reason.includes("routes.ts"))).toBe(true);
+    expect(items).not.toContain("spa-auth");
+    // The refusal golden checks needs the item to be in the registry, installed or not.
+    expect(REFUSED_FEATURE).toBe("spa-auth");
   });
 
   test("uses a scope that is not `@acme`'s length, which the registry is formatted with", () => {
@@ -371,6 +387,19 @@ describe("expectRefusal", () => {
     expect(() =>
       expectRefusal({ code: 1, stderr: "unknown name: button\n" }, "button", "ui/shadcn"),
     ).toThrow(/bg add ui\/shadcn button.*unknown name: button/s);
+  });
+
+  test("a feature item in a bare project is refused for the ui and the auth module, named in one command (030)", () => {
+    const both =
+      "spa-auth needs the ui and auth modules, and none is installed or named in this call; run: bg add ui/shadcn auth/better-auth spa-auth\n";
+
+    expect(() =>
+      expectRefusal({ code: 1, stderr: both }, "spa-auth", "ui/shadcn", "auth/better-auth"),
+    ).not.toThrow();
+    // The ui module alone is not the whole fix: the auth module is what a feature item needs.
+    expect(() => expectRefusal({ code: 1, stderr: both }, "spa-auth", "ui/shadcn")).toThrow(
+      /bg add ui\/shadcn spa-auth/,
+    );
   });
 });
 

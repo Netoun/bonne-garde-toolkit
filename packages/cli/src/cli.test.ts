@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
@@ -78,6 +79,39 @@ describe("bg add --yes", () => {
       "button needs the ui module, and none is installed or named in this call; run: bg add ui/shadcn button",
     );
     expect(await readFile(join(target, "bg.json"), "utf8")).toBe(before);
+  });
+
+  test("a feature item fails without the auth module, naming auth/better-auth, and writes nothing (030)", async () => {
+    const target = await freshProject("bg-cli-no-auth-");
+    await addItems({ projectRoot: target, items: ["ui/shadcn"], install: false });
+    const before = await readFile(join(target, "bg.json"), "utf8");
+
+    const { stdout, stderr, code } = await runBg(
+      target,
+      "add",
+      "spa-auth",
+      "--yes",
+      "--no-install",
+    );
+
+    expect(code).toBe(1);
+    expect(stdout).toBe("");
+    expect(stderr).toContain(
+      "spa-auth needs the auth module, and none is installed or named in this call; run: bg add auth/better-auth spa-auth",
+    );
+    expect(await readFile(join(target, "bg.json"), "utf8")).toBe(before);
+    expect(existsSync(join(target, "apps/spa"))).toBe(false);
+  });
+
+  test("a feature item in a bare project names the ui and auth modules together", async () => {
+    const target = await freshProject("bg-cli-no-host-");
+
+    const { stderr, code } = await runBg(target, "add", "spa-backoffice", "--yes", "--no-install");
+
+    expect(code).toBe(1);
+    expect(stderr).toContain(
+      "spa-backoffice needs the ui and auth modules, and none is installed or named in this call; run: bg add ui/shadcn auth/better-auth spa-backoffice",
+    );
   });
 
   test("is documented in --help", async () => {

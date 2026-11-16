@@ -62,11 +62,23 @@ const BUN = "bun";
 export const SCOPE = "@app";
 
 /**
- * Items `bg list` shows that stay out of the golden project, each with its reason. An entry for an
- * item the registry no longer lists fails the run, so this list cannot go stale. Empty on purpose:
- * every item the registry ships is installed, and the test pins that.
+ * Why the feature items are not installed: what they write is wired into `apps/spa/src/routes.ts`,
+ * `root.tsx` and `package.json`, which `web/spa` owns, and 09 stage 6 has not settled how an item
+ * reaches them. Installed as they are, `bun run check` rejects their pages: `structure/route-modules`
+ * reads only `routes.ts`. The refusal without `auth` is still checked, in the project that has no module.
  */
-export const EXCLUDED: Readonly<Record<string, string>> = {};
+const FEATURES_NOT_WIRED =
+  "its pages are not declared in routes.ts, and its dependencies and root.tsx wiring are not in web/spa: 09 stage 6 has not settled how an item reaches them";
+
+/**
+ * Items `bg list` shows that stay out of the golden project, each with its reason. An entry for an
+ * item the registry no longer lists fails the run, so this list cannot go stale. Otherwise empty on
+ * purpose: every item the registry ships is installed, and a new one is a decision made here.
+ */
+export const EXCLUDED: Readonly<Record<string, string>> = {
+  "spa-auth": FEATURES_NOT_WIRED,
+  "spa-backoffice": FEATURES_NOT_WIRED,
+};
 
 export type Excluded = { name: string; reason: string };
 
@@ -569,6 +581,10 @@ export const MODULES: readonly string[] = [
 /** The item `refuse` tries with no ui module, and the module its refusal has to name. */
 const REFUSED_ITEM = "button";
 const REFUSED_MODULE = "ui/shadcn";
+
+/** The feature item `refuse` tries too, and the two modules a project without any needs for it. */
+export const REFUSED_FEATURE = "spa-auth";
+const REFUSED_FEATURE_MODULES = [REFUSED_MODULE, "auth/better-auth"] as const;
 
 /**
  * Modules `bg list` shows that stay out of every configuration, each with its reason. An entry for
@@ -1424,17 +1440,18 @@ export function expectPortlessPlan(
 export type Attempt = { code: number; stderr: string };
 
 /**
- * An item that lands in `packages/ui` is refused until a `ui` module is named (030). Golden tries it
- * with the packed CLI in a project that has none, before installing anything: the refusal has to
- * carry the command that fixes it, as an agent running `bg add` reads it and nothing else.
+ * An item that lands in `packages/ui` is refused until a `ui` module is named, and one that lands in an
+ * app's `features` folder until an `auth` module is (030). Golden tries each with the packed CLI in a
+ * project that has none, before installing anything: the refusal has to carry the command that fixes
+ * it, every missing module in it, as an agent running `bg add` reads it and nothing else.
  */
-export function expectRefusal(attempt: Attempt, item: string, module: string): void {
+export function expectRefusal(attempt: Attempt, item: string, ...modules: string[]): void {
   if (attempt.code === 0) {
     throw new Error(
-      `\`bg add ${item}\` succeeded in a project with no ${module}: it must be refused`,
+      `\`bg add ${item}\` succeeded in a project with no ${modules.join(" and ")}: it must be refused`,
     );
   }
-  const fix = `bg add ${module} ${item}`;
+  const fix = `bg add ${[...modules, item].join(" ")}`;
   if (!attempt.stderr.includes(fix)) {
     throw new Error(
       `\`bg add ${item}\` was refused without naming \`${fix}\`; it printed: ${attempt.stderr.trim() || "(nothing)"}`,
@@ -1650,6 +1667,9 @@ async function golden(work: string, timings: Timing[]): Promise<void> {
   for (const { name, reason } of excluded) {
     console.log(`golden: leaving out ${name}: ${reason}`);
   }
+  if (![...items, ...excluded.map(({ name }) => name)].includes(REFUSED_FEATURE)) {
+    throw new Error(`the refusal check needs the feature item ${REFUSED_FEATURE} in the registry`);
+  }
 
   for (const [index, configuration] of CONFIGURATIONS.entries()) {
     await configured(work, timings, { bg, registry, items, configuration, first: index === 0 });
@@ -1710,6 +1730,14 @@ async function configured(
       );
       if ((await Bun.file(join(project, "bg.json")).text()) !== manifest) {
         throw new Error(`the refused \`bg add ${REFUSED_ITEM}\` changed bg.json`);
+      }
+      expectRefusal(
+        await attempt(bg("add", REFUSED_FEATURE, "--yes", "--no-install"), project),
+        REFUSED_FEATURE,
+        ...REFUSED_FEATURE_MODULES,
+      );
+      if ((await Bun.file(join(project, "bg.json")).text()) !== manifest) {
+        throw new Error(`the refused \`bg add ${REFUSED_FEATURE}\` changed bg.json`);
       }
     });
   }

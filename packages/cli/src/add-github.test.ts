@@ -179,9 +179,26 @@ describe("bg add from a github source", () => {
   });
 
   test("a project from a github source and one from a local source end up the same", async () => {
-    const everyItem = (await listItems(await project(LOCAL))).map((item) => item.name);
+    const listed = await listItems(await project(LOCAL));
+    // A feature item lands in an app's features folder and needs the auth module (030), so it gets a stack of its own.
+    const isFeature = (item: (typeof listed)[number]) =>
+      (item.files ?? []).some((file) => /^apps\/[^/]+\/src\/features\//.test(file.target ?? ""));
+    const everyItem = listed.filter((item) => !isFeature(item)).map((item) => item.name);
+    const featureItems = listed.filter(isFeature).map((item) => item.name);
+    expect(featureItems.length).toBeGreaterThan(0);
     for (const names of [
       ["ui/shadcn", "config/branding", ...everyItem],
+      [
+        "provider/cloudflare",
+        "config/branding",
+        "ui/shadcn",
+        "api/elysia",
+        "db/d1",
+        "orm/drizzle",
+        "auth/better-auth",
+        "web/spa",
+        ...featureItems,
+      ],
       ["provider/cloudflare"],
       ["provider/dockerfile"],
       ["config/branding", "provider/cloudflare", "api/elysia"],
