@@ -196,6 +196,7 @@ describe("bg add from a github source", () => {
         "db/d1",
         "orm/drizzle",
         "auth/better-auth",
+        "storage/r2",
         "web/spa",
         ...featureItems,
       ],

@@ -26,15 +26,16 @@ describe("registry contract", () => {
     }
   });
 
-  test("no registry.json carries `meta`: provides, requires, conflicts and transforms are gone (030)", async () => {
+  test("the only meta an item carries is needsModules, on a feature item: provides, requires, conflicts and transforms are gone (030)", async () => {
     const registries = await Array.fromAsync(
       new Bun.Glob("**/registry.json").scan({ cwd: join(ROOT, "registry") }),
     );
     // The raw files, and not the typed catalog: a field the loader no longer types still shows here.
     expect(registries).toContain("registry.json");
     expect(registries).toContain("ui/registry.json");
+    expect(registries).toContain("features/registry.json");
 
-    const carrying: string[] = [];
+    const wrong: string[] = [];
     for (const path of registries) {
       const raw: unknown = JSON.parse(await readFile(join(ROOT, "registry", path), "utf8"));
       const items =
@@ -42,13 +43,21 @@ describe("registry contract", () => {
           ? raw.items
           : [];
       for (const item of items) {
-        if (typeof item === "object" && item !== null && "meta" in item) {
-          carrying.push(`${path}: ${"name" in item ? String(item.name) : "?"}`);
+        if (typeof item !== "object" || item === null || !("meta" in item)) {
+          continue;
+        }
+        const name = "name" in item ? String(item.name) : "?";
+        const keys =
+          typeof item.meta === "object" && item.meta !== null ? Object.keys(item.meta) : ["?"];
+        if (!path.startsWith("features/") || keys.join() !== "needsModules") {
+          wrong.push(`${path}: ${name} carries meta [${keys}]`);
         }
       }
-      expect(JSON.stringify(raw)).not.toContain('"meta"');
     }
-    expect(carrying).toEqual([]);
+    expect(wrong).toEqual([]);
+    // `meta.bg` is the removed namespace, wherever it would be written.
+    const features = await readFile(join(ROOT, "registry/features/registry.json"), "utf8");
+    expect(features).not.toContain('"bg"');
   });
 
   test("no item creates the host package of `ui`: package.json, tsconfig.json and components.json are the module's (030)", async () => {

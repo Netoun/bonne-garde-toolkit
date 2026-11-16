@@ -2,10 +2,12 @@ import { Outlet, useMatches } from "react-router";
 import { motion } from "motion/react";
 import { Gem } from "lucide-react";
 import { branding } from "@acme/config";
+import { useAuthRedirect } from "../hooks/use-auth-redirect";
 import { ThemeToggle } from "../components/theme-toggle";
 import { isAuthLayoutHandle, type AuthLayoutHandle } from "../lib/types";
 
 export default function AuthLayout() {
+  useAuthRedirect();
   const matches = useMatches();
 
   const handle = matches.reduceRight<AuthLayoutHandle | undefined>(

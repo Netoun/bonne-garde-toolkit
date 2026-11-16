@@ -5,19 +5,24 @@
       "name": "spa-auth",
       "type": "registry:block",
       "title": "SPA auth",
-      "description": "Sign-in, sign-up, forgot and reset password and email verification pages for the SPA, the Better Auth client and the session hooks, with the theme toggle their layout uses. Needs the auth module.",
+      "description": "Sign-in, sign-up, forgot and reset password and email verification pages for the SPA, the Better Auth client and the session hooks, with the theme toggle their layout uses. Declares its routes in features/auth/routes.ts.",
       "dependencies": [
-        "@hookform/resolvers",
-        "better-auth",
+        "@acme/auth@workspace:*",
+        "@acme/config",
+        "@hookform/resolvers@5.7.1",
+        "better-auth@1.6.26",
         "lucide-react",
-        "motion",
+        "motion@13.0.0",
         "react",
-        "react-hook-form",
+        "react-hook-form@7.84.0",
         "react-router",
-        "zod"
+        "zod@4.4.3"
       ],
-      "devDependencies": ["vite-plus"],
+      "devDependencies": ["@react-router/dev", "vite-plus"],
       "registryDependencies": ["alert", "button", "dropdown-menu", "input", "label"],
+      "meta": {
+        "needsModules": ["auth", "web/spa"]
+      },
       "files": [
         {
           "path": "spa-auth/features/auth/components/theme-toggle.tsx",
@@ -83,6 +88,11 @@
           "path": "spa-auth/features/auth/pages/auth-verify-email-page.tsx",
           "type": "registry:page",
           "target": "apps/spa/src/features/auth/pages/auth-verify-email-page.tsx"
+        },
+        {
+          "path": "spa-auth/features/auth/routes.ts",
+          "type": "registry:file",
+          "target": "apps/spa/src/features/auth/routes.ts"
         }
       ]
     },
@@ -90,17 +100,19 @@
       "name": "spa-backoffice",
       "type": "registry:block",
       "title": "SPA backoffice",
-      "description": "The signed-in shell of the SPA: a sidebar layout with an organization switcher, a dashboard and the organization pages (list, create, settings with logo upload, members). Needs the auth module, and the storage module for the logo upload.",
+      "description": "The signed-in shell of the SPA: a sidebar layout with an organization switcher, a dashboard and the organization pages (list, create, settings with logo upload, members). Declares its routes in features/layout/routes.ts, and takes over the index route.",
       "dependencies": [
-        "@tanstack/react-form",
-        "@tanstack/react-pacer",
+        "@acme/config",
+        "@tanstack/react-form@1.33.3",
+        "@tanstack/react-pacer@0.22.1",
         "@tanstack/react-query",
-        "@tanstack/react-table",
-        "@tanstack/react-virtual",
+        "@tanstack/react-table@9.0.0",
+        "@tanstack/react-virtual@3.14.9",
         "lucide-react",
         "react",
         "react-router"
       ],
+      "devDependencies": ["@react-router/dev"],
       "registryDependencies": [
         "spa-auth",
         "avatar",
@@ -118,6 +130,9 @@
         "tabs",
         "tooltip"
       ],
+      "meta": {
+        "needsModules": ["auth", "storage", "web/spa"]
+      },
       "files": [
         {
           "path": "spa-backoffice/features/dashboard/pages/dashboard-page.tsx",
@@ -183,6 +198,11 @@
           "path": "spa-backoffice/features/layout/pages/layout-app-layout.tsx",
           "type": "registry:page",
           "target": "apps/spa/src/features/layout/pages/layout-app-layout.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/layout/routes.ts",
+          "type": "registry:file",
+          "target": "apps/spa/src/features/layout/routes.ts"
         },
         {
           "path": "spa-backoffice/features/organization/components/organization-card.tsx",
