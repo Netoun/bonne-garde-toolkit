@@ -2,7 +2,7 @@
 
 Boîte à outils **shadcn-like** pour applications Cloudflare/Bun : socle vide + CLI `bg` + registry (UI + features). Pas un boilerplate à cloner — tout passe par le CLI.
 
-Ce dépôt contient encore le monorepo applicatif historique (`apps/api`, `apps/spa`, …) pendant la migration vers des items de registry. La cible produit est :
+Le monorepo applicatif historique est dissous dans le registry (modules, items, features) : il ne reste ici que la plateforme. Usage :
 
 ```bash
 bun run bg -- create my-app --yes --no-git --registry local:./registry
@@ -10,7 +10,7 @@ cd my-app
 bun run --filter @bonne-garde/cli start -- add ui/shadcn button config/branding provider/cloudflare api/elysia
 ```
 
-Dans ce monorepo (développement local) :
+Dans ce monorepo (développement local, avec le Bun de `package.json#packageManager`) :
 
 ```bash
 bun install --frozen-lockfile
@@ -40,7 +40,8 @@ packages/cli/          # @bonne-garde/cli (bins: bg, create-bonne-garde)
 packages/schema/       # bg.json validation
 packages/registry/     # load / plan / apply
 templates/base/        # empty monorepo template
-registry/              # source registry (ui, apps, lib, features, tooling)
+registry/              # source registry (ui, features, modules)
+scripts/               # golden, registry build, pack, doc generators
 docs/specs/            # normative specs
 ```
 
@@ -48,7 +49,7 @@ docs/specs/            # normative specs
 
 Voir [docs/specs/README.md](./docs/specs/README.md).
 
-## Stack applicative (items / legacy apps)
+## Stack du code installé par le registry
 
 Toolchain: **Vite+** (Vite, Vitest, Oxlint, Oxfmt).
 
@@ -64,26 +65,15 @@ Toolchain: **Vite+** (Vite, Vitest, Oxlint, Oxfmt).
 | Storage  | Cloudflare R2                                       |
 | Email    | Resend + React-Email                                |
 
-## Legacy app (encore présente)
-
-```bash
-bun install --frozen-lockfile
-bun run init
-bun run brand   # rejouable — identité produit + scope npm
-bun run dev
-```
-
-Use the Bun version declared in `package.json#packageManager`. The init wizard keeps workspace dependencies automatically; preview removals with `bun run init -- --dry-run`.
-
 ## Verification
 
-`bun run verify` runs formatting/lint checks, typechecking (including scripts and API tests), all tests, the migration-intentions lint, the registry build, and all app builds.
+`bun run verify` runs formatting/lint checks, typechecking (platform packages and scripts), the script, registry-contract and platform package tests, the migration-intentions lint and the registry build.
 
-`bun run test` includes script tests, platform package tests, real SQLite API tests, package tests, and frontend tests through Vite+ (Vitest + RTL + MSW).
+`bun run golden` is what runs the code the registry ships: it creates a fresh project, installs every module and item with one provider, then typechecks, tests, builds and runs `bg doctor --strict` on it (it also builds and runs the `provider/dockerfile` image when docker is available).
 
 ## Default Admin — local development only
 
-Après seed :
+Après `bun run db:seed` dans un projet généré avec `auth/better-auth` :
 
 - Email: `admin@example.local`
 - Password: `password123`

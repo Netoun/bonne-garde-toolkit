@@ -16,22 +16,19 @@
 
 ## Project overview
 
-**Platform direction:** Bonne Garde is becoming a shadcn-inspired toolkit — empty base template (`templates/base`) + CLI (`packages/cli`, bin `bg`) + open registry (`registry/`) for UI and full-stack modules. Normative specs live in [`docs/specs/`](./docs/specs/README.md).
+Bonne Garde is a shadcn-inspired toolkit: an empty base template, a CLI (`bg`) that installs registry content into it, and the registry of UI items, feature items and full-stack modules. Normative specs live in [`docs/specs/`](./docs/specs/README.md). The legacy monorepo (`apps/*`, `packages/{ui,emails,config,api-runtime}`) was dissolved into the registry and is no longer in-tree; [`docs/plans/2026-10-sync/09-dissolution.md`](./docs/plans/2026-10-sync/09-dissolution.md) records where each piece went.
 
-**Legacy app (still in-tree during migration):** Bun monorepo for Cloudflare — Elysia API (Workers) + Drizzle/D1 + Better-auth + React Router v8 (SPA / SSR / static) + shadcn/ui + R2 + Resend. Toolchain: Vite+.
+| Layer                     | Choice                                                                                                              |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Runtime / Package manager | Bun + workspaces                                                                                                    |
+| Language                  | TypeScript strict everywhere                                                                                        |
+| CLI                       | `packages/cli` (bins `bg`, `create-bonne-garde`) over `packages/registry` (load, plan, apply) and `packages/schema` |
+| Registry                  | `registry/ui` and `registry/features` (items), `registry/modules/<category>/<id>` (`module.json` + `template/`)     |
+| Base template             | `templates/base`: the empty monorepo `bg create` copies                                                             |
+| Proof                     | `bun run golden`: one fresh project, every module and item installed, then typecheck, test, build, doctor           |
+| Toolchain                 | Vite+ — Vite, Vitest, Oxlint, Oxfmt; keep the unified configuration                                                 |
 
-| Layer                       | Choice                                                                               |
-| --------------------------- | ------------------------------------------------------------------------------------ |
-| Runtime / Package manager   | Bun + workspaces                                                                     |
-| Language                    | TypeScript strict everywhere                                                         |
-| API                         | Elysia (Cloudflare Workers, AOT disabled)                                            |
-| Auth                        | Better-auth (email/password, sessions, email verification)                           |
-| ORM / DB                    | Drizzle — SQLite dialect / Cloudflare D1                                             |
-| Storage / Email             | Cloudflare R2 / Resend + React-Email                                                 |
-| Shared API types            | Eden Treaty (inferred from Elysia — no manual schema)                                |
-| Fronts                      | React Router v8 + shadcn/ui + Tailwind + Zustand — Pages (SPA/static), Workers (SSR) |
-| Toolchain                   | Vite+ — Vite, Vitest, Oxlint, Oxfmt; keep the unified configuration                  |
-| Shared UI / Emails / Config | `packages/ui` / `packages/emails` / `packages/config`                                |
+What `bg add` writes into a project is Elysia on Workers (AOT disabled), Drizzle/D1, Better-auth, R2, Resend, Eden Treaty, and React Router v8 + shadcn/ui + Tailwind + Zustand fronts (Pages for SPA/static, Workers for SSR). Its source is `registry/modules/*/*/template/**`, `registry/features` and `registry/ui`, and the rules below hold for it.
 
 ### Key decisions
 
@@ -48,14 +45,15 @@
 ## Structure
 
 ```
-acme/
-├── apps/api
-├── apps/spa
-├── packages/config
-├── packages/emails
-├── packages/ui
-├── docs/
-└── scripts/
+bonne-garde-toolkit/
+├── packages/cli        # bg, create-bonne-garde
+├── packages/registry   # load / plan / apply
+├── packages/schema     # bg.json and module.json validation
+├── registry/           # ui/, features/, modules/<category>/<id>
+├── templates/base      # empty monorepo template
+├── scripts/            # golden, registry build, pack, doc generators
+├── docs/               # specs/ (normative), plans/ (history)
+└── migrations/         # per-release upgrade intentions
 ```
 
 ---
@@ -75,25 +73,13 @@ bun run pack:cli                          # dist/npm/create-bonne-garde
 bun run publish:cli:dry                   # npm tarball dry-run
 bun run publish:cli                       # publish create-bonne-garde to npm
 bun run gen:playground                    # smoke consumer in ./playground
-bun run init                              # legacy: selection, branding, env, migrations, seed
-bun run brand                             # re-apply product identity / npm scope
-bun run gen:branding                      # regenerate branding.generated.ts from branding.json
-bun run dev                               # all apps in parallel
-bun run typecheck && bun run test         # full verification
+bun run typecheck && bun run test         # platform packages + scripts
 bun run check                             # vp check (fmt + lint via Vite+)
-bun run verify                            # check + typecheck + all tests + all builds (CI gate)
+bun run verify                            # check + typecheck + test + intentions lint + registry build (CI gate)
 bun run golden                            # fresh project: create → add modules + items → install → typecheck → test → build → doctor --strict → check → each module's checks → dockerfile configuration: docker build + run (skipped without docker, a failure when GOLDEN_REQUIRE_DOCKER is set) (needs npm)
-
-bun run --filter @acme/api dev
-bun run --filter @acme/spa dev
-
-# From apps/api/
-bun run db:generate
-bun run db:migrate:local
-bun run db:studio
-bun run db:seed
-bun run auth:secret
 ```
+
+Most module and feature code imports packages that exist only after install, so `bun run test` skips it: golden is where it is typechecked, tested and built.
 
 ---
 
@@ -101,7 +87,7 @@ bun run auth:secret
 
 ### Do
 
-- **Read before writing**: this file → task/spec → existing code (`git show main:<path>` when comparing legacy)
+- **Read before writing**: this file → task/spec → existing code
 - **Strict TDD**: red → green → refactor ([`docs/TESTING.md`](./docs/TESTING.md))
 - **Eden Treaty** for all front → API calls — never raw `fetch`
 - **shadcn via CLI**: `bunx shadcn@latest add <component>` — never copy by hand
@@ -138,10 +124,9 @@ Before considering a task done:
 - [ ] `bun run typecheck` passes
 - [ ] `bun run test` passes
 - [ ] `bun run check` passes
-- [ ] `bun run build` passes for affected apps
+- [ ] `bun run golden` passes when `registry/` or `templates/` changed
 - [ ] No `any`, no `as` Eden
-- [ ] Eden types up to date if API changed
-- [ ] New env vars → corresponding `.example` file(s)
+- [ ] New env vars → the module's `env` entry (it writes the project's `.env.example`)
 - [ ] No files outside scope modified
 
 ---
@@ -153,7 +138,7 @@ Do **not** preload everything. Open only what the current task needs:
 | Need                                              | File                                                                                                                   |
 | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | Detailed clean-code / types / product conventions | [`docs/RULES.md`](./docs/RULES.md)                                                                                     |
-| Test patterns per app                             | [`docs/TESTING.md`](./docs/TESTING.md)                                                                                 |
+| Test patterns                                     | [`docs/TESTING.md`](./docs/TESTING.md)                                                                                 |
 | All scripts                                       | [`docs/COMMANDS.md`](./docs/COMMANDS.md)                                                                               |
 | System architecture                               | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)                                                                       |
 | Design system                                     | [`docs/DESIGN.md`](./docs/DESIGN.md)                                                                                   |
