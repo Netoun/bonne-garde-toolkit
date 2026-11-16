@@ -103,11 +103,3 @@ export function registryDir(from = HERE): string | null {
   const repo = findRepoRoot(from);
   return repo ? join(repo, "registry") : null;
 }
-
-/** @deprecated use defaultRegistrySource */
-export function defaultLocalRegistrySource(repoRoot?: string): string {
-  if (repoRoot) {
-    return `local:${join(repoRoot, "registry")}`;
-  }
-  return defaultRegistrySource();
-}
