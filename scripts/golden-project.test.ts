@@ -8,9 +8,14 @@ import {
   addArguments,
   assetPath,
   BINARY_FAVICONS,
+  expectBuildHoldsFavicons,
   expectFaviconsIdentical,
+  expectFaviconsServed,
   expectManifestEmitted,
+  expectOwnPublicKept,
+  faviconHrefs,
   FAVICONS_DIR,
+  faviconShells,
   hasFavicons,
   manifestHref,
   manifestIconPaths,
@@ -2158,5 +2163,205 @@ describe("the favicons config/branding ships, binary template files", () => {
 
     expect(diffTrees(before, await snapshot(root))).toEqual(["icon.png changed"]);
     expect(before["bg.json"]).toBe('{"installedAt": "2026-01-01"}');
+  });
+});
+
+describe("every web shell serves the favicons and the manifest config/branding ships", () => {
+  const dirs: string[] = [];
+  afterAll(async () => {
+    await Promise.all(dirs.map((dir) => rm(dir, { recursive: true, force: true })));
+  });
+
+  async function put(root: string, path: string, content: string | Uint8Array): Promise<void> {
+    await mkdir(dirname(join(root, path)), { recursive: true });
+    await writeFile(join(root, path), content);
+  }
+
+  // 0xff is a byte UTF-8 text cannot hold, so its lookalike differs by that byte alone.
+  const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0xff, 0x00]);
+  const LOOKALIKE = Uint8Array.from(PNG, (byte) => (byte === 0xff ? 0xfe : byte));
+  const MANIFEST = JSON.stringify({ icons: [{ src: "/android-chrome-192x192.png" }] });
+  const HEAD = [
+    '<link rel="preconnect" href="https://fonts.googleapis.com"/>',
+    '<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>',
+    '<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"/>',
+    '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"/>',
+    '<link rel="manifest" href="/site.webmanifest"/>',
+    '<link rel="stylesheet" href="/assets/root.css"/>',
+  ].join("");
+  const FILES = {
+    "favicon.svg": "<svg/>",
+    "favicon-16x16.png": PNG,
+    "apple-touch-icon.png": PNG,
+    "android-chrome-192x192.png": PNG,
+    "site.webmanifest": MANIFEST,
+  } as const;
+
+  /** The favicons directory of a project, and the client a shell built from it. */
+  async function shell(): Promise<{ root: string; source: string; app: string; client: string }> {
+    const root = await mkdtemp(join(tmpdir(), "bg-golden-shell-"));
+    dirs.push(root);
+    const app = join(root, "apps/ssr");
+    for (const [name, content] of Object.entries(FILES)) {
+      await put(root, `${FAVICONS_DIR}/${name}`, content);
+      await put(app, `build/client/${name}`, content);
+    }
+    await put(app, "public/robots.txt", "User-agent: *\n");
+    await put(app, "build/client/robots.txt", "User-agent: *\n");
+    return { root, source: join(root, FAVICONS_DIR), app, client: join(app, "build/client") };
+  }
+
+  const configuration = (...modules: string[]): Configuration => ({
+    name: "x",
+    modules,
+    items: false,
+  });
+
+  test("a configuration is asked for the shells it installs, when it installs the module that ships the favicons", () => {
+    expect(
+      faviconShells(configuration("config/branding", "web/spa", "web/ssr", "web/static")),
+    ).toEqual(["spa", "ssr", "static"]);
+    expect(faviconShells(configuration("config/branding", "web/static", "web/spa"))).toEqual([
+      "spa",
+      "static",
+    ]);
+    expect(faviconShells(configuration("config/branding", "web/ssr"))).toEqual(["ssr"]);
+    expect(faviconShells(configuration("web/spa", "web/ssr"))).toEqual([]);
+    expect(faviconShells(configuration("config/branding"))).toEqual([]);
+    expect(
+      Object.fromEntries(
+        CONFIGURATIONS.map(({ name, ...rest }) => [name, faviconShells({ name, ...rest })]),
+      ),
+    ).toEqual({
+      cloudflare: ["spa", "ssr", "static"],
+      dockerfile: ["spa"],
+    });
+  });
+
+  test("the links of a page that name a favicon or the manifest are its icons, by root URL", () => {
+    expect(faviconHrefs(`<head>${HEAD}</head>`)).toEqual([
+      "/favicon.svg",
+      "/favicon-16x16.png",
+      "/apple-touch-icon.png",
+      "/site.webmanifest",
+    ]);
+    expect(() => faviconHrefs('<link rel="icon" href="data:image/svg+xml,%3csvg/%3e"/>')).toThrow(
+      /data: URL/,
+    );
+    expect(() => faviconHrefs('<link rel="icon" href="favicon.svg"/>')).toThrow(/not a root URL/);
+    expect(() => faviconHrefs('<link rel="stylesheet" href="/a.css"/>')).toThrow(
+      /links no favicon/,
+    );
+  });
+
+  test("the build holds every file of the favicons directory, byte for byte, and names the ones it lacks or changed", async () => {
+    const { source, client } = await shell();
+
+    expect((await expectBuildHoldsFavicons(client, source)).sort()).toEqual(
+      Object.keys(FILES).sort(),
+    );
+
+    await rm(join(client, "favicon.svg"));
+    await put(client, "apple-touch-icon.png", LOOKALIKE);
+    await expect(expectBuildHoldsFavicons(client, source)).rejects.toThrow(
+      /favicon\.svg is not in the build/,
+    );
+    await expect(expectBuildHoldsFavicons(client, source)).rejects.toThrow(
+      /apple-touch-icon\.png of the build differs/,
+    );
+  });
+
+  test("the files of the app's own public directory are in its build too, which is why the favicons are not its publicDir", async () => {
+    const { app, client } = await shell();
+
+    await expect(expectOwnPublicKept(app)).resolves.toEqual(["robots.txt"]);
+
+    await put(client, "robots.txt", "User-agent: Googlebot\n");
+    await expect(expectOwnPublicKept(app)).rejects.toThrow(/robots\.txt of the build differs/);
+
+    await rm(join(client, "robots.txt"));
+    await expect(expectOwnPublicKept(app)).rejects.toThrow(/robots\.txt is not in the build/);
+
+    // An app with no public directory has nothing to keep.
+    await rm(join(app, "public"), { recursive: true });
+    await expect(expectOwnPublicKept(app)).resolves.toEqual([]);
+  });
+
+  describe("served by the app itself, over HTTP", () => {
+    /** An app of one page: `html` at /, and `files` at their root URL, as a Worker serves its assets. */
+    function serving(html: string, files: Record<string, string | Uint8Array>) {
+      const server = Bun.serve({
+        port: 0,
+        hostname: "127.0.0.1",
+        fetch(request) {
+          const { pathname } = new URL(request.url);
+          if (pathname === "/") {
+            return new Response(html, { headers: { "content-type": "text/html" } });
+          }
+          const body = files[pathname.slice(1)];
+          if (body === undefined) {
+            return new Response("not found", {
+              status: 404,
+              headers: { "content-type": "text/html" },
+            });
+          }
+          const type = pathname.endsWith(".webmanifest")
+            ? "application/manifest+json"
+            : "image/png";
+          return new Response(body, { headers: { "content-type": type } });
+        },
+      });
+      return { origin: `http://127.0.0.1:${server.port}`, stop: () => server.stop(true) };
+    }
+
+    test("the page links the manifest and the icons, and each is served as the file the project holds", async () => {
+      const { source } = await shell();
+      const app = serving(`<head>${HEAD}</head>`, FILES);
+      try {
+        expect((await expectFaviconsServed(app.origin, source)).sort()).toEqual([
+          "/android-chrome-192x192.png",
+          "/apple-touch-icon.png",
+          "/favicon-16x16.png",
+          "/favicon.svg",
+          "/site.webmanifest",
+        ]);
+      } finally {
+        await app.stop();
+      }
+    });
+
+    test("a page that links its manifest as a data: URL, an icon the app does not serve, and a file that differs are each named", async () => {
+      const { source } = await shell();
+      const inlined = serving(
+        '<link rel="manifest" href="data:application/manifest+json;base64,e30="/>',
+        FILES,
+      );
+      try {
+        await expect(expectFaviconsServed(inlined.origin, source)).rejects.toThrow(/data: URL/);
+      } finally {
+        await inlined.stop();
+      }
+
+      const without = Object.fromEntries(
+        Object.entries(FILES).filter(([name]) => name !== "android-chrome-192x192.png"),
+      );
+      const missing = serving(`<head>${HEAD}</head>`, without);
+      try {
+        await expect(expectFaviconsServed(missing.origin, source)).rejects.toThrow(
+          /GET \/android-chrome-192x192\.png: expected 200 image\/png, got 404 text\/html/,
+        );
+      } finally {
+        await missing.stop();
+      }
+
+      const changed = serving(`<head>${HEAD}</head>`, { ...FILES, "favicon-16x16.png": LOOKALIKE });
+      try {
+        await expect(expectFaviconsServed(changed.origin, source)).rejects.toThrow(
+          /\/favicon-16x16\.png differs from \S*favicon-16x16\.png/,
+        );
+      } finally {
+        await changed.stop();
+      }
+    });
   });
 });

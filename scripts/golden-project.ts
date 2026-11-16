@@ -51,7 +51,7 @@
 import { createHash } from "node:crypto";
 import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
 const PACKED_CLI = join(ROOT, "dist/npm/create-bonne-garde");
@@ -1149,6 +1149,152 @@ export async function expectManifestEmitted(client: string, source?: string): Pr
   return icons;
 }
 
+/** The web shells that serve the favicons: `web/<shell>` is the module that ships each. */
+const FAVICON_SHELLS = ["spa", "ssr", "static"] as const;
+export type FaviconShell = (typeof FAVICON_SHELLS)[number];
+
+/** The shells of the configuration that serve the favicons: the ones it installs, once it installs the module that ships them. */
+export function faviconShells(configuration: Configuration): FaviconShell[] {
+  if (!configuration.modules.includes("config/branding")) {
+    return [];
+  }
+  return FAVICON_SHELLS.filter((shell) => configuration.modules.includes(`web/${shell}`));
+}
+
+/** What a page links to name its icons and its manifest. */
+const FAVICON_RELS = new Set(["icon", "apple-touch-icon", "manifest"]);
+
+/**
+ * The `href` of every `<link>` of a page that is an icon or the manifest. Each has to be a root URL: a
+ * `data:` URL is what Vite makes of a file it bundles, and no path in it, a manifest's icons included, resolves.
+ */
+export function faviconHrefs(html: string): string[] {
+  const hrefs: string[] = [];
+  for (const [tag] of html.matchAll(/<link\b[^>]*>/g)) {
+    const rel = /\brel="([^"]*)"/.exec(tag)?.[1];
+    if (rel === undefined || !FAVICON_RELS.has(rel)) {
+      continue;
+    }
+    const href = /\bhref="([^"]*)"/.exec(tag)?.[1];
+    if (href === undefined) {
+      throw new Error(`a <link rel="${rel}"> of the page has no href`);
+    }
+    if (href.startsWith("data:")) {
+      throw new Error(`the page links its ${rel} as a data: URL, not as a file of the build`);
+    }
+    if (!href.startsWith("/")) {
+      throw new Error(`the page links its ${rel} as ${href}, which is not a root URL`);
+    }
+    hrefs.push(href);
+  }
+  if (hrefs.length === 0) {
+    throw new Error("the page links no favicon");
+  }
+  return hrefs;
+}
+
+/** What of `names` the `client` build lacks or holds other than as `source` has it, byte for byte, each as a sentence. */
+async function unbuilt(
+  client: string,
+  source: string,
+  names: readonly string[],
+): Promise<string[]> {
+  const problems: string[] = [];
+  for (const name of names) {
+    const built = Bun.file(join(client, name));
+    if (!(await built.exists())) {
+      problems.push(`${name} is not in the build`);
+    } else if (sha256(await built.bytes()) !== sha256(await Bun.file(join(source, name)).bytes())) {
+      problems.push(`${name} of the build differs from ${join(source, name)}`);
+    }
+  }
+  return problems;
+}
+
+/**
+ * The built client holds every file of the favicons directory under its own name, byte for byte: the
+ * manifest and the icons it names, and the ones the page links and the manifest does not. Names each it
+ * lacks or changed, and returns the names.
+ */
+export async function expectBuildHoldsFavicons(client: string, source: string): Promise<string[]> {
+  const names = (await readdir(source)).sort();
+  const problems = await unbuilt(client, source, names);
+  if (problems.length > 0) {
+    throw new Error(`the build does not hold the favicons of ${source}: ${problems.join("; ")}`);
+  }
+  return names;
+}
+
+/** The files under `dir`, relative to it, sorted; none when `dir` does not exist. */
+async function filesUnder(dir: string): Promise<string[]> {
+  const entries = await readdir(dir, { recursive: true, withFileTypes: true }).catch(
+    (error: unknown) => {
+      if (isRecord(error) && error.code === "ENOENT") {
+        return [];
+      }
+      throw error;
+    },
+  );
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => relative(dir, join(entry.parentPath, entry.name)))
+    .sort();
+}
+
+/**
+ * The app's own `public/` is in its build next to the favicons: Vite takes one `publicDir`, which is why
+ * the favicons are not it. Names each file of `public/` the build lacks or changed, and returns them.
+ */
+export async function expectOwnPublicKept(app: string): Promise<string[]> {
+  const source = join(app, "public");
+  const names = await filesUnder(source);
+  const problems = await unbuilt(join(app, "build/client"), source, names);
+  if (problems.length > 0) {
+    throw new Error(`the build does not hold the files of ${source}: ${problems.join("; ")}`);
+  }
+  return names;
+}
+
+/**
+ * An app that answers over HTTP at `origin` links the manifest and the icons as root URLs and serves each as
+ * the file `source` holds: the manifest as `application/manifest+json`, the icons it names as `image/png`,
+ * the other links with a 200. Returns the paths it asked for.
+ */
+export async function expectFaviconsServed(origin: string, source: string): Promise<string[]> {
+  const get = async (path: string) => {
+    const response = await fetch(`${origin}${path}`, { signal: AbortSignal.timeout(5000) });
+    return {
+      served: { status: response.status, contentType: response.headers.get("content-type") },
+      bytes: await response.bytes(),
+    };
+  };
+  const html = new TextDecoder().decode((await get("/")).bytes);
+  const links = faviconHrefs(html);
+  const manifestUrl = manifestHref(html);
+  const manifest = await get(manifestUrl);
+  expectServed(`GET ${manifestUrl}`, manifest.served, 200, "application/manifest+json");
+  const icons = manifestIconPaths(new TextDecoder().decode(manifest.bytes), manifestUrl);
+
+  const paths = [...new Set([...links, ...icons])];
+  const problems: string[] = [];
+  for (const path of paths) {
+    const { served, bytes } = await get(path);
+    if (icons.includes(path)) {
+      expectServed(`GET ${path}`, served, 200, "image/png");
+    } else if (served.status !== 200) {
+      throw new Error(`GET ${path}: expected 200, got ${served.status}`);
+    }
+    const file = join(source, path.split("/").pop() ?? path);
+    if (sha256(bytes) !== sha256(await Bun.file(file).bytes())) {
+      problems.push(`${path} differs from ${file}`);
+    }
+  }
+  if (problems.length > 0) {
+    throw new Error(`the app serves favicons other than the project's: ${problems.join("; ")}`);
+  }
+  return paths;
+}
+
 /** The module whose package is `<scope>/email`, whose tests golden counts. */
 const EMAIL_MODULE = "email/resend";
 
@@ -2163,6 +2309,25 @@ async function configured(
         join(project, FAVICONS_DIR),
       );
       console.log(`golden: the build serves the manifest's icons: ${icons.join(", ")}`);
+      // Every shell holds the favicons the way the spa does, and keeps its own `public/`. A static site
+      // has an index.html to read; an SSR app has none, so its built Worker answers.
+      const favicons = join(project, FAVICONS_DIR);
+      for (const shell of faviconShells(configuration)) {
+        const app = join(project, "apps", shell);
+        const client = join(app, "build/client");
+        const held = await expectBuildHoldsFavicons(client, favicons);
+        const kept = await expectOwnPublicKept(app);
+        if (shell === "static") {
+          await expectManifestEmitted(client, favicons);
+        }
+        if (shell === "ssr") {
+          const served = await previewed(app, (origin) => expectFaviconsServed(origin, favicons));
+          console.log(`golden: apps/ssr serves ${served.join(", ")}`);
+        }
+        console.log(
+          `golden: apps/${shell} holds ${held.length} favicons and keeps ${kept.join(", ") || "no file of its own"}`,
+        );
+      }
     });
   }
   // Typecheck, test and build passed with the edit and its test in place, and the formatter has to
@@ -2247,6 +2412,42 @@ async function configured(
  * neither portless nor a proxy, compared with the apps this configuration installs: their names, addresses,
  * directories and commands, on `.localhost` and, with `--lan`, on `.local`.
  */
+/**
+ * Runs `vite preview` on a built app, which has the Cloudflare plugin run the built Worker with its assets in
+ * workerd, as long as `body` takes. Its output is `preview.log` in the app, which stays with a failed run's project.
+ */
+async function previewed<T>(app: string, body: (origin: string) => Promise<T>): Promise<T> {
+  const probe = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response() });
+  const port = probe.port;
+  await probe.stop(true);
+  const origin = `http://127.0.0.1:${port}`;
+  const log = join(app, "preview.log");
+  const server = Bun.spawn(
+    ["bunx", "vp", "preview", "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
+    { cwd: app, stdin: "ignore", stdout: Bun.file(log), stderr: Bun.file(log), detached: true },
+  );
+  try {
+    const ready = await until(
+      async () => (await fetch(`${origin}/`, { signal: AbortSignal.timeout(2000) })).status === 200,
+      { timeoutMs: 60_000, intervalMs: 500 },
+    );
+    if (!ready) {
+      throw new Error(`\`vite preview\` did not answer GET / with 200 within 60 s, see ${log}`);
+    }
+    const result = await body(origin);
+    await rm(log);
+    return result;
+  } finally {
+    // The group: `bunx` starts node, which starts workerd. A preview that already exited has no group left.
+    try {
+      process.kill(-server.pid, "SIGTERM");
+    } catch {
+      // nothing to stop
+    }
+    await server.exited;
+  }
+}
+
 async function launched(project: string, timings: Timing[], name: string): Promise<void> {
   const slug = basename(project);
   const plan = (...flags: string[]) =>
