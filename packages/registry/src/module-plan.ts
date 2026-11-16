@@ -1,5 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { join, posix } from "node:path";
+import { glob } from "tinyglobby";
 import {
   categoryCardinality,
   isModuleCategory,
@@ -370,10 +371,12 @@ async function copiedFiles(
     for (const pattern of variant.copy ?? []) {
       let matched = 0;
       if (present) {
-        for await (const path of new Bun.Glob(pattern).scan({
+        // `expandDirectories` off: a pattern naming a directory matches no file, as it always did.
+        for (const path of await glob(pattern, {
           cwd: templateDir,
           dot: true,
           onlyFiles: true,
+          expandDirectories: false,
         })) {
           targets.add(path);
           matched += 1;

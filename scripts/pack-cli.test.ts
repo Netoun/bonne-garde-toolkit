@@ -126,9 +126,12 @@ describe("pack-cli", () => {
         ([name]) => !name.startsWith("@bonne-garde/"),
       ),
     );
-    // Both are pinned to an exact version: a patch's output depends on what parses the file.
+    // All are pinned to an exact version: a patch's output depends on what parses the file, and a
+    // copy on what matches a glob.
     expect(external).toEqual({
       "jsonc-parser": expect.stringMatching(/^\d+\.\d+\.\d+$/),
+      picomatch: expect.stringMatching(/^\d+\.\d+\.\d+$/),
+      tinyglobby: expect.stringMatching(/^\d+\.\d+\.\d+$/),
       "ts-morph": expect.stringMatching(/^\d+\.\d+\.\d+$/),
     });
     expect(packed.dependencies).toEqual(external);

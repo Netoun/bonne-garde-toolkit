@@ -10,6 +10,7 @@ import { lintModuleIntentions } from "./intentions/lint-modules";
 import { listRegistry } from "./list";
 import { migrationsDir, registryDir } from "./paths";
 import { recordIntentionOutcome } from "./record";
+import { BUN_MISSING } from "./run-command";
 
 function usage(): string {
   return `bg — Bonne Garde CLI
@@ -155,22 +156,23 @@ export async function runCli(argv: string[]): Promise<number> {
     if (args.length === 0) {
       throw new Error("add requires at least one item or module");
     }
-    const { plan, modulePlans, result, migratedFrom, staged, reselected } = await addItems({
-      items: args,
-      source,
-      dryRun,
-      force,
-      install: !noInstall,
-    }).catch((error: unknown) => {
-      // `--force` does not reach a module the call plans again without naming it (050 step 7): say which call does.
-      if (error instanceof ApplyError && error.nameToForce.length > 0) {
-        const { nameToForce } = error;
-        throw new Error(
-          `${error.message}\nname ${nameToForce.join(" and ")} in the same call, so that --force reaches ${nameToForce.length === 1 ? "it" : "them"}:\n  ${addNamingCommand(rest, nameToForce)}`,
-        );
-      }
-      throw error;
-    });
+    const { plan, modulePlans, result, migratedFrom, staged, reselected, bunMissing } =
+      await addItems({
+        items: args,
+        source,
+        dryRun,
+        force,
+        install: !noInstall,
+      }).catch((error: unknown) => {
+        // `--force` does not reach a module the call plans again without naming it (050 step 7): say which call does.
+        if (error instanceof ApplyError && error.nameToForce.length > 0) {
+          const { nameToForce } = error;
+          throw new Error(
+            `${error.message}\nname ${nameToForce.join(" and ")} in the same call, so that --force reaches ${nameToForce.length === 1 ? "it" : "them"}:\n  ${addNamingCommand(rest, nameToForce)}`,
+          );
+        }
+        throw error;
+      });
     if (migratedFrom !== null) {
       console.error(manifestMigrationNotice(dryRun));
     }
@@ -279,6 +281,10 @@ export async function runCli(argv: string[]): Promise<number> {
         2,
       ),
     );
+    if (bunMissing) {
+      console.error(BUN_MISSING);
+      return 1;
+    }
     return 0;
   }
 

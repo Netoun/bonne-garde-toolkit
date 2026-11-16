@@ -659,6 +659,59 @@ describe("resolveModulePlans: the plan (050 step 8)", () => {
     expect(plan?.binaries.map((f) => f.target)).toEqual(["b.txt"]);
   });
 
+  test("`dir/*` copies the files directly in dir, dotfiles included, and none below it", async () => {
+    const catalog = await registry([
+      {
+        category: "provider",
+        id: "docker",
+        json: { variants: [{ key: "default", match: {}, copy: ["a/*"] }] },
+        template: { "a/x.txt": "x", "a/.env.example": "K=\n", "a/b/y.txt": "y" },
+      },
+    ]);
+
+    const [plan] = await resolveModulePlans(
+      catalog,
+      [{ category: "provider", id: "docker" }],
+      project(),
+    );
+
+    expect(plan?.files.map((f) => f.target)).toEqual(["a/.env.example", "a/x.txt"]);
+  });
+
+  test("`**` enters a hidden directory", async () => {
+    const catalog = await registry([
+      {
+        category: "provider",
+        id: "docker",
+        json: { variants: [{ key: "default", match: {}, copy: [".config/**"] }] },
+        template: { ".config/sub/x.json": "{}\n", "other/y.json": "{}\n" },
+      },
+    ]);
+
+    const [plan] = await resolveModulePlans(
+      catalog,
+      [{ category: "provider", id: "docker" }],
+      project(),
+    );
+
+    expect(plan?.files.map((f) => f.target)).toEqual([".config/sub/x.json"]);
+  });
+
+  test("a copy that names a directory matches no file: `dir/**` is what copies one", async () => {
+    const catalog = await registry([
+      {
+        category: "provider",
+        id: "docker",
+        json: { variants: [{ key: "default", match: {}, copy: ["a"] }] },
+        template: { "a/x.txt": "x" },
+      },
+    ]);
+
+    await expect(
+      resolveModulePlans(catalog, [{ category: "provider", id: "docker" }], project()),
+    ).rejects.toThrow(/copy "a" of provider\/docker matches no file under template\//);
+  });
+
   test("a glob that matches nothing fails, naming the glob", async () => {
     const catalog = await registry([
       {

@@ -727,6 +727,40 @@ describe("applyInstallPlan: a module's workspace package", () => {
   });
 });
 
+describe("applyInstallPlan: which workspace globs cover a module's package", () => {
+  const withDeps = modulePlan({
+    category: "auth",
+    id: "better-auth",
+    key: "auth/better-auth",
+    files: [{ target: "packages/auth/package.json", content: '{ "name": "@demo/auth" }\n' }],
+    dependencies: { "better-auth": "1.4.2" },
+    workspace: "packages/auth",
+  });
+
+  test.each([
+    { globs: ["packages/**"], covered: true },
+    { globs: ["apps/*", "{apps,packages}/*"], covered: true },
+    { globs: ["packages/auth"], covered: true },
+    { globs: ["./packages/*"], covered: true },
+    { globs: ["packages/*/*"], covered: false },
+    { globs: ["package/*", "packages"], covered: false },
+  ])("$globs covers packages/auth: $covered", async ({ globs, covered }) => {
+    const { projectRoot, manifest } = await freshProject();
+    await writeFile(
+      join(projectRoot, "package.json"),
+      JSON.stringify({ name: "demo", workspaces: globs }),
+    );
+
+    const outcome = install(projectRoot, manifest, [withDeps]);
+
+    if (covered) {
+      expect((await outcome).written).toEqual(["packages/auth/package.json"]);
+    } else {
+      await expect(outcome).rejects.toThrow(/workspace packages\/auth is not covered/);
+    }
+  });
+});
+
 describe("applyInstallPlan: the intentions a module authors (065, 050 step 14)", () => {
   const WIRE = {
     id: "provider/cloudflare/wire-it",

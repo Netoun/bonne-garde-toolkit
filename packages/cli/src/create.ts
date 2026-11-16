@@ -2,6 +2,7 @@ import { cp, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promise
 import { basename, join, resolve } from "node:path";
 import { createEmptyProjectManifest, DEFAULT_PLATFORM_REMOTE } from "@bonne-garde/schema";
 import { defaultRegistrySource, platformPackageVersion, templateBaseDir } from "./paths";
+import { BUN_MISSING, bunInstall, runCommand } from "./run-command";
 
 export type CreateOptions = {
   name: string;
@@ -114,19 +115,13 @@ export async function createProject(options: CreateOptions): Promise<string> {
   await writeFile(join(target, "bg.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 
   if (options.git !== false) {
-    const proc = Bun.spawn(["git", "init"], { cwd: target, stdout: "ignore", stderr: "pipe" });
-    await proc.exited;
+    // Best effort: a project without a repository is still a project.
+    await runCommand("git", ["init"], { cwd: target, stdio: "ignore" });
   }
 
   if (options.install !== false) {
-    const proc = Bun.spawn(["bun", "install"], {
-      cwd: target,
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-    const code = await proc.exited;
-    if (code !== 0) {
-      throw new Error("bun install failed");
+    if ((await bunInstall(target, "bun install failed")) === "bun-missing") {
+      throw new Error(BUN_MISSING);
     }
   }
 
