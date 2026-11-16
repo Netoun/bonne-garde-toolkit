@@ -5,15 +5,6 @@
       "entry": ["scripts/*.ts"],
       "project": ["scripts/**/*.ts"],
     },
-    "packages/emails": {
-      "project": ["src/**/*.{ts,tsx}"],
-    },
-    "packages/config": {
-      "project": ["src/**/*.{ts,tsx}"],
-    },
-    "packages/ui": {
-      "project": ["src/**/*.{ts,tsx,css}"],
-    },
   },
 
   "ignore": [".claude/worktrees/**"],
