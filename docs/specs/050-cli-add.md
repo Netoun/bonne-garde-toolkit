@@ -39,7 +39,7 @@ bg doctor [--json] [--strict]
 
 - Steps 1–13 MUST be fully deterministic. A plan with zero pending intents MUST complete with no agent in the loop and no TTY.
 - Dependencies MUST come from the variant and nowhere else: written into the workspace `package.json` generated from it, or merged into the module's vendored `package.json`, which carries no dependency maps of its own ([035](./035-module-registry.md)).
-- An installed module the call does not name, one of whose variants `match`es a module this call adds, MUST be selected again at step 7 and, when the variant selected is not the one `bg.json` records, planned in the same call as a re-add and reported with the variant it leaves and the one it takes.
+- An installed module the call does not name, one of whose variants `match`es a module this call adds, MUST be selected again at step 7 and, when the variant selected is not the one `bg.json` records, planned in the same call as a re-add and reported with the variant it leaves and the one it takes. `--force` MUST NOT reach it: it overwrites only what the modules and items the call names have in the way. A collision of a module planned again fails naming that module and the module of the call that selects it again, and prints the call that resolves it, which names the module as well (`bg add auth/better-auth email/resend --force`).
 - `--yes` MUST be honoured: it selects defaults for every `option` and never prompts. It is not a no-op flag.
 - MUST support `local:` sources for monorepo development and `github:owner/repo@ref` for consumers, with the same UX for both, for **install** and not only for index fetch.
 

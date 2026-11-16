@@ -1,8 +1,10 @@
+import { ApplyError } from "@bonne-garde/registry";
 import type { IntentionOutcome } from "@bonne-garde/schema";
 import { addItems, searchItems, viewItem } from "./add";
 import { checksNotice } from "./checks-notice";
 import { createProject } from "./create";
 import { doctorExitCode, formatDoctor, runDoctor } from "./doctor";
+import { addNamingCommand } from "./force-command";
 import { lintIntentions } from "./intentions/lint";
 import { lintModuleIntentions } from "./intentions/lint-modules";
 import { listRegistry } from "./list";
@@ -159,6 +161,15 @@ export async function runCli(argv: string[]): Promise<number> {
       dryRun,
       force,
       install: !noInstall,
+    }).catch((error: unknown) => {
+      // `--force` does not reach a module the call plans again without naming it (050 step 7): say which call does.
+      if (error instanceof ApplyError && error.nameToForce.length > 0) {
+        const { nameToForce } = error;
+        throw new Error(
+          `${error.message}\nname ${nameToForce.join(" and ")} in the same call, so that --force reaches ${nameToForce.length === 1 ? "it" : "them"}:\n  ${addNamingCommand(rest, nameToForce)}`,
+        );
+      }
+      throw error;
     });
     if (migratedFrom !== null) {
       console.error(manifestMigrationNotice(dryRun));

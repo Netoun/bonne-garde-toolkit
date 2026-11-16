@@ -108,6 +108,7 @@ export async function addItems(options: AddOptions) {
   // 050 step 7: an installed module whose variant a module added here changes is planned again with
   // them, so installing auth after email wires email as one call naming both would have. Only a call
   // that adds a module can change one, so only it asks a github source for the installed modules.
+  // `force` reaches what the call names and not those: they are the project's, planned again.
   const withInstalled =
     modules.length === 0 ? catalog : await loadInstalledModules(catalog, manifest);
   const reselected = reselectedModules(withInstalled, modules, manifest);
@@ -125,6 +126,7 @@ export async function addItems(options: AddOptions) {
     sourceLabel: source.startsWith("local:") ? "@bg" : source,
     dryRun,
     force,
+    reselected,
   });
 
   const modulesNeedInstall = modulePlans.some(

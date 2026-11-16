@@ -1721,6 +1721,78 @@ describe("bg add: an installed module is selected again when a module its varian
     expect((await emailRecord(target))?.variant).toBe("better-auth");
   });
 
+  describe("--force reaches what the call names, and a planned-again module is not one of those", () => {
+    /** `emailFirst`, then a line of the project's own in a file of email that auth's variant writes again. */
+    async function emailEdited(prefix: string): Promise<{ target: string; file: string }> {
+      const target = await emailFirst(prefix);
+      const file = join(target, "packages/email/src/send.ts");
+      await writeFile(file, `${await readFile(file, "utf8")}// the project's own\n`);
+      return { target, file };
+    }
+    const commandIn = (stderr: string) =>
+      stderr.split("\n").find((line) => /^ {2}bg add /.test(line));
+
+    test("the error names the module, who added it, and a command that names it in the same call; that command succeeds", async () => {
+      const { target, file } = await emailEdited("bg-cli-reselect-force-");
+      // A file of auth the project wrote before: auth is named, so --force overwrites it.
+      const mine = join(target, "packages/auth/src/base-path.ts");
+      await mkdir(join(mine, ".."), { recursive: true });
+      await writeFile(mine, "// the project's own\n");
+      const before = await snapshot(target);
+
+      const refused = await runBg(
+        target,
+        "add",
+        "auth/better-auth",
+        "--force",
+        "--yes",
+        "--no-install",
+      );
+
+      expect(refused.code).toBe(1);
+      expect(refused.stdout).toBe("");
+      expect(refused.stderr).toContain(
+        "email/resend, installed on variant default, is planned again on variant better-auth because auth/better-auth is added, and --force reaches only what the call names",
+      );
+      expect(refused.stderr).toContain(
+        "packages/email/src/send.ts was modified since email/resend wrote it",
+      );
+      expect(refused.stderr).not.toContain("base-path.ts");
+      expect(await snapshot(target)).toEqual(before);
+      const command = commandIn(refused.stderr);
+      expect(command).toBe("  bg add auth/better-auth --yes --no-install email/resend --force");
+
+      const [bg, ...args] = (command ?? "").trim().split(" ");
+      expect(bg).toBe("bg");
+      const resolved = await runBg(target, ...args);
+
+      expect(resolved.stderr).not.toContain("is already filled");
+      expect(resolved.code).toBe(0);
+      expect(await readFile(file, "utf8")).not.toContain("the project's own");
+      expect(await readFile(mine, "utf8")).not.toContain("the project's own");
+      const out = JSON.parse(resolved.stdout) as ModuleOutput;
+      // Named in the call, email is a requested module and not a planned-again one.
+      expect(out.reselected).toEqual([]);
+      expect(out.modules.map(({ module, variant }) => [module, variant])).toEqual([
+        ["auth/better-auth", "default"],
+        ["email/resend", "better-auth"],
+      ]);
+      expect((await emailRecord(target))?.variant).toBe("better-auth");
+    });
+
+    test("without --force it is the same refusal, and the command is the one the user would have typed with the module named", async () => {
+      const { target } = await emailEdited("bg-cli-reselect-noforce-");
+      const before = await snapshot(target);
+
+      const refused = await runBg(target, "add", "auth/better-auth");
+
+      expect(refused.code).toBe(1);
+      expect(refused.stderr).not.toContain("(use --force to overwrite)");
+      expect(commandIn(refused.stderr)).toBe("  bg add auth/better-auth email/resend --force");
+      expect(await snapshot(target)).toEqual(before);
+    });
+  });
+
   test("naming both in one call needs no re-selection: it is the plan that call is", async () => {
     const target = await freshProject("bg-cli-reselect-both-");
     await runBg(
