@@ -18,12 +18,12 @@ Define verification and release rules for the platform.
 
 Every test file MUST be reachable from `bun run test`. Two failure modes are forbidden by construction:
 
-- Tests under `scripts/` MUST be run. They are outside the `apps/*` / `packages/*` workspace globs, so the root `test` script MUST target them explicitly — a release-tooling test that never runs is worse than none.
+- Tests under `scripts/` MUST be run. They are outside the `packages/*` workspace glob, so the root `test` script MUST target them explicitly — a release-tooling test that never runs is worse than none.
 - A bare `bun test` at the root MUST NOT sweep `registry/` or `templates/`: those trees are **source material**, not workspaces, and their imports resolve only after install into a consumer project. They are verified through golden projects.
 
 ### Verification scripts
 
-The platform scripts cover the code the repository ships as tooling, `packages/{cli,registry,schema}` and `scripts/`. The registry and template trees are verified through golden projects, never swept directly (above).
+The platform scripts cover what runs in this repository: `packages/{cli,registry,schema}`, `scripts/`, and the registry module tests that need no install (`test:scripts` skips the module trees whose imports resolve only in a project). The rest of `registry/` and `templates/` is source material, verified through golden projects.
 
 | Script                                                    | Scope                                        |
 | --------------------------------------------------------- | -------------------------------------------- |
