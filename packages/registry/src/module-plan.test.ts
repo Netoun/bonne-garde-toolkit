@@ -603,6 +603,33 @@ describe("resolveModulePlans: the plan (050 step 8)", () => {
     expect(Buffer.from(plan?.binaries[0]?.bytes ?? []).equals(png)).toBe(true);
   });
 
+  test("a patch on a file the module copies as binary is refused when it is planned, naming both", async () => {
+    const catalog = await registry([
+      {
+        category: "provider",
+        id: "docker",
+        json: {
+          variants: [
+            {
+              key: "default",
+              match: {},
+              copy: ["data.json"],
+              patch: [{ type: "jsonc.merge", file: "data.json", value: { a: 1 } }],
+            },
+          ],
+        },
+        // Named like a text file a patch accepts, and not text.
+        template: { "data.json": Uint8Array.from([0xff, 0xfe, 0x00]) },
+      },
+    ]);
+
+    await expect(
+      resolveModulePlans(catalog, [{ category: "provider", id: "docker" }], project()),
+    ).rejects.toThrow(
+      /provider\/docker patches data\.json.*copies as a binary file.*a patch edits text/,
+    );
+  });
+
   test("a text file keeps its byte order mark, and a file of any extension is binary by its bytes alone", async () => {
     const bom = '\uFEFFexport const scope = "{{SCOPE}}";\n';
     const catalog = await registry([

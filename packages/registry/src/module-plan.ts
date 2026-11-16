@@ -521,6 +521,13 @@ async function planModule(
   const intentions = await authoredIntentions(module, variant, project.scope);
 
   const copied = await copiedFiles(module, variant, project.scope);
+  for (const { file } of patches) {
+    if (copied.binaries.some(({ target }) => target === file)) {
+      throw new PlanError(
+        `${key} patches ${file}, which it copies as a binary file (not valid UTF-8): a patch edits text`,
+      );
+    }
+  }
   const packageJson = workspacePackageJson(manifest, variant, project.scope, copied.files);
   const files = packageJson
     ? [...copied.files.filter((file) => file.target !== packageJson.target), packageJson]
