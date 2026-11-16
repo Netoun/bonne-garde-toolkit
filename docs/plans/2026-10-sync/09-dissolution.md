@@ -362,6 +362,27 @@ orm/drizzle auth/better-auth storage/r2 email/resend`) with no `--force`, and ty
 
 ### Stage 6: what 080 does not list, then the deletions.
 
+**Everything but the deletions done 2026-11-16** (`b24c0c4`..`2b9f681`):
+
+- **The user's `chore/route-structure-check`** (`b24c0c4`, `9ab38fc`, `da2c84f`): `tooling/vite-plus` ships the oxlint rule `structure/route-modules`. A routed file lives in `features/<f>/pages/` and is named `-page`, `-layout` or `-redirect`. It is declared in the app's `routes.ts` or in a feature fragment `features/<f>/routes.ts`. The root config enforces the conventions of AGENTS.md.
+- **`dev/portless`** (`e437d1f`, `817f11c`) finds the apps under `apps/` from their `dev` scripts instead of four hard-wired keys. The legacy item `registry/tooling/portless` is gone. Golden proves its 33 tests and its dry-run plan in both configurations.
+- **`deploy/cloudflare-actions`** (`568de0d`..`385771c`) ships a `workflow_dispatch` workflow with two jobs. `scripts/deploy-cloudflare.ts` plans the deploy from the tree: every build first, then the migration of the app that has one, then each deploy. Golden checks the dry-run plan. No real deploy has ever run.
+- **The feature items** (`a87aa13`..`2b9f681`), `spa-auth` and `spa-backoffice` in `registry/features`, are the 37 legacy files renamed for the rule. Layout and organization import each other, so the dashboard, layout and organization features ship as one item. On the user's answers:
+  - each item ships a routes fragment, which `web/spa`'s `routes.ts` composes with `import.meta.glob`; a fragment's `index` replaces the home page;
+  - `useAuthRedirect` moves into the layouts, so a signed-out visitor on an unknown URL gets a 404;
+  - an item names the modules it needs in `meta.needsModules` (030), and `bg add` refuses without them;
+  - its `name@version` dependencies are written by `bg add` into the `package.json` of its app, as regions the item owns (020, 060).
+
+Golden runs 217 tests in the `cloudflare` project: storage 65, auth 53, api 33, db 21, email 19, spa 8, api-runtime 7, config 6, ssr 4, static 1. The portless and deploy tests run as their modules' checks.
+
+**Open:**
+
+- a dispatch without `VITE_API_URL` deploys a broken SPA silently;
+- `dev/portless` injects `R2_PUBLIC_URL` whenever an `api` app exists, a storage key in a `dev` module;
+- `ssr` probably does not receive `API_URL` from the launcher, because a Worker reads Cloudflare vars;
+- two items cannot pin the same package, because a region has one owner;
+- 030's validation of every `registry.json` against the published shadcn schema is not built.
+
 - **Scope:** the feature items (row 17); `deploy/cloudflare-actions` (row 18); `dev/portless` (row 19).
 - **Deletes, in this order, each after golden is green for its replacement and `git grep` shows no
   in-tree consumer:** `apps/spa`, then `apps/api`, then `packages/{ui,emails,api-runtime,config}`,
