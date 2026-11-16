@@ -344,9 +344,9 @@ Golden runs 210 tests in the `cloudflare` project: storage 65, auth 53, api 33, 
 
 **Open:**
 
-- installing auth after email wires nothing until `bg add email/resend` runs again;
-- an intention recorded `--skip` and later wanted as applied, once `.bg/` is gone, cannot be staged again, because `add` treats it as resolved; recommended: `bg record` reads the module's `intent/` itself;
-- a failed `wrangler` call during the seed prints the whole SQL, including the dev admin's password hash;
+- installing auth after email wires nothing until `bg add email/resend` runs again; **fixed** (`bd58ed1`);
+- an intention recorded `--skip` and later wanted as applied, once `.bg/` is gone, cannot be staged again, because `add` treats it as resolved; recommended: `bg record` reads the module's `intent/` itself; **fixed** (`0aebfc0`);
+- a failed `wrangler` call during the seed prints the whole SQL, including the dev admin's password hash; **fixed** (`311111e`);
 - a second `web` module cannot peer on another `web` module under the strict order test.
 
 - **Scope:** `storage/r2` (row 15) and `email/resend` (row 16, renamed `emails` to `email`). `queue`
@@ -389,20 +389,28 @@ Every legacy test has its copy in a module, with the reason written down for eac
   - The root package is `bonne-garde-toolkit`.
   - knip ignores the registry templates, is green, and runs in `verify`.
 
-**Open after the dissolution:**
+**Open items closed 2026-11-16** (`0241276`..`9d260db`):
 
-- `docs/AGENTING.md` line 25: Claude Code 2.1.325 loads a root `AGENTS.md` when there is no `CLAUDE.md`, observed by the sibling session.
-- `web/ssr` and `web/static` still inline the manifest as a `data:` URL, whose icons do not resolve.
-- `site.webmanifest` is the legacy static file (`lang: fr`, no name from `branding.json`).
-- knip's `ignoreExportsUsedInFile` is repo-wide and could narrow to types.
-- The stage 5 and 6 items listed above are still open.
+- **Engine.**
+  - `bg add` selects again the variant of an installed module that a module it adds is a peer of, and plans it as a re-add in the same call, so auth installed after email wires email (`bd58ed1`, 050 step 7).
+  - `bg record` reads an intention's `adapt` paths from the module's `intent/` document in the registry when no failed patch and no `.bg/` has them (`0aebfc0`, 065).
+  - A failed `wrangler` call in auth's `db:seed` names its command and exit code and withholds the SQL, which holds the admin's password hash (`311111e`).
+- **Web.**
+  - `config/branding` renders `site.webmanifest` from `branding.json`, which gains `description`, `lang`, `themeColor` and `backgroundColor` (`735bffb`).
+  - `web/ssr` and `web/static` add the favicons and the manifest to their build with the config package's `favicons()` Vite plugin, and keep their own `public/` (`715a5c9`). Golden proves it on every shell, up to the SSR Worker serving the manifest and each icon (`7ce6765`).
+- **Env and deploy.**
+  - `dev/portless` sets `CLOUDFLARE_INCLUDE_PROCESS_ENV=true` for an app with a wrangler config it does not start itself, so `web/ssr` under `react-router dev` reads the launcher's `API_URL` (`1c8b1bf`).
+  - `storage/r2` derives its public URL from `API_URL` under `wrangler dev` and fails anywhere else, so `dev/portless` no longer injects `R2_PUBLIC_URL` (`587c250`).
+  - `deploy/cloudflare-actions` refuses, before any build, a front missing a `VITE_*` variable that its `vite-env.d.ts` requires (`9d260db`).
+- **Repo.** `docs/AGENTING.md` records what Claude Code 2.1.325 was observed to load (`0241276`). knip's `ignoreExportsUsedInFile` covers types and interfaces only (`10f680b`).
 
-- `assets/`;
-- the stale `*:legacy` row in spec 070 and `test:legacy` in 080;
-- the root package name `acme`;
-- knip, which is red and outside `verify`, and which counts the registry templates;
-- `docs/AGENTING.md` line 25: Claude Code 2.1.325 loads a root `AGENTS.md` when there is no `CLAUDE.md`, observed by the sibling session;
-- the stage 5 and 6 items listed above.
+Golden runs 239 tests in the `cloudflare` project: storage 75, auth 55, api 33, db 21, email 19, config 16, spa 8, api-runtime 7, ssr 4, static 1.
+
+**Still open:**
+
+- a second `web` module cannot peer on another `web` module under the strict order test;
+- two items cannot pin the same package, because a region has one owner;
+- 030's validation of every `registry.json` against the published shadcn schema is not built.
 
 **Everything but the deletions done 2026-11-16** (`b24c0c4`..`2b9f681`):
 
@@ -419,9 +427,9 @@ Golden runs 217 tests in the `cloudflare` project: storage 65, auth 53, api 33, 
 
 **Open:**
 
-- a dispatch without `VITE_API_URL` deploys a broken SPA silently;
-- `dev/portless` injects `R2_PUBLIC_URL` whenever an `api` app exists, a storage key in a `dev` module;
-- `ssr` probably does not receive `API_URL` from the launcher, because a Worker reads Cloudflare vars;
+- a dispatch without `VITE_API_URL` deploys a broken SPA silently; **fixed** (`9d260db`);
+- `dev/portless` injects `R2_PUBLIC_URL` whenever an `api` app exists, a storage key in a `dev` module; **fixed** (`587c250`);
+- `ssr` probably does not receive `API_URL` from the launcher, because a Worker reads Cloudflare vars; it did not, **fixed** (`1c8b1bf`);
 - two items cannot pin the same package, because a region has one owner;
 - 030's validation of every `registry.json` against the published shadcn schema is not built.
 
