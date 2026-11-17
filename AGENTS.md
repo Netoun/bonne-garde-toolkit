@@ -71,7 +71,7 @@ bun run bonne-garde -- create ../tmp-app --yes --no-git --no-install --registry 
 bun run registry:build                    # flatten registry → dist/r
 bun run pack:cli                          # dist/npm/bonne-garde
 bun run publish:cli:dry                   # npm tarball dry-run
-bun run publish:cli                       # publish bonne-garde to npm
+git push origin vX.Y.Z                    # release: .github/workflows/release.yml publishes bonne-garde to npm
 bun run gen:playground                    # smoke consumer in ./playground
 bun run typecheck && bun run test         # platform packages + scripts
 bun run check                             # vp check (fmt + lint via Vite+)

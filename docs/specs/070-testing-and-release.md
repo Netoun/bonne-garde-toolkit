@@ -68,11 +68,11 @@ Pipeline shape:
 
 1. **Changelogs / conventional commits** → intended bump
 2. **Version** → write `X.Y.Z` everywhere required + validate intentions lint
-3. **Publish** → `pack:cli` → npm publish → git tag `vX.Y.Z` (+ GitHub release)
+3. **Publish** → git tag `vX.Y.Z` → `.github/workflows/release.yml` packs and publishes to npm (+ GitHub release)
 
 ## Publish (CLI package)
 
-- CLI published to npm as **`bonne-garde`** via `bun run pack:cli` then `bun publish --cwd dist/npm/bonne-garde`.
+- CLI published to npm as **`bonne-garde`** by `.github/workflows/release.yml` when a tag `vX.Y.Z` is pushed: `pack:cli`, then `npm publish` with npm trusted publishing (`bun publish` does not do its OIDC exchange). No npm token is stored; npm adds provenance. The workflow refuses a tag that does not name the packed version, and the packed `repository.url` MUST name this repository exactly. A tag pushed before the workflow existed is published by running it by hand with that tag.
 - `bunx bonne-garde create my-app` resolves that package, as do `npx`, `pnpm dlx` and `yarn dlx`; its one bin is `bonne-garde`.
 - The published tarball MUST be JavaScript that runs on Node ≥ 22.12 and on Bun (Node never strips types inside `node_modules`): one bundled bin file, with `templates/base` embedded, schema and registry vendored into the bundle (no `workspace:` deps), and the npm dependencies the bundle imports declared, pinned to an exact version. Golden runs the packed bin with `node`, and CI has a Node of that floor.
 - Registry items pinable by git tag/commit for remote installs (`github:Netoun/bonne-garde-toolkit`).

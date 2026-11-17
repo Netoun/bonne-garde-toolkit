@@ -82,6 +82,12 @@ describe("pack-cli", () => {
     return { parent, project: join(parent, name), ...created };
   }
 
+  test("names this repository exactly: npm trusted publishing refuses a package whose repository.url is another", async () => {
+    const packed = await Bun.file(join(PACKED, "package.json")).json();
+
+    expect(packed.repository.url).toBe("git+https://github.com/Netoun/bonne-garde-toolkit.git");
+  });
+
   test("is the package bonne-garde, with the one bin bonne-garde: a JavaScript file for node", async () => {
     const packed = await Bun.file(join(PACKED, "package.json")).json();
 
