@@ -13,6 +13,7 @@ export {
   type SourceOptions,
 } from "./load-registry";
 export {
+  checkModuleSet,
   classifyNames,
   resolveModulePlans,
   type ModulePlan,
