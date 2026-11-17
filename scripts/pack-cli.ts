@@ -98,8 +98,9 @@ const pkg = {
   engines: {
     node: ">=22.12.0",
   },
+  // npm rewrites a bin path that starts with `./` at publish, with a warning that reads as an error.
   bin: {
-    "bonne-garde": `./${BIN}`,
+    "bonne-garde": BIN,
   },
   files: [BIN, "templates", "README.md", "LICENSE"],
   dependencies,

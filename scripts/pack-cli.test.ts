@@ -93,7 +93,7 @@ describe("pack-cli", () => {
 
     expect(packed.name).toBe("bonne-garde");
     expect(packed.version).toBe("0.1.0");
-    expect(packed.bin).toEqual({ "bonne-garde": "./bin.js" });
+    expect(packed.bin).toEqual({ "bonne-garde": "bin.js" });
     expect(packed.engines).toEqual({ node: ">=22.12.0" });
     expect(
       Object.values<string>(packed.dependencies).filter((v) => v.startsWith("workspace:")),
