@@ -18,7 +18,6 @@ bun run bonne-garde -- list --source local:./registry
 bun run registry:build
 bun run pack:cli         # → dist/npm/bonne-garde
 bun run publish:cli:dry  # tarball dry-run
-bun run publish:cli      # bun publish (needs npm auth)
 bun run gen:playground   # → ./playground (gitignored)
 ```
 
@@ -26,10 +25,7 @@ bun run gen:playground   # → ./playground (gitignored)
 
 The consumer package is **`bonne-garde`**: `bunx bonne-garde create my-app` (or `npx`, `pnpm dlx`, `yarn dlx`).
 
-```bash
-bun run pack:cli
-bun publish --cwd dist/npm/bonne-garde
-```
+Pushing a tag `vX.Y.Z` publishes it: `.github/workflows/release.yml` packs it and runs `npm publish` with npm trusted publishing, so no npm token is stored anywhere.
 
 Bin: `bonne-garde`, a JavaScript bundle that runs on Node ≥ 22.12 and on Bun (a generated project is a Bun monorepo, so it needs Bun). Templates are embedded; default registry when not in this monorepo is `github:Netoun/bonne-garde-toolkit`.
 
