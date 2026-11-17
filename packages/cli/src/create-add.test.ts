@@ -228,7 +228,7 @@ describe("bg create + add", () => {
     expect(doctorExitCode(await runDoctor(target), true)).toBe(0);
   });
 
-  describe("`web/spa` peers on a provider, the config, the api and the ui", () => {
+  describe("`web/spa` peers on a provider, the config and the ui, and on the api when there is one", () => {
     async function spaProject(prefix: string): Promise<string> {
       const parent = await mkdtemp(join(tmpdir(), prefix));
       dirs.push(parent);
@@ -256,6 +256,21 @@ describe("bg create + add", () => {
       expect(spa?.workspace).toBe("apps/spa");
     });
 
+    test("without the api it installs the variant with no Eden client", async () => {
+      const target = await spaProject("bg-cli-spa-alone-");
+
+      const { modulePlans } = await addItems({
+        projectRoot: target,
+        items: ["provider/cloudflare", "config/branding", "ui/shadcn", "web/spa"],
+        dryRun: true,
+        install: false,
+      });
+
+      const spa = modulePlans.find((plan) => plan.key === "web/spa");
+      expect(spa?.variant).toBe("cloudflare-without-api");
+      expect(spa?.files.map(({ target }) => target)).not.toContain("apps/spa/src/lib/api.ts");
+    });
+
     test("without a peer it fails before any write, naming the category and what it accepts", async () => {
       const target = await spaProject("bg-cli-spa-no-peers-");
       const before = await readFile(join(target, "bg.json"), "utf8");
@@ -266,10 +281,10 @@ describe("bg create + add", () => {
       await expect(
         addItems({
           projectRoot: target,
-          items: ["provider/cloudflare", "config/branding", "ui/shadcn", "web/spa"],
+          items: ["provider/cloudflare", "config/branding", "web/spa"],
           install: false,
         }),
-      ).rejects.toThrow("web/spa needs a module in category api (elysia) and none is installed");
+      ).rejects.toThrow("web/spa needs a module in category ui (shadcn) and none is installed");
 
       expect(await readFile(join(target, "bg.json"), "utf8")).toBe(before);
       expect((await readdir(join(target, "apps"))).filter((name) => name !== ".gitkeep")).toEqual(
@@ -695,7 +710,7 @@ describe("bg create + add", () => {
     test("a set the planner refuses fails with its message, before anything is written", async () => {
       const parent = await mkdtemp(join(tmpdir(), "bg-cli-choices-"));
       dirs.push(parent);
-      const { modules } = namesFor({ apps: ["spa"], provider: "cloudflare", features: [] });
+      const { modules } = namesFor({ apps: ["ssr"], provider: "dockerfile", features: [] });
 
       await expect(
         createProject({
@@ -706,7 +721,7 @@ describe("bg create + add", () => {
           registry: repoRegistry(),
           names: modules,
         }),
-      ).rejects.toThrow("web/spa needs a module in category api");
+      ).rejects.toThrow("web/ssr accepts only cloudflare for provider");
       expect(await readdir(parent)).toEqual([]);
     });
   });

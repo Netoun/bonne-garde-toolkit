@@ -124,6 +124,8 @@ export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
     features: ["db", "auth", "storage", "email", "deploy", "backoffice"],
   },
   dockerfile: { apps: ["api", "spa"], provider: "dockerfile", features: ["email"] },
+  // The fronts alone (040: `--apps spa`): no api, so no Eden client and no API variable, deployed.
+  fronts: { apps: ["spa", "ssr", "static"], provider: "cloudflare", features: ["deploy"] },
 };
 
 /**
@@ -270,6 +272,15 @@ export const DEPLOY_PLAN: Readonly<Record<string, readonly string[]>> = {
     "build apps/static: bun run build",
     "migrate apps/api: bun run db:migrate:remote --env production",
     "deploy apps/api: bun run deploy --env production",
+    "deploy apps/spa: bun run deploy --project-name my-app-spa --branch main",
+    "deploy apps/ssr: bun run deploy --env production",
+    "deploy apps/static: bun run deploy --project-name my-app-static --branch main",
+  ],
+  // No API: nothing to migrate, and each front deploys on its own.
+  fronts: [
+    "build apps/spa: bun run build",
+    "build apps/ssr: bun run build",
+    "build apps/static: bun run build",
     "deploy apps/spa: bun run deploy --project-name my-app-spa --branch main",
     "deploy apps/ssr: bun run deploy --env production",
     "deploy apps/static: bun run deploy --project-name my-app-static --branch main",
@@ -702,8 +713,8 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "scripts.db:reset",
       "scripts.db:studio",
     ],
-    "web/spa": ["scripts.deploy", "scripts.dev"],
-    "web/ssr": ["scripts.deploy", "scripts.dev"],
+    "web/spa": ["env.production.vars.API_URL", "scripts.deploy", "scripts.dev", "vars.API_URL"],
+    "web/ssr": ["env.production.vars.API_URL", "scripts.deploy", "scripts.dev", "vars.API_URL"],
     "web/static": ["scripts.deploy", "scripts.dev"],
     "dev/portless": [
       "devDependencies.portless",
@@ -724,6 +735,18 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "scripts.dev:lan:portless",
       "scripts.dev:portless",
     ],
+  },
+  fronts: {
+    "config/branding": ["scripts.gen:branding"],
+    "web/spa": ["scripts.deploy", "scripts.dev"],
+    "web/ssr": ["scripts.deploy", "scripts.dev"],
+    "web/static": ["scripts.deploy", "scripts.dev"],
+    "dev/portless": [
+      "devDependencies.portless",
+      "scripts.dev:lan:portless",
+      "scripts.dev:portless",
+    ],
+    "deploy/cloudflare-actions": ["scripts.deploy:cloudflare"],
   },
 };
 
@@ -1008,6 +1031,7 @@ const WIRED_TEST_FILE = "packages/auth/src/mailer.wired.test.ts";
 export const PENDING: Readonly<Record<string, readonly string[]>> = {
   cloudflare: ["email/resend/wire-email-into-auth"],
   dockerfile: [],
+  fronts: [],
 };
 
 /** The ids in the `pendingIntentions` list `bg add` prints. */
@@ -1413,6 +1437,9 @@ export function expectedPortlessApps(
   }
   if (configuration === "dockerfile") {
     return [app("api", ["bun", "--watch", "src/index.ts"]), front("spa")];
+  }
+  if (configuration === "fronts") {
+    return [front("spa"), front("ssr"), front("static")];
   }
   throw new Error(`golden does not know what the launcher plans in ${configuration}`);
 }

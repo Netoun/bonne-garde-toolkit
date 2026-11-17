@@ -10,7 +10,8 @@ bunx bg add provider/cloudflare db/d1 orm/drizzle
 
 ## Peers and variant
 
-`peers: { db: [] }`: any `db` module, one of which has to be installed. The one variant, `d1`, is
+`peers: { api: ["elysia"], db: [] }`: the API, whose `app.ts` and `package.json` its patches wire the
+`dbModule` into, and any `db` module, one of which has to be installed. The one variant, `d1`, is
 matched on `db: d1`; a `libsql` database would bring a variant of its own, with `drizzle-orm/libsql`,
 and the allow-list stays empty so that a project with a `db` this module has no variant for fails with
 "no variant matches", listing what is available.

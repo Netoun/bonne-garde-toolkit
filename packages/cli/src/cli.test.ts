@@ -1844,14 +1844,16 @@ describe("bg create with choices (040)", () => {
       "create",
       "app",
       "--apps",
-      "spa",
+      "ssr",
+      "--provider",
+      "dockerfile",
       "--yes",
       "--registry",
       registry(),
     );
 
     expect(code).toBe(1);
-    expect(stderr).toContain("web/spa needs a module in category api");
+    expect(stderr).toContain("web/ssr accepts only cloudflare for provider");
     expect(await readdir(parent)).toEqual([]);
   });
 

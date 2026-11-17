@@ -87,7 +87,8 @@ What each answer names, the one table the CLI holds:
 
 - `bg create tmp-app --yes --no-git --no-install` creates a valid empty tree with a `version: 2` `bg.json`.
 - `bg create tmp-app --apps api,spa --features email --provider dockerfile --yes --no-git --no-install` records the modules of those answers in `bg.json`.
-- `bg create tmp-app --apps spa --yes` fails with the planner's message (`web/spa` needs a module in category `api`) while the registry says so, and writes nothing.
+- `bg create tmp-app --apps spa --yes` creates a SPA with no API: no Eden client, no API variable.
+- `bg create tmp-app --apps ssr --provider dockerfile --yes` fails with the planner's message (`web/ssr` accepts only `cloudflare`), and writes nothing.
 - `bg create tmp-app --features auth --yes` fails: a feature needs an app.
 - `bg create /abs/path/my-app` yields scope `@my-app`, not a slugified path.
 - Re-running against the same non-empty directory fails.

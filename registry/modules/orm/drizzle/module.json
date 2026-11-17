@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "title": "Drizzle",
   "description": "The Drizzle client, the schema barrel, the migration config and the test database, over the installed db module.",
-  "peers": { "db": [] },
+  "peers": { "api": ["elysia"], "db": [] },
   "checks": ["cd packages/db && bun run typecheck && bun run test"],
   "variants": [
     {

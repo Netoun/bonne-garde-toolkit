@@ -8,7 +8,6 @@ export default defineConfig(({ mode }) => ({
     environment: "jsdom",
     setupFiles: ["./testing/frontend.setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
-    env: { VITE_API_URL: "http://localhost:5172" },
   },
   resolve: { tsconfigPaths: true },
   server: {

@@ -14,6 +14,7 @@ bunx bg add provider/cloudflare db/d1
 | Peer       | Allow-list   | Why                                                                              |
 | ---------- | ------------ | -------------------------------------------------------------------------------- |
 | `provider` | `cloudflare` | `src/d1.ts` imports `readRuntimeEnv` from `{{SCOPE}}/api-runtime`, which it owns |
+| `api`      | `elysia`     | its patches write the binding and the migration scripts into `apps/api`'s files  |
 
 035 asks a `db` module for one variant per provider it supports. D1 is Cloudflare's, so there is one,
 `cloudflare`, matched on `provider: cloudflare`. A project on the `dockerfile` provider is refused

@@ -7,6 +7,13 @@ import { cloudflareContext } from "./cloudflare-context";
 // oxfmt-ignore
 export type { ApiRoute, EdenResponse, EdenBody, EdenQuery } from "{{SCOPE}}/api/lib/eden";
 
+declare module "./cloudflare-context" {
+  interface WorkerEnv {
+    /** Set in `wrangler.jsonc` `vars` by the variant of `web/ssr` that has the API. */
+    API_URL: string;
+  }
+}
+
 function resolveApiUrl(context: Readonly<RouterContextProvider>): string {
   const apiUrl = context.get(cloudflareContext)?.env.API_URL;
   if (apiUrl) {

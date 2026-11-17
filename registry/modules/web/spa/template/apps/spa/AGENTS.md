@@ -19,7 +19,8 @@ React Router SPA. How to add to it; the root `AGENTS.md` still applies.
 
 ## Call the API
 
-Use `api` from `src/lib/api.ts`, the Eden Treaty client typed from the API. Never call `fetch`.
+When the project has the API (`api/elysia`), use `api` from `src/lib/api.ts`, the Eden Treaty client
+typed from it. Never call `fetch`.
 
 ## Build UI
 

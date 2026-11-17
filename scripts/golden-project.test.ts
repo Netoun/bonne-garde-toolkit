@@ -314,7 +314,7 @@ describe("the golden project and modules", () => {
     ]);
   });
 
-  test("each configuration has one provider, and every provider the registry has is a configuration", async () => {
+  test("each configuration has one provider, and every provider the registry has is in one", async () => {
     const catalog = await loadLocalRegistry(
       join(resolve(import.meta.dir, ".."), "registry/registry.json"),
     );
@@ -326,7 +326,7 @@ describe("the golden project and modules", () => {
       modules.filter((name) => name.startsWith("provider/")),
     );
     expect(used.every((names) => names.length === 1)).toBe(true);
-    expect(used.flat().sort()).toEqual([...providers].sort());
+    expect([...new Set(used.flat())].sort()).toEqual([...providers].sort());
     expect(Object.keys(EXCLUDED_MODULES)).toEqual([]);
   });
 
@@ -690,8 +690,8 @@ describe("the golden project and patches", () => {
           "scripts.db:reset",
           "scripts.db:studio",
         ],
-        "web/spa": ["scripts.deploy", "scripts.dev"],
-        "web/ssr": ["scripts.deploy", "scripts.dev"],
+        "web/spa": ["env.production.vars.API_URL", "scripts.deploy", "scripts.dev", "vars.API_URL"],
+        "web/ssr": ["env.production.vars.API_URL", "scripts.deploy", "scripts.dev", "vars.API_URL"],
         "web/static": ["scripts.deploy", "scripts.dev"],
         "dev/portless": [
           "devDependencies.portless",
@@ -712,6 +712,18 @@ describe("the golden project and patches", () => {
           "scripts.dev:lan:portless",
           "scripts.dev:portless",
         ],
+      },
+      fronts: {
+        "config/branding": ["scripts.gen:branding"],
+        "web/spa": ["scripts.deploy", "scripts.dev"],
+        "web/ssr": ["scripts.deploy", "scripts.dev"],
+        "web/static": ["scripts.deploy", "scripts.dev"],
+        "dev/portless": [
+          "devDependencies.portless",
+          "scripts.dev:lan:portless",
+          "scripts.dev:portless",
+        ],
+        "deploy/cloudflare-actions": ["scripts.deploy:cloudflare"],
       },
     });
   });
@@ -803,8 +815,11 @@ describe("the deploy phases (what golden proves of deploy/cloudflare-actions wit
   const cloudflare = CONFIGURATIONS.find(({ name }) => name === "cloudflare");
   const dockerfile = CONFIGURATIONS.find(({ name }) => name === "dockerfile");
 
-  test("the cloudflare configuration installs the module, and the dockerfile one has to refuse it", () => {
-    expect(CONFIGURATIONS.filter(hasDeploy).map(({ name }) => name)).toEqual(["cloudflare"]);
+  test("the cloudflare configurations install the module, and the dockerfile one has to refuse it", () => {
+    expect(CONFIGURATIONS.filter(hasDeploy).map(({ name }) => name)).toEqual([
+      "cloudflare",
+      "fronts",
+    ]);
     expect(CONFIGURATIONS.filter(refusesDeploy).map(({ name }) => name)).toEqual(["dockerfile"]);
     // Every configuration either installs it or is checked to refuse it: none is left unexamined.
     for (const configuration of CONFIGURATIONS) {
@@ -1239,10 +1254,11 @@ describe("the launcher phase (dev/portless)", () => {
     });
   };
 
-  test("both configurations install the launcher, and it has tests to count", () => {
+  test("every configuration installs the launcher, and it has tests to count", () => {
     expect(CONFIGURATIONS.filter(hasPortless).map(({ name }) => name)).toEqual([
       "cloudflare",
       "dockerfile",
+      "fronts",
     ]);
     expect(PORTLESS_MIN_TESTS).toBeGreaterThan(0);
   });
@@ -1725,6 +1741,7 @@ describe("the email phases", () => {
       expect(PENDING).toEqual({
         cloudflare: ["email/resend/wire-email-into-auth"],
         dockerfile: [],
+        fronts: [],
       });
       expect(Object.keys(RESOLUTIONS)).toEqual(["email/resend/wire-email-into-auth"]);
     });
