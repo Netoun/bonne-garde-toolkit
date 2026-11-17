@@ -56,3 +56,7 @@ jobs:
           fi
       - run: npm publish
         working-directory: dist/npm/bonne-garde
+      # npm logs its OIDC exchange, and why it failed, only at verbose level in its debug log.
+      - name: npm's OIDC log
+        if: failure()
+        run: grep -h -i -E 'oidc|provenance' ~/.npm/_logs/*-debug-0.log || true
