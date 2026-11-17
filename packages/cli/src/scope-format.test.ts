@@ -49,9 +49,10 @@ const OTHER_PROVIDER_STACK = [
 
 const dirs: string[] = [];
 
+// Some two hundred projects to remove: past the default 5s when the workspaces test in parallel.
 afterAll(async () => {
   await Promise.all(dirs.map((dir) => rm(dir, { recursive: true, force: true })));
-});
+}, 60_000);
 
 function repoRoot(): string {
   const root = findRepoRoot();
