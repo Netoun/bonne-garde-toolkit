@@ -288,17 +288,18 @@ function insertionAt(
     };
   }
 
-  // An empty container: the member goes inside its braces, on a line of its own.
+  // An empty container: the member goes inside its braces, on a line of its own, and is its last.
   const close = lineIndent(text, container.offset);
   const inner = `${close}${unit}`;
+  const comma = layout.trailing ? "," : "";
   const between = text.slice(at.offset, container.offset + container.length - 1);
   return /^\s*$/.test(between)
     ? {
         offset: at.offset,
         length: between.length,
-        content: `${eol}${inner}${member(inner)}${eol}${close}`,
+        content: `${eol}${inner}${member(inner)}${comma}${eol}${close}`,
       }
-    : { offset: at.offset, length: 0, content: `${eol}${inner}${member(inner)}` };
+    : { offset: at.offset, length: 0, content: `${eol}${inner}${member(inner)}${comma}` };
 }
 
 function setLeaf(text: string, { path, value }: JsoncLeaf): string {
