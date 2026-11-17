@@ -15,6 +15,7 @@ import {
 import { stagePendingIntentions, type StagedAdd } from "./intentions/stage-add";
 import { defaultSource, loadManifest } from "./manifest-file";
 import { platformPackageVersion } from "./paths";
+import { run } from "./run";
 
 /**
  * How a github source is read. A caller that does not say gets GitHub raw, with `GITHUB_TOKEN` when
@@ -153,12 +154,7 @@ export async function addItems(options: AddOptions) {
     options.install !== false &&
     (plan.npmDependencies.length + plan.npmDevDependencies.length > 0 || modulesNeedInstall)
   ) {
-    const proc = Bun.spawn(["bun", "install"], {
-      cwd: projectRoot,
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-    const code = await proc.exited;
+    const code = await run(["bun", "install"], { cwd: projectRoot, output: "inherit" });
     if (code !== 0) {
       throw new Error("bun install failed after add");
     }

@@ -560,7 +560,7 @@ describe("resolveModulePlans: an optional peer (035 Variants)", () => {
 });
 
 describe("resolveModulePlans: the plan (050 step 8)", () => {
-  test("copies every file the globs match, from template/, with dotfiles, in sorted order", async () => {
+  test("copies the files copy names, from template/, dotfiles included, in sorted order", async () => {
     const catalog = await registry([
       {
         category: "provider",
@@ -570,7 +570,12 @@ describe("resolveModulePlans: the plan (050 step 8)", () => {
             {
               key: "default",
               match: {},
-              copy: ["Dockerfile", ".dockerignore", "packages/rt/**"],
+              copy: [
+                "Dockerfile",
+                ".dockerignore",
+                "packages/rt/src/index.ts",
+                "packages/rt/src/deep/more.ts",
+              ],
             },
           ],
         },
@@ -579,7 +584,7 @@ describe("resolveModulePlans: the plan (050 step 8)", () => {
           ".dockerignore": ".git\n",
           "packages/rt/src/index.ts": "export {};\n",
           "packages/rt/src/deep/more.ts": "export {};\n",
-          "unlisted.txt": "no glob names me\n",
+          "unlisted.txt": "no entry names me\n",
         },
       },
     ]);
@@ -599,12 +604,12 @@ describe("resolveModulePlans: the plan (050 step 8)", () => {
     expect(plan?.files.find((f) => f.target === "Dockerfile")?.content).toBe("FROM bun\n");
   });
 
-  test("a file matched by two globs is planned once", async () => {
+  test("a file named twice is planned once", async () => {
     const catalog = await registry([
       {
         category: "provider",
         id: "docker",
-        json: { variants: [{ key: "default", match: {}, copy: ["a/**", "a/x.txt"] }] },
+        json: { variants: [{ key: "default", match: {}, copy: ["a/x.txt", "a/x.txt"] }] },
         template: { "a/x.txt": "x" },
       },
     ]);
@@ -616,6 +621,21 @@ describe("resolveModulePlans: the plan (050 step 8)", () => {
     );
 
     expect(plan?.files.map((f) => f.target)).toEqual(["a/x.txt"]);
+  });
+
+  test("a glob is refused from a local source too, as a github source has to (035)", async () => {
+    const catalog = await registry([
+      {
+        category: "provider",
+        id: "docker",
+        json: { variants: [{ key: "default", match: {}, copy: ["a/*"] }] },
+        template: { "a/x.txt": "x" },
+      },
+    ]);
+
+    await expect(
+      resolveModulePlans(catalog, [{ category: "provider", id: "docker" }], project()),
+    ).rejects.toThrow('copy "a/*" of provider/docker is a glob');
   });
 
   test("renders {{SCOPE}} with the project's scope", async () => {
@@ -637,19 +657,19 @@ describe("resolveModulePlans: the plan (050 step 8)", () => {
     expect(plan?.files[0]?.content).toBe("RUN bun run --filter '@shop/spa' build\n");
   });
 
-  test("a glob that matches nothing fails, naming the glob", async () => {
+  test("an entry that names no file fails, naming the entry", async () => {
     const catalog = await registry([
       {
         category: "provider",
         id: "docker",
-        json: { variants: [{ key: "default", match: {}, copy: ["nope/**"] }] },
+        json: { variants: [{ key: "default", match: {}, copy: ["nope.txt"] }] },
         template: { "a.txt": "a" },
       },
     ]);
 
     await expect(
       resolveModulePlans(catalog, [{ category: "provider", id: "docker" }], project()),
-    ).rejects.toThrow(/copy "nope\/\*\*" of provider\/docker matches no file under template\//);
+    ).rejects.toThrow('copy "nope.txt" of provider/docker names no file under template/');
   });
 
   test("carries env keys, dependencies, checks, and defaults a missing `required` to false", async () => {

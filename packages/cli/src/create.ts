@@ -3,6 +3,7 @@ import { basename, join, resolve } from "node:path";
 import { createEmptyProjectManifest, DEFAULT_PLATFORM_REMOTE } from "@bonne-garde/schema";
 import { addItems, namesChecker, type AddOutcome } from "./add";
 import { defaultRegistrySource, platformPackageVersion, templateBaseDir } from "./paths";
+import { run } from "./run";
 
 export type CreateOptions = {
   name: string;
@@ -132,17 +133,11 @@ export async function createProject(options: CreateOptions): Promise<CreatedProj
       : await addItems({ projectRoot: target, items: names, install: false });
 
   if (options.git !== false) {
-    const proc = Bun.spawn(["git", "init"], { cwd: target, stdout: "ignore", stderr: "pipe" });
-    await proc.exited;
+    await run(["git", "init"], { cwd: target, output: "ignore" });
   }
 
   if (options.install !== false) {
-    const proc = Bun.spawn(["bun", "install"], {
-      cwd: target,
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-    const code = await proc.exited;
+    const code = await run(["bun", "install"], { cwd: target, output: "inherit" });
     if (code !== 0) {
       throw new Error("bun install failed");
     }

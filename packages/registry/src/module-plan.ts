@@ -294,29 +294,15 @@ async function authoredIntentions(
   return authored;
 }
 
-async function isDirectory(path: string): Promise<boolean> {
+async function isFile(path: string): Promise<boolean> {
   try {
-    return (await stat(path)).isDirectory();
+    return (await stat(path)).isFile();
   } catch {
     return false;
   }
 }
 
 const GLOB_CHARS = /[*?[\]{}!\\]/;
-
-/**
- * Tier 1 over the network: a `copy` entry names a file to fetch, since raw HTTP lists no directory
- * a glob could be expanded against. A glob is refused rather than skipped, as a patch is.
- */
-function remoteCopyTarget(module: RegistryModule, label: string, pattern: string): string {
-  const key = keyOf(module.manifest);
-  if (GLOB_CHARS.test(pattern)) {
-    throw new PlanError(
-      `copy "${pattern}" of ${key} is a glob, and ${label} cannot expand one (raw HTTP has no directory listing): name the files in module.json, or install from a local: registry`,
-    );
-  }
-  return pattern;
-}
 
 /** Tier 1: `copy` entries, relative to `template/`, which mirrors the target tree (spec 035). */
 async function copiedFiles(
@@ -327,29 +313,18 @@ async function copiedFiles(
   const key = keyOf(module.manifest);
   const { reader } = module;
   const targets = new Set<string>();
-  if (reader) {
-    for (const pattern of variant.copy ?? []) {
-      targets.add(remoteCopyTarget(module, reader.label, pattern));
+  // 035: an entry is a file path. A glob is refused from every source, as a github one has to:
+  // raw HTTP lists no directory to expand it against.
+  for (const path of variant.copy ?? []) {
+    if (GLOB_CHARS.test(path)) {
+      throw new PlanError(
+        `copy "${path}" of ${key} is a glob: name the files in module.json (${reader?.label ?? "a github: source"} has no listing to expand one)`,
+      );
     }
-  } else {
-    const templateDir = join(module.dir, "template");
-    const present = await isDirectory(templateDir);
-    for (const pattern of variant.copy ?? []) {
-      let matched = 0;
-      if (present) {
-        for await (const path of new Bun.Glob(pattern).scan({
-          cwd: templateDir,
-          dot: true,
-          onlyFiles: true,
-        })) {
-          targets.add(path);
-          matched += 1;
-        }
-      }
-      if (matched === 0) {
-        throw new PlanError(`copy "${pattern}" of ${key} matches no file under template/`);
-      }
+    if (!reader && !(await isFile(join(module.dir, "template", path)))) {
+      throw new PlanError(`copy "${path}" of ${key} names no file under template/`);
     }
+    targets.add(path);
   }
 
   const readTarget = async (target: string): Promise<string> => {

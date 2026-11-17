@@ -8,6 +8,8 @@ Define greenfield project creation.
 
 ```bash
 bun create bonne-garde@latest my-app [flags]
+npm create bonne-garde@latest my-app -- [flags]
+pnpm create bonne-garde my-app [flags]
 # workspace / local:
 bun run --filter @bonne-garde/cli start -- create my-app [flags]
 # or:
@@ -80,6 +82,7 @@ What each answer names, the one table the CLI holds:
 ## Normative
 
 - Template MUST be bundled with the CLI package.
+- The CLI MUST run on Node (≥ 22.20) as on Bun: what it runs at install is JavaScript, and it uses `node:` APIs, never a `Bun` global.
 - MUST NOT use `install.sh` or clone `main` as the primary path.
 - Every interactive prompt MUST have an equivalent flag, and `--yes` MUST resolve all of them. A flag accepted but ignored is a defect, not a stub.
 

@@ -3022,18 +3022,15 @@ describe("module contract", () => {
     expect(refused).toEqual([]);
   });
 
-  test("every copy glob of every variant matches a file under template/", async () => {
+  test("every copy entry of every variant is a file under template/", async () => {
     const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
     const unmatched: string[] = [];
 
     for (const { manifest, dir } of catalog.modules) {
       for (const variant of manifest.variants) {
-        for (const glob of variant.copy ?? []) {
-          const matches = await Array.fromAsync(
-            new Bun.Glob(glob).scan({ cwd: join(dir, "template"), dot: true, onlyFiles: true }),
-          );
-          if (matches.length === 0) {
-            unmatched.push(`${manifest.category}/${manifest.id} ${variant.key}: ${glob}`);
+        for (const path of variant.copy ?? []) {
+          if (!existsSync(join(dir, "template", path))) {
+            unmatched.push(`${manifest.category}/${manifest.id} ${variant.key}: ${path}`);
           }
         }
       }

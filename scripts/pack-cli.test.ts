@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
 const PACKED = join(ROOT, "dist/npm/create-bonne-garde");
@@ -31,10 +31,11 @@ describe("pack-cli", () => {
     const parent = await mkdtemp(join(tmpdir(), "bg-pack-"));
     dirs.push(parent);
 
+    // `node`, not `bun`: what `npm create bonne-garde` and `pnpm create bonne-garde` run (040).
     const create = Bun.spawn(
       [
-        "bun",
-        join(PACKED, "src/create-bin.ts"),
+        "node",
+        join(PACKED, "dist/create-bin.js"),
         "packed-app",
         "--yes",
         "--no-git",
@@ -83,7 +84,7 @@ describe("pack-cli", () => {
     expect(packed.dependencies).toEqual(external);
   });
 
-  test("a workspace package is imported by a path that resolves from where the file lies, at any depth of src/", async () => {
+  test("its bins are JavaScript for Node, which call no Bun global", async () => {
     const pack = Bun.spawn(["bun", "scripts/pack-cli.ts"], {
       cwd: ROOT,
       stdout: "pipe",
@@ -91,32 +92,17 @@ describe("pack-cli", () => {
     });
     expect(await pack.exited).toBe(0);
 
-    const dangling: string[] = [];
-    const left: string[] = [];
-    for (const dir of ["src", "lib"]) {
-      for await (const path of new Bun.Glob("**/*.ts").scan({ cwd: join(PACKED, dir) })) {
-        const file = join(PACKED, dir, path);
-        const source = await Bun.file(file).text();
-        for (const [, specifier] of source.matchAll(
-          /from "(@bonne-garde\/[^"]+|\.{1,2}\/[^"]+)"/g,
-        )) {
-          if (specifier === undefined) continue;
-          if (specifier.startsWith("@")) {
-            left.push(`${dir}/${path}: ${specifier}`);
-          } else if (
-            ![specifier, `${specifier}.ts`, `${specifier}/index.ts`].some((candidate) =>
-              existsSync(join(dirname(file), candidate)),
-            )
-          ) {
-            dangling.push(`${dir}/${path}: ${specifier}`);
-          }
-        }
-      }
+    const manifest = await Bun.file(join(PACKED, "package.json")).json();
+    expect(manifest.bin).toEqual({
+      "create-bonne-garde": "./dist/create-bin.js",
+      bg: "./dist/bin.js",
+    });
+    for (const bin of Object.values(manifest.bin)) {
+      const source = await Bun.file(join(PACKED, String(bin))).text();
+      expect(source.startsWith("#!/usr/bin/env node\n")).toBe(true);
+      expect(source.match(/\bBun\.[a-zA-Z]+/g) ?? []).toEqual([]);
     }
-
-    // Packing copies a workspace package in and rewrites what names it: both a name left and a path
-    // that climbs the wrong number of directories (src/intentions/ is one deeper than src/) break the CLI.
-    expect(left).toEqual([]);
-    expect(dangling).toEqual([]);
+    // Only JavaScript runs: no TypeScript source is shipped to be executed.
+    expect(existsSync(join(PACKED, "src"))).toBe(false);
   });
 });

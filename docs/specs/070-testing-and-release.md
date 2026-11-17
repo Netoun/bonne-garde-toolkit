@@ -76,6 +76,7 @@ Pipeline shape:
 - CLI published to npm as **`create-bonne-garde`** via `bun run pack:cli` then `bun publish --cwd dist/npm/create-bonne-garde`.
 - `bun create bonne-garde@latest` resolves that package; bins include `create-bonne-garde` and `bg`.
 - The published tarball MUST embed `templates/base` and vendor schema/registry (no `workspace:` deps).
+- Its bins MUST be JavaScript bundled for Node (`#!/usr/bin/env node`): Node strips no type under `node_modules`, so TypeScript sources cannot be what runs. Golden and the pack test drive the packed CLI with `node`, which proves it.
 - Registry items pinable by git tag/commit for remote installs (`github:Netoun/bonne-garde-toolkit`).
 - Dry-run: `bun run publish:cli:dry`.
 

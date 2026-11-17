@@ -1750,7 +1750,8 @@ async function phase<T>(timings: Timing[], name: string, body: () => Promise<T>)
 
 async function golden(work: string, timings: Timing[]): Promise<void> {
   const cli = join(work, "cli");
-  const bg = (...args: string[]) => [BUN, join(cli, "src/bin.ts"), ...args];
+  // `node`, not `bun`: the packed CLI has to run where `npm create` and `pnpm create` run it (040).
+  const bg = (...args: string[]) => ["node", join(cli, "dist/bin.js"), ...args];
   const registry = `local:${join(ROOT, "registry")}`;
 
   await phase(timings, "pack", async () => {
