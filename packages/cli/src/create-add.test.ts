@@ -8,6 +8,7 @@ import { addItems, listItems } from "./add";
 import { createProject, MAX_SCOPE_LENGTH } from "./create";
 import { doctorExitCode, runDoctor } from "./doctor";
 import { findRepoRoot, templateBaseDir } from "./paths";
+import { TEMPLATES } from "./templates";
 
 const dirs: string[] = [];
 
@@ -28,7 +29,7 @@ describe("bg create + add", () => {
     const parent = await mkdtemp(join(tmpdir(), "bg-cli-"));
     dirs.push(parent);
 
-    const target = await createProject({
+    const { target } = await createProject({
       name: "demo-app",
       cwd: parent,
       git: false,
@@ -110,7 +111,7 @@ describe("bg create + add", () => {
   test("adds the api/elysia shell on the cloudflare provider, with no --force", async () => {
     const parent = await mkdtemp(join(tmpdir(), "bg-cli-api-"));
     dirs.push(parent);
-    const target = await createProject({
+    const { target } = await createProject({
       name: "api-demo",
       cwd: parent,
       git: false,
@@ -134,7 +135,7 @@ describe("bg create + add", () => {
   test("creates the spec 010 scratch root and check tooling", async () => {
     const parent = await mkdtemp(join(tmpdir(), "bg-cli-base-"));
     dirs.push(parent);
-    const target = await createProject({
+    const { target } = await createProject({
       name: "base-demo",
       cwd: parent,
       git: false,
@@ -178,7 +179,7 @@ describe("bg create + add", () => {
   test("`bg add ui/shadcn` writes the host package, with its dependencies merged into the vendored package.json", async () => {
     const parent = await mkdtemp(join(tmpdir(), "bg-cli-ui-"));
     dirs.push(parent);
-    const target = await createProject({
+    const { target } = await createProject({
       name: "ui-demo",
       cwd: parent,
       git: false,
@@ -237,7 +238,7 @@ describe("bg create + add", () => {
         git: false,
         install: false,
         registry: repoRegistry(),
-      });
+      }).then(({ target }) => target);
     }
 
     test("with its peers named in the call, it installs the variant of the provider", async () => {
@@ -292,7 +293,7 @@ describe("bg create + add", () => {
         install: false,
         registry: repoRegistry(),
         scope: "@rec",
-      });
+      }).then(({ target }) => target);
     }
 
     /** Every file under `root` -> sha256 of its bytes, `bg.json` included. */
@@ -419,7 +420,7 @@ describe("bg create + add", () => {
     async function v1Project(prefix: string): Promise<string> {
       const parent = await mkdtemp(join(tmpdir(), prefix));
       dirs.push(parent);
-      const target = await createProject({
+      const { target } = await createProject({
         name: "legacy-app",
         cwd: parent,
         git: false,
@@ -518,7 +519,7 @@ describe("bg create + add", () => {
     const elsewhere = await mkdtemp(join(tmpdir(), "bg-cli-elsewhere-"));
     dirs.push(elsewhere);
 
-    const target = await createProject({
+    const { target } = await createProject({
       name: join(parent, "my-app"),
       cwd: elsewhere,
       git: false,
@@ -545,7 +546,7 @@ describe("bg create + add", () => {
     const here = join(parent, "dot-app");
     await mkdir(here);
 
-    const target = await createProject({
+    const { target } = await createProject({
       name: ".",
       cwd: here,
       git: false,
@@ -599,7 +600,7 @@ describe("bg create + add", () => {
       dirs.push(parent);
       const scope = scopeOfLength(MAX_SCOPE_LENGTH);
 
-      const target = await createProject({
+      const { target } = await createProject({
         name: "edge",
         cwd: parent,
         scope,
@@ -628,5 +629,74 @@ describe("bg create + add", () => {
         install: false,
       }),
     ).rejects.toThrow(/not empty/);
+  });
+
+  describe("a template", () => {
+    for (const template of TEMPLATES.filter(({ name }) => name !== "empty")) {
+      test(`${template.name} adds its modules and items, recorded in bg.json like any add`, async () => {
+        const parent = await mkdtemp(join(tmpdir(), "bg-cli-template-"));
+        dirs.push(parent);
+
+        const { target, added } = await createProject({
+          name: "tpl",
+          cwd: parent,
+          git: false,
+          install: false,
+          registry: repoRegistry(),
+          template: template.name,
+        });
+
+        expect(added).not.toBeNull();
+        const { manifest } = readProjectManifest(
+          JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as unknown,
+        );
+        const modules = Object.entries(manifest.modules).flatMap(([category, records]) =>
+          records.map(({ id }) => `${category}/${id}`),
+        );
+        expect(modules.toSorted()).toEqual([...template.modules].toSorted());
+        for (const item of template.items) {
+          expect(manifest.items).toHaveProperty(item);
+        }
+      });
+    }
+
+    test("empty adds nothing", async () => {
+      const parent = await mkdtemp(join(tmpdir(), "bg-cli-template-"));
+      dirs.push(parent);
+
+      const { target, added } = await createProject({
+        name: "tpl",
+        cwd: parent,
+        git: false,
+        install: false,
+        registry: repoRegistry(),
+        template: "empty",
+      });
+
+      expect(added).toBeNull();
+      const bg = JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as Record<
+        string,
+        unknown
+      >;
+      expect(bg.modules).toEqual({});
+      expect(bg.items).toEqual({});
+    });
+
+    test("an unknown one is refused before anything is written, naming the templates", async () => {
+      const parent = await mkdtemp(join(tmpdir(), "bg-cli-template-"));
+      dirs.push(parent);
+
+      const failure = await createProject({
+        name: "tpl",
+        cwd: parent,
+        git: false,
+        install: false,
+        template: "nope",
+      }).catch((error: unknown) => error);
+
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as Error).message).toContain("cloudflare");
+      expect(await readdir(parent)).toEqual([]);
+    });
   });
 });

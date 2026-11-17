@@ -155,7 +155,7 @@ describe("scope rendering and the formatter", () => {
         ...alone.map((key) => ({ suffix: key.replace("/", "-"), names: [key] })),
       ];
       for (const { suffix, names } of installs) {
-        const dir = await createProject({
+        const { target: dir } = await createProject({
           name: `s${index}-${suffix}`,
           cwd: tree,
           scope,

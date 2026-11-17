@@ -37,7 +37,7 @@ async function project(registry: string): Promise<string> {
     install: false,
     registry,
     scope: "@gh",
-  });
+  }).then(({ target }) => target);
 }
 
 /** Every file under `root` with its text, so two trees compare whole. */

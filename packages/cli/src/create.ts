@@ -1,7 +1,9 @@
 import { cp, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { createEmptyProjectManifest, DEFAULT_PLATFORM_REMOTE } from "@bonne-garde/schema";
+import { addItems, type AddOutcome } from "./add";
 import { defaultRegistrySource, platformPackageVersion, templateBaseDir } from "./paths";
+import { DEFAULT_TEMPLATE, findTemplate } from "./templates";
 
 export type CreateOptions = {
   name: string;
@@ -10,7 +12,14 @@ export type CreateOptions = {
   registry?: string;
   git?: boolean;
   install?: boolean;
-  yes?: boolean;
+  /** A template's name (spec 040); `empty` when not given. */
+  template?: string;
+};
+
+export type CreatedProject = {
+  target: string;
+  /** What the template's `bg add` did, to report as `bg add` does; `null` for `empty`. */
+  added: AddOutcome | null;
 };
 
 /**
@@ -62,7 +71,8 @@ async function replaceInFile(path: string, replacements: Record<string, string>)
   await writeFile(path, content, "utf8");
 }
 
-export async function createProject(options: CreateOptions): Promise<string> {
+export async function createProject(options: CreateOptions): Promise<CreatedProject> {
+  const template = findTemplate(options.template ?? DEFAULT_TEMPLATE);
   const cwd = options.cwd ?? process.cwd();
   // The project is named after the directory it lands in, never after the path that led there:
   // `bg create /tmp/work/my-app` is `my-app`, and `bg create .` is the current directory's name.
@@ -113,6 +123,14 @@ export async function createProject(options: CreateOptions): Promise<string> {
   });
   await writeFile(join(target, "bg.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 
+  const names = [...template.modules, ...template.items];
+  // One `bg add` call, so a module and the items that need it are planned together; the one
+  // `bun install` below covers what it added.
+  const added =
+    names.length === 0
+      ? null
+      : await addItems({ projectRoot: target, items: names, install: false });
+
   if (options.git !== false) {
     const proc = Bun.spawn(["git", "init"], { cwd: target, stdout: "ignore", stderr: "pipe" });
     await proc.exited;
@@ -130,5 +148,5 @@ export async function createProject(options: CreateOptions): Promise<string> {
     }
   }
 
-  return target;
+  return { target, added };
 }

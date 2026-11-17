@@ -87,6 +87,8 @@ export type AddOptions = {
   github?: GithubOptions;
 };
 
+export type AddOutcome = Awaited<ReturnType<typeof addItems>>;
+
 export async function addItems(options: AddOptions) {
   const projectRoot = resolve(options.projectRoot ?? process.cwd());
   const { manifest, migratedFrom } = await loadManifest(projectRoot);

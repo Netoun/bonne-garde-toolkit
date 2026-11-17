@@ -41,7 +41,7 @@ async function emptyProject(registry = repoRegistry()): Promise<string> {
     git: false,
     install: false,
     registry,
-  });
+  }).then(({ target }) => target);
 }
 
 /** A project after one clean `bg add button`. */

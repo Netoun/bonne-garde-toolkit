@@ -1,5 +1,5 @@
 import type { IntentionOutcome } from "@bonne-garde/schema";
-import { addItems, searchItems, viewItem } from "./add";
+import { addItems, searchItems, viewItem, type AddOutcome } from "./add";
 import { checksNotice } from "./checks-notice";
 import { createProject } from "./create";
 import { doctorExitCode, formatDoctor, runDoctor } from "./doctor";
@@ -8,12 +8,14 @@ import { lintModuleIntentions } from "./intentions/lint-modules";
 import { listRegistry } from "./list";
 import { migrationsDir, registryDir } from "./paths";
 import { recordIntentionOutcome } from "./record";
+import { askTemplate, resolveTemplate, TEMPLATES } from "./templates";
 
 function usage(): string {
   return `bg — Bonne Garde CLI
 
 Usage:
-  bg create <dir> [--yes] [--no-git] [--no-install] [--scope @name] [--registry <source>]
+  bg create <dir> [--template <name>] [--yes] [--no-git] [--no-install] [--scope @name] [--registry <source>]
+      <name> is one of ${TEMPLATES.map((t) => t.name).join(", ")}; asked on a TTY without --yes, else empty
   bg list [--items | --category <category>] [--source <source>]
       with no flag: the items, then the modules as <category>/<id>; --items is the items alone
   bg search <query> [--source <source>]
@@ -36,6 +38,46 @@ function manifestMigrationNotice(dryRun: boolean): string {
   return dryRun
     ? `bg: bg.json is version 1; a real run will rewrite it as version 2 (${changes}). Not written: --dry-run.`
     : `bg: rewrote bg.json from version 1 to version 2 (${changes}). Files already in the project are user-owned until re-added.`;
+}
+
+/**
+ * What an add left to the user, on stderr: `bg add`, and `bg create` for its template's add. Spec 060:
+ * a failed patch never aborts the install and is never silent. It is a pending tier-3 intention
+ * (050 steps 11 and 14), staged under .bg/add/ with the executor entry point.
+ */
+function reportAdd({ modulePlans, result, migratedFrom, staged }: AddOutcome, dryRun: boolean) {
+  if (migratedFrom !== null) {
+    console.error(manifestMigrationNotice(dryRun));
+  }
+  for (const { path, from, by } of result.tookOver) {
+    console.error(`bg: ${path} was owned by ${from}; ${by} now owns it`);
+  }
+  const failedPatches = result.patches.filter((patch) => patch.status === "failed");
+  const stagedAt = new Map((staged?.files ?? []).map(({ id, file }) => [id, file]));
+  for (const { type, file, module, reason, intention } of failedPatches) {
+    const where = intention === undefined ? undefined : stagedAt.get(intention);
+    const resolved = intention !== undefined && !result.pending.some(({ id }) => id === intention);
+    console.error(
+      `bg: PATCH FAILED ${type} on ${file} (${module}): ${reason}. ` +
+        (intention === undefined
+          ? "Make the edit by hand."
+          : resolved
+            ? `Its intention ${intention} is already recorded in bg.json.`
+            : `It is the pending intention ${intention}, ${where === undefined ? "dry run: nothing staged" : `staged in ${where}`}.`),
+    );
+  }
+  const pendingCount = result.pending.length + result.authored.length;
+  if (staged !== null) {
+    console.error(
+      `bg: ${pendingCount} pending intention${pendingCount === 1 ? "" : "s"}: ` +
+        `read ${staged.session} and follow it (spec 065), then bg record <id> or bg record <id> --skip "<reason>".`,
+    );
+  }
+  const notice = checksNotice(modulePlans, pendingCount);
+  if (notice !== null) {
+    console.error(notice);
+  }
+  return { failedPatches, stagedAt };
 }
 
 function takeFlag(args: string[], name: string): boolean {
@@ -74,20 +116,31 @@ export async function runCli(argv: string[]): Promise<number> {
     const noInstall = takeFlag(args, "--no-install");
     const scope = takeOption(args, "--scope");
     const registry = takeOption(args, "--registry");
+    const flag = takeOption(args, "--template");
     const name = args[0];
     if (!name) {
       throw new Error("create requires a directory name");
     }
-    void yes;
-    const target = await createProject({
+    const template = await resolveTemplate({
+      flag,
+      yes,
+      interactive: process.stdin.isTTY === true,
+      ask: () => askTemplate((question) => prompt(question)),
+    });
+    const { target, added } = await createProject({
       name,
       scope,
       registry,
       git: !noGit,
       install: !noInstall,
-      yes,
+      template,
     });
-    console.log(`created ${target}`);
+    console.log(
+      added === null ? `created ${target}` : `created ${target} from the ${template} template`,
+    );
+    if (added !== null) {
+      reportAdd(added, false);
+    }
     return 0;
   }
 
@@ -153,47 +206,15 @@ export async function runCli(argv: string[]): Promise<number> {
     if (args.length === 0) {
       throw new Error("add requires at least one item or module");
     }
-    const { plan, modulePlans, result, migratedFrom, staged } = await addItems({
+    const outcome = await addItems({
       items: args,
       source,
       dryRun,
       force,
       install: !noInstall,
     });
-    if (migratedFrom !== null) {
-      console.error(manifestMigrationNotice(dryRun));
-    }
-    for (const { path, from, by } of result.tookOver) {
-      console.error(`bg: ${path} was owned by ${from}; ${by} now owns it`);
-    }
-    // Spec 060: a failed patch never aborts the install and is never silent. It is a pending tier-3
-    // intention (050 steps 11 and 14), staged under .bg/add/ with the executor entry point.
-    const failedPatches = result.patches.filter((patch) => patch.status === "failed");
-    const stagedAt = new Map((staged?.files ?? []).map(({ id, file }) => [id, file]));
-    for (const { type, file, module, reason, intention } of failedPatches) {
-      const where = intention === undefined ? undefined : stagedAt.get(intention);
-      const resolved =
-        intention !== undefined && !result.pending.some(({ id }) => id === intention);
-      console.error(
-        `bg: PATCH FAILED ${type} on ${file} (${module}): ${reason}. ` +
-          (intention === undefined
-            ? "Make the edit by hand."
-            : resolved
-              ? `Its intention ${intention} is already recorded in bg.json.`
-              : `It is the pending intention ${intention}, ${where === undefined ? "dry run: nothing staged" : `staged in ${where}`}.`),
-      );
-    }
-    const pendingCount = result.pending.length + result.authored.length;
-    if (staged !== null) {
-      console.error(
-        `bg: ${pendingCount} pending intention${pendingCount === 1 ? "" : "s"}: ` +
-          `read ${staged.session} and follow it (spec 065), then bg record <id> or bg record <id> --skip "<reason>".`,
-      );
-    }
-    const notice = checksNotice(modulePlans, pendingCount);
-    if (notice !== null) {
-      console.error(notice);
-    }
+    const { plan, modulePlans, result, staged } = outcome;
+    const { failedPatches, stagedAt } = reportAdd(outcome, dryRun);
     console.log(
       JSON.stringify(
         {

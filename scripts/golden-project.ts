@@ -51,6 +51,7 @@
 import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
+import { TEMPLATES } from "../packages/cli/src/templates";
 
 const ROOT = resolve(import.meta.dir, "..");
 const PACKED_CLI = join(ROOT, "dist/npm/create-bonne-garde");
@@ -111,47 +112,16 @@ export type Configuration = {
 };
 
 /**
- * The projects golden builds. A module that is in none of them, and not in `EXCLUDED_MODULES`, fails
- * the run, so a new module is a decision made here and not a silent gap. `provider` admits one module,
- * and a variant of `api` is selected on it, which is why each provider has a configuration.
+ * The projects golden builds: every template `bg create --template` offers but `empty` (spec 040), so
+ * a template that does not build fails the release. A module that is in none of them, and not in
+ * `EXCLUDED_MODULES`, fails the run, so a new module is a decision made in the templates and not a
+ * silent gap. `provider` admits one module, and a variant of `api` is selected on it, which is why
+ * each provider has a template. A template with items installs every item here, not only its own:
+ * that its own build alone is `feature-contract.test.ts`'s, where an item declares every item it imports.
  */
-export const CONFIGURATIONS: readonly Configuration[] = [
-  {
-    name: "cloudflare",
-    modules: [
-      "provider/cloudflare",
-      "tooling/vite-plus",
-      "config/branding",
-      "ui/shadcn",
-      "api/elysia",
-      "db/d1",
-      "orm/drizzle",
-      "auth/better-auth",
-      "storage/r2",
-      "web/spa",
-      "web/ssr",
-      "web/static",
-      "dev/portless",
-      "email/resend",
-      "deploy/cloudflare-actions",
-    ],
-    items: true,
-  },
-  {
-    name: "dockerfile",
-    modules: [
-      "provider/dockerfile",
-      "tooling/vite-plus",
-      "config/branding",
-      "ui/shadcn",
-      "api/elysia",
-      "web/spa",
-      "dev/portless",
-      "email/resend",
-    ],
-    items: false,
-  },
-];
+export const CONFIGURATIONS: readonly Configuration[] = TEMPLATES.filter(
+  ({ modules }) => modules.length > 0,
+).map(({ name, modules, items }) => ({ name, modules, items: items.length > 0 }));
 
 /** The module that ships the `Dockerfile` golden builds. */
 const IMAGE_MODULE = "provider/dockerfile";

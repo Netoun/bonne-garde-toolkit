@@ -1,6 +1,15 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { addItems } from "./add";
@@ -30,7 +39,7 @@ async function freshProject(prefix: string): Promise<string> {
     git: false,
     install: false,
     registry: `local:${join(repoRoot(), "registry")}`,
-  });
+  }).then(({ target }) => target);
 }
 
 /** Runs the real `bg` entry in `cwd`, the way a consumer does. */
@@ -1365,7 +1374,7 @@ describe("bg add: package.dependencies (060)", () => {
       git: false,
       install: false,
       registry: await wiringRegistry(),
-    });
+    }).then(({ target }) => target);
   }
 
   const REGIONS = [
@@ -1564,7 +1573,7 @@ describe("bg add: the intentions a module authors (065)", () => {
       git: false,
       install: false,
       registry: await launcherRegistry(),
-    });
+    }).then(({ target }) => target);
   }
 
   test("is staged as written with the scope rendered, reported by doctor, and closed by bg record", async () => {
@@ -1761,5 +1770,62 @@ describe("bg intentions lint: the intentions modules author (065)", () => {
       releases: [],
       modules: expect.any(Array),
     });
+  });
+});
+
+describe("bg create --template", () => {
+  test("applies the template, and reports what it left pending as bg add does", async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-template-")));
+    dirs.push(parent);
+
+    const { stdout, stderr, code } = await runBg(
+      parent,
+      "create",
+      "tpl",
+      "--template",
+      "cloudflare",
+      "--no-git",
+      "--no-install",
+      "--registry",
+      `local:${join(repoRoot(), "registry")}`,
+    );
+
+    expect(code).toBe(0);
+    expect(stdout).toContain(`created ${join(parent, "tpl")} from the cloudflare template`);
+    expect(stderr).toContain("pending intention");
+    expect(stderr).toContain("read .bg/add/session.md");
+  });
+
+  test("refuses an unknown template and writes nothing", async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-template-")));
+    dirs.push(parent);
+
+    const { stderr, code } = await runBg(parent, "create", "tpl", "--template", "nope", "--yes");
+
+    expect(code).toBe(1);
+    expect(stderr).toContain("unknown template nope");
+    expect(await readdir(parent)).toEqual([]);
+  });
+
+  test("without a TTY and without --template, creates the empty base without asking", async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-template-")));
+    dirs.push(parent);
+
+    const { stdout, code } = await runBg(
+      parent,
+      "create",
+      "tpl",
+      "--no-git",
+      "--no-install",
+      "--registry",
+      `local:${join(repoRoot(), "registry")}`,
+    );
+
+    expect(code).toBe(0);
+    expect(stdout).toContain(`created ${join(parent, "tpl")}\n`);
+    const bg = JSON.parse(await readFile(join(parent, "tpl", "bg.json"), "utf8")) as {
+      modules: unknown;
+    };
+    expect(bg.modules).toEqual({});
   });
 });
