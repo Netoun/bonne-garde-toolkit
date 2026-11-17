@@ -1,6 +1,8 @@
 import { resolve } from "node:path";
+import { createEmptyProjectManifest } from "@bonne-garde/schema";
 import {
   applyInstallPlan,
+  checkModuleSet,
   classifyNames,
   loadNamedModules,
   loadRegistryFromSource,
@@ -12,6 +14,7 @@ import {
 } from "@bonne-garde/registry";
 import { stagePendingIntentions, type StagedAdd } from "./intentions/stage-add";
 import { defaultSource, loadManifest } from "./manifest-file";
+import { platformPackageVersion } from "./paths";
 
 /**
  * How a github source is read. A caller that does not say gets GitHub raw, with `GITHUB_TOKEN` when
@@ -86,6 +89,30 @@ export type AddOptions = {
   /** Where a `github:` source is read from; GitHub raw unless a test says otherwise. */
   github?: GithubOptions;
 };
+
+/**
+ * Spec 040: a check that throws what `bg add` would refuse of a set of names in an empty project,
+ * reading no template file. The module manifests of `candidates` are fetched once, here: on a github
+ * source that is one request each, and none for a later check.
+ */
+export async function namesChecker(
+  source: string,
+  cwd: string,
+  candidates: readonly string[],
+  github?: GithubOptions,
+): Promise<(names: string[]) => void> {
+  const loaded = await loadRegistryFromSource(source, cwd, {
+    platformVersion: platformPackageVersion(),
+    github: githubOptions(github),
+  });
+  const catalog = await loadNamedModules(loaded, [...candidates]);
+  const empty = createEmptyProjectManifest({ scope: "@acme", registries: {} });
+  return (names) => {
+    const { items, modules } = classifyNames(catalog, names);
+    checkModuleSet(catalog, modules, empty);
+    resolveInstallPlan(catalog, items, empty, modules);
+  };
+}
 
 export type AddOutcome = Awaited<ReturnType<typeof addItems>>;
 

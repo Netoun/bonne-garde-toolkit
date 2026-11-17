@@ -80,7 +80,7 @@ CLI, base template, UI registry, module registry, and migration intentions MUST 
 
 ## Out of scope (v1)
 
-- Arbitrary stack matrix
+- Arbitrary stack matrix: `create` asks which apps and features a project has, never which library fills a slot ([040](./040-cli-create.md))
 - Community marketplace / private registries
 - Composition web UI
 - Automatic silent upstream merges / diff-only upgrades

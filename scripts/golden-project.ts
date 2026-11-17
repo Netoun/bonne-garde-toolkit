@@ -51,7 +51,7 @@
 import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { TEMPLATES } from "../packages/cli/src/templates";
+import { type Choices, namesFor } from "../packages/cli/src/choices";
 
 const ROOT = resolve(import.meta.dir, "..");
 const PACKED_CLI = join(ROOT, "dist/npm/create-bonne-garde");
@@ -112,16 +112,30 @@ export type Configuration = {
 };
 
 /**
- * The projects golden builds: every template `bg create --template` offers but `empty` (spec 040), so
- * a template that does not build fails the release. A module that is in none of them, and not in
- * `EXCLUDED_MODULES`, fails the run, so a new module is a decision made in the templates and not a
- * silent gap. `provider` admits one module, and a variant of `api` is selected on it, which is why
- * each provider has a template. A template with items installs every item here, not only its own:
- * that its own build alone is `feature-contract.test.ts`'s, where an item declares every item it imports.
+ * The answer sets golden builds, each as `bg create` maps it (040), so a set golden proves is one
+ * `create` produces. A module that is in none of them, and not in `EXCLUDED_MODULES`, fails the run,
+ * so a new module is a decision made here and not a silent gap. `provider` admits one module, and a
+ * variant of `api` is selected on it, which is why each provider has a set.
  */
-export const CONFIGURATIONS: readonly Configuration[] = TEMPLATES.filter(
-  ({ modules }) => modules.length > 0,
-).map(({ name, modules, items }) => ({ name, modules, items: items.length > 0 }));
+export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
+  cloudflare: {
+    apps: ["api", "spa", "ssr", "static"],
+    provider: "cloudflare",
+    features: ["db", "auth", "storage", "email", "deploy", "backoffice"],
+  },
+  dockerfile: { apps: ["api", "spa"], provider: "dockerfile", features: ["email"] },
+};
+
+/**
+ * A set with items installs every item here, not only its own: that its own build alone is
+ * `feature-contract.test.ts`'s, where an item declares every item it imports.
+ */
+export const CONFIGURATIONS: readonly Configuration[] = Object.entries(ANSWER_SETS).map(
+  ([name, choices]) => {
+    const { modules, items } = namesFor(choices);
+    return { name, modules, items: items.length > 0 };
+  },
+);
 
 /** The module that ships the `Dockerfile` golden builds. */
 const IMAGE_MODULE = "provider/dockerfile";

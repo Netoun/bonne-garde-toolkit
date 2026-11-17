@@ -8,7 +8,7 @@ import { addItems, listItems } from "./add";
 import { createProject, MAX_SCOPE_LENGTH } from "./create";
 import { doctorExitCode, runDoctor } from "./doctor";
 import { findRepoRoot, templateBaseDir } from "./paths";
-import { TEMPLATES } from "./templates";
+import { type Choices, namesFor } from "./choices";
 
 const dirs: string[] = [];
 
@@ -631,46 +631,56 @@ describe("bg create + add", () => {
     ).rejects.toThrow(/not empty/);
   });
 
-  describe("a template", () => {
-    for (const template of TEMPLATES.filter(({ name }) => name !== "empty")) {
-      test(`${template.name} adds its modules and items, recorded in bg.json like any add`, async () => {
-        const parent = await mkdtemp(join(tmpdir(), "bg-cli-template-"));
+  describe("the names of the choices (040)", () => {
+    const SETS: Record<string, Choices> = {
+      cloudflare: {
+        apps: ["api", "spa", "ssr", "static"],
+        provider: "cloudflare",
+        features: ["db", "auth", "storage", "email", "deploy", "backoffice"],
+      },
+      dockerfile: { apps: ["api", "spa"], provider: "dockerfile", features: ["email"] },
+    };
+
+    for (const [label, choices] of Object.entries(SETS)) {
+      test(`${label}: adds them, recorded in bg.json like any add`, async () => {
+        const parent = await mkdtemp(join(tmpdir(), "bg-cli-choices-"));
         dirs.push(parent);
+        const { modules, items } = namesFor(choices);
 
         const { target, added } = await createProject({
-          name: "tpl",
+          name: "app",
           cwd: parent,
           git: false,
           install: false,
           registry: repoRegistry(),
-          template: template.name,
+          names: [...modules, ...items],
         });
 
         expect(added).not.toBeNull();
         const { manifest } = readProjectManifest(
           JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as unknown,
         );
-        const modules = Object.entries(manifest.modules).flatMap(([category, records]) =>
+        const recorded = Object.entries(manifest.modules).flatMap(([category, records]) =>
           records.map(({ id }) => `${category}/${id}`),
         );
-        expect(modules.toSorted()).toEqual([...template.modules].toSorted());
-        for (const item of template.items) {
+        expect(recorded.toSorted()).toEqual([...modules].toSorted());
+        for (const item of items) {
           expect(manifest.items).toHaveProperty(item);
         }
       });
     }
 
-    test("empty adds nothing", async () => {
-      const parent = await mkdtemp(join(tmpdir(), "bg-cli-template-"));
+    test("none adds nothing", async () => {
+      const parent = await mkdtemp(join(tmpdir(), "bg-cli-choices-"));
       dirs.push(parent);
 
       const { target, added } = await createProject({
-        name: "tpl",
+        name: "app",
         cwd: parent,
         git: false,
         install: false,
         registry: repoRegistry(),
-        template: "empty",
+        names: [],
       });
 
       expect(added).toBeNull();
@@ -682,20 +692,21 @@ describe("bg create + add", () => {
       expect(bg.items).toEqual({});
     });
 
-    test("an unknown one is refused before anything is written, naming the templates", async () => {
-      const parent = await mkdtemp(join(tmpdir(), "bg-cli-template-"));
+    test("a set the planner refuses fails with its message, before anything is written", async () => {
+      const parent = await mkdtemp(join(tmpdir(), "bg-cli-choices-"));
       dirs.push(parent);
+      const { modules } = namesFor({ apps: ["spa"], provider: "cloudflare", features: [] });
 
-      const failure = await createProject({
-        name: "tpl",
-        cwd: parent,
-        git: false,
-        install: false,
-        template: "nope",
-      }).catch((error: unknown) => error);
-
-      expect(failure).toBeInstanceOf(Error);
-      expect((failure as Error).message).toContain("cloudflare");
+      await expect(
+        createProject({
+          name: "app",
+          cwd: parent,
+          git: false,
+          install: false,
+          registry: repoRegistry(),
+          names: modules,
+        }),
+      ).rejects.toThrow("web/spa needs a module in category api");
       expect(await readdir(parent)).toEqual([]);
     });
   });

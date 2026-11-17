@@ -1,21 +1,34 @@
+import { createInterface } from "node:readline/promises";
 import type { IntentionOutcome } from "@bonne-garde/schema";
-import { addItems, searchItems, viewItem, type AddOutcome } from "./add";
+import { addItems, namesChecker, searchItems, viewItem, type AddOutcome } from "./add";
 import { checksNotice } from "./checks-notice";
 import { createProject } from "./create";
 import { doctorExitCode, formatDoctor, runDoctor } from "./doctor";
 import { lintIntentions } from "./intentions/lint";
 import { lintModuleIntentions } from "./intentions/lint-modules";
 import { listRegistry } from "./list";
-import { migrationsDir, registryDir } from "./paths";
 import { recordIntentionOutcome } from "./record";
-import { askTemplate, resolveTemplate, TEMPLATES } from "./templates";
+import {
+  APPS,
+  CANDIDATE_MODULES,
+  FEATURES,
+  namesFor,
+  parseFlagList,
+  PROVIDERS,
+  resolveChoices,
+  type Ask,
+  type Choices,
+} from "./choices";
+import { defaultRegistrySource, migrationsDir, registryDir } from "./paths";
 
 function usage(): string {
   return `bg — Bonne Garde CLI
 
 Usage:
-  bg create <dir> [--template <name>] [--yes] [--no-git] [--no-install] [--scope @name] [--registry <source>]
-      <name> is one of ${TEMPLATES.map((t) => t.name).join(", ")}; asked on a TTY without --yes, else empty
+  bg create <dir> [--apps <a,b>] [--provider <name>] [--features <a,b>] [--yes] [--no-git] [--no-install]
+                 [--scope @name] [--registry <source>]
+      apps: ${APPS.join(", ")}; provider: ${PROVIDERS.join(", ")}; features: ${FEATURES.join(", ")}
+      what no flag gives is asked on a TTY without --yes; else no app, the base alone
   bg list [--items | --category <category>] [--source <source>]
       with no flag: the items, then the modules as <category>/<id>; --items is the items alone
   bg search <query> [--source <source>]
@@ -116,27 +129,56 @@ export async function runCli(argv: string[]): Promise<number> {
     const noInstall = takeFlag(args, "--no-install");
     const scope = takeOption(args, "--scope");
     const registry = takeOption(args, "--registry");
-    const flag = takeOption(args, "--template");
+    const given: Partial<Choices> = {};
+    const apps = takeOption(args, "--apps");
+    if (apps !== undefined) {
+      given.apps = parseFlagList("--apps", apps, APPS);
+    }
+    const provider = takeOption(args, "--provider");
+    if (provider !== undefined) {
+      const [one, ...more] = parseFlagList("--provider", provider, PROVIDERS);
+      if (one === undefined || more.length > 0) {
+        throw new Error(`--provider takes one of ${PROVIDERS.join(", ")}`);
+      }
+      given.provider = one;
+    }
+    const features = takeOption(args, "--features");
+    if (features !== undefined) {
+      given.features = parseFlagList("--features", features, FEATURES);
+    }
     const name = args[0];
     if (!name) {
       throw new Error("create requires a directory name");
     }
-    const template = await resolveTemplate({
-      flag,
-      yes,
-      interactive: process.stdin.isTTY === true,
-      ask: () => askTemplate((question) => prompt(question)),
-    });
+    // Only on a TTY, and closed before `bun install` runs: an open interface holds stdin.
+    const terminal =
+      !yes && process.stdin.isTTY === true
+        ? createInterface({ input: process.stdin, output: process.stdout })
+        : null;
+    const ask: Ask | null = terminal
+      ? (question) => terminal.question(question).catch(() => null)
+      : null;
+    const source = registry ?? defaultRegistrySource();
+    const choices = await resolveChoices({
+      given,
+      ask,
+      loadCheck: () => namesChecker(source, process.cwd(), CANDIDATE_MODULES),
+      say: (message) => console.error(message),
+    }).finally(() => terminal?.close());
+    const { modules, items } = namesFor(choices);
     const { target, added } = await createProject({
       name,
       scope,
       registry,
       git: !noGit,
       install: !noInstall,
-      template,
+      names: [...modules, ...items],
     });
     console.log(
-      added === null ? `created ${target}` : `created ${target} from the ${template} template`,
+      added === null
+        ? `created ${target}`
+        : `created ${target} with ${choices.apps.join(", ")} on ${choices.provider}` +
+            (choices.features.length > 0 ? `, and ${choices.features.join(", ")}` : ""),
     );
     if (added !== null) {
       reportAdd(added, false);

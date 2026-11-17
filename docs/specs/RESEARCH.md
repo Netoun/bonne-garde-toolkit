@@ -88,10 +88,11 @@ Sources: [create-better-t-stack](https://github.com/AmanVarshney01/create-better
 
 | Adopt                                   | Reject                                    |
 | --------------------------------------- | ----------------------------------------- |
-| `bun create …@latest`                   | Arbitrary stack matrix                    |
+| `bun create …@latest`                   | Asking which library fills a slot         |
 | Template shipped inside the CLI package | GitHub-HEAD as the core path              |
 | Base + feature installers               | Combinatorial full-project templates      |
 | Stable non-interactive flags            | Experimental CI-only flags without semver |
+| Asking which apps and features to add   |                                           |
 
 ## Generators — Nx / Turborepo
 

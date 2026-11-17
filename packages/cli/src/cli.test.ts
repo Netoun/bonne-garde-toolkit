@@ -1773,57 +1773,119 @@ describe("bg intentions lint: the intentions modules author (065)", () => {
   });
 });
 
-describe("bg create --template", () => {
-  test("applies the template, and reports what it left pending as bg add does", async () => {
-    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-template-")));
+describe("bg create with choices (040)", () => {
+  const registry = () => `local:${join(repoRoot(), "registry")}`;
+
+  test("adds what the flags name, and reports what the add left pending as bg add does", async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
     dirs.push(parent);
 
     const { stdout, stderr, code } = await runBg(
       parent,
       "create",
-      "tpl",
-      "--template",
-      "cloudflare",
+      "app",
+      "--apps",
+      "api,spa,ssr,static",
+      "--features",
+      "db,auth,storage,email,deploy,backoffice",
+      "--yes",
       "--no-git",
       "--no-install",
       "--registry",
-      `local:${join(repoRoot(), "registry")}`,
+      registry(),
     );
 
     expect(code).toBe(0);
-    expect(stdout).toContain(`created ${join(parent, "tpl")} from the cloudflare template`);
+    expect(stdout).toContain(
+      `created ${join(parent, "app")} with api, spa, ssr, static on cloudflare`,
+    );
     expect(stderr).toContain("pending intention");
     expect(stderr).toContain("read .bg/add/session.md");
+    const bg = JSON.parse(await readFile(join(parent, "app", "bg.json"), "utf8")) as {
+      modules: Record<string, unknown>;
+    };
+    expect(Object.keys(bg.modules)).toContain("deploy");
   });
 
-  test("refuses an unknown template and writes nothing", async () => {
-    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-template-")));
+  test("takes --provider, and leaves out what no answer names", async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
     dirs.push(parent);
 
-    const { stderr, code } = await runBg(parent, "create", "tpl", "--template", "nope", "--yes");
+    const { code } = await runBg(
+      parent,
+      "create",
+      "app",
+      "--apps",
+      "api",
+      "--provider",
+      "dockerfile",
+      "--yes",
+      "--no-git",
+      "--no-install",
+      "--registry",
+      registry(),
+    );
+
+    expect(code).toBe(0);
+    const bg = JSON.parse(await readFile(join(parent, "app", "bg.json"), "utf8")) as {
+      modules: Record<string, { id: string }[]>;
+    };
+    expect(bg.modules.provider?.map(({ id }) => id)).toEqual(["dockerfile"]);
+    expect(bg.modules).not.toHaveProperty("web");
+    expect(bg.modules).not.toHaveProperty("ui");
+  });
+
+  test("refuses a set the planner refuses with its message, and writes nothing", async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
+    dirs.push(parent);
+
+    const { stderr, code } = await runBg(
+      parent,
+      "create",
+      "app",
+      "--apps",
+      "spa",
+      "--yes",
+      "--registry",
+      registry(),
+    );
 
     expect(code).toBe(1);
-    expect(stderr).toContain("unknown template nope");
+    expect(stderr).toContain("web/spa needs a module in category api");
     expect(await readdir(parent)).toEqual([]);
   });
 
-  test("without a TTY and without --template, creates the empty base without asking", async () => {
-    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-template-")));
+  test("refuses features with no app, and an unknown value naming the flag", async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
+    dirs.push(parent);
+
+    const noApp = await runBg(parent, "create", "app", "--features", "auth", "--yes");
+    expect(noApp.code).toBe(1);
+    expect(noApp.stderr).toContain("--provider and --features need an app (--apps)");
+
+    const unknown = await runBg(parent, "create", "app", "--apps", "api,web", "--yes");
+    expect(unknown.code).toBe(1);
+    expect(unknown.stderr).toContain("--apps: unknown value web");
+    expect(await readdir(parent)).toEqual([]);
+  });
+
+  test("without a TTY and without flags, creates the base alone without asking", async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
     dirs.push(parent);
 
     const { stdout, code } = await runBg(
       parent,
       "create",
-      "tpl",
+      "app",
       "--no-git",
       "--no-install",
       "--registry",
-      `local:${join(repoRoot(), "registry")}`,
+      registry(),
     );
 
     expect(code).toBe(0);
-    expect(stdout).toContain(`created ${join(parent, "tpl")}\n`);
-    const bg = JSON.parse(await readFile(join(parent, "tpl", "bg.json"), "utf8")) as {
+    expect(stdout).toContain(`created ${join(parent, "app")}\n`);
+    const bg = JSON.parse(await readFile(join(parent, "app", "bg.json"), "utf8")) as {
       modules: unknown;
     };
     expect(bg.modules).toEqual({});

@@ -19,30 +19,46 @@ Package name during monorepo development: `@bonne-garde/cli` with bins `bg` and 
 ## Steps (MUST)
 
 1. Resolve the target directory; derive the project name from its **basename**, never from the path given.
-2. Resolve the template ([Templates](#templates)); an unknown one fails here, before anything is written.
+2. Resolve the choices ([Choices](#choices)) and check them against the registry; an invalid set fails here, before anything is written.
 3. Validate name and target (refuse a non-empty existing dir).
 4. Copy embedded `templates/base`, rendering `{{SCOPE}}` / `{{DISPLAY_NAME}}` placeholders.
 5. Write `bg.json` (`version: 2`) with default `@bg` registry source pinned to the running CLI version.
-6. Unless the template is `empty`, add its modules and items in one `bg add` call ([050](./050-cli-add.md)), without its install.
+6. Unless no app is chosen, add the modules and items of the choices in one `bg add` call ([050](./050-cli-add.md)), without its install.
 7. Optionally `git init`.
 8. Optionally `bun install`, once.
 
-## Templates
+## Choices
 
-A template is a named recipe: the modules and items step 6 adds. It is not a file tree. What it installs goes through the `bg add` pipeline and is recorded in `bg.json` like any `add`, so `doctor`, `remove` and `upgrade` cannot tell a project created from a template from one composed by hand.
+`create` asks what the project has, never which library fills a slot. Each answer names registry modules and items, and step 6 adds them through the `bg add` pipeline: they are recorded in `bg.json` like any `add`, so `doctor`, `remove` and `upgrade` cannot tell a created project from one composed by hand.
 
-| Template     | Installs                                                                                                                                                      |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `empty`      | Nothing: the base alone                                                                                                                                       |
-| `cloudflare` | Elysia on Workers, D1 + Drizzle, Better Auth, R2, Resend, SPA + SSR + static fronts, the GitHub Actions deploy, and the SPA's `spa-auth` and `spa-backoffice` |
-| `dockerfile` | One Bun container serving the Elysia API and the SPA from a single origin, with Resend; no database, no auth                                                  |
+| Axis     | Flag                | Values                                                   | Asked                 |
+| -------- | ------------------- | -------------------------------------------------------- | --------------------- |
+| Apps     | `--apps <a,b>`      | `api`, `spa`, `ssr`, `static`                            | Always                |
+| Provider | `--provider <name>` | `cloudflare`, `dockerfile`                               | When an app is chosen |
+| Features | `--features <a,b>`  | `db`, `auth`, `storage`, `email`, `deploy`, `backoffice` | When an app is chosen |
+
+What each answer names, the one table the CLI holds:
+
+| Answer                   | Names                                                                         |
+| ------------------------ | ----------------------------------------------------------------------------- |
+| any app                  | `provider/<provider>`, `tooling/vite-plus`, `config/branding`, `dev/portless` |
+| `spa`, `ssr` or `static` | `ui/shadcn`, and `web/spa`, `web/ssr` or `web/static`                         |
+| `api`                    | `api/elysia`                                                                  |
+| `db`                     | `db/d1`, `orm/drizzle`                                                        |
+| `auth`                   | `auth/better-auth`, and the item `spa-auth` with `spa`                        |
+| `storage`                | `storage/r2`                                                                  |
+| `email`                  | `email/resend`                                                                |
+| `deploy`                 | `deploy/cloudflare-actions`                                                   |
+| `backoffice`             | the item `spa-backoffice`                                                     |
 
 **Normative:**
 
-- Templates ship in the CLI package and move with its version; their names address the registry of that same version.
-- Every template other than `empty` MUST be a golden configuration ([070](./070-testing-and-release.md)): golden builds its configurations from the templates, so a template that does not install, typecheck, test and build fails the release.
-- A failed patch or a pending intention of the template is reported as `bg add` reports it. It does not fail `create`.
-- The template's choice is resolved in this order: `--template`, then `empty` under `--yes` or without a TTY, then the prompt. The prompt lists the templates by number, and Enter takes `empty`.
+- Which sets are valid is the registry's to say, never a table in the CLI: the names are checked as `bg add` would plan them in an empty project (peers, cardinality, a variant for each module, the modules each item needs), reading no template file. A combination becomes valid by changing the registry alone.
+- An axis given by its flag is never asked. Under `--yes` or without a TTY, a missing axis takes its default: no app, the first provider of the table the check accepts, no feature. With no app, the project is the base alone.
+- On a TTY, the provider is asked among those the check accepts with the apps chosen, and Enter takes the first. Apps and features are asked as a list of numbers or names, and Enter takes none. An answer the check refuses prints its message and asks the axis again: the apps when no provider accepts them, else the features.
+- Without a TTY or under `--yes`, a refused set fails `create` with the check's message, before anything is written. `--provider` or `--features` with no app is refused.
+- A failed patch or a pending intention of the add is reported as `bg add` reports it. It does not fail `create`.
+- Golden ([070](./070-testing-and-release.md)) builds named answer sets, not a module list of its own: a set golden builds is one `create` produces.
 
 ## Naming (normative)
 
@@ -53,7 +69,9 @@ A template is a named recipe: the modules and items step 6 adds. It is not a fil
 | Flag                  | Effect                                                                         |
 | --------------------- | ------------------------------------------------------------------------------ |
 | `--yes`               | Non-interactive: take the default for every prompt                             |
-| `--template <name>`   | The template to apply (default `empty`)                                        |
+| `--apps <a,b>`        | The apps ([Choices](#choices)); none by default                                |
+| `--provider <name>`   | The provider; the first one the apps allow by default                          |
+| `--features <a,b>`    | The features; none by default                                                  |
 | `--no-install`        | Skip `bun install`                                                             |
 | `--no-git`            | Skip git init                                                                  |
 | `--scope <scope>`     | npm scope, at most 64 characters (default derived from the directory basename) |
@@ -68,7 +86,8 @@ A template is a named recipe: the modules and items step 6 adds. It is not a fil
 ## Acceptance
 
 - `bg create tmp-app --yes --no-git --no-install` creates a valid empty tree with a `version: 2` `bg.json`.
-- `bg create tmp-app --template cloudflare --yes --no-git --no-install` records every module and item of the template in `bg.json`.
-- `bg create tmp-app --template nope` fails naming the templates, and writes nothing.
+- `bg create tmp-app --apps api,spa --features email --provider dockerfile --yes --no-git --no-install` records the modules of those answers in `bg.json`.
+- `bg create tmp-app --apps spa --yes` fails with the planner's message (`web/spa` needs a module in category `api`) while the registry says so, and writes nothing.
+- `bg create tmp-app --features auth --yes` fails: a feature needs an app.
 - `bg create /abs/path/my-app` yields scope `@my-app`, not a slugified path.
 - Re-running against the same non-empty directory fails.

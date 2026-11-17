@@ -13,6 +13,7 @@ Define verification and release rules for the platform.
 | CLI             | Real temp filesystem; no mocked `fetch` unless testing remote source adapters                                       |
 | E2E matrix      | create → add combinations → install → typecheck → test → check                                                      |
 | Golden projects | Generated fixtures per supported peer combination, asserted byte-for-byte                                           |
+| Create choices  | Every answer set `create` accepts is planned with no install; golden builds a set of them that covers each axis     |
 
 ### Test surfaces (normative)
 

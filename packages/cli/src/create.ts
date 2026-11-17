@@ -1,9 +1,8 @@
 import { cp, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { createEmptyProjectManifest, DEFAULT_PLATFORM_REMOTE } from "@bonne-garde/schema";
-import { addItems, type AddOutcome } from "./add";
+import { addItems, namesChecker, type AddOutcome } from "./add";
 import { defaultRegistrySource, platformPackageVersion, templateBaseDir } from "./paths";
-import { DEFAULT_TEMPLATE, findTemplate } from "./templates";
 
 export type CreateOptions = {
   name: string;
@@ -12,13 +11,13 @@ export type CreateOptions = {
   registry?: string;
   git?: boolean;
   install?: boolean;
-  /** A template's name (spec 040); `empty` when not given. */
-  template?: string;
+  /** The modules and items to add (040 step 6), checked before anything is written; none by default. */
+  names?: readonly string[];
 };
 
 export type CreatedProject = {
   target: string;
-  /** What the template's `bg add` did, to report as `bg add` does; `null` for `empty`. */
+  /** What the `bg add` of `names` did, to report as `bg add` does; `null` when there are none. */
   added: AddOutcome | null;
 };
 
@@ -72,7 +71,6 @@ async function replaceInFile(path: string, replacements: Record<string, string>)
 }
 
 export async function createProject(options: CreateOptions): Promise<CreatedProject> {
-  const template = findTemplate(options.template ?? DEFAULT_TEMPLATE);
   const cwd = options.cwd ?? process.cwd();
   // The project is named after the directory it lands in, never after the path that led there:
   // `bg create /tmp/work/my-app` is `my-app`, and `bg create .` is the current directory's name.
@@ -89,10 +87,13 @@ export async function createProject(options: CreateOptions): Promise<CreatedProj
         `so that the files \`bg add\` copies stay formatted: pass a shorter one, bg create ${options.name} --scope @name`,
     );
   }
+  const registry = options.registry ?? defaultRegistrySource();
+  const names = [...(options.names ?? [])];
+  if (names.length > 0) {
+    (await namesChecker(registry, cwd, names))(names);
+  }
   await assertEmptyTarget(target);
   await mkdir(target, { recursive: true });
-
-  const registry = options.registry ?? defaultRegistrySource();
 
   await cp(templateBaseDir(), target, { recursive: true });
 
@@ -123,7 +124,6 @@ export async function createProject(options: CreateOptions): Promise<CreatedProj
   });
   await writeFile(join(target, "bg.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 
-  const names = [...template.modules, ...template.items];
   // One `bg add` call, so a module and the items that need it are planned together; the one
   // `bun install` below covers what it added.
   const added =
