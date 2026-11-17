@@ -16,19 +16,12 @@ function readPackageName(dir: string): string | null {
   }
 }
 
-/** Directory that contains this CLI package.json (packages/cli or packed tarball root). */
+/** Directory that contains this CLI package.json (packages/cli, or the root of the packed package where bin.js lies). */
 export function packageRoot(from = HERE): string {
   let current = from;
   for (;;) {
     const name = readPackageName(current);
-    if (name === "create-bonne-garde" || name === "@bonne-garde/cli") {
-      return current;
-    }
-    // Packed layout fallback: templates/base beside src/
-    if (
-      existsSync(join(current, "templates/base/package.json")) &&
-      existsSync(join(current, "src/bin.ts"))
-    ) {
+    if (name === "bonne-garde" || name === "@bonne-garde/cli") {
       return current;
     }
     const parent = dirname(current);
@@ -64,7 +57,7 @@ export function templateBaseDir(): string {
   if (repo) {
     return join(repo, "templates/base");
   }
-  throw new Error("templates/base not found — reinstall create-bonne-garde");
+  throw new Error("templates/base not found — reinstall bonne-garde");
 }
 
 /** Lockstep platform version from the CLI package (no leading `v`). */

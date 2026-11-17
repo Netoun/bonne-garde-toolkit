@@ -54,7 +54,7 @@ export type ApplyResult = {
   /**
    * The intentions the installed modules author (065), minus the ones `bg.json` already records as
    * applied or skipped. They are pending from the day the module is added, so nothing in the tree
-   * says they are: staging them is the caller's, and `bg record` is what closes them.
+   * says they are: staging them is the caller's, and `bonne-garde record` is what closes them.
    */
   authored: AuthoredIntention[];
 };

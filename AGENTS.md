@@ -16,19 +16,19 @@
 
 ## Project overview
 
-Bonne Garde is a shadcn-inspired toolkit: an empty base template, a CLI (`bg`) that installs registry content into it, and the registry of UI items, feature items and full-stack modules. Normative specs live in [`docs/specs/`](./docs/specs/README.md). The legacy monorepo (`apps/*`, `packages/{ui,emails,config,api-runtime}`) was dissolved into the registry and is no longer in-tree; [`docs/plans/2026-10-sync/09-dissolution.md`](./docs/plans/2026-10-sync/09-dissolution.md) records where each piece went.
+Bonne Garde is a shadcn-inspired toolkit: an empty base template, a CLI (`bonne-garde`) that installs registry content into it, and the registry of UI items, feature items and full-stack modules. Normative specs live in [`docs/specs/`](./docs/specs/README.md). The legacy monorepo (`apps/*`, `packages/{ui,emails,config,api-runtime}`) was dissolved into the registry and is no longer in-tree; [`docs/plans/2026-10-sync/09-dissolution.md`](./docs/plans/2026-10-sync/09-dissolution.md) records where each piece went.
 
-| Layer                     | Choice                                                                                                              |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Runtime / Package manager | Bun + workspaces                                                                                                    |
-| Language                  | TypeScript strict everywhere                                                                                        |
-| CLI                       | `packages/cli` (bins `bg`, `create-bonne-garde`) over `packages/registry` (load, plan, apply) and `packages/schema` |
-| Registry                  | `registry/ui` and `registry/features` (items), `registry/modules/<category>/<id>` (`module.json` + `template/`)     |
-| Base template             | `templates/base`: the empty monorepo `bg create` copies                                                             |
-| Proof                     | `bun run golden`: one fresh project, every module and item installed, then typecheck, test, build, doctor           |
-| Toolchain                 | Vite+ — Vite, Vitest, Oxlint, Oxfmt; keep the unified configuration                                                 |
+| Layer                     | Choice                                                                                                          |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Runtime / Package manager | Bun + workspaces                                                                                                |
+| Language                  | TypeScript strict everywhere                                                                                    |
+| CLI                       | `packages/cli` (bin `bonne-garde`) over `packages/registry` (load, plan, apply) and `packages/schema`           |
+| Registry                  | `registry/ui` and `registry/features` (items), `registry/modules/<category>/<id>` (`module.json` + `template/`) |
+| Base template             | `templates/base`: the empty monorepo `bonne-garde create` copies                                                |
+| Proof                     | `bun run golden`: one fresh project, every module and item installed, then typecheck, test, build, doctor       |
+| Toolchain                 | Vite+ — Vite, Vitest, Oxlint, Oxfmt; keep the unified configuration                                             |
 
-What `bg add` writes into a project is Elysia on Workers (AOT disabled), Drizzle/D1, Better-auth, R2, Resend, Eden Treaty, and React Router v8 + shadcn/ui + Tailwind + Zustand fronts (Pages for SPA/static, Workers for SSR). Its source is `registry/modules/*/*/template/**`, `registry/features` and `registry/ui`, and the rules below hold for it.
+What `bonne-garde add` writes into a project is Elysia on Workers (AOT disabled), Drizzle/D1, Better-auth, R2, Resend, Eden Treaty, and React Router v8 + shadcn/ui + Tailwind + Zustand fronts (Pages for SPA/static, Workers for SSR). Its source is `registry/modules/*/*/template/**`, `registry/features` and `registry/ui`, and the rules below hold for it.
 
 ### Key decisions
 
@@ -46,7 +46,7 @@ What `bg add` writes into a project is Elysia on Workers (AOT disabled), Drizzle
 
 ```
 bonne-garde-toolkit/
-├── packages/cli        # bg, create-bonne-garde
+├── packages/cli        # bonne-garde
 ├── packages/registry   # load / plan / apply
 ├── packages/schema     # bg.json and module.json validation
 ├── registry/           # ui/, features/, modules/<category>/<id>
@@ -60,23 +60,23 @@ bonne-garde-toolkit/
 
 ## Setup & commands
 
-Always `bun` / `bunx` — never `npm` / `yarn` / `pnpm` / `npx` / `node`.
+Always `bun` / `bunx` — never `npm` / `yarn` / `pnpm` / `npx` / `node`. The one exception: `scripts/pack-cli.test.ts` and golden run the packed CLI with `node`, the runtime it targets.
 If a script exists in a `package.json`, use it — never reinvent.
 Full list → [`docs/COMMANDS.md`](./docs/COMMANDS.md) (`bun run gen:commands`).
 
 ```bash
 bun install
-bun run bg -- list --source local:./registry
-bun run bg -- create ../tmp-app --yes --no-git --no-install --registry local:./registry
+bun run bonne-garde -- list --source local:./registry
+bun run bonne-garde -- create ../tmp-app --yes --no-git --no-install --registry local:./registry
 bun run registry:build                    # flatten registry → dist/r
-bun run pack:cli                          # dist/npm/create-bonne-garde
+bun run pack:cli                          # dist/npm/bonne-garde
 bun run publish:cli:dry                   # npm tarball dry-run
-bun run publish:cli                       # publish create-bonne-garde to npm
+bun run publish:cli                       # publish bonne-garde to npm
 bun run gen:playground                    # smoke consumer in ./playground
 bun run typecheck && bun run test         # platform packages + scripts
 bun run check                             # vp check (fmt + lint via Vite+)
 bun run verify                            # check + knip + typecheck + test + intentions lint + registry build (CI gate)
-bun run golden                            # fresh project: create → add modules + items → install → typecheck → test → build → doctor --strict → check → each module's checks → dockerfile configuration: docker build + run (skipped without docker, a failure when GOLDEN_REQUIRE_DOCKER is set) (needs npm)
+bun run golden                            # fresh project: create → add modules + items → install → typecheck → test → build → doctor --strict → check → each module's checks → dockerfile configuration: docker build + run (skipped without docker, a failure when GOLDEN_REQUIRE_DOCKER is set) (needs npm, and node ≥ 22.12 on PATH: it runs the packed CLI)
 ```
 
 Most module and feature code imports packages that exist only after install, so `bun run test` skips it: golden is where it is typechecked, tested and built.

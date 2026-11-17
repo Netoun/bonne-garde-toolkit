@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-// `bg add` rewrites the scope in these lines, so the formatter cannot know how wide they are.
+// `bonne-garde add` rewrites the scope in these lines, so the formatter cannot know how wide they are.
 // oxfmt-ignore
 import { ALLOWED_IMAGE_TYPES, R2Error, mediaModule, mediaPlugin } from "{{SCOPE}}/storage";
 // oxfmt-ignore

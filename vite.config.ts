@@ -2,7 +2,7 @@ import { defineConfig } from "vite-plus";
 
 /**
  * Root Vite+ config of the platform repository: lint / fmt / staged, and the lint rules that hold
- * the code the registry ships (registry/**), which only runs once `bg add` has copied it into a
+ * the code the registry ships (registry/**), which only runs once `bonne-garde add` has copied it into a
  * project. A generated project gets its own config from the tooling/vite-plus module.
  */
 export default defineConfig({
@@ -57,14 +57,13 @@ export default defineConfig({
       },
       {
         // Programs whose stderr and stdout are their interface: this repo's scripts, the entry
-        // files of `bg`, and the scripts the modules ship. The generated project turns the rule off
+        // files of `bonne-garde`, and the scripts the modules ship. The generated project turns the rule off
         // for the same two script directories (tooling/vite-plus), so the template is held to what
         // the project it lands in is held to.
         files: [
           "scripts/**",
           "packages/cli/src/cli.ts",
           "packages/cli/src/bin.ts",
-          "packages/cli/src/create-bin.ts",
           "registry/modules/*/*/template/scripts/**",
           "registry/modules/*/*/template/packages/config/scripts/**",
         ],

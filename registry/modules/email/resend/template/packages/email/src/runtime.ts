@@ -1,4 +1,4 @@
-// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { readRuntimeEnv } from "{{SCOPE}}/api-runtime";
 import { resolveEmailEnv } from "./env";

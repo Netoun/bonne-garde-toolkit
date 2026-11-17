@@ -25,7 +25,7 @@ Use `api` from `src/lib/api.ts`, the Eden Treaty client typed from the API. Neve
 
 Compose the primitives of `{{SCOPE}}/ui/components/<name>`. Never write a raw `<button>`, `<input>`,
 `<select>` or `<textarea>`, or a `div` with a `role`. When a primitive is missing, add it with
-`bunx bg add <item>`.
+`bunx bonne-garde add <item>`.
 
 ## Done when
 

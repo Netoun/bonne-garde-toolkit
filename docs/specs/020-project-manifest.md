@@ -8,7 +8,7 @@ Define the consumer-project state file written by `create`, updated by `add` / `
 
 ```json
 {
-  "$schema": "./node_modules/create-bonne-garde/schema/project.json",
+  "$schema": "./node_modules/bonne-garde/schema/project.json",
   "version": 2,
   "scope": "@acme",
   "platform": {

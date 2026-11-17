@@ -1,7 +1,9 @@
 import { readFile, stat } from "node:fs/promises";
 import { join, posix } from "node:path";
+import { glob } from "tinyglobby";
 import {
   categoryCardinality,
+  cliRunner,
   isModuleCategory,
   MODULE_CATEGORIES,
   readModuleIntention,
@@ -206,7 +208,7 @@ function checkCardinality(requested: ModuleRef[], manifest: ProjectManifest): vo
     const installed = manifest.modules[category]?.[0];
     if (wanted && installed && installed.id !== wanted.id) {
       throw new PlanError(
-        `${category} is already filled by ${category}/${installed.id}; \`bg replace ${keyOf(wanted)}\` swaps it`,
+        `${category} is already filled by ${category}/${installed.id}; \`${cliRunner()} replace ${keyOf(wanted)}\` swaps it`,
       );
     }
   }
@@ -370,10 +372,12 @@ async function copiedFiles(
     for (const pattern of variant.copy ?? []) {
       let matched = 0;
       if (present) {
-        for await (const path of new Bun.Glob(pattern).scan({
+        // `expandDirectories` off: a pattern naming a directory matches no file, as it always did.
+        for (const path of await glob(pattern, {
           cwd: templateDir,
           dot: true,
           onlyFiles: true,
+          expandDirectories: false,
         })) {
           targets.add(path);
           matched += 1;

@@ -8,7 +8,7 @@ root `branding.json`, `scripts/gen-branding.ts` and `assets/favicons`
 ([080](../../../../docs/specs/080-existing-code-migration.md)).
 
 ```bash
-bunx bg add config/branding
+bunx bonne-garde add config/branding
 ```
 
 ## What it writes
@@ -45,7 +45,7 @@ module cannot ship (`web` modules rewrite that import).
 The seven binaries (`favicon.ico`, `favicon-16x16.png`, `favicon-32x32.png`, `favicon-48x48.png`,
 `apple-touch-icon.png`, `android-chrome-192x192.png`, `android-chrome-512x512.png`) are the first binary
 template files ([035](../../../../docs/specs/035-module-registry.md)): copied byte for byte, recorded
-in `bg.json` by the sha256 of their bytes, checked by `bg doctor` like any file.
+in `bg.json` by the sha256 of their bytes, checked by `bonne-garde doctor` like any file.
 
 All three shells serve this directory from the site root, so `/site.webmanifest` and the
 `/android-chrome-*.png` it names are in the build, and each `root.tsx` links the icons from
@@ -95,29 +95,29 @@ indentation and line endings stay). Each key is a region, recorded in `bg.json`:
 ] }] }
 ```
 
-`bg add` prints what each patch did, per module and per region, so a caller does not have to read the file:
+`bonne-garde add` prints what each patch did, per module and per region, so a caller does not have to read the file:
 
 ```json
 "patches": [{ "type": "scripts.merge", "file": "package.json", "status": "applied",
               "regions": [{ "region": "scripts.gen:branding", "status": "applied" }] }]
 ```
 
-| Situation                                                             | Result                                                                               |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| the script is absent                                                  | `applied`, region recorded                                                           |
-| present and equal to the declared command                             | `skipped` (a second `bg add` changes no file; only `installedAt` moves in `bg.json`) |
-| present and different (you edited it, or it was already yours)        | `bg add` fails and lists it; `--force` overwrites                                    |
-| the region is owned by another module                                 | `bg add` fails; `--force` does not bypass it                                         |
-| `package.json` is missing, is not JSON, or `scripts` is not an object | `failed` with its reason; the rest of the install goes ahead                         |
+| Situation                                                             | Result                                                                                        |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| the script is absent                                                  | `applied`, region recorded                                                                    |
+| present and equal to the declared command                             | `skipped` (a second `bonne-garde add` changes no file; only `installedAt` moves in `bg.json`) |
+| present and different (you edited it, or it was already yours)        | `bonne-garde add` fails and lists it; `--force` overwrites                                    |
+| the region is owned by another module                                 | `bonne-garde add` fails; `--force` does not bypass it                                         |
+| `package.json` is missing, is not JSON, or `scripts` is not an object | `failed` with its reason; the rest of the install goes ahead                                  |
 
 **A `failed` patch is recorded and reported, not converted.** 060 turns it into a pending tier-3
 intention that the executor resolves (065). Staging intentions does not exist yet, so today the
 failure is in four places and nowhere else: the `status`/`reason` in `bg.json`, `patches[].status`
-and the top-level `failedPatches` in `bg add`'s JSON, a `bg: PATCH FAILED ...` line on stderr, and a
-`patch-failed` warning in `bg doctor` (which `--strict` turns into a failure). Making the edit by hand
+and the top-level `failedPatches` in `bonne-garde add`'s JSON, a `bonne-garde: PATCH FAILED ...` line on stderr, and a
+`patch-failed` warning in `bonne-garde doctor` (which `--strict` turns into a failure). Making the edit by hand
 is the fix until the conversion is built.
 
-`bg doctor` reads the region by region: the script is still there, and still what this module declares.
+`bonne-garde doctor` reads the region by region: the script is still there, and still what this module declares.
 
 ## What differs from legacy
 

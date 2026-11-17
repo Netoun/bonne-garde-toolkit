@@ -1,13 +1,14 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AuthoredIntention, PendingIntention } from "@bonne-garde/registry";
+import { cliRunner, PROJECT_RUNNER } from "@bonne-garde/schema";
 import { readStagedIntentions } from "./staged";
 
 /**
  * Spec 050 steps 11 and 14, 065 "Executor protocol": the failed patches of an `add` are staged for
  * whoever resolves them, as `NN-<slug>.md` intentions plus a `session.md` that is the entry point.
  * `.bg/` is scratch and disposable, so none of it is state: `bg.json` records the failed patch with
- * the intention's id, and `bg record` closes it. Everything here is a pure function of the pending
+ * the intention's id, and `bonne-garde record` closes it. Everything here is a pure function of the pending
  * intentions, with no timestamp, so staging again writes the same bytes.
  */
 
@@ -35,7 +36,7 @@ ${pending.intent}
 
 ## Why
 
-\`bg add\` installed \`${pending.module}\` but could not apply its \`${pending.type}\` patch to \`${pending.file}\`: ${pending.reason}.
+\`bonne-garde add\` installed \`${pending.module}\` but could not apply its \`${pending.type}\` patch to \`${pending.file}\`: ${pending.reason}.
 A module's patch edits a file the project owns, so a patch that cannot is handed to you instead of rewriting the file blindly.
 
 ## Applies When
@@ -65,8 +66,8 @@ ${checks}
 
 ## Record Result
 
-- Applied → \`bg record ${pending.id}\`
-- Skipped → \`bg record ${pending.id} --skip "<reason>"\`
+- Applied → \`${PROJECT_RUNNER} record ${pending.id}\`
+- Skipped → \`${PROJECT_RUNNER} record ${pending.id} --skip "<reason>"\`
 `;
 }
 
@@ -81,13 +82,13 @@ function isAuthored(
 export function sessionDocument(entries: { id: string; file: string }[]): string {
   return `# Pending intentions
 
-\`bg add\` left ${entries.length} change${entries.length === 1 ? "" : "s"} to make by hand: a patch it could not apply to a file the project owns became an intention, or an intention a module ships covers what no patch can express. Follow the executor protocol of spec 065:
+\`bonne-garde add\` left ${entries.length} change${entries.length === 1 ? "" : "s"} to make by hand: a patch it could not apply to a file the project owns became an intention, or an intention a module ships covers what no patch can express. Follow the executor protocol of spec 065:
 
 1. Read this checklist, then each intention below in order.
 2. For each one, propose apply or skip, citing what you see in the project, and wait for the human's confirmation before any edit or record.
 3. One confirmed intention at a time. Read the target file first and make the smallest change that closes its Observable Gaps; never retype from memory.
 4. Run the intention's Validation, then the project's \`typecheck\`, \`test\` and \`check\`.
-5. \`bg record <id>\` (or \`bg record <id> --skip "<reason>"\`), and one commit per intention.
+5. \`${PROJECT_RUNNER} record <id>\` (or \`${PROJECT_RUNNER} record <id> --skip "<reason>"\`), and one commit per intention.
 6. Stop and write \`blocked.md\` beside this file when a validation fails or a decision is not confirmed; do not record.
 
 ## Checklist
@@ -132,7 +133,7 @@ export async function stagePendingIntentions(
       last += 1;
       if (last > 99) {
         throw new Error(
-          `${ADD_DIR} already holds 99 intentions: resolve some with bg record first`,
+          `${ADD_DIR} already holds 99 intentions: resolve some with ${cliRunner()} record first`,
         );
       }
       file = `${ADD_DIR}/${String(last).padStart(2, "0")}-${intention.id.split("/").at(-1)}.md`;

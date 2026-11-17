@@ -45,7 +45,7 @@ One semver versions **the whole platform** together:
 | Surface              | How it carries the version                                                           |
 | -------------------- | ------------------------------------------------------------------------------------ |
 | Git                  | Annotated tag `vX.Y.Z`                                                               |
-| npm                  | `create-bonne-garde@X.Y.Z` (and matching workspace package versions)                 |
+| npm                  | `bonne-garde@X.Y.Z` (and matching workspace package versions)                        |
 | Base template        | Embedded in that tarball ([010](./010-base-template.md))                             |
 | UI registry          | Resolved from the same tag ([030](./030-ui-registry.md))                             |
 | Module registry      | Resolved from the same tag ([035](./035-module-registry.md))                         |
@@ -56,7 +56,7 @@ One semver versions **the whole platform** together:
 - All five surfaces MUST live in one repository ([000](./000-product.md)). Two repositories would mean two tags for one platform state.
 - MUST NOT publish CLI / tag git / ship catalog changes as independent drifting versions.
 - A module's own `version` field is informational; the lockstep semver recorded in `bg.json` is authoritative.
-- `bg create` MUST write `platform.version` (and default registry pin) to the **same** `X.Y.Z` as the running CLI package — never a mutable branch (`main`).
+- `bonne-garde create` MUST write `platform.version` (and default registry pin) to the **same** `X.Y.Z` as the running CLI package — never a mutable branch (`main`).
 - Release/fixture tests MUST NOT silently install from `main`.
 - Changelog MUST list version bumps and SHOULD list new/changed items, modules, and intention ids for that release.
 
@@ -72,9 +72,9 @@ Pipeline shape:
 
 ## Publish (CLI package)
 
-- CLI published to npm as **`create-bonne-garde`** via `bun run pack:cli` then `bun publish --cwd dist/npm/create-bonne-garde`.
-- `bun create bonne-garde@latest` resolves that package; bins include `create-bonne-garde` and `bg`.
-- The published tarball MUST embed `templates/base` and vendor schema/registry (no `workspace:` deps).
+- CLI published to npm as **`bonne-garde`** via `bun run pack:cli` then `bun publish --cwd dist/npm/bonne-garde`.
+- `bunx bonne-garde create my-app` resolves that package, as do `npx`, `pnpm dlx` and `yarn dlx`; its one bin is `bonne-garde`.
+- The published tarball MUST be JavaScript that runs on Node ≥ 22.12 and on Bun (Node never strips types inside `node_modules`): one bundled bin file, with `templates/base` embedded, schema and registry vendored into the bundle (no `workspace:` deps), and the npm dependencies the bundle imports declared, pinned to an exact version. Golden runs the packed bin with `node`, and CI has a Node of that floor.
 - Registry items pinable by git tag/commit for remote installs (`github:Netoun/bonne-garde-toolkit`).
 - Dry-run: `bun run publish:cli:dry`.
 
@@ -84,4 +84,4 @@ Pipeline shape:
 - Contract suite fails if any `registry.json` is invalid against the shadcn schema, or any `module.json` has an unknown category or an ambiguous `match` set.
 - Every patch type has an idempotency test.
 - Smoke: create + add of the MVP set succeeds in a temp directory with `--yes --no-install` and no TTY.
-- A tagged release `vX.Y.Z` implies npm `create-bonne-garde@X.Y.Z` and matching template / catalogs / intentions for that tag.
+- A tagged release `vX.Y.Z` implies npm `bonne-garde@X.Y.Z` and matching template / catalogs / intentions for that tag.

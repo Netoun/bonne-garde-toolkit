@@ -83,7 +83,7 @@ describe("dev/portless is the launcher of the apps' named HTTPS URLs (035, 060)"
         devDependencies: { portless: "0.15.6" },
       },
     ]);
-    // Regions are what golden's PATCHED names and `bg remove` deletes.
+    // Regions are what golden's PATCHED names and `bonne-garde remove` deletes.
     const regions = plannedPatches("dev/portless", variant, "@app").flatMap((patch) =>
       patchRegions(patch).map(({ region }) => region),
     );

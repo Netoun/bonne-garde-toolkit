@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { createEmptyProjectManifest, type ProjectManifest } from "@bonne-garde/schema";
+import { cliRunner, createEmptyProjectManifest, type ProjectManifest } from "@bonne-garde/schema";
 import { PlanError, resolveInstallPlan, searchCatalog } from "./resolve-plan";
 import type { RegistryCatalog } from "./types";
+
+/** The command a refusal prints is prefixed by the runner of the package manager that runs the tests. */
+const ADD = `${cliRunner()} add`;
 
 const catalog: RegistryCatalog = {
   name: "bg",
@@ -141,11 +144,11 @@ describe("resolveInstallPlan", () => {
 });
 
 describe("resolveInstallPlan: an item that lands in packages/ui needs the ui module (030)", () => {
-  test("`bg add button` in a fresh project fails, naming ui/shadcn and the command to run", () => {
+  test("`bonne-garde add button` in a fresh project fails, naming ui/shadcn and the command to run", () => {
     const message = failure(() => resolveInstallPlan(catalog, ["button"], project()));
 
     expect(message).toBe(
-      "button needs the ui module, and none is installed or named in this call; run: bg add ui/shadcn button",
+      `button needs the ui module, and none is installed or named in this call; run: ${ADD} ui/shadcn button`,
     );
   });
 
@@ -168,7 +171,7 @@ describe("resolveInstallPlan: an item that lands in packages/ui needs the ui mod
     };
 
     expect(failure(() => resolveInstallPlan(withModule, ["card"], project()))).toContain(
-      "bg add ui/shadcn card",
+      `${ADD} ui/shadcn card`,
     );
   });
 
@@ -194,7 +197,7 @@ describe("resolveInstallPlan: an item that lands in packages/ui needs the ui mod
     const message = failure(() => resolveInstallPlan(catalog, ["shell"], project()));
 
     expect(message).toStartWith("shell needs the ui module");
-    expect(message).toEndWith("bg add ui/shadcn shell");
+    expect(message).toEndWith(`${ADD} ui/shadcn shell`);
   });
 
   test("an item with no file under packages/ui, and none in its dependencies, needs nothing", () => {
@@ -212,7 +215,7 @@ describe("resolveInstallPlan: an item that lands in packages/ui needs the ui mod
     );
 
     expect(message).toBe(
-      "button, card need the ui module, and none is installed or named in this call; run: bg add ui/shadcn config button card",
+      `button, card need the ui module, and none is installed or named in this call; run: ${ADD} ui/shadcn config button card`,
     );
   });
 
@@ -319,7 +322,7 @@ describe("resolveInstallPlan: an item names the modules it needs, in meta.needsM
     );
 
     expect(message).toBe(
-      "sign-in needs the auth and web/spa modules, and none is installed or named in this call; run: bg add auth/better-auth web/spa sign-in",
+      `sign-in needs the auth and web/spa modules, and none is installed or named in this call; run: ${ADD} auth/better-auth web/spa sign-in`,
     );
   });
 
@@ -327,7 +330,7 @@ describe("resolveInstallPlan: an item names the modules it needs, in meta.needsM
     const message = failure(() => resolveInstallPlan(FEATURE_ITEMS, ["sign-in"], project()));
 
     expect(message).toBe(
-      "sign-in needs the ui, auth and web/spa modules, and none is installed or named in this call; run: bg add ui/shadcn auth/better-auth web/spa sign-in",
+      `sign-in needs the ui, auth and web/spa modules, and none is installed or named in this call; run: ${ADD} ui/shadcn auth/better-auth web/spa sign-in`,
     );
   });
 
@@ -341,7 +344,7 @@ describe("resolveInstallPlan: an item names the modules it needs, in meta.needsM
         ),
       ),
     ).toBe(
-      "uploads needs the storage module, and none is installed or named in this call; run: bg add storage/r2 uploads",
+      `uploads needs the storage module, and none is installed or named in this call; run: ${ADD} storage/r2 uploads`,
     );
   });
 
@@ -365,7 +368,7 @@ describe("resolveInstallPlan: an item names the modules it needs, in meta.needsM
     expect(
       failure(() => resolveInstallPlan(withModules, ["uploads"], projectWith({ ui: true }))),
     ).toBe(
-      "uploads needs the auth, storage and web/spa modules, and none is installed or named in this call; run: bg add auth/better-auth or auth/lucia storage/s3 web/spa uploads",
+      `uploads needs the auth, storage and web/spa modules, and none is installed or named in this call; run: ${ADD} auth/better-auth or auth/lucia storage/s3 web/spa uploads`,
     );
   });
 
@@ -402,7 +405,7 @@ describe("resolveInstallPlan: an item names the modules it needs, in meta.needsM
         ),
       ),
     ).toBe(
-      "sign-in needs the web/spa module, and none is installed or named in this call; run: bg add web/spa sign-in",
+      `sign-in needs the web/spa module, and none is installed or named in this call; run: ${ADD} web/spa sign-in`,
     );
     expect(
       failure(() =>
@@ -429,7 +432,7 @@ describe("resolveInstallPlan: an item names the modules it needs, in meta.needsM
     );
 
     expect(message).toBe(
-      "button, sign-in need the ui, auth and web/spa modules, and none is installed or named in this call; run: bg add ui/shadcn auth/better-auth web/spa config button sign-in",
+      `button, sign-in need the ui, auth and web/spa modules, and none is installed or named in this call; run: ${ADD} ui/shadcn auth/better-auth web/spa config button sign-in`,
     );
   });
 

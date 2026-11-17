@@ -1,7 +1,12 @@
 import { cp, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
-import { createEmptyProjectManifest, DEFAULT_PLATFORM_REMOTE } from "@bonne-garde/schema";
+import {
+  cliRunner,
+  createEmptyProjectManifest,
+  DEFAULT_PLATFORM_REMOTE,
+} from "@bonne-garde/schema";
 import { defaultRegistrySource, platformPackageVersion, templateBaseDir } from "./paths";
+import { BUN_MISSING, bunInstall, runCommand } from "./run-command";
 
 export type CreateOptions = {
   name: string;
@@ -65,7 +70,7 @@ async function replaceInFile(path: string, replacements: Record<string, string>)
 export async function createProject(options: CreateOptions): Promise<string> {
   const cwd = options.cwd ?? process.cwd();
   // The project is named after the directory it lands in, never after the path that led there:
-  // `bg create /tmp/work/my-app` is `my-app`, and `bg create .` is the current directory's name.
+  // `bonne-garde create /tmp/work/my-app` is `my-app`, and `bonne-garde create .` is the current directory's name.
   const target = resolve(cwd, options.name);
   const displayName = basename(target);
   const slug = slugify(displayName);
@@ -76,7 +81,7 @@ export async function createProject(options: CreateOptions): Promise<string> {
   if (scope.length > MAX_SCOPE_LENGTH) {
     throw new Error(
       `scope ${scope} is ${scope.length} characters and at most ${MAX_SCOPE_LENGTH} are accepted, ` +
-        `so that the files \`bg add\` copies stay formatted: pass a shorter one, bg create ${options.name} --scope @name`,
+        `so that the files \`bonne-garde add\` copies stay formatted: pass a shorter one, ${cliRunner()} create ${options.name} --scope @name`,
     );
   }
   await assertEmptyTarget(target);
@@ -114,19 +119,13 @@ export async function createProject(options: CreateOptions): Promise<string> {
   await writeFile(join(target, "bg.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 
   if (options.git !== false) {
-    const proc = Bun.spawn(["git", "init"], { cwd: target, stdout: "ignore", stderr: "pipe" });
-    await proc.exited;
+    // Best effort: a project without a repository is still a project.
+    await runCommand("git", ["init"], { cwd: target, stdio: "ignore" });
   }
 
   if (options.install !== false) {
-    const proc = Bun.spawn(["bun", "install"], {
-      cwd: target,
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-    const code = await proc.exited;
-    if (code !== 0) {
-      throw new Error("bun install failed");
+    if ((await bunInstall(target, "bun install failed")) === "bun-missing") {
+      throw new Error(BUN_MISSING);
     }
   }
 

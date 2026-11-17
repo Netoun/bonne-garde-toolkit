@@ -12,7 +12,7 @@ requires:
 
 ## Filename
 
-Name the file `NN-slug.md`, where `NN` is a zero-padded execution-order prefix (`00`, `01`, `02`, …). Filename sort order within a release directory **is** the execution order. The frontmatter `id:` never carries the `NN-` prefix. `bg intentions lint` validates every `requires:` entry against this order.
+Name the file `NN-slug.md`, where `NN` is a zero-padded execution-order prefix (`00`, `01`, `02`, …). Filename sort order within a release directory **is** the execution order. The frontmatter `id:` never carries the `NN-` prefix. `bonne-garde intentions lint` validates every `requires:` entry against this order.
 
 ## Metadata
 
@@ -43,5 +43,5 @@ Name the file `NN-slug.md`, where `NN` is a zero-padded execution-order prefix (
 
 ## Record Result
 
-- Applied → `bg record <id>`
-- Skipped → `bg record <id> --skip "…"`
+- Applied → `bunx bonne-garde record <id>`
+- Skipped → `bunx bonne-garde record <id> --skip "…"`

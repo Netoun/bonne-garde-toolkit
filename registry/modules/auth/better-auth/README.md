@@ -5,7 +5,7 @@ reset, and organizations. It is the legacy `apps/api/src/modules/auth` extracted
 `packages/auth`, which `apps/api` mounts.
 
 ```bash
-bunx bg add provider/cloudflare config/branding api/elysia db/d1 orm/drizzle auth/better-auth
+bunx bonne-garde add provider/cloudflare config/branding api/elysia db/d1 orm/drizzle auth/better-auth
 ```
 
 ## Peers and variant
@@ -20,7 +20,7 @@ bunx bg add provider/cloudflare config/branding api/elysia db/d1 orm/drizzle aut
 One variant, `default`. It is Cloudflare-only today, through `db/d1`: a project on the `dockerfile`
 provider has no `db` module, so it cannot install auth until one exists.
 
-`bg add better-auth` in a project with no `orm` fails with
+`bunx bonne-garde add better-auth` in a project with no `orm` fails with
 `auth/better-auth needs a module in category orm (drizzle) and none is installed`, before anything is
 written. Golden checks that with the packed CLI, and the contract test checks the planner.
 

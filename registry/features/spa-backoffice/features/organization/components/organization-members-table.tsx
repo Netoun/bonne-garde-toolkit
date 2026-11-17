@@ -17,7 +17,7 @@ import {
 } from "@acme/ui/components/table";
 import { Button } from "@acme/ui/components/button";
 import { Badge } from "@acme/ui/components/badge";
-// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { Avatar, AvatarFallback, AvatarImage } from "@acme/ui/components/avatar";
 import type { OrganizationMember } from "../hooks/use-organization";

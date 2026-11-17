@@ -13,7 +13,7 @@ import {
   type SeedDatabase,
 } from "./seed";
 import { createTestAuth } from "./testing";
-// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { resetStatements } from "{{SCOPE}}/db/reset";
 

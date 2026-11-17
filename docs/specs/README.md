@@ -10,8 +10,8 @@ Normative specs for the composable full-stack application platform.
 | [020-project-manifest.md](./020-project-manifest.md)               | `bg.json` (v2)                                                           |
 | [030-ui-registry.md](./030-ui-registry.md)                         | shadcn UI catalog — tier 1 only                                          |
 | [035-module-registry.md](./035-module-registry.md)                 | Native module catalog — categories, peers, variants                      |
-| [040-cli-create.md](./040-cli-create.md)                           | `bg create`                                                              |
-| [050-cli-add.md](./050-cli-add.md)                                 | `bg add` / list / search / view / doctor / remove                        |
+| [040-cli-create.md](./040-cli-create.md)                           | `bonne-garde create`                                                     |
+| [050-cli-add.md](./050-cli-add.md)                                 | `bonne-garde add` / list / search / view / doctor / remove               |
 | [060-patches-and-regions.md](./060-patches-and-regions.md)         | Tier 2 — patch catalog, region ownership, checksums                      |
 | [065-intentions.md](./065-intentions.md)                           | Tier 3 — shared intention format for install **and** upgrade             |
 | [070-testing-and-release.md](./070-testing-and-release.md)         | Tests, lockstep release, publish                                         |

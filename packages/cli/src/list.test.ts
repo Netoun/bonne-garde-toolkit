@@ -21,8 +21,8 @@ afterEach(async () => {
   await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-/** The real `bg` entry, run in a directory that is not a project, as `bg list --source` allows. */
-async function runBg(...args: string[]) {
+/** The real `bonne-garde` entry, run in a directory that is not a project, as `bonne-garde list --source` allows. */
+async function runBonneGarde(...args: string[]) {
   const cwd = await mkdtemp(join(tmpdir(), "bg-list-"));
   dirs.push(cwd);
   const proc = Bun.spawn(["bun", join(REGISTRY_DIR, "../packages/cli/src/bin.ts"), ...args], {
@@ -40,7 +40,7 @@ async function runBg(...args: string[]) {
 
 const registry = () => loadLocalRegistry(join(REGISTRY_DIR, "registry.json"));
 
-/** What `bg list` printed before it knew modules: `name<TAB>type<TAB>description`, registry order. */
+/** What `bonne-garde list` printed before it knew modules: `name<TAB>type<TAB>description`, registry order. */
 async function itemLines(): Promise<string[]> {
   return (await registry()).items.map(
     (item) => `${item.name}\t${item.type}\t${item.description ?? ""}`,
@@ -59,9 +59,9 @@ function inCategoryOrder(modules: RegistryModule[]): RegistryModule[] {
 const moduleLine = ({ manifest }: RegistryModule) =>
   `${manifest.category}/${manifest.id}\tmodule\t${manifest.description}`;
 
-describe("bg list", () => {
-  test("--items prints the items exactly as bg list did before modules", async () => {
-    const { stdout, stderr, code } = await runBg("list", "--items", "--source", LOCAL);
+describe("bonne-garde list", () => {
+  test("--items prints the items exactly as bonne-garde list did before modules", async () => {
+    const { stdout, stderr, code } = await runBonneGarde("list", "--items", "--source", LOCAL);
 
     expect(code).toBe(0);
     expect(stderr).toBe("");
@@ -70,7 +70,7 @@ describe("bg list", () => {
   });
 
   test("prints the items, then the modules as <category>/<id> in category order", async () => {
-    const { stdout, stderr, code } = await runBg("list", "--source", LOCAL);
+    const { stdout, stderr, code } = await runBonneGarde("list", "--source", LOCAL);
 
     const modules = inCategoryOrder((await registry()).modules);
     expect(code).toBe(0);
@@ -84,7 +84,13 @@ describe("bg list", () => {
   });
 
   test("--category prints the modules of that category and no item", async () => {
-    const { stdout, code } = await runBg("list", "--category", "provider", "--source", LOCAL);
+    const { stdout, code } = await runBonneGarde(
+      "list",
+      "--category",
+      "provider",
+      "--source",
+      LOCAL,
+    );
 
     const providers = inCategoryOrder((await registry()).modules).filter(
       ({ manifest }) => manifest.category === "provider",
@@ -95,14 +101,26 @@ describe("bg list", () => {
   });
 
   test("--category with no module in it prints nothing and exits 0", async () => {
-    const { stdout, code } = await runBg("list", "--category", "payments", "--source", LOCAL);
+    const { stdout, code } = await runBonneGarde(
+      "list",
+      "--category",
+      "payments",
+      "--source",
+      LOCAL,
+    );
 
     expect(code).toBe(0);
     expect(stdout).toBe("");
   });
 
   test("an unknown category fails and names the ones that exist", async () => {
-    const { stdout, stderr, code } = await runBg("list", "--category", "tools", "--source", LOCAL);
+    const { stdout, stderr, code } = await runBonneGarde(
+      "list",
+      "--category",
+      "tools",
+      "--source",
+      LOCAL,
+    );
 
     expect(code).toBe(1);
     expect(stdout).toBe("");
@@ -113,7 +131,7 @@ describe("bg list", () => {
   });
 
   test("--items with --category fails: an item has no category", async () => {
-    const { stdout, stderr, code } = await runBg(
+    const { stdout, stderr, code } = await runBonneGarde(
       "list",
       "--items",
       "--category",
@@ -129,7 +147,7 @@ describe("bg list", () => {
   });
 
   test("an argument it does not know fails, so a typo cannot list everything", async () => {
-    const { stdout, stderr, code } = await runBg("list", "--itmes", "--source", LOCAL);
+    const { stdout, stderr, code } = await runBonneGarde("list", "--itmes", "--source", LOCAL);
 
     expect(code).toBe(1);
     expect(stdout).toBe("");
@@ -137,14 +155,14 @@ describe("bg list", () => {
   });
 
   test("--category without a value fails", async () => {
-    const { stderr, code } = await runBg("list", "--source", LOCAL, "--category");
+    const { stderr, code } = await runBonneGarde("list", "--source", LOCAL, "--category");
 
     expect(code).toBe(1);
     expect(stderr).toContain("missing value for --category");
   });
 });
 
-describe("bg list from a github source", () => {
+describe("bonne-garde list from a github source", () => {
   function serve(): GithubRawServer {
     const server = serveGithubRaw({
       registryDir: REGISTRY_DIR,
@@ -166,7 +184,7 @@ describe("bg list from a github source", () => {
     expect(notes).toHaveLength(1);
     expect(notes[0]).toContain("github:acme/bg@main");
     expect(notes[0]).toContain("modules");
-    expect(notes[0]).toContain("bg add <category>/<id>");
+    expect(notes[0]).toContain("bonne-garde add <category>/<id>");
   });
 
   test("--items says nothing about modules, since it did not ask for any", async () => {

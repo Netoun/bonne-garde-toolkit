@@ -7,7 +7,7 @@ arrive as items ([030](../../../../docs/specs/030-ui-registry.md)). Extracted fr
 `spa-react-router` item.
 
 ```bash
-bunx bg add web/spa
+bunx bonne-garde add web/spa
 ```
 
 ## Peers and variants
@@ -47,7 +47,7 @@ Everything under `apps/spa`, which is its home (035):
   `src/hooks/{use-init-theme,use-load-app}.ts`, `src/components/{app-loader,client-only}.tsx`.
 - `testing/{frontend.setup.ts,matchers.d.ts}`: the Vitest setup, with the `jest-dom` matchers.
 - `wrangler.jsonc` on `cloudflare`, a Pages config: `my-app-spa` and the `*.my-app.com` URLs are the
-  legacy app's placeholders, replaced by hand. `bg add` renders `{{SCOPE}}` and nothing else.
+  legacy app's placeholders, replaced by hand. `bonne-garde add` renders `{{SCOPE}}` and nothing else.
 
 `env` adds `VITE_API_URL` to `.env.example`. `bun run test` runs `features/home/pages/home-page.test.tsx`
 and `routes.test.ts`, which holds for whatever features are installed (below).
@@ -58,7 +58,7 @@ A feature item ([030](../../../../docs/specs/030-ui-registry.md)) ships `src/fea
 default export of route entries (`route`, `index`, `layout` from `@react-router/dev/routes`), with
 paths relative to `src`. `src/routes.ts` globs `./features/*/routes.ts` and composes every one, so
 adding a feature adds its pages and `routes.ts` is not edited, not by the item and not by you. This is
-why `routes.ts` carries no region and `bg doctor` has nothing to say about it.
+why `routes.ts` carries no region and `bonne-garde doctor` has nothing to say about it.
 
 - **The index route.** The shell's `home-page.tsx` is the index until a fragment declares an `index`, which
   replaces it: `spa-backoffice` takes `/` for its redirect to the dashboard. The home page stays on disk,
@@ -102,5 +102,5 @@ why `routes.ts` carries no region and `bg doctor` has nothing to say about it.
 `button` and `dropdown-menu` items, and a module never depends on an item: a `dockerfile` project
 installs no item, so it would not typecheck. It is `spa-auth`'s. The dependencies of those files
 (`better-auth`, `zod`, `react-hook-form`, the TanStack form, table, virtual and pacer packages, and
-`{{SCOPE}}/auth`) are the items' too: `bg add` writes each into `apps/spa/package.json`
+`{{SCOPE}}/auth`) are the items' too: `bonne-garde add` writes each into `apps/spa/package.json`
 ([030](../../../../docs/specs/030-ui-registry.md)), and this module pins none of them.

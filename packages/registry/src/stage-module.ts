@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import picomatch from "picomatch";
 import type { FileRecord, ProjectManifest } from "@bonne-garde/schema";
 import { ApplyError } from "./apply-error";
 import { isMissing, readDisk } from "./disk";
@@ -120,7 +121,7 @@ async function assertWorkspaceCovered(projectRoot: string, plan: ModulePlan): Pr
   }
   const globs = await rootWorkspaces(projectRoot);
   const path = plan.workspace;
-  if (!globs.some((glob) => new Bun.Glob(glob).match(path))) {
+  if (!globs.some((glob) => picomatch(glob, { dot: true })(path))) {
     throw new ApplyError(
       `${plan.key}: workspace ${path} is not covered by the workspaces of package.json ` +
         `(${globs.length > 0 ? globs.join(", ") : "none"}): registering it is a workspace.add patch, which is not supported yet`,

@@ -6,7 +6,7 @@ upload with its author and organization, and delete with an ownership check. It 
 `packages/storage`, which `apps/api` mounts.
 
 ```bash
-bunx bg add provider/cloudflare config/branding api/elysia db/d1 orm/drizzle auth/better-auth storage/r2
+bunx bonne-garde add provider/cloudflare config/branding api/elysia db/d1 orm/drizzle auth/better-auth storage/r2
 ```
 
 ## Peers and variant
@@ -20,7 +20,7 @@ bunx bg add provider/cloudflare config/branding api/elysia db/d1 orm/drizzle aut
 
 One variant, `cloudflare`, selected on the provider (035: `storage` MUST declare `peers.provider`). A
 project on the `dockerfile` provider has no R2 bucket and no `db`, so it cannot install this module:
-`bg add storage/r2` there is refused with `storage/r2 accepts only cloudflare for provider, but
+`bunx bonne-garde add storage/r2` there is refused with `storage/r2 accepts only cloudflare for provider, but
 provider/dockerfile is present`.
 
 **It names no `api` peer.** No source of the package reaches the shell's `lib/*`, and a project that can
@@ -91,7 +91,7 @@ The default environment has no `R2_PUBLIC_URL`: a value there would win over the
 development (see [Environment](#environment)).
 
 `my-app-media` and `api.my-app.com` are the placeholders the other modules use for the project's names
-(`bg add` renders `{{SCOPE}}` and nothing else): replace them by hand. The bucket itself is created with
+(`bonne-garde add` renders `{{SCOPE}}` and nothing else): replace them by hand. The bucket itself is created with
 `bunx wrangler r2 bucket create <name>`; `wrangler dev` runs against a local one.
 
 ## Environment

@@ -14,6 +14,7 @@ import {
 } from "@bonne-garde/registry";
 import { stagePendingIntentions, type StagedAdd } from "./intentions/stage-add";
 import { defaultSource, loadManifest } from "./manifest-file";
+import { bunInstall } from "./run-command";
 
 /**
  * How a github source is read. A caller that does not say gets GitHub raw, with `GITHUB_TOKEN` when
@@ -133,21 +134,13 @@ export async function addItems(options: AddOptions) {
     (module) =>
       Object.keys(module.dependencies).length + Object.keys(module.devDependencies).length > 0,
   );
-  if (
+  // No Bun to install with is not a failed add: the files are written, and what the add did is still
+  // reported. The caller says so and exits non-zero.
+  const bunMissing =
     !dryRun &&
     options.install !== false &&
-    (plan.npmDependencies.length + plan.npmDevDependencies.length > 0 || modulesNeedInstall)
-  ) {
-    const proc = Bun.spawn(["bun", "install"], {
-      cwd: projectRoot,
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-    const code = await proc.exited;
-    if (code !== 0) {
-      throw new Error("bun install failed after add");
-    }
-  }
+    (plan.npmDependencies.length + plan.npmDevDependencies.length > 0 || modulesNeedInstall) &&
+    (await bunInstall(projectRoot, "bun install failed after add")) === "bun-missing";
 
   // 050 step 14: what the failed patches became is staged for whoever resolves it. `.bg/` is scratch,
   // outside the all-or-nothing apply, and a dry run writes nothing.
@@ -163,5 +156,5 @@ export async function addItems(options: AddOptions) {
     ? null
     : await stagePendingIntentions(projectRoot, [...result.pending, ...result.authored], resolved);
 
-  return { plan, modulePlans, result, migratedFrom, staged, reselected };
+  return { plan, modulePlans, result, migratedFrom, staged, reselected, bunMissing };
 }

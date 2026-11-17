@@ -16,5 +16,5 @@ migrations/
 Validate with:
 
 ```bash
-bun run bg -- intentions lint
+bun run bonne-garde -- intentions lint
 ```

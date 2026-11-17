@@ -1777,7 +1777,7 @@ describe("applyInstallPlan: a failed patch becomes a pending intention (060 Degr
     }
   });
 
-  test("once the patch applies the failure and its intention leave the record, which `bg record` closed or not", async () => {
+  test("once the patch applies the failure and its intention leave the record, which `bonne-garde record` closed or not", async () => {
     const { projectRoot, manifest } = await freshProject({});
     const first = await install(projectRoot, manifest, [auth()]);
     await mkdir(join(projectRoot, "apps/api/src"), { recursive: true });
@@ -1845,7 +1845,7 @@ describe("a file another module's intention edited (060: an intent[<id>] region 
       patches: [],
     });
 
-  /** auth installed, its mailer.ts edited by email's intention, and `bg record` having marked the file. */
+  /** auth installed, its mailer.ts edited by email's intention, and `bonne-garde record` having marked the file. */
   async function recorded(marked = true) {
     const { projectRoot, manifest } = await freshProject({});
     const first = await install(projectRoot, manifest, [auth()]);

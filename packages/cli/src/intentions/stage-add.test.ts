@@ -81,8 +81,8 @@ describe("the intention a failed patch becomes (065)", () => {
       "- elysia[app].use[authModule] of apps/api/src/app.ts is .use(authModule)",
     );
     expect(document).toContain("cd apps/api && bun run typecheck && bun run test");
-    expect(document).toContain(`bg record ${ID}`);
-    expect(document).toContain(`bg record ${ID} --skip "<reason>"`);
+    expect(document).toContain(`bonne-garde record ${ID}`);
+    expect(document).toContain(`bonne-garde record ${ID} --skip "<reason>"`);
   });
 
   test("is the same text every time, so staging twice changes no byte", () => {

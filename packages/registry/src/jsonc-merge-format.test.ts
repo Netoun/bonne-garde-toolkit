@@ -6,7 +6,7 @@ import { jsoncLeaves, setJsoncLeaves } from "./jsonc-merge";
 
 /**
  * 060: what a patch writes is what the project's formatter writes, or `bun run check` fails right
- * after `bg add` and fixing it by hand makes `doctor` report the file as edited. Each case patches
+ * after `bonne-garde add` and fixing it by hand makes `doctor` report the file as edited. Each case patches
  * a file the way a module will and hands the result to `vp fmt`.
  */
 

@@ -1,5 +1,10 @@
 import { join } from "node:path";
-import { isModuleCategory, type ModuleCategory, type ProjectManifest } from "@bonne-garde/schema";
+import {
+  cliRunner,
+  isModuleCategory,
+  type ModuleCategory,
+  type ProjectManifest,
+} from "@bonne-garde/schema";
 import type { ModuleRef } from "./module-plan";
 import type { RegistryCatalog, RegistryFile, RegistryItem } from "./types";
 import { utf8Text } from "./utf8";
@@ -141,7 +146,7 @@ function missingModules(
       : (labels[0] ?? "");
   const noun = labels.length > 1 ? "modules" : "module";
   return new PlanError(
-    `${asked.join(", ")} ${verb} the ${list} ${noun}, and none is installed or named in this call; run: bg add ${[...hosts, ...named, ...requested].join(" ")}`,
+    `${asked.join(", ")} ${verb} the ${list} ${noun}, and none is installed or named in this call; run: ${cliRunner()} add ${[...hosts, ...named, ...requested].join(" ")}`,
   );
 }
 

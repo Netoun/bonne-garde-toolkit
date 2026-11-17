@@ -3,7 +3,7 @@ import { treaty } from "@elysiajs/eden";
 import { eq } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { Miniflare } from "miniflare";
-// `bg add` rewrites the scope in these lines, so the formatter cannot know how wide they are.
+// `bonne-garde add` rewrites the scope in these lines, so the formatter cannot know how wide they are.
 // oxfmt-ignore
 import { authMacroPlugin } from "{{SCOPE}}/auth";
 // oxfmt-ignore

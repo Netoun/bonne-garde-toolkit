@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { loadLocalRegistry, patchRegions, plannedPatches } from "../packages/registry/src/index";
+import { cliRunner } from "../packages/schema/src/cli-runner";
 import { sha256Hex } from "../packages/registry/src/index";
 import {
   addArguments,
@@ -146,7 +147,7 @@ describe("selectItems", () => {
     expect(() => selectItems(LISTING, { ghost: "was removed" })).toThrow(/ghost/);
   });
 
-  test("fails when the listing is empty, so a broken `bg list` is not a green run", () => {
+  test("fails when the listing is empty, so a broken `bonne-garde list` is not a green run", () => {
     expect(() => selectItems("\n", {})).toThrow(/no items/);
   });
 
@@ -230,7 +231,7 @@ describe("selectModules", () => {
     "provider/dockerfile": "one provider per project",
   };
 
-  test("takes the module lines of `bg list` and skips the items", () => {
+  test("takes the module lines of `bonne-garde list` and skips the items", () => {
     expect(selectModules(FULL_LISTING, ["tooling/vite-plus"], exclusions)).toEqual({
       modules: ["tooling/vite-plus"],
       excluded: [
@@ -240,7 +241,7 @@ describe("selectModules", () => {
     });
   });
 
-  test("installs the modules in the order it was given, not the order `bg list` printed", () => {
+  test("installs the modules in the order it was given, not the order `bonne-garde list` printed", () => {
     const { modules } = selectModules(FULL_LISTING, ["tooling/vite-plus", "provider/cloudflare"], {
       "provider/dockerfile": "one provider per project",
     });
@@ -253,7 +254,7 @@ describe("selectModules", () => {
     ).toThrow(/provider\/dockerfile.*install.*exclude/s);
   });
 
-  test("fails on an installed module that `bg list` does not show", () => {
+  test("fails on an installed module that `bonne-garde list` does not show", () => {
     expect(() =>
       selectModules(FULL_LISTING, ["tooling/vite-plus", "tooling/ghost"], exclusions),
     ).toThrow(/tooling\/ghost/);
@@ -271,7 +272,7 @@ describe("selectModules", () => {
     ).toThrow(/provider\/cloudflare.*both/s);
   });
 
-  test("fails when nothing is installed, so a broken `bg list` is not a green run", () => {
+  test("fails when nothing is installed, so a broken `bonne-garde list` is not a green run", () => {
     expect(() => selectModules(LISTING, [], {})).toThrow(/no modules/);
   });
 });
@@ -294,12 +295,12 @@ describe("readAddedModules", () => {
     ]);
   });
 
-  test("fails when `bg add` did not report a module golden asked for", () => {
+  test("fails when `bonne-garde add` did not report a module golden asked for", () => {
     expect(() => readAddedModules(output, ["tooling/vite-plus", "db/d1"])).toThrow(/db\/d1/);
   });
 
-  test("fails on output that is not the JSON `bg add` prints", () => {
-    expect(() => readAddedModules("not json", [])).toThrow(/bg add/);
+  test("fails on output that is not the JSON `bonne-garde add` prints", () => {
+    expect(() => readAddedModules("not json", [])).toThrow(/bonne-garde add/);
     expect(() => readAddedModules("{}", [])).toThrow(/modules/);
     expect(() => readAddedModules('{"modules":[{"module":"a/b","checks":[1]}]}', [])).toThrow(
       /checks/,
@@ -364,7 +365,7 @@ describe("the golden project and modules", () => {
     expect(CONFIGURATIONS.find(({ name }) => name === "dockerfile")?.items).toBe(false);
   });
 
-  test("no item golden installs shares its bare name with a module: `bg add` refuses a name that is both", async () => {
+  test("no item golden installs shares its bare name with a module: `bonne-garde add` refuses a name that is both", async () => {
     const catalog = await loadLocalRegistry(
       join(resolve(import.meta.dir, ".."), "registry/registry.json"),
     );
@@ -378,7 +379,7 @@ describe("the golden project and modules", () => {
 });
 
 describe("addArguments", () => {
-  test("is one `bg add`: the modules, then every item, with --yes and --no-install", () => {
+  test("is one `bonne-garde add`: the modules, then every item, with --yes and --no-install", () => {
     expect(addArguments(["tooling/vite-plus", "ui/shadcn"], ["utils", "button"])).toEqual([
       "add",
       "tooling/vite-plus",
@@ -399,11 +400,11 @@ describe("addArguments", () => {
     expect(() => addArguments(["ui/shadcn"], ["ui/shadcn"])).toThrow(/ui\/shadcn/);
   });
 
-  test("fails with no module, so an empty `bg list` is not a green run", () => {
+  test("fails with no module, so an empty `bonne-garde list` is not a green run", () => {
     expect(() => addArguments([], ["button"])).toThrow(/no modules/);
   });
 
-  test("takes no items, for a configuration that installs modules only; selectItems refuses an empty `bg list`", () => {
+  test("takes no items, for a configuration that installs modules only; selectItems refuses an empty `bonne-garde list`", () => {
     expect(addArguments(["api/elysia"], [])).toEqual([
       "add",
       "api/elysia",
@@ -431,8 +432,9 @@ describe("addArguments", () => {
 });
 
 describe("expectRefusal", () => {
-  const stderr =
-    "button needs the ui module, and none is installed or named in this call; run: bg add ui/shadcn button\n";
+  // What the packed CLI prints is prefixed by the runner of the package manager that ran golden.
+  const ADD = `${cliRunner()} add`;
+  const stderr = `button needs the ui module, and none is installed or named in this call; run: ${ADD} ui/shadcn button\n`;
 
   test("passes when the add failed and the message gives the command that fixes it", () => {
     expect(() => expectRefusal({ code: 1, stderr }, "button", "ui/shadcn")).not.toThrow();
@@ -447,12 +449,11 @@ describe("expectRefusal", () => {
   test("fails when it was refused for another reason, and says what it printed", () => {
     expect(() =>
       expectRefusal({ code: 1, stderr: "unknown name: button\n" }, "button", "ui/shadcn"),
-    ).toThrow(/bg add ui\/shadcn button.*unknown name: button/s);
+    ).toThrow(/bonne-garde add ui\/shadcn button.*unknown name: button/s);
   });
 
   test("a feature item in a bare project is refused for every module it needs, named in one command (030)", () => {
-    const all =
-      "spa-auth needs the ui, auth and web/spa modules, and none is installed or named in this call; run: bg add ui/shadcn auth/better-auth web/spa spa-auth\n";
+    const all = `spa-auth needs the ui, auth and web/spa modules, and none is installed or named in this call; run: ${ADD} ui/shadcn auth/better-auth web/spa spa-auth\n`;
 
     expect(() =>
       expectRefusal(
@@ -465,20 +466,19 @@ describe("expectRefusal", () => {
     ).not.toThrow();
     // A fix that leaves a module out is not the fix.
     expect(() => expectRefusal({ code: 1, stderr: all }, "spa-auth", "ui/shadcn")).toThrow(
-      /bg add ui\/shadcn spa-auth/,
+      /bonne-garde add ui\/shadcn spa-auth/,
     );
   });
 
   test("a project missing one module is refused for that one alone", () => {
-    const storage =
-      "spa-backoffice needs the storage module, and none is installed or named in this call; run: bg add storage/r2 spa-backoffice\n";
+    const storage = `spa-backoffice needs the storage module, and none is installed or named in this call; run: ${ADD} storage/r2 spa-backoffice\n`;
 
     expect(() =>
       expectRefusal({ code: 1, stderr: storage }, "spa-backoffice", "storage/r2"),
     ).not.toThrow();
     expect(() =>
       expectRefusal({ code: 1, stderr: storage }, "spa-backoffice", "auth/better-auth"),
-    ).toThrow(/bg add auth\/better-auth spa-backoffice/);
+    ).toThrow(/bonne-garde add auth\/better-auth spa-backoffice/);
   });
 });
 
@@ -562,7 +562,7 @@ describe("readAddedModules: patches", () => {
     ]);
   });
 
-  test("fails on a patch that is not what `bg add` prints", () => {
+  test("fails on a patch that is not what `bonne-garde add` prints", () => {
     expect(() =>
       readAddedModules(
         JSON.stringify({ modules: [{ module: "a/b", patches: [{ type: 1 }] }] }),
@@ -643,7 +643,7 @@ describe("the golden project and patches", () => {
     );
 
     for (const { name, modules } of CONFIGURATIONS) {
-      // What `bg add` does: among the variants whose `match` the configuration satisfies, the most specific.
+      // What `bonne-garde add` does: among the variants whose `match` the configuration satisfies, the most specific.
       const regions: Record<string, string[]> = {};
       for (const { manifest } of catalog.modules) {
         if (!modules.includes(`${manifest.category}/${manifest.id}`)) {
@@ -722,7 +722,7 @@ describe("the golden project and patches", () => {
           "scripts.dev:portless",
         ],
         // The import into mailer.ts is the intention's: the file an intention edits is region-checked
-        // by the `intent[<id>]` region `bg record` leaves, not by a patch that imports for it.
+        // by the `intent[<id>]` region `bonne-garde record` leaves, not by a patch that imports for it.
         "email/resend": ["dependencies.@app/email"],
         "deploy/cloudflare-actions": ["scripts.deploy:cloudflare"],
       },
@@ -775,7 +775,7 @@ describe("diffTrees (a re-add leaves the project the same bytes)", () => {
   });
 });
 
-describe("expectRegionsRecorded (bg.json carries what `bg add` reported)", () => {
+describe("expectRegionsRecorded (bg.json carries what `bonne-garde add` reported)", () => {
   const added: AddedModule[] = [
     {
       module: "config/branding",
@@ -1844,7 +1844,7 @@ describe("the email phases", () => {
     expect(tests).toBeGreaterThanOrEqual(EMAIL_MIN_TESTS - 2);
   });
 
-  describe("PENDING (050 step 14: what `bg add` leaves for an executor, per configuration)", () => {
+  describe("PENDING (050 step 14: what `bonne-garde add` leaves for an executor, per configuration)", () => {
     test("is the intentions the selected variants ship, and golden knows how to resolve each", async () => {
       const root = resolve(import.meta.dir, "..");
       const catalog = await loadLocalRegistry(join(root, "registry/registry.json"));
@@ -1879,7 +1879,7 @@ describe("the email phases", () => {
   describe("readPendingIntentions", () => {
     const out = (pendingIntentions: unknown) => JSON.stringify({ modules: [], pendingIntentions });
 
-    test("reads the ids `bg add` printed, in order, and none when there are none", () => {
+    test("reads the ids `bonne-garde add` printed, in order, and none when there are none", () => {
       expect(readPendingIntentions(out([{ id: "a/b/c" }, { id: "a/b/d" }]))).toEqual([
         "a/b/c",
         "a/b/d",
@@ -1897,7 +1897,7 @@ describe("the email phases", () => {
   describe("readReselected", () => {
     const out = (reselected: unknown) => JSON.stringify({ modules: [], reselected });
 
-    test("reads the modules `bg add` planned again, with the variant each left and took, and none when there are none", () => {
+    test("reads the modules `bonne-garde add` planned again, with the variant each left and took, and none when there are none", () => {
       expect(
         readReselected(
           out([
@@ -2003,7 +2003,7 @@ describe("the email phases", () => {
     });
   });
 
-  describe("RESOLUTIONS (each names the file its edit lands in, whose region `bg record` leaves)", () => {
+  describe("RESOLUTIONS (each names the file its edit lands in, whose region `bonne-garde record` leaves)", () => {
     test("the wiring of email into auth edits auth's mailer.ts", () => {
       expect(RESOLUTIONS["email/resend/wire-email-into-auth"]).toMatchObject({
         module: "email/resend",
@@ -2013,7 +2013,7 @@ describe("the email phases", () => {
     });
   });
 
-  describe("the intent[<id>] region `bg record` leaves on a file an intention edited (060, 065)", () => {
+  describe("the intent[<id>] region `bonne-garde record` leaves on a file an intention edited (060, 065)", () => {
     const ID = "email/resend/wire-email-into-auth";
     const manifest = (regions: unknown) => ({ regions });
 
@@ -2072,7 +2072,7 @@ describe("the email phases", () => {
       );
     });
 
-    test("readKept reads the files `bg add` kept as the project has them, and expectKept names the one missing", () => {
+    test("readKept reads the files `bonne-garde add` kept as the project has them, and expectKept names the one missing", () => {
       const out = JSON.stringify({ kept: [MAILER_FILE] });
 
       expect(readKept(out)).toEqual([MAILER_FILE]);

@@ -6,7 +6,7 @@ import { authClient } from "@acme/spa/features/auth/lib/auth";
 import { Button } from "@acme/ui/components/button";
 import { Input } from "@acme/ui/components/input";
 import { Label } from "@acme/ui/components/label";
-// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { Alert, AlertDescription } from "@acme/ui/components/alert";
 import { loginSchema, type LoginSchema } from "../lib/validation";

@@ -2,7 +2,7 @@
 
 > Agents: start from [`AGENTS.md`](../AGENTS.md). General TDD rules → [`RULES.md`](./RULES.md#2-tdd--test-driven-development).
 >
-> The API and front sections describe the code the registry ships, in the paths of a project `bg` generated (`apps/api` from `api/elysia`, `apps/spa` from `web/spa`, `{{SCOPE}}` the project's npm scope). That code runs under `bun run golden`, not under this repository's `bun run test`.
+> The API and front sections describe the code the registry ships, in the paths of a project `bonne-garde` generated (`apps/api` from `api/elysia`, `apps/spa` from `web/spa`, `{{SCOPE}}` the project's npm scope). That code runs under `bun run golden`, not under this repository's `bun run test`.
 
 ---
 

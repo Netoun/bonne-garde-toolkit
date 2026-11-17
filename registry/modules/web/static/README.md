@@ -5,7 +5,7 @@ Pages: a marketing front with a header, a footer and a home page. Extracted from
 `apps/static` ([080](../../../../docs/specs/080-existing-code-migration.md)).
 
 ```bash
-bunx bg add web/static
+bunx bonne-garde add web/static
 ```
 
 ## Peers and variants
@@ -24,7 +24,7 @@ One variant, `cloudflare`, which copies `wrangler.jsonc` and adds `dev` and `dep
 `apps/spa/build/client` and nothing else, and the image's command starts the API alone. A static site
 installed under it would be built into the image and never served; serving a second app is a change
 to the provider, which is a new feature and not part of this extraction. So `static` declares
-`peers.provider: ["cloudflare"]`, as `web/ssr` does, and `bg add web/static` on a `dockerfile`
+`peers.provider: ["cloudflare"]`, as `web/ssr` does, and `bunx bonne-garde add web/static` on a `dockerfile`
 project fails naming the provider.
 
 ## What it writes

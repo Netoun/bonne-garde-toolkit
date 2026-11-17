@@ -13,7 +13,7 @@ classification: migration
 
 ## Why
 
-Auth owns the `AuthMailer` interface and ships `mailer = unconfiguredMailer(apiLogger)`, which sends nothing and logs that it did not. The email module comes after auth in spec 035's order, so it wires itself into auth and auth never imports it first. `bg add` already did what 060's patch catalog can express: it declared `{{SCOPE}}/email` as a dependency of `packages/auth`. No patch replaces the initializer of an exported constant, and the import that goes with it would sit unused until that is done, so the whole edit to `mailer.ts`, the import included, is this intention's. `bg record` then marks `mailer.ts` with this intention's region, so the file reads as the project's and auth's own re-add keeps it.
+Auth owns the `AuthMailer` interface and ships `mailer = unconfiguredMailer(apiLogger)`, which sends nothing and logs that it did not. The email module comes after auth in spec 035's order, so it wires itself into auth and auth never imports it first. `bonne-garde add` already did what 060's patch catalog can express: it declared `{{SCOPE}}/email` as a dependency of `packages/auth`. No patch replaces the initializer of an exported constant, and the import that goes with it would sit unused until that is done, so the whole edit to `mailer.ts`, the import included, is this intention's. `bonne-garde record` then marks `mailer.ts` with this intention's region, so the file reads as the project's and auth's own re-add keeps it.
 
 ## Applies When
 
@@ -52,5 +52,5 @@ Auth owns the `AuthMailer` interface and ships `mailer = unconfiguredMailer(apiL
 
 ## Record Result
 
-- Applied → `bg record email/resend/wire-email-into-auth`
-- Skipped → `bg record email/resend/wire-email-into-auth --skip "<reason>"`
+- Applied → `bunx bonne-garde record email/resend/wire-email-into-auth`
+- Skipped → `bunx bonne-garde record email/resend/wire-email-into-auth --skip "<reason>"`

@@ -8,7 +8,7 @@ import {
   Scripts,
   ScrollRestoration,
 } from "react-router";
-// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { branding, faviconLinks } from "{{SCOPE}}/config";
 import { QueryProvider } from "./providers/query-provider";

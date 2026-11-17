@@ -46,7 +46,7 @@ function listDirs(parent: string): string[] {
 
 function detectPackage(name: string): PackageInfo {
   const roles: Record<string, string> = {
-    cli: "`bg` and `create-bonne-garde`: create, add, doctor, record",
+    cli: "`bonne-garde`: create, add, doctor, record",
     registry: "Load, plan and apply registry items and modules",
     schema: "`bg.json` and `module.json` validation",
   };

@@ -5,10 +5,10 @@ its `tsconfig.json`, `components.json` and the Tailwind theme. Extracted from th
 `packages/ui`; the components themselves are items ([030](../../../../docs/specs/030-ui-registry.md)).
 
 ```bash
-bunx bg add ui/shadcn button
+bunx bonne-garde add ui/shadcn button
 ```
 
-`bg add button` without this module fails and names it: an item with a file under `packages/ui/`
+`bunx bonne-garde add button` without this module fails and names it: an item with a file under `packages/ui/`
 needs a `ui` module, installed or named in the same call.
 
 ## What it writes
@@ -42,7 +42,7 @@ generated project resolves through `exports` and nothing else, so every subpath 
 
 `tsc --noEmit` fails with TS18003 when the project has no input file, and `packages/ui` holds no
 TypeScript until an item adds a component. Without this file `bun run typecheck` is red right after
-`bg add ui/shadcn`, which is also what `checks` runs.
+`bunx bonne-garde add ui/shadcn`, which is also what `checks` runs.
 
 ## Dependencies
 
