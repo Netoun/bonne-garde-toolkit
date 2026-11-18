@@ -10,7 +10,7 @@ Define post-create composition. One `add` handles both catalogs: shadcn UI items
 bg list [--category <cat>] [--items] [--source <source>]
 bg search <query> [--source <source>]
 bg view <name> [--source <source>]
-bg add <name...> [--dry-run] [--force] [--no-install] [--yes] [--set key=value] [--source <source>]
+bg add <name...> [--dry-run] [--force] [--no-install] [--yes] [--json] [--set key=value] [--source <source>]
 bg replace <name> [--dry-run]          # swap the module filling a `cardinality: one` category
 bg remove <name> [--dry-run]           # revert tier 1 + tier 2; tier 3 is reported, not undone
 bg record <intention-id> [--skip "<reason>"]
@@ -27,7 +27,7 @@ bg doctor [--json] [--strict]
 6. Resolve `options` (flags, then defaults; prompts only on a TTY without `--yes`).
 7. Select one **variant** per module by most-specific `match` over the resolved peers.
 8. Build the plan: files, regions, workspace packages, deps, env keys, checks, pending intents.
-9. Print the plan. If `--dry-run`, stop — no disk write, no `bg.json` write.
+9. Print the plan. If `--dry-run`, stop — no disk write, no `bg.json` write. The outcome is JSON on stdout when stdout is not a TTY (an agent, a pipe, CI) or with `--json`, the shape agents and golden read; on a TTY it is a summary per module and item, the intentions to apply and the checks, each check written as the package manager runs it (`pnpm exec vp run test`).
 10. Stage tier 1 and tier 2 in a virtual tree; classify every target against `files` / `regions` ([060](./060-patches-and-regions.md)).
 11. Apply to disk all-or-nothing. Convert every `failed` patch into a pending intent.
 12. Update `bg.json`: `modules` / `items`, `files` (sha256), `regions`, `apps`, patch outcomes.

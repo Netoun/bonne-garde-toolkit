@@ -87,6 +87,8 @@ export type AddOptions = {
   dryRun?: boolean;
   force?: boolean;
   install?: boolean;
+  /** The install's own output (`inherit`), or kept for its error (`capture`, under a spinner). */
+  installOutput?: "inherit" | "capture";
   /** Where a `github:` source is read from; GitHub raw unless a test says otherwise. */
   github?: GithubOptions;
 };
@@ -154,7 +156,7 @@ export async function addItems(options: AddOptions) {
     options.install !== false &&
     (plan.npmDependencies.length + plan.npmDevDependencies.length > 0 || modulesNeedInstall)
   ) {
-    await installDependencies(projectRoot);
+    await installDependencies(projectRoot, { output: options.installOutput ?? "inherit" });
   }
 
   // 050 step 14: what the failed patches became is staged for whoever resolves it. `.bg/` is scratch,

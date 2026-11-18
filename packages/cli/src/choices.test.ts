@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { type Choices, namesFor, parseFlagList, resolveChoices, type Check } from "./choices";
+import {
+  type Check,
+  type Choices,
+  namesFor,
+  parseFlagList,
+  type Prompter,
+  resolveChoices,
+} from "./choices";
 
 const FULL_CLOUDFLARE: Choices = {
   apps: ["api", "spa", "ssr", "static"],
@@ -92,18 +99,40 @@ const check: Check = (names) => {
   }
 };
 
-function scripted(...answers: (string | null)[]) {
-  const asked: string[] = [];
+/**
+ * Answers in order: a value for `one` ("" takes the initial one), a list for `many`. What was asked and
+ * offered, and what was said, are kept.
+ */
+function scripted(...answers: (string | string[])[]) {
+  const asked: { message: string; offered: string[] }[] = [];
   const said: string[] = [];
-  return {
-    asked,
-    said,
-    ask: async (question: string) => {
-      asked.push(question);
-      return answers.shift() ?? null;
-    },
-    say: (message: string) => said.push(message),
+  const next = (message: string) => {
+    const answer = answers.shift();
+    if (answer === undefined) {
+      throw new Error(`asked "${message}", which the script does not answer`);
+    }
+    return answer;
   };
+  const prompter: Prompter = {
+    async one(message, choices, initial) {
+      asked.push({ message, offered: choices.map(({ value }) => value) });
+      const answer = next(message);
+      const chosen = answer === "" ? initial : choices.find(({ value }) => value === answer)?.value;
+      if (chosen === undefined) {
+        throw new Error(`${String(answer)} is not offered for "${message}"`);
+      }
+      return chosen;
+    },
+    async many(message, choices) {
+      asked.push({ message, offered: choices.map(({ value }) => value) });
+      const answer = next(message);
+      return choices
+        .filter(({ value }) => Array.isArray(answer) && answer.includes(value))
+        .map(({ value }) => value);
+    },
+    warn: (message) => said.push(message),
+  };
+  return { asked, said, prompter };
 }
 
 function never(): never {
@@ -116,9 +145,8 @@ describe("resolveChoices without a prompt (--yes, or no TTY)", () => {
       await resolveChoices({
         defaultPm: "bun",
         given: {},
-        ask: null,
+        prompter: null,
         loadCheck: never,
-        say: () => {},
       }),
     ).toEqual({
       apps: [],
@@ -133,9 +161,8 @@ describe("resolveChoices without a prompt (--yes, or no TTY)", () => {
       await resolveChoices({
         defaultPm: "bun",
         given: { apps: ["api", "ssr"] },
-        ask: null,
+        prompter: null,
         loadCheck: async () => check,
-        say: () => {},
       }),
     ).toEqual({ apps: ["api", "ssr"], provider: "cloudflare", features: [], pm: "bun" });
   });
@@ -145,18 +172,16 @@ describe("resolveChoices without a prompt (--yes, or no TTY)", () => {
       resolveChoices({
         defaultPm: "bun",
         given: { apps: ["spa"] },
-        ask: null,
+        prompter: null,
         loadCheck: async () => check,
-        say: () => {},
       }),
     ).rejects.toThrow("web/spa needs a module in category api");
     await expect(
       resolveChoices({
         defaultPm: "bun",
         given: { apps: ["api", "ssr"], provider: "dockerfile" },
-        ask: null,
+        prompter: null,
         loadCheck: async () => check,
-        say: () => {},
       }),
     ).rejects.toThrow("no variant of web/ssr");
   });
@@ -166,9 +191,8 @@ describe("resolveChoices without a prompt (--yes, or no TTY)", () => {
       resolveChoices({
         defaultPm: "bun",
         given: { features: ["email"] },
-        ask: null,
+        prompter: null,
         loadCheck: never,
-        say: () => {},
       }),
     ).rejects.toThrow("--provider and --features need an app (--apps)");
   });
@@ -176,68 +200,77 @@ describe("resolveChoices without a prompt (--yes, or no TTY)", () => {
 
 describe("resolveChoices with a prompt", () => {
   test("asks only what no flag gave", async () => {
-    const io = scripted("auth db");
+    const io = scripted(["auth", "db"]);
     expect(
       await resolveChoices({
         defaultPm: "bun",
         given: { apps: ["api"], provider: "cloudflare", pm: "bun" },
-        ask: io.ask,
+        prompter: io.prompter,
         loadCheck: async () => check,
-        say: io.say,
       }),
-    ).toEqual({ apps: ["api"], provider: "cloudflare", features: ["auth", "db"], pm: "bun" });
-    expect(io.asked).toHaveLength(1);
-    expect(io.asked[0]).toContain("Features");
+    ).toEqual({ apps: ["api"], provider: "cloudflare", features: ["db", "auth"], pm: "bun" });
+    expect(io.asked.map(({ message }) => message)).toEqual(["Features"]);
   });
 
-  test("offers only the providers the check accepts with the apps, Enter taking the first", async () => {
-    const io = scripted("", "api,ssr", "", "");
+  test("asks the package manager first, the one create was started from offered first", async () => {
+    const io = scripted("", []);
+    expect(
+      await resolveChoices({
+        defaultPm: "pnpm",
+        given: {},
+        prompter: io.prompter,
+        loadCheck: never,
+      }),
+    ).toEqual({ apps: [], provider: null, features: [], pm: "pnpm" });
+    expect(io.asked[0]).toEqual({ message: "Package manager", offered: ["bun", "pnpm"] });
+  });
+
+  test("offers only the providers the check accepts with the apps, the first by default", async () => {
+    const io = scripted("", ["api", "ssr"], "", []);
     expect(
       await resolveChoices({
         defaultPm: "bun",
         given: {},
-        ask: io.ask,
+        prompter: io.prompter,
         loadCheck: async () => check,
-        say: io.say,
       }),
     ).toEqual({ apps: ["api", "ssr"], provider: "cloudflare", features: [], pm: "bun" });
-    expect(io.asked[2]).toContain("cloudflare");
-    expect(io.asked[2]).not.toContain("dockerfile");
+    expect(io.asked[2]).toEqual({ message: "Where it runs", offered: ["cloudflare"] });
   });
 
-  test("takes answers by number or by name, Enter on the apps being the base alone", async () => {
-    const byNumber = scripted("1", "1", "2", "4");
+  test("under pnpm, offers only the providers the registry accepts with it", async () => {
+    const io = scripted("pnpm", ["api"], "", []);
     expect(
       await resolveChoices({
         defaultPm: "bun",
         given: {},
-        ask: byNumber.ask,
+        prompter: io.prompter,
         loadCheck: async () => check,
-        say: byNumber.say,
       }),
-    ).toEqual({ apps: ["api"], provider: "dockerfile", features: ["email"], pm: "bun" });
+    ).toEqual({ apps: ["api"], provider: "cloudflare", features: [], pm: "pnpm" });
+    expect(io.asked[2]?.offered).toEqual(["cloudflare"]);
+  });
 
-    const none = scripted("");
+  test("no app is the base alone, and the registry is not read", async () => {
+    const io = scripted("", []);
     expect(
       await resolveChoices({
         defaultPm: "bun",
         given: {},
-        ask: none.ask,
+        prompter: io.prompter,
         loadCheck: never,
-        say: none.say,
       }),
     ).toEqual({ apps: [], provider: null, features: [], pm: "bun" });
   });
 
   test("asks the features again after a set the check refuses, saying why", async () => {
-    const io = scripted("", "auth", "db,auth");
+    const io = scripted("", ["auth"], ["db", "auth"]);
     expect(
       await resolveChoices({
         defaultPm: "bun",
         given: { apps: ["api"], provider: "cloudflare" },
-        ask: io.ask,
+        prompter: io.prompter,
         loadCheck: async () => check,
-        say: io.say,
       }),
     ).toEqual({ apps: ["api"], provider: "cloudflare", features: ["db", "auth"], pm: "bun" });
     expect(io.said).toEqual([
@@ -246,60 +279,16 @@ describe("resolveChoices with a prompt", () => {
   });
 
   test("asks the apps again when no provider accepts them", async () => {
-    const io = scripted("", "spa", "api,spa", "", "");
+    const io = scripted("", ["spa"], ["api", "spa"], "", []);
     expect(
       await resolveChoices({
         defaultPm: "bun",
         given: {},
-        ask: io.ask,
+        prompter: io.prompter,
         loadCheck: async () => check,
-        say: io.say,
       }),
     ).toEqual({ apps: ["api", "spa"], provider: "cloudflare", features: [], pm: "bun" });
     expect(io.said[0]).toContain("web/spa needs a module in category api");
-  });
-
-  test("asks again after an answer that names nothing it knows", async () => {
-    const io = scripted("", "api,web", "api", "", "");
-    expect(
-      await resolveChoices({
-        defaultPm: "bun",
-        given: {},
-        ask: io.ask,
-        loadCheck: async () => check,
-        say: io.say,
-      }),
-    ).toEqual({ apps: ["api"], provider: "cloudflare", features: [], pm: "bun" });
-    expect(io.said).toEqual(["No app web."]);
-  });
-
-  test("asks the package manager first, offering the one create was started from as the default", async () => {
-    const io = scripted("", "");
-    expect(
-      await resolveChoices({
-        defaultPm: "pnpm",
-        given: {},
-        ask: io.ask,
-        loadCheck: never,
-        say: io.say,
-      }),
-    ).toEqual({ apps: [], provider: null, features: [], pm: "pnpm" });
-    expect(io.asked[0]).toContain("Package manager");
-    expect(io.asked[0]).toContain("[pnpm]");
-  });
-
-  test("under pnpm, offers only the providers the registry accepts with it", async () => {
-    const io = scripted("pnpm", "api", "", "");
-    expect(
-      await resolveChoices({
-        defaultPm: "bun",
-        given: {},
-        ask: io.ask,
-        loadCheck: async () => check,
-        say: io.say,
-      }),
-    ).toEqual({ apps: ["api"], provider: "cloudflare", features: [], pm: "pnpm" });
-    expect(io.asked[2]).not.toContain("dockerfile");
   });
 });
 
@@ -309,9 +298,8 @@ describe("resolveChoices and --pm", () => {
       await resolveChoices({
         defaultPm: "bun",
         given: { pm: "pnpm" },
-        ask: null,
+        prompter: null,
         loadCheck: never,
-        say: () => {},
       }),
     ).toEqual({ apps: [], provider: null, features: [], pm: "pnpm" });
   });
@@ -321,9 +309,8 @@ describe("resolveChoices and --pm", () => {
       resolveChoices({
         defaultPm: "bun",
         given: { apps: ["api"], provider: "dockerfile", pm: "pnpm" },
-        ask: null,
+        prompter: null,
         loadCheck: async () => check,
-        say: () => {},
       }),
     ).rejects.toThrow("provider/dockerfile accepts only bun for pm");
   });

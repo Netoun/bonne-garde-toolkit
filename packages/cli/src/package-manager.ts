@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { run } from "./run";
+import { runCapturing } from "./run";
 
 /** The package managers a project can be created with: one `pm` module each (040). */
 export const PACKAGE_MANAGERS = ["bun", "pnpm"] as const;
@@ -29,24 +29,32 @@ export async function packageManagerOf(projectRoot: string): Promise<PackageMana
   return pm;
 }
 
-/** `<pm> install` in the project, with the package manager its package.json pins. */
+/**
+ * `<pm> install` in the project, with the package manager its package.json pins. Its output is the
+ * caller's (`inherit`), or kept and put in the error when it fails (`capture`, under a spinner).
+ */
 export async function installDependencies(
   projectRoot: string,
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<void> {
+  options: { env?: NodeJS.ProcessEnv; output?: "inherit" | "capture" } = {},
+): Promise<PackageManager> {
   const pm = await packageManagerOf(projectRoot);
-  const code = await run([pm, "install"], { cwd: projectRoot, output: "inherit", env }).catch(
-    (error: unknown) => {
-      throw error instanceof Error && "code" in error && error.code === "ENOENT"
-        ? new Error(
-            `${pm} not found: the project's package.json pins it. Install ${pm}, or run bg with --no-install`,
-          )
-        : error;
-    },
-  );
+  const { env = process.env, output = "inherit" } = options;
+  const { code, printed } = await runCapturing([pm, "install"], {
+    cwd: projectRoot,
+    output,
+    env,
+  }).catch((error: unknown) => {
+    throw error instanceof Error && "code" in error && error.code === "ENOENT"
+      ? new Error(
+          `${pm} not found: the project's package.json pins it. Install ${pm}, or run bg with --no-install`,
+        )
+      : error;
+  });
   if (code !== 0) {
-    throw new Error(`${pm} install failed`);
+    const tail = printed.trim().split("\n").slice(-20).join("\n");
+    throw new Error(`${pm} install failed${tail === "" ? "" : `:\n${tail}`}`);
   }
+  return pm;
 }
 
 /** The package manager `create` was started from (`bun create`, `pnpm create`), when a project can use it. */

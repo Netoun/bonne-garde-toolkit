@@ -5,39 +5,42 @@
  */
 import type { PackageManager } from "./package-manager";
 
-const PM_LABELS = {
-  bun: "Bun installs the project and runs its scripts",
-  pnpm: "pnpm installs the project, Node runs its scripts",
-} as const satisfies Record<PackageManager, string>;
+/** An answer as the terminal shows it: what it is called, and what it brings. */
+export type Choice<T extends string> = { value: T; label: string; hint: string };
 
-const APP_LABELS = {
-  api: "the Elysia API",
-  spa: "a React Router SPA",
-  ssr: "a React Router SSR app",
-  static: "a static site",
-} as const;
+const PM_CHOICES = [
+  { value: "bun", label: "bun", hint: "Bun installs the project and runs its scripts" },
+  { value: "pnpm", label: "pnpm", hint: "pnpm installs the project, Node runs everything" },
+] as const satisfies readonly Choice<PackageManager>[];
 
-const PROVIDER_LABELS = {
-  cloudflare: "Cloudflare Workers and Pages",
-  dockerfile: "one Node container",
-} as const;
+const APP_CHOICES = [
+  { value: "api", label: "API", hint: "Elysia, typed for the fronts through Eden" },
+  { value: "spa", label: "SPA", hint: "React Router, rendered in the browser" },
+  { value: "ssr", label: "SSR", hint: "React Router, rendered on the server" },
+  { value: "static", label: "Static site", hint: "React Router, prerendered" },
+] as const;
 
-const FEATURE_LABELS = {
-  db: "a D1 database with Drizzle",
-  auth: "Better Auth sessions and organizations, and the SPA's sign-in pages",
-  storage: "media uploads on R2",
-  email: "transactional email with Resend",
-  deploy: "a GitHub Actions deploy",
-  backoffice: "the SPA's signed-in backoffice",
-} as const;
+const PROVIDER_CHOICES = [
+  { value: "cloudflare", label: "Cloudflare", hint: "Workers and Pages" },
+  { value: "dockerfile", label: "Docker", hint: "one Node container, the API and the SPA" },
+] as const;
 
-export type App = keyof typeof APP_LABELS;
-export type Provider = keyof typeof PROVIDER_LABELS;
-export type Feature = keyof typeof FEATURE_LABELS;
+const FEATURE_CHOICES = [
+  { value: "db", label: "Database", hint: "D1 with Drizzle" },
+  { value: "auth", label: "Auth", hint: "Better Auth, organizations, the SPA's sign-in pages" },
+  { value: "storage", label: "Storage", hint: "media uploads on R2" },
+  { value: "email", label: "Email", hint: "transactional email with Resend" },
+  { value: "deploy", label: "Deploy", hint: "a GitHub Actions workflow to Cloudflare" },
+  { value: "backoffice", label: "Backoffice", hint: "the SPA's signed-in area" },
+] as const;
 
-export const APPS = Object.keys(APP_LABELS) as App[];
-export const PROVIDERS = Object.keys(PROVIDER_LABELS) as Provider[];
-export const FEATURES = Object.keys(FEATURE_LABELS) as Feature[];
+export type App = (typeof APP_CHOICES)[number]["value"];
+export type Provider = (typeof PROVIDER_CHOICES)[number]["value"];
+export type Feature = (typeof FEATURE_CHOICES)[number]["value"];
+
+export const APPS: readonly App[] = APP_CHOICES.map(({ value }) => value);
+export const PROVIDERS: readonly Provider[] = PROVIDER_CHOICES.map(({ value }) => value);
+export const FEATURES: readonly Feature[] = FEATURE_CHOICES.map(({ value }) => value);
 
 export type Choices = {
   apps: readonly App[];
@@ -146,8 +149,16 @@ export function parseFlagList<T extends string>(
 
 /** Throws the planner's message when `bg add` would refuse these names in an empty project. */
 export type Check = (names: string[]) => void;
-/** One question on the terminal; `null` at the end of input. */
-export type Ask = (question: string) => Promise<string | null>;
+
+/**
+ * The questions `create` asks on a terminal (spec 040). `one` picks a single answer, `initial` first;
+ * `many` picks any number, none included; `warn` says why a set was refused before it is asked again.
+ */
+export type Prompter = {
+  one<T extends string>(message: string, choices: readonly Choice<T>[], initial: T): Promise<T>;
+  many<T extends string>(message: string, choices: readonly Choice<T>[]): Promise<T[]>;
+  warn(message: string): void;
+};
 
 function refusal(check: Check, choices: Choices): string | null {
   const { modules, items } = namesFor(choices);
@@ -159,94 +170,27 @@ function refusal(check: Check, choices: Choices): string | null {
   }
 }
 
-function menu(labels: Record<string, string>, names: readonly string[]): string {
-  return names.map((name, index) => `  ${index + 1}. ${name} — ${labels[name]}`).join("\n");
-}
-
-/** Asks a list by numbers or names until every token names one; Enter, or the end of input, is none. */
-async function askList<T extends string>(
-  ask: Ask,
-  say: (message: string) => void,
-  axis: string,
-  title: string,
-  labels: Record<T, string>,
-): Promise<T[]> {
-  const names = Object.keys(labels) as T[];
-  for (;;) {
-    const answer =
-      (
-        await ask(`${title}:\n${menu(labels, names)}\nNumbers or names, Enter for none: `)
-      )?.trim() ?? "";
-    const chosen: T[] = [];
-    const unknown: string[] = [];
-    for (const token of answer.split(/[\s,]+/).filter(Boolean)) {
-      const name = /^\d+$/.test(token) ? names[Number(token) - 1] : names.find((n) => n === token);
-      if (name === undefined) {
-        unknown.push(token);
-      } else if (!chosen.includes(name)) {
-        chosen.push(name);
-      }
-    }
-    if (unknown.length === 0) {
-      return chosen;
-    }
-    say(`No ${axis} ${unknown.join(", ")}.`);
-  }
-}
-
-/** Asks one of `names` by number or name; Enter, or the end of input, takes the first. */
-async function askOne<T extends string>(
-  ask: Ask,
-  say: (message: string) => void,
-  title: string,
-  labels: Record<T, string>,
-  names: readonly T[],
-): Promise<T> {
-  const [first] = names;
-  if (first === undefined) {
-    throw new Error(`no ${title.toLowerCase()} to ask among`);
-  }
-  for (;;) {
-    const answer =
-      (await ask(`${title}:\n${menu(labels, names)}\nNumber or name [${first}]: `))?.trim() ?? "";
-    if (answer === "") {
-      return first;
-    }
-    const chosen = /^\d+$/.test(answer)
-      ? names[Number(answer) - 1]
-      : names.find((n) => n === answer);
-    if (chosen !== undefined) {
-      return chosen;
-    }
-    say(`No ${title.toLowerCase()} ${answer}.`);
-  }
-}
-
 /**
- * 040's resolution: an axis a flag gave is never asked; with no `ask` (`--yes`, or no TTY) a missing
- * axis takes its default and a refused set fails; with one, a refused set is said and its axis asked
- * again. The package manager comes first, its default the one `create` was started from
+ * 040's resolution: an axis a flag gave is never asked; with no prompter (`--yes`, or no TTY) a
+ * missing axis takes its default and a refused set fails; with one, a refused set is said and its axis
+ * asked again. The package manager comes first, its default the one `create` was started from
  * (`defaultPm`). The registry's check is loaded only once an app is chosen.
  */
 export async function resolveChoices(options: {
   given: Partial<Choices>;
-  ask: Ask | null;
+  prompter: Prompter | null;
   defaultPm: PackageManager;
   loadCheck: () => Promise<Check>;
-  say: (message: string) => void;
 }): Promise<Choices> {
-  const { given, ask, defaultPm, say } = options;
+  const { given, prompter, defaultPm } = options;
   const pm =
     given.pm ??
-    (ask
-      ? await askOne(ask, say, "Package manager", PM_LABELS, [
-          defaultPm,
-          ...Object.keys(PM_LABELS).filter((name): name is PackageManager => name !== defaultPm),
-        ])
-      : defaultPm);
+    (prompter ? await prompter.one("Package manager", PM_CHOICES, defaultPm) : defaultPm);
   let check: Check | undefined;
   for (;;) {
-    const apps = given.apps ?? (ask ? await askList(ask, say, "app", "Apps", APP_LABELS) : []);
+    const apps =
+      given.apps ??
+      (prompter ? await prompter.many("Apps (none: the base alone)", APP_CHOICES) : []);
     if (apps.length === 0) {
       if (given.provider !== undefined || given.features !== undefined) {
         throw new Error("--provider and --features need an app (--apps)");
@@ -257,35 +201,36 @@ export async function resolveChoices(options: {
     const loaded = check;
     const bare = (provider: Provider): Choices => ({ apps, provider, features: [], pm });
     const candidates = given.provider ? [given.provider] : PROVIDERS;
-    const providers = candidates.filter((provider) => refusal(loaded, bare(provider)) === null);
-    const [firstProvider] = providers;
-    if (firstProvider === undefined) {
+    const accepted = PROVIDER_CHOICES.filter(
+      ({ value }) => candidates.includes(value) && refusal(loaded, bare(value)) === null,
+    );
+    const [first] = accepted;
+    if (first === undefined) {
       const message =
         candidates.map((provider) => refusal(loaded, bare(provider))).find(Boolean) ??
         "no provider accepts these apps";
-      if (!ask || given.apps !== undefined || given.provider) {
+      if (!prompter || given.apps !== undefined || given.provider) {
         throw new Error(message);
       }
-      say(message);
+      prompter.warn(message);
       continue;
     }
     const provider =
-      ask && given.provider === undefined
-        ? await askOne(ask, say, "Provider", PROVIDER_LABELS, providers)
-        : firstProvider;
+      prompter && given.provider === undefined
+        ? await prompter.one("Where it runs", accepted, first.value)
+        : first.value;
     for (;;) {
       const features =
-        given.features ??
-        (ask ? await askList(ask, say, "feature", "Features", FEATURE_LABELS) : []);
+        given.features ?? (prompter ? await prompter.many("Features", FEATURE_CHOICES) : []);
       const choices: Choices = { apps, provider, features, pm };
       const message = refusal(loaded, choices);
       if (message === null) {
         return choices;
       }
-      if (!ask || given.features !== undefined) {
+      if (!prompter || given.features !== undefined) {
         throw new Error(message);
       }
-      say(message);
+      prompter.warn(message);
     }
   }
 }

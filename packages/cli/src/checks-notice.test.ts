@@ -13,7 +13,7 @@ describe("checksNotice (050 step 15)", () => {
     const notice = checksNotice([api], 2);
 
     expect(notice).toContain("checks withheld while 2 intentions are pending");
-    expect(notice).toContain("api/elysia: cd apps/api && bun run typecheck");
+    expect(notice).toContain("\n  api/elysia: cd apps/api && bun run typecheck");
     expect(notice).not.toContain("were not run");
     expect(checksNotice([api], 1)).toContain("while 1 intention is pending");
   });
