@@ -132,6 +132,14 @@ describe("pack-cli", () => {
     expect(readme).not.toContain("create-bonne-garde");
   });
 
+  test("the README opens with the logo, served from the repository so npm can show it", async () => {
+    const readme = await Bun.file(join(PACKED, "README.md")).text();
+
+    expect(readme).toContain(
+      "https://cdn.jsdelivr.net/gh/Netoun/bonne-garde-toolkit@main/assets/logo/logo.svg",
+    );
+  });
+
   test("declares the npm dependencies of what it bundles, pinned as they are", async () => {
     const external: Record<string, string> = {};
     for (const name of ["cli", "registry", "schema"]) {

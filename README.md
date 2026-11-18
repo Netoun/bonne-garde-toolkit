@@ -1,3 +1,13 @@
+<p align="center"><img src="assets/logo/logo.svg" alt="Bonne Garde" width="128"></p>
+
+<p align="center">
+  <a href="https://github.com/Netoun/bonne-garde-toolkit/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Netoun/bonne-garde-toolkit/ci.yml?branch=main&label=CI" alt="CI"></a>
+  <a href="https://www.npmjs.com/package/bonne-garde"><img src="https://img.shields.io/npm/v/bonne-garde?color=93bee1" alt="npm"></a>
+  <a href="https://www.npmjs.com/package/bonne-garde"><img src="https://img.shields.io/node/v/bonne-garde?color=93bee1" alt="Node"></a>
+  <img src="https://img.shields.io/badge/projects-Bun%20%7C%20pnpm-93bee1" alt="Generated projects install with Bun or pnpm">
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/Netoun/bonne-garde-toolkit?color=93bee1" alt="MIT license"></a>
+</p>
+
 # Bonne Garde
 
 Boîte à outils **shadcn-like** pour applications Cloudflare/Bun : socle vide + CLI `bonne-garde` + registry (UI + features). Pas un boilerplate à cloner — tout passe par le CLI.
