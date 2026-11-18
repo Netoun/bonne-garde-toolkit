@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Start every app of the project behind portless (named HTTPS URLs instead of ports):
  *   https://api.<slug>.localhost, https://spa.<slug>.localhost, one per `apps/<dir>`.
@@ -11,21 +11,23 @@
  * URLs through environment variables named after their directories (`API_URL`, `VITE_API_URL`).
  *
  * How an app is started is read from its own `dev` script: `wrangler` gets the free port portless
- * assigns and the URLs as `--var`s, a script that starts with `bun` reads the PORT variable portless
- * sets, and any other command (`react-router dev`, `vite`) runs through `bunx`, which portless
- * recognises and injects `--port` into. A script that is not one plain command runs as `bun run dev`.
+ * assigns and the URLs as `--var`s, and any other plain command runs as it is: portless recognises
+ * `react-router` and `vite` by name and injects `--port` into them, and a server reads the PORT variable
+ * portless sets. A script that is not one plain command runs as `vp run dev`. Each finds its bins as a
+ * package manager's `run` would: the app's `node_modules/.bin`, then the root's.
  *
  * portless is a root devDependency; starting or switching its proxy asks for sudo (it binds 443 and
  * trusts a local CA).
  *
  * Usage (from the project root):
- *   bun run dev:portless                 start the stack
- *   bun run dev:lan:portless             the same, reachable from the LAN
- *   bun scripts/dev-portless.ts --dry-run [--lan]   print the plan as JSON, start nothing
+ *   vp run dev:portless                  start the stack
+ *   vp run dev:lan:portless              the same, reachable from the LAN
+ *   node scripts/dev-portless.ts --dry-run [--lan]   print the plan as JSON, start nothing
  */
 
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 
 /** An app of the project: `apps/<dir>`, started by its `dev` script. */
 export type App = { dir: string; dev: string };
@@ -142,7 +144,7 @@ export function urlEnv(urls: Readonly<Record<string, string>>): Record<string, s
 }
 
 type Dev =
-  | { kind: "wrangler" | "bun" | "runner"; words: string[] }
+  | { kind: "wrangler" | "command"; words: string[] }
   | { kind: "script"; words?: undefined };
 
 /** One plain command: words of path and flag characters, no env prefix, quoting, operator or expansion. */
@@ -155,7 +157,7 @@ function readDev(dev: string): Dev {
   if (first === "wrangler") {
     return { kind: "wrangler", words };
   }
-  return { kind: first === "bun" ? "bun" : "runner", words };
+  return { kind: "command", words };
 }
 
 /** The words of a wrangler command without the port it fixes: portless assigns it. */
@@ -185,13 +187,11 @@ export function launchCommand(
   const dev = readDev(app.dev);
   switch (dev.kind) {
     case "script":
-      return [...head, "bun", "run", "dev"];
-    case "bun":
+      return [...head, "vp", "run", "dev"];
+    case "command":
+      // portless injects --port, --strictPort and --host into the commands it recognises by name
+      // (`react-router`, `vite`); any other server reads the PORT variable it sets.
       return [...head, ...dev.words];
-    case "runner":
-      // portless injects --port, --strictPort and --host into the commands it recognises
-      // (`react-router`, `vite`) when they run through `bunx`.
-      return [...head, "bunx", ...dev.words];
     case "wrangler": {
       const [, ...rest] = dev.words;
       const flags = Object.keys(vars)
@@ -203,7 +203,7 @@ export function launchCommand(
         // PORT is only known once portless runs the child, hence the shell; "$@" forwards the --var flags.
         "sh",
         "-c",
-        `exec bunx wrangler ${[...withoutPort(rest), "--port", '"$PORT"'].join(" ")} "$@"`,
+        `exec wrangler ${[...withoutPort(rest), "--port", '"$PORT"'].join(" ")} "$@"`,
         "wrangler",
         ...flags,
       ];
@@ -232,16 +232,32 @@ export function planStack(options: {
   }));
 }
 
+/** The PATH a package manager's `run` gives a script of `cwd`: its bins, then the root's. */
+function withBins(root: string, cwd: string): string {
+  return [
+    join(root, cwd, "node_modules/.bin"),
+    join(root, "node_modules/.bin"),
+    process.env.PATH ?? "",
+  ].join(delimiter);
+}
+
 function portless(args: string[], env: Record<string, string | undefined> = process.env): string {
-  const result = Bun.spawnSync(["portless", ...args], {
+  const result = spawnSync("portless", args, {
     env,
-    stdin: "inherit",
-    stderr: "inherit",
+    stdio: ["inherit", "pipe", "inherit"],
+    encoding: "utf8",
   });
-  if (!result.success) {
-    throw new Error(`portless ${args.join(" ")} failed (exit ${result.exitCode})`);
+  if (result.error !== undefined) {
+    throw "code" in result.error && result.error.code === "ENOENT"
+      ? new Error(
+          "portless not found. Install the project's dependencies: it is a root devDependency.",
+        )
+      : result.error;
   }
-  return result.stdout.toString().trim();
+  if (result.status !== 0) {
+    throw new Error(`portless ${args.join(" ")} failed (exit ${result.status})`);
+  }
+  return result.stdout.trim();
 }
 
 /**
@@ -251,7 +267,7 @@ function portless(args: string[], env: Record<string, string | undefined> = proc
 function ensureProxyMode(probeName: string, lan: boolean): void {
   if (needsProxyRestart(portless(["get", probeName]), lan)) {
     // Exits non-zero when no proxy is running; the start below covers that case.
-    Bun.spawnSync(["portless", "proxy", "stop"], { stdio: ["inherit", "inherit", "inherit"] });
+    spawnSync("portless", ["proxy", "stop"], { stdio: "inherit" });
   }
   portless(["proxy", "start"], { ...process.env, PORTLESS_LAN: lan ? "1" : "0" });
 }
@@ -280,10 +296,6 @@ async function main(argv: readonly string[], root: string): Promise<void> {
     return;
   }
 
-  if (!Bun.which("portless")) {
-    throw new Error("portless not found. Run `bun install` (it is a root devDependency).");
-  }
-
   // Start the proxy up front so the apps don't race to start it.
   ensureProxyMode(portlessName(slug, first.dir), lan);
   const stack = planStack({ slug, apps, urlOf: (name) => portless(["get", name]) });
@@ -299,24 +311,26 @@ async function main(argv: readonly string[], root: string): Promise<void> {
     );
   }
 
-  const running = stack.map((app) =>
-    Bun.spawn(app.cmd, {
-      cwd: resolve(root, app.cwd),
-      env: { ...process.env, ...app.env },
-      stdout: "inherit",
-      stderr: "inherit",
-      stdin: "inherit",
+  const running = stack.map(({ cmd: [command = "portless", ...args], cwd, env }) =>
+    spawn(command, args, {
+      cwd: resolve(root, cwd),
+      env: { ...process.env, ...env, PATH: withBins(root, cwd) },
+      stdio: "inherit",
     }),
   );
 
   const stop = () => {
-    for (const proc of running) proc.kill();
+    for (const child of running) child.kill();
   };
 
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
 
-  const codes = await Promise.all(running.map((proc) => proc.exited));
+  const codes = await Promise.all(
+    running.map(
+      (child) => new Promise<number>((done) => child.once("close", (code) => done(code ?? 1))),
+    ),
+  );
   const failed = codes.find((code) => code !== 0);
   if (failed !== undefined) {
     process.exit(failed);
@@ -324,9 +338,9 @@ async function main(argv: readonly string[], root: string): Promise<void> {
 }
 
 if (import.meta.main) {
-  // `bun run` executes scripts from the package root, so the cwd is the project root.
+  // A package manager runs a root script from the project root, so the cwd is the project root.
   try {
-    await main(Bun.argv.slice(2), process.cwd());
+    await main(process.argv.slice(2), process.cwd());
   } catch (error) {
     console.error(`dev-portless: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);

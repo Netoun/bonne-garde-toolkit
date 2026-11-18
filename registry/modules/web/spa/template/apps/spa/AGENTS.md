@@ -14,7 +14,7 @@ React Router SPA. How to add to it; the root `AGENTS.md` still applies.
 4. Put the rest of the feature in `components/`, `hooks/` or `lib/`. The three suffixes above are
    reserved for routed files.
 
-`bun run check` enforces this with the lint rule `structure/route-modules`, when the module
+`vp run check` enforces this with the lint rule `structure/route-modules`, when the module
 `tooling/vite-plus` is installed.
 
 ## Call the API
@@ -26,8 +26,8 @@ typed from it. Never call `fetch`.
 
 Compose the primitives of `{{SCOPE}}/ui/components/<name>`. Never write a raw `<button>`, `<input>`,
 `<select>` or `<textarea>`, or a `div` with a `role`. When a primitive is missing, add it with
-`bunx bg add <item>`.
+`bg add <item>`.
 
 ## Done when
 
-From the project root, `cd apps/spa && bun run typecheck && bun run test` passes.
+From the project root, `cd apps/spa && vp run typecheck && vp run test` passes.

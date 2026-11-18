@@ -1,7 +1,7 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "types": ["bun"]
+    "types": ["node"]
   },
   "include": ["dev-portless.ts", "dev-portless.test.ts"]
 }

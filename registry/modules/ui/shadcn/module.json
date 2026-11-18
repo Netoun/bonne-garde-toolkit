@@ -6,7 +6,7 @@
   "title": "shadcn/ui",
   "description": "The host package of the UI items: package.json with its subpath exports, tsconfig, components.json and the Tailwind theme.",
   "peers": {},
-  "checks": ["bun run typecheck"],
+  "checks": ["vp run typecheck"],
   "variants": [
     {
       "key": "default",

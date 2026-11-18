@@ -73,8 +73,8 @@ describe("dev/portless is the launcher of the apps' named HTTPS URLs (035, 060)"
         type: "scripts.merge",
         file: "package.json",
         scripts: {
-          "dev:portless": "bun scripts/dev-portless.ts",
-          "dev:lan:portless": "bun scripts/dev-portless.ts --lan",
+          "dev:portless": "node scripts/dev-portless.ts",
+          "dev:lan:portless": "node scripts/dev-portless.ts --lan",
         },
       },
       {
@@ -99,8 +99,8 @@ describe("dev/portless is the launcher of the apps' named HTTPS URLs (035, 060)"
     const { manifest, variant, dir } = await portless();
 
     expect(manifest.checks).toEqual([
-      "bunx tsc --project scripts/dev-portless.tsconfig.json",
-      "bun test ./scripts/dev-portless.test.ts",
+      "tsc --project scripts/dev-portless.tsconfig.json",
+      "vp test scripts/dev-portless.test.ts",
     ]);
     const tsconfig: unknown = JSON.parse(
       await readFile(join(dir, "template/scripts/dev-portless.tsconfig.json"), "utf8"),

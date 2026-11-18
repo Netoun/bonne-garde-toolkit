@@ -11,7 +11,7 @@
     "./themes/default.css": "./src/styles/themes/default.css"
   },
   "scripts": {
-    "registry": "bunx shadcn@latest",
+    "registry": "npx shadcn@latest",
     "typecheck": "tsc --noEmit"
   }
 }

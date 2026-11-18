@@ -701,7 +701,7 @@ describe("the golden project and patches", () => {
         // The import into mailer.ts is the intention's: the file an intention edits is region-checked
         // by the `intent[<id>]` region `bg record` leaves, not by a patch that imports for it.
         "email/resend": ["dependencies.@app/email"],
-        "deploy/cloudflare-actions": ["scripts.deploy:cloudflare"],
+        "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
       },
       dockerfile: {
         "config/branding": ["scripts.gen:branding"],
@@ -723,7 +723,7 @@ describe("the golden project and patches", () => {
           "scripts.dev:lan:portless",
           "scripts.dev:portless",
         ],
-        "deploy/cloudflare-actions": ["scripts.deploy:cloudflare"],
+        "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
       },
     });
   });
@@ -833,15 +833,15 @@ describe("the deploy phases (what golden proves of deploy/cloudflare-actions wit
       CONFIGURATIONS.filter(hasDeploy).map(({ name }) => name),
     );
     expect(DEPLOY_PLAN.cloudflare).toEqual([
-      "build apps/api: bun run build",
-      "build apps/spa: bun run build",
-      "build apps/ssr: bun run build",
-      "build apps/static: bun run build",
-      "migrate apps/api: bun run db:migrate:remote --env production",
-      "deploy apps/api: bun run deploy --env production",
-      "deploy apps/spa: bun run deploy --project-name my-app-spa --branch main",
-      "deploy apps/ssr: bun run deploy --env production",
-      "deploy apps/static: bun run deploy --project-name my-app-static --branch main",
+      "build apps/api: vp run build",
+      "build apps/spa: vp run build",
+      "build apps/ssr: vp run build",
+      "build apps/static: vp run build",
+      "migrate apps/api: vp run db:migrate:remote --env production",
+      "deploy apps/api: vp run deploy --env production",
+      "deploy apps/spa: vp run deploy --project-name my-app-spa --branch main",
+      "deploy apps/ssr: vp run deploy --env production",
+      "deploy apps/static: vp run deploy --project-name my-app-static --branch main",
     ]);
     // One build and one deploy per app module of the configuration, and a migration because it has db/d1.
     const modules = cloudflare?.modules ?? [];
@@ -865,23 +865,23 @@ describe("the deploy phases (what golden proves of deploy/cloudflare-actions wit
       environment: "production",
       buildVars: ["VITE_API_URL"],
       steps: [
-        { phase: "build", app: "api", cwd: "apps/api", argv: ["bun", "run", "build"] },
+        { phase: "build", app: "api", cwd: "apps/api", argv: ["vp", "run", "build"] },
         {
           phase: "deploy",
           app: "api",
           cwd: "apps/api",
-          argv: ["bun", "run", "deploy", "--env", "production"],
+          argv: ["vp", "run", "deploy", "--env", "production"],
         },
-        { phase: "build", app: "spa", cwd: "apps/spa", argv: ["bun", "run", "build"] },
+        { phase: "build", app: "spa", cwd: "apps/spa", argv: ["vp", "run", "build"] },
       ],
     });
 
     test("reads each step as `<phase> <cwd>: <command>`, the apps once each in order, and the variable names", () => {
       expect(readDeployPlan(printed)).toEqual({
         steps: [
-          "build apps/api: bun run build",
-          "deploy apps/api: bun run deploy --env production",
-          "build apps/spa: bun run build",
+          "build apps/api: vp run build",
+          "deploy apps/api: vp run deploy --env production",
+          "build apps/spa: vp run build",
         ],
         apps: ["apps/api", "apps/spa"],
         buildVars: ["VITE_API_URL"],
@@ -901,8 +901,8 @@ describe("the deploy phases (what golden proves of deploy/cloudflare-actions wit
 
   describe("expectDeployPlan", () => {
     const expected = [
-      "build apps/api: bun run build",
-      "deploy apps/api: bun run deploy --env production",
+      "build apps/api: vp run build",
+      "deploy apps/api: vp run deploy --env production",
     ];
 
     test("passes the same list in the same order", () => {
@@ -915,7 +915,7 @@ describe("the deploy phases (what golden proves of deploy/cloudflare-actions wit
       );
       expect(() => expectDeployPlan(expected.slice(0, 1), expected)).toThrow(/step 2.*missing/s);
       expect(() =>
-        expectDeployPlan([...expected, "deploy apps/x: bun run deploy"], expected),
+        expectDeployPlan([...expected, "deploy apps/x: vp run deploy"], expected),
       ).toThrow(/step 3.*deploy apps\/x/s);
     });
   });
@@ -1232,12 +1232,11 @@ describe("the launcher phase (dev/portless)", () => {
     "run",
     "--name",
     `${dir}.${SLUG}`,
-    "bunx",
     "react-router",
     "dev",
   ];
 
-  /** The JSON `bun scripts/dev-portless.ts --dry-run` prints, for the apps of the cloudflare configuration. */
+  /** The JSON `node scripts/dev-portless.ts --dry-run` prints, for the apps of the cloudflare configuration. */
   const printed = (tld: string, overrides: Record<string, Record<string, unknown>> = {}) => {
     const apiUrl = `https://api.${SLUG}.${tld}`;
     return JSON.stringify({
@@ -1274,7 +1273,7 @@ describe("the launcher phase (dev/portless)", () => {
       `api.${SLUG}`,
       "sh",
       "-c",
-      'exec bunx wrangler dev --port "$PORT" "$@"',
+      'exec wrangler dev --port "$PORT" "$@"',
       "wrangler",
       "--var",
       `API_URL:https://api.${SLUG}.localhost`,
@@ -1308,7 +1307,7 @@ describe("the launcher phase (dev/portless)", () => {
       {
         dir: "spa",
         name: "spa.golden-dockerfile",
-        cmd: ["portless", "run", "--name", "spa.golden-dockerfile", "bunx", "react-router", "dev"],
+        cmd: ["portless", "run", "--name", "spa.golden-dockerfile", "react-router", "dev"],
       },
     ]);
   });

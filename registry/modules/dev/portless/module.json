@@ -7,8 +7,8 @@
   "description": "Named local HTTPS URLs for every app under apps/, with a .local LAN mode for phones. Starting the proxy needs sudo (it binds 443 and trusts a local CA).",
   "peers": {},
   "checks": [
-    "bunx tsc --project scripts/dev-portless.tsconfig.json",
-    "bun test ./scripts/dev-portless.test.ts"
+    "tsc --project scripts/dev-portless.tsconfig.json",
+    "vp test scripts/dev-portless.test.ts"
   ],
   "variants": [
     {
@@ -24,8 +24,8 @@
           "type": "scripts.merge",
           "file": "package.json",
           "scripts": {
-            "dev:portless": "bun scripts/dev-portless.ts",
-            "dev:lan:portless": "bun scripts/dev-portless.ts --lan"
+            "dev:portless": "node scripts/dev-portless.ts",
+            "dev:lan:portless": "node scripts/dev-portless.ts --lan"
           }
         },
         {

@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Deploys every Cloudflare app of this project to its `production` environment, in an order that
  * cannot leave a deploy half made by a build that fails.
@@ -8,10 +8,10 @@
  * modules that installed those apps own both, so a project that adds or drops a `web` module changes
  * what this deploys without anyone editing `.github/workflows/deploy.yml`.
  *
- *   1. `bun run build` in every app that has a build script, so a broken build stops the run before
+ *   1. `vp run build` in every app that has a build script, so a broken build stops the run before
  *      anything is deployed.
  *   2. For each app, the one that owns the database first and the others by directory: its
- *      `db:migrate:remote` script if it has one, then `bun run deploy`. A Worker is deployed with
+ *      `db:migrate:remote` script if it has one, then `vp run deploy`. A Worker is deployed with
  *      `--env production`; a Pages app with `--project-name <its wrangler name> --branch main`.
  *
  * Every step runs with `CLOUDFLARE_ENV=production`. A build also gets the `VITE_*` variables of the
@@ -19,12 +19,14 @@
  * the bundle, and an app such as the SPA throws at load without its API URL.
  *
  * Usage:
- *   bun run deploy:cloudflare --dry-run     # the plan as JSON: nothing runs, no credentials needed
- *   bun run deploy:cloudflare               # needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID
+ *   vp run deploy:cloudflare --dry-run      # the plan as JSON: nothing runs, no credentials needed
+ *   vp run deploy:cloudflare                # needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID
  */
 
+import { spawn } from "node:child_process";
 import { access, readdir, readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
+import { parse, type ParseError } from "jsonc-parser";
 
 /** The wrangler environment every app of the project defines and this deploys to. */
 const ENVIRONMENT = "production";
@@ -100,10 +102,9 @@ async function readScripts(root: string, path: string): Promise<Record<string, u
 
 /** The part of a wrangler config the plan needs, or an error naming the file and what it lacks. */
 function readWrangler(path: string, text: string): Pick<App, "kind" | "name"> {
-  let config: unknown;
-  try {
-    config = Bun.JSONC.parse(text);
-  } catch {
+  const errors: ParseError[] = [];
+  const config: unknown = parse(text, errors, { allowTrailingComma: true });
+  if (errors.length > 0) {
     throw new Error(`${path} is not valid JSONC`);
   }
   if (!isRecord(config)) {
@@ -166,7 +167,7 @@ export async function planDeploy(root: string): Promise<Step[]> {
     phase,
     app: app.dir,
     cwd: `apps/${app.dir}`,
-    argv: ["bun", "run", ...argv],
+    argv: ["vp", "run", ...argv],
   });
 
   const builds = ordered
@@ -243,15 +244,21 @@ export async function deploy(
   }
 }
 
-/** A runner that starts each step as a child process of the current one, in its directory under `root`. */
+/**
+ * A runner that starts each step as a child process of the current one, in its directory under `root`,
+ * with the project's bins first on PATH, as a package manager's `run` would have them.
+ */
 export function spawnRunner(root: string): Runner {
-  return async (step, env) => {
-    const child = Bun.spawn(step.argv, {
-      cwd: join(root, step.cwd),
-      env,
-      stdio: ["inherit", "inherit", "inherit"],
+  return async ({ argv: [command = "vp", ...args], cwd }, env) => {
+    const child = spawn(command, args, {
+      cwd: join(root, cwd),
+      env: { ...env, PATH: [join(root, "node_modules/.bin"), env.PATH ?? ""].join(delimiter) },
+      stdio: "inherit",
     });
-    return child.exited;
+    return new Promise<number>((done, fail) => {
+      child.once("error", fail);
+      child.once("close", (code) => done(code ?? 1));
+    });
   };
 }
 
@@ -282,7 +289,7 @@ export async function main(args: readonly string[], io: Io): Promise<number> {
 }
 
 if (import.meta.main) {
-  const root = resolve(import.meta.dir, "..");
+  const root = resolve(import.meta.dirname, "..");
   process.exit(
     await main(process.argv.slice(2), {
       root,

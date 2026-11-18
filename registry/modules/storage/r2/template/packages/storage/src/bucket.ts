@@ -23,7 +23,7 @@ function isR2Bucket(value: unknown): value is R2Bucket {
 }
 
 /**
- * The R2 binding of `env`, or `undefined` where the runtime has none (a unit test, `bun run`, a
+ * The R2 binding of `env`, or `undefined` where the runtime has none (a unit test, `node`, a
  * Worker deployed without the bucket). The media service answers `BUCKET_NOT_CONFIGURED` for an
  * upload or a file then, and still deletes the record of a media: a missing bucket is a state it
  * reports, not one that crashes the Worker at import.

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "vite-plus/test";
 import { Elysia } from "elysia";
 import { mediaModule, resolveRuntimeStorage } from "./media.module";
 
@@ -14,8 +14,9 @@ describe("resolveRuntimeStorage", () => {
   it("builds a database that names the D1 binding when something first uses it", async () => {
     const { db } = await resolveRuntimeStorage();
 
-    // Drizzle prepares the statement while it builds the query, so the throw can come from either.
-    await expect(async () => await db.query.medias.findFirst()).toThrow(/"DB"/);
+    // Drizzle prepares the statement while it builds the query, so the throw can come from either:
+    // the async function turns both into the rejection.
+    await expect((async () => db.query.medias.findFirst())()).rejects.toThrow(/"DB"/);
   });
 });
 

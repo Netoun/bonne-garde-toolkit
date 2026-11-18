@@ -9,7 +9,7 @@ runtime path ([035](../../../../docs/specs/035-module-registry.md), [09](../../.
 
 ```bash
 bunx bg add dev/portless
-bun run dev:portless          # or: bun run dev:lan:portless
+vp run dev:portless           # or: vp run dev:lan:portless
 ```
 
 Starting or switching the portless proxy asks for `sudo` (it binds port 443 and trusts a local CA). Nothing
@@ -20,7 +20,7 @@ here touches `/etc/hosts` or the keychain by itself; portless does that when you
 None, and one `default` variant. The launcher does not ask which modules are installed: it reads the
 project, so it fits any combination of `provider`, `api` and `web` modules, and a project with a single app.
 It is provider-independent because what differs per provider is already in each app's own `dev` script
-(`wrangler dev` or `bun --watch`), which is where it looks.
+(`wrangler dev`, or the container's server), which is where it looks.
 
 ## What it writes
 
@@ -33,22 +33,22 @@ It is provider-independent because what differs per provider is already in each 
 | root `package.json`, `devDependencies` | `portless` 0.15.6, exact (`package.dependencies`)              |
 
 The root `test` and `typecheck` scripts fan out to workspaces only, so they never reach a root script. The
-module's `checks` do: `bunx tsc --project scripts/dev-portless.tsconfig.json` and
-`bun test ./scripts/dev-portless.test.ts`.
+module's `checks` do: `tsc --project scripts/dev-portless.tsconfig.json` and
+`vp test scripts/dev-portless.test.ts`.
 
 ## Which apps, and how each starts
 
 The apps are the directories `apps/<dir>` whose `package.json` has a `dev` script, in directory order. Each is
 named `<dir>.<slug>`, the slug being the root package name without its scope, so all of them are subdomains of
 one domain: same-site, and auth cookies keep flowing as in production. The launcher reads how to start an app
-from its `dev` script:
+from its `dev` script, and runs it with the bins a package manager's `run` would give it: the app's
+`node_modules/.bin`, then the root's, so it works the same under bun and pnpm.
 
-| `dev` script starts with | Run as                                                          | Why                                                                       |
-| ------------------------ | --------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `wrangler`               | `sh -c 'exec bunx wrangler … --port "$PORT" "$@"'` and `--var`s | wrangler ignores `PORT`, and a Worker reads its vars, not the process env |
-| `bun`                    | the script as it is                                             | the server reads the `PORT` portless sets (`provider/dockerfile` does)    |
-| anything else            | `bunx <script>` (`react-router dev`, `vite`)                    | portless recognises these and injects `--port`, `--strictPort`, `--host`  |
-| not one plain command    | `bun run dev`                                                   | `&&`, `\|`, `$VAR`, quotes or an env prefix: the script is left alone     |
+| `dev` script starts with | Run as                                                     | Why                                                                                                           |
+| ------------------------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `wrangler`               | `sh -c 'exec wrangler … --port "$PORT" "$@"'` and `--var`s | wrangler ignores `PORT`, and a Worker reads its vars, not the process env                                     |
+| anything else            | the script as it is                                        | portless recognises `react-router` and `vite` by name and injects `--port`; a server reads the `PORT` it sets |
+| not one plain command    | `vp run dev`                                               | `&&`, `\|`, `$VAR`, quotes or an env prefix: the script is left alone                                         |
 
 ## What each app is told of the others
 
@@ -67,8 +67,8 @@ them in its environment.
 ## See the plan without starting anything
 
 ```bash
-bun scripts/dev-portless.ts --dry-run          # the plan as JSON: dir, name, url, cwd, cmd, env
-bun scripts/dev-portless.ts --dry-run --lan
+node scripts/dev-portless.ts --dry-run          # the plan as JSON: dir, name, url, cwd, cmd, env
+node scripts/dev-portless.ts --dry-run --lan
 ```
 
 It needs neither portless nor a proxy, and the URLs it prints are those of a proxy with its defaults

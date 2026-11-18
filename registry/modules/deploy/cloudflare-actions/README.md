@@ -31,38 +31,39 @@ with no edit here. `bg.json`'s `apps` is not read: it stays empty after the app-
 
 ## What it writes
 
-| File                                | What it is                                                                           |
-| ----------------------------------- | ------------------------------------------------------------------------------------ |
-| `.github/workflows/deploy.yml`      | `validate`, then `deploy`; runs `workflow_dispatch` only                             |
-| `scripts/deploy-cloudflare.ts`      | `planDeploy`, `buildVars`, `deploy` and the command; no dependency, Bun's own parser |
-| `scripts/deploy-cloudflare.test.ts` | its tests, over fixture trees in a temp directory; no test starts a process          |
+| File                                | What it is                                                                                              |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `.github/workflows/deploy.yml`      | `validate`, then `deploy`; runs `workflow_dispatch` only                                                |
+| `scripts/deploy-cloudflare.ts`      | `planDeploy`, `buildVars`, `deploy` and the command, run by Node; `jsonc-parser` reads `wrangler.jsonc` |
+| `scripts/deploy-cloudflare.test.ts` | its tests, over fixture trees in a temp directory; no test starts a process                             |
 
-One patch: `scripts.merge` adds `deploy:cloudflare` (`bun scripts/deploy-cloudflare.ts`) to the root
-`package.json`, which is what the workflow and you call. It declares no dependency, no workspace and no
-env key: a key belongs to the module whose code reads it, and the two secrets are GitHub's, named only
+Two patches: `scripts.merge` adds `deploy:cloudflare` (`node scripts/deploy-cloudflare.ts`) to the root
+`package.json`, which is what the workflow and you call, and `package.dependencies` adds `jsonc-parser`
+to its `devDependencies`, exact. It declares no workspace and no env key: a key belongs to the module whose code reads it, and the two secrets are GitHub's, named only
 in the workflow.
 
-`checks` runs the script's tests. The project's `bun run test` does not reach `scripts/`, which is not
-a workspace, so that check is where they run.
+`checks` runs the script's tests. The project's `vp run test` does not reach `scripts/`, which is not
+a workspace, so that check is where they run. They import `jsonc-parser`, which this repo's root does
+not install, so `test:scripts` skips them and golden is where they run.
 
 ## The plan
 
 For a project with `api/elysia`, `db/d1` and the three `web` modules:
 
 ```text
-build   apps/api      bun run build
-build   apps/spa      bun run build
-build   apps/ssr      bun run build
-build   apps/static   bun run build
-migrate apps/api      bun run db:migrate:remote --env production
-deploy  apps/api      bun run deploy --env production
-deploy  apps/spa      bun run deploy --project-name <name in its wrangler.jsonc> --branch main
-deploy  apps/ssr      bun run deploy --env production
-deploy  apps/static   bun run deploy --project-name <name in its wrangler.jsonc> --branch main
+build   apps/api      vp run build
+build   apps/spa      vp run build
+build   apps/ssr      vp run build
+build   apps/static   vp run build
+migrate apps/api      vp run db:migrate:remote --env production
+deploy  apps/api      vp run deploy --env production
+deploy  apps/spa      vp run deploy --project-name <name in its wrangler.jsonc> --branch main
+deploy  apps/ssr      vp run deploy --env production
+deploy  apps/static   vp run deploy --project-name <name in its wrangler.jsonc> --branch main
 ```
 
 ```bash
-bun run deploy:cloudflare --dry-run    # this, as JSON: nothing runs, no credentials, no network
+vp run deploy:cloudflare --dry-run     # this, as JSON: nothing runs, no credentials, no network
 ```
 
 - **Every build comes before the first migration or deploy**, so a build that fails stops the run with
@@ -106,10 +107,10 @@ It is `workflow_dispatch` only, as the legacy workflow was, until these exist:
    `web/static`), set to the production URLs.
 2. In each `wrangler.jsonc`, the `my-app` placeholders replaced: the Worker and Pages project names,
    the `env.production` routes and URLs, and `db/d1`'s name and `database_id`
-   (`bunx wrangler d1 create <name>` gives the id).
+   (`wrangler d1 create <name>` in `apps/api` gives the id).
 3. The Pages projects and the D1 database created under those names.
 4. The Workers' own secrets, which this does not set: `BETTER_AUTH_SECRET` (`auth/better-auth`) and
-   `RESEND_API_KEY` (`email/resend`) with `bunx wrangler secret put <KEY> --env production` in
+   `RESEND_API_KEY` (`email/resend`) with `wrangler secret put <KEY> --env production` in
    the app that reads them.
 
 To deploy on every green CI run on `main`, uncomment the `workflow_run` trigger at the top of the

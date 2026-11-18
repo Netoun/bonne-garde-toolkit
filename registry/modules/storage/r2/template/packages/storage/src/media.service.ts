@@ -12,7 +12,7 @@ const { medias } = storageSchema;
 
 /**
  * A Drizzle SQLite database that has the tables media reads: its own, and the auth tables its
- * foreign keys and ownership checks reach. D1 in a Worker and `bun:sqlite` in a test both are one.
+ * foreign keys and ownership checks reach. D1 in a Worker and the test database both are one.
  */
 export type StorageDatabase = BaseSQLiteDatabase<
   "sync" | "async",

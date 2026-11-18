@@ -266,24 +266,24 @@ export function refusesDeploy(configuration: Configuration): boolean {
  */
 export const DEPLOY_PLAN: Readonly<Record<string, readonly string[]>> = {
   cloudflare: [
-    "build apps/api: bun run build",
-    "build apps/spa: bun run build",
-    "build apps/ssr: bun run build",
-    "build apps/static: bun run build",
-    "migrate apps/api: bun run db:migrate:remote --env production",
-    "deploy apps/api: bun run deploy --env production",
-    "deploy apps/spa: bun run deploy --project-name my-app-spa --branch main",
-    "deploy apps/ssr: bun run deploy --env production",
-    "deploy apps/static: bun run deploy --project-name my-app-static --branch main",
+    "build apps/api: vp run build",
+    "build apps/spa: vp run build",
+    "build apps/ssr: vp run build",
+    "build apps/static: vp run build",
+    "migrate apps/api: vp run db:migrate:remote --env production",
+    "deploy apps/api: vp run deploy --env production",
+    "deploy apps/spa: vp run deploy --project-name my-app-spa --branch main",
+    "deploy apps/ssr: vp run deploy --env production",
+    "deploy apps/static: vp run deploy --project-name my-app-static --branch main",
   ],
   // No API: nothing to migrate, and each front deploys on its own.
   fronts: [
-    "build apps/spa: bun run build",
-    "build apps/ssr: bun run build",
-    "build apps/static: bun run build",
-    "deploy apps/spa: bun run deploy --project-name my-app-spa --branch main",
-    "deploy apps/ssr: bun run deploy --env production",
-    "deploy apps/static: bun run deploy --project-name my-app-static --branch main",
+    "build apps/spa: vp run build",
+    "build apps/ssr: vp run build",
+    "build apps/static: vp run build",
+    "deploy apps/spa: vp run deploy --project-name my-app-spa --branch main",
+    "deploy apps/ssr: vp run deploy --env production",
+    "deploy apps/static: vp run deploy --project-name my-app-static --branch main",
   ],
 };
 
@@ -724,7 +724,7 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
     // Not the import into mailer.ts: that is the intention's edit, and the file it edits is
     // region-checked by the `intent[<id>]` region `bg record` leaves.
     "email/resend": ["dependencies.@app/email"],
-    "deploy/cloudflare-actions": ["scripts.deploy:cloudflare"],
+    "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
   },
   dockerfile: {
     "config/branding": ["scripts.gen:branding"],
@@ -746,7 +746,7 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "scripts.dev:lan:portless",
       "scripts.dev:portless",
     ],
-    "deploy/cloudflare-actions": ["scripts.deploy:cloudflare"],
+    "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
   },
 };
 
@@ -1397,7 +1397,7 @@ export type ExpectedPortlessApp = { dir: string; name: string; cmd: string[] };
  * by the launcher's own rules, for a project whose root package is `slug` and a proxy serving `tld`: the
  * apps the modules install, and for each the command that follows from its `dev` script. The Worker API
  * runs through wrangler with the free port and every sibling's URL, the Bun API reads PORT, and a front
- * runs through `bunx react-router`, which portless recognises.
+ * runs `react-router dev` as it is, which portless recognises by name.
  */
 export function expectedPortlessApps(
   configuration: string,
@@ -1410,14 +1410,14 @@ export function expectedPortlessApps(
     cmd: ["portless", "run", "--name", `${dir}.${slug}`, ...run],
   });
   const url = (dir: string, path = "") => `https://${dir}.${slug}.${tld}${path}`;
-  const front = (dir: string) => app(dir, ["bunx", "react-router", "dev"]);
+  const front = (dir: string) => app(dir, ["react-router", "dev"]);
 
   if (configuration === "cloudflare") {
     return [
       app("api", [
         "sh",
         "-c",
-        'exec bunx wrangler dev --port "$PORT" "$@"',
+        'exec wrangler dev --port "$PORT" "$@"',
         "wrangler",
         "--var",
         `API_URL:${url("api")}`,

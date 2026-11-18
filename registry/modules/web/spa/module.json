@@ -10,7 +10,7 @@
     "config": ["branding"],
     "ui": ["shadcn"]
   },
-  "checks": ["cd apps/spa && bun run typecheck && bun run test"],
+  "checks": ["cd apps/spa && vp run typecheck && vp run test"],
   "variants": [
     {
       "key": "cloudflare",

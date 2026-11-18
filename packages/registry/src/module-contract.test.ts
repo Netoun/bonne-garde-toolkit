@@ -130,20 +130,11 @@ describe("module contract", () => {
   // A project runs on bun or on pnpm (040), and its tests run on Vitest, which is Node in both: a
   // template file or a command a module.json declares that reaches for Bun breaks the pnpm project,
   // and a test that does breaks both. `bun` the word, in a comment, misleads the next agent the same way.
-  const MIGRATING = new Set([
-    "deploy/cloudflare-actions",
-    "dev/portless",
-    "provider/dockerfile",
-    "storage/r2",
-    "tooling/vite-plus",
-    "ui/shadcn",
-    "web/spa",
-    "web/ssr",
-    "web/static",
-  ]);
+  const MIGRATING = new Set(["provider/dockerfile"]);
 
   test("no template file and no command of a module.json reaches for Bun: a project runs on Node too", async () => {
-    const BUN = /\bBun\.|["']bun:|\bbunx?\b(?!-)|@types\/bun/;
+    // `bun.lock`, a file name, is not a command.
+    const BUN = /\bBun\.|["']bun:|\bbunx?\b(?![-.])|@types\/bun/;
     const found: string[] = [];
     for (const [category, id, path] of await findModuleManifests()) {
       if (MIGRATING.has(`${category}/${id}`)) continue;
@@ -174,8 +165,32 @@ describe("module contract", () => {
         }
       }
     }
-    // The container runs the API on Bun, the one runtime it has: its `dev` is Bun's watch mode.
-    expect(found).toEqual(["api/elysia module.json: bun --watch src/index.ts"]);
+    // Two things stay Bun until the package manager is a choice of its own: the container runs the API
+    // on Bun, its `dev` is Bun's watch mode; and the deploy workflow sets Bun up and installs with it.
+    expect(
+      found.filter((line) => !line.startsWith("deploy/cloudflare-actions/template/.github/")),
+    ).toEqual(["api/elysia module.json: bun --watch src/index.ts"]);
+  });
+
+  // A script runs on Node, which names the `.ts` file of each relative import it reaches (035), and the
+  // app that imports the same package type-checks those imports with its own tsconfig.
+  test("every tsconfig a module ships allows `.ts` imports, by its own option or the one it extends", async () => {
+    const refusing: string[] = [];
+    for (const [category, id] of await findModuleManifests()) {
+      const template = join(MODULES, category, id, "template");
+      if (!existsSync(template)) continue;
+      for (const file of await readdir(template, { recursive: true, withFileTypes: true })) {
+        if (!file.isFile() || !/^tsconfig.*\.json$/.test(file.name)) continue;
+        const path = join(file.parentPath, file.name);
+        const body: unknown = JSON.parse(await readFile(path, "utf8"));
+        const options =
+          isRecord(body) && isRecord(body.compilerOptions) ? body.compilerOptions : {};
+        if (!(isRecord(body) && "extends" in body) && options.allowImportingTsExtensions !== true) {
+          refusing.push(path.slice(MODULES.length + 1));
+        }
+      }
+    }
+    expect(refusing).toEqual([]);
   });
 
   test("both providers exist and peer on nothing", async () => {
@@ -357,7 +372,7 @@ describe("module contract", () => {
     const { manifest } = found;
 
     expect(manifest.peers).toEqual({});
-    expect(manifest.checks).toEqual(["bun run check"]);
+    expect(manifest.checks).toEqual(["vp run check"]);
     expect(manifest.variants).toHaveLength(1);
     const [variant] = manifest.variants;
     expect(variant?.match).toEqual({});
@@ -374,7 +389,7 @@ describe("module contract", () => {
     expect(variant?.patch ?? []).toEqual([]);
 
     expect(await readFile(join(found.dir, "template/.husky/pre-commit"), "utf8")).toBe(
-      "bunx vp staged\n",
+      "vp staged\n",
     );
   });
 
@@ -502,7 +517,7 @@ describe("module contract", () => {
         "packages/ui/src/styles/globals.css",
         "packages/ui/src/styles/themes/default.css",
       ]);
-      expect(manifest.checks).toEqual(["bun run typecheck"]);
+      expect(manifest.checks).toEqual(["vp run typecheck"]);
       expect(variant.patch ?? []).toEqual([]);
       expect(variant.intent ?? []).toEqual([]);
     });
@@ -2399,8 +2414,9 @@ describe("module contract", () => {
       const imported = new Set<string>();
       for (const [path, source] of await sources()) {
         for (const name of packagesNamedBy(source)) {
-          // `bun:test` and `node:*` are the runtime's; the project's own start with the scope.
-          if (name.includes(":") || name === "{{SCOPE}}/storage") continue;
+          // `node:*` is the runtime's, the base's tooling every project's.
+          if (name.includes(":") || name === "{{SCOPE}}/storage" || BASE_TOOLING.has(name))
+            continue;
           imported.add(name);
           expect([path, declared.has(name)]).toEqual([path, true]);
         }
@@ -2540,7 +2556,7 @@ describe("module contract", () => {
 
       expect(record.name).toBe("{{SCOPE}}/storage");
       expect(typeof scripts.typecheck).toBe("string");
-      expect(scripts.test).toBe("bun test");
+      expect(scripts.test).toBe("vp test");
       for (const map of ["dependencies", "devDependencies", "peerDependencies"]) {
         expect(map in record ? map : null).toBeNull();
       }
@@ -2714,17 +2730,22 @@ describe("module contract", () => {
         "scripts/deploy-cloudflare.ts",
         "scripts/deploy-cloudflare.test.ts",
       ]);
-      expect(manifest.checks).toEqual(["bun test scripts/deploy-cloudflare.test.ts"]);
+      expect(manifest.checks).toEqual(["vp test scripts/deploy-cloudflare.test.ts"]);
     });
 
-    test("its one patch is the root script the workflow calls, so no workflow carries a path", async () => {
+    test("its patches are the root script the workflow calls, so no workflow carries a path, and the parser it reads wrangler.jsonc with", async () => {
       const { variant } = await deployModule();
 
       expect(variant.patch).toEqual([
         {
           type: "scripts.merge",
           file: "package.json",
-          scripts: { "deploy:cloudflare": "bun scripts/deploy-cloudflare.ts" },
+          scripts: { "deploy:cloudflare": "node scripts/deploy-cloudflare.ts" },
+        },
+        {
+          type: "package.dependencies",
+          file: "package.json",
+          devDependencies: { "jsonc-parser": "3.3.1" },
         },
       ]);
     });
