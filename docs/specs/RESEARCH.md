@@ -105,7 +105,7 @@ Sources: [create-better-t-stack](https://github.com/AmanVarshney01/create-better
 ## Locked decisions
 
 1. Single repository; empty base; CLI + two catalogs.
-2. Opinionated Cloudflare stack, on Bun or on pnpm with Node (a `pm` module each); scripts and tests run on Node either way.
+2. Opinionated stack, deployed to Cloudflare or in one container (a `provider` module each), installed with Bun or with pnpm (a `pm` module each); scripts and tests run on Node either way.
 3. shadcn schema for UI items, untouched — native schema for modules.
 4. Three tiers: `copy` / `patch` / `intent`. Tier 2 preferred over tier 3; a module with no tier 3 installs with no agent.
 5. Compatibility by category cardinality and peers — never hand-written conflict lists or capability strings.
