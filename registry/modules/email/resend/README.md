@@ -55,7 +55,7 @@ The legacy API sent through the `resend` SDK with `react: <element>`, and the SD
 package renders to `html` itself (`@react-email/render`, as `packages/emails` already did) and posts
 `{ from, to, subject, html }` to `https://api.resend.com/emails` with `fetch`. That is the whole of
 what the project used, it has no SDK to bundle for Workers, and it can be tested against a real HTTP
-server: `resend.provider.test.ts` starts a `Bun.serve` that answers as Resend does and points
+server: `resend.provider.test.ts` starts a `node:http` server that answers as Resend does and points
 `baseUrl` at it. A `User-Agent` is set explicitly, because Resend answers 403 without one and `fetch` on
 Workers sends none. A non-2xx answer is thrown as `Email send failed: <status> <Resend's message>`; the
 key is never in it.
@@ -104,7 +104,7 @@ wires itself in. The `better-auth` variant does it in two steps:
    `.bg/add/` and which is pending until `bg record`: make `mailer` `emailMailer`, importing it from
    `{{SCOPE}}/email` in place of the `apiLogger` import only the old initializer used. This is the first
    intention a module ships: no patch of 060's closed catalog replaces the initializer of an exported
-   constant, and an import patch on its own would sit unused, and fail `bun run check`, until the
+   constant, and an import patch on its own would sit unused, and fail `vp run check`, until the
    initializer is replaced. So `bg add` writes nothing into `mailer.ts`, and there is no lint-red window
    between `bg add` and `bg record`.
 

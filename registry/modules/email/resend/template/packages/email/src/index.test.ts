@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, test } from "vite-plus/test";
 // `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { branding } from "{{SCOPE}}/config";
@@ -30,6 +30,6 @@ test("react-email template renders html", async () => {
     ctaUrl: "https://example.com",
   });
 
-  expect(html.includes(`Welcome to ${branding.displayName}`)).toBeTrue();
-  expect(html.includes("https://example.com")).toBeTrue();
+  expect(html.includes(`Welcome to ${branding.displayName}`)).toBe(true);
+  expect(html.includes("https://example.com")).toBe(true);
 });

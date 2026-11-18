@@ -48,7 +48,7 @@ The module adds one script to the project's root `package.json`, the first use o
   {
     "type": "scripts.merge",
     "file": "package.json",
-    "scripts": { "gen:branding": "bun packages/config/scripts/gen-branding.ts" }
+    "scripts": { "gen:branding": "node packages/config/scripts/gen-branding.ts" }
   }
 ]
 ```
@@ -105,4 +105,4 @@ sits (`name`, `npmScope`), and two differences that follow from where a module m
   and `site.webmanifest` points at root URLs that no app serves. They stay in `assets/favicons/` until
   the pipeline carries bytes.
 - **`displayName` is "My App"**, not the project's name: `create` renders `{{DISPLAY_NAME}}` in the
-  base files only. Edit `packages/config/branding.json` and run `bun run gen:branding`.
+  base files only. Edit `packages/config/branding.json` and run `vp run gen:branding`.

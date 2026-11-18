@@ -82,7 +82,7 @@ registry/modules/auth/better-auth/
       "values": [true, false]
     }
   },
-  "checks": ["bun run typecheck", "bun run test"],
+  "checks": ["vp run typecheck", "vp run test"],
   "variants": [
     {
       "key": "default",
@@ -114,7 +114,7 @@ registry/modules/auth/better-auth/
 | `peers`            | Map category → allow-list of module ids. Empty array means "any module of that category"           |
 | `consumesPackages` | Workspace packages this module imports; used to validate the install graph                         |
 | `options`          | Consumer-facing toggles, resolved before variant selection and recorded in `bg.json`               |
-| `checks`           | Commands run after install to validate the added surface                                           |
+| `checks`           | Commands run after install to validate the added surface; see [Checks](#checks)                    |
 | `variants`         | Install payloads — see below                                                                       |
 
 ### Variants
@@ -140,6 +140,14 @@ The combinatorial explosion is data, not branching code. A module ships one vari
 - A dependency is declared once, in the variant's `dependencies` / `devDependencies`. A vendored `package.json` MAY carry `exports` and `scripts` but no dependency maps; the planner merges the variant's maps into it. Without a vendored `package.json`, the workspace one is generated from the variant.
 - A variant selects among files at distinct paths. A file every provider ships but that differs per provider belongs to the provider module, or to one module per implementation (`db/d1`, `db/libsql`) with a `peers.provider` allow-list.
 - A module MUST declare peers by category, never by capability string.
+
+### Checks
+
+A project runs on bun or on pnpm ([040](./040-cli-create.md)), and its tests run on Vitest, which is Node under both. So what a module ships runs on Node:
+
+- A check is a shell command run at the project root with the project's `node_modules/.bin` first on `PATH`. It names no package manager: `vp run <script>`, `cd <package> && vp run <script>`, or a bin.
+- A test imports `vite-plus/test` and runs under `vp test`. A script a module adds runs as `node <file>.ts` (Node strips the types): each relative import it reaches names its `.ts` file.
+- No template file and no command reaches for Bun (`Bun.`, `bun:`, `bun`, `bunx`), except the files of a variant that only a Bun project installs. The contract test enforces it.
 
 ## Errors
 

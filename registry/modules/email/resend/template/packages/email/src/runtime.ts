@@ -50,7 +50,7 @@ export function createRuntimeProvider(
   };
 }
 
-/** `NODE_ENV=test`, as `bun test` sets it; read when asked, since `process` is not there at import everywhere. */
+/** `NODE_ENV=test`, as Vitest sets it; read when asked, since `process` is not there at import everywhere. */
 function underTest(): boolean {
   return typeof process !== "undefined" && process.env.NODE_ENV === "test";
 }

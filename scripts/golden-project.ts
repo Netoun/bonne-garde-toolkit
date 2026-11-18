@@ -50,7 +50,7 @@
 
 import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, delimiter, join, resolve } from "node:path";
 import { type Choices, namesFor } from "../packages/cli/src/choices";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -2030,10 +2030,14 @@ async function configured(
   if (hasPortless(configuration)) {
     await launched(project, timings, name);
   }
+  // A check names the project's own bins (`vp`, `tsc`), which bun or pnpm finds the way its `run` does.
+  const bins = {
+    PATH: `${join(project, "node_modules/.bin")}${delimiter}${process.env.PATH ?? ""}`,
+  };
   for (const { module, checks } of added.filter(({ checks }) => checks.length > 0)) {
     await step(`checks:${module}`, async () => {
       for (const command of checks) {
-        await run(["sh", "-c", command], project);
+        await run(["sh", "-c", command], project, bins);
       }
     });
   }

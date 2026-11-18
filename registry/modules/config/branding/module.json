@@ -6,7 +6,7 @@
   "title": "Branding",
   "description": "The branding constants every app imports, generated from branding.json, and the favicons.",
   "peers": {},
-  "checks": ["bun run typecheck", "bun run test", "bun run gen:branding"],
+  "checks": ["vp run typecheck", "vp run test", "vp run gen:branding"],
   "variants": [
     {
       "key": "default",
@@ -29,7 +29,7 @@
         {
           "type": "scripts.merge",
           "file": "package.json",
-          "scripts": { "gen:branding": "bun packages/config/scripts/gen-branding.ts" }
+          "scripts": { "gen:branding": "node packages/config/scripts/gen-branding.ts" }
         }
       ]
     }

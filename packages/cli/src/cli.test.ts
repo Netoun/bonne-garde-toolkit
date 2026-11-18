@@ -851,7 +851,7 @@ describe("bg add <module>", () => {
 });
 
 describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", () => {
-  const SCRIPT = "bun packages/config/scripts/gen-branding.ts";
+  const SCRIPT = "node packages/config/scripts/gen-branding.ts";
   const REGION = "scripts.gen:branding";
 
   async function rootScripts(target: string): Promise<Record<string, string>> {
@@ -1016,7 +1016,7 @@ describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", 
         type: "scripts.merge",
         file: "package.json",
         intent:
-          'The scripts.merge patch of config/branding makes package.json hold: scripts.gen:branding = "bun packages/config/scripts/gen-branding.ts".',
+          'The scripts.merge patch of config/branding makes package.json hold: scripts.gen:branding = "node packages/config/scripts/gen-branding.ts".',
         reason: failed.reason,
         staged: `.bg/add/01-${id.split("/")[2]}.md`,
       },
@@ -1410,7 +1410,7 @@ describe("bg add: package.dependencies (060)", () => {
       devDependencies: Record<string, string>;
     };
     // `{{SCOPE}}` is rendered in the name; the new `dependencies` map sits after `scripts`, and
-    // `drizzle-kit` between `@types/bun` and `husky`, which is where `vp fmt` has it.
+    // `drizzle-kit` between `@types/node` and `husky`, which is where `vp fmt` has it.
     expect(after.dependencies).toEqual({ "@cli-app/db": "workspace:*", zod: "4.0.0" });
     expect(Object.keys(JSON.parse(text) as object).slice(-4)).toEqual([
       "scripts",
@@ -1420,6 +1420,7 @@ describe("bg add: package.dependencies (060)", () => {
     ]);
     expect(Object.keys(after.devDependencies)).toEqual([
       "@types/bun",
+      "@types/node",
       "drizzle-kit",
       "husky",
       "typescript",

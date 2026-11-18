@@ -1,48 +1,60 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
+import { afterEach, describe, expect, test } from "vite-plus/test";
 // `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { branding } from "{{SCOPE}}/config";
 import { createResendEmailProvider } from "./resend.provider";
 
 /** A request the stand-in for Resend's API received. */
-type Received = { method: string; path: string; headers: Headers; body: unknown };
+type Received = { method: string; path: string; headers: IncomingHttpHeaders; body: unknown };
 
-const servers: Bun.Server<unknown>[] = [];
+const servers: Server[] = [];
 
-afterEach(() => {
-  for (const server of servers.splice(0)) {
-    void server.stop(true);
-  }
+function stop(server: Server): Promise<void> {
+  server.closeAllConnections();
+  return new Promise((resolve) => server.close(() => resolve()));
+}
+
+afterEach(async () => {
+  await Promise.all(servers.splice(0).map(stop));
 });
 
 /**
  * A real HTTP server that answers as Resend's API does, on a port of its own: the provider is asked
  * to use its URL, and `fetch` is the one the runtime has. Nothing is mocked.
  */
-function resend(answer: (request: Request) => Response | Promise<Response>) {
+async function resend(answer: () => Response) {
   const received: Received[] = [];
-  const server = Bun.serve({
-    port: 0,
-    async fetch(request) {
-      const text = await request.text();
-      received.push({
-        method: request.method,
-        path: new URL(request.url).pathname,
-        headers: request.headers,
-        body: text === "" ? null : JSON.parse(text),
-      });
-      return answer(request);
-    },
+  const server = createServer(async (request, response) => {
+    let text = "";
+    request.setEncoding("utf8");
+    for await (const chunk of request) {
+      text += String(chunk);
+    }
+    received.push({
+      method: request.method ?? "",
+      path: new URL(request.url ?? "/", "http://localhost").pathname,
+      headers: request.headers,
+      body: text === "" ? null : JSON.parse(text),
+    });
+    const answered = answer();
+    response.writeHead(answered.status, answered.statusText, Object.fromEntries(answered.headers));
+    response.end(await answered.text());
   });
   servers.push(server);
-  return { received, baseUrl: server.url.origin };
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("the stand-in for Resend listens on no port");
+  }
+  return { received, baseUrl: `http://127.0.0.1:${address.port}` };
 }
 
 const MESSAGE = { to: "ada@example.com", subject: "Hello", html: "<p>Hi Ada</p>" };
 
 describe("the Resend adapter", () => {
   test("posts the message to /emails as Resend's API takes it, with the key and a User-Agent", async () => {
-    const api = resend(() => Response.json({ id: "49a3999c" }));
+    const api = await resend(() => Response.json({ id: "49a3999c" }));
     const provider = createResendEmailProvider({
       apiKey: "re_secret",
       from: "Acme <hello@acme.dev>",
@@ -55,10 +67,10 @@ describe("the Resend adapter", () => {
     const [request] = api.received;
     expect(request?.method).toBe("POST");
     expect(request?.path).toBe("/emails");
-    expect(request?.headers.get("authorization")).toBe("Bearer re_secret");
-    expect(request?.headers.get("content-type")).toBe("application/json");
+    expect(request?.headers.authorization).toBe("Bearer re_secret");
+    expect(request?.headers["content-type"]).toBe("application/json");
     // Resend answers 403 to a request that has none.
-    expect(request?.headers.get("user-agent")).toContain("bonne-garde-email");
+    expect(request?.headers["user-agent"]).toContain("bonne-garde-email");
     expect(request?.body).toEqual({
       from: "Acme <hello@acme.dev>",
       to: "ada@example.com",
@@ -68,7 +80,7 @@ describe("the Resend adapter", () => {
   });
 
   test("sends from the brand's legal name when no sender is given", async () => {
-    const api = resend(() => Response.json({ id: "x" }));
+    const api = await resend(() => Response.json({ id: "x" }));
 
     await createResendEmailProvider({ apiKey: "re_secret", baseUrl: api.baseUrl }).send(MESSAGE);
 
@@ -78,7 +90,7 @@ describe("the Resend adapter", () => {
   });
 
   test("an error Resend answers with is thrown with its message, and never carries the key", async () => {
-    const api = resend(() =>
+    const api = await resend(() =>
       Response.json(
         { name: "validation_error", message: "The from address is not verified" },
         { status: 422 },
@@ -96,7 +108,7 @@ describe("the Resend adapter", () => {
   });
 
   test("an answer that is not Resend's JSON is reported by its status line", async () => {
-    const api = resend(
+    const api = await resend(
       () => new Response("upstream down", { status: 502, statusText: "Bad Gateway" }),
     );
     const provider = createResendEmailProvider({ apiKey: "re_secret", baseUrl: api.baseUrl });
@@ -105,9 +117,9 @@ describe("the Resend adapter", () => {
   });
 
   test("a server that cannot be reached rejects: the failure reaches the caller", async () => {
-    const api = resend(() => Response.json({ id: "x" }));
+    const api = await resend(() => Response.json({ id: "x" }));
     const provider = createResendEmailProvider({ apiKey: "re_secret", baseUrl: api.baseUrl });
-    await Promise.all(servers.splice(0).map((server) => server.stop(true)));
+    await Promise.all(servers.splice(0).map(stop));
 
     await expect(provider.send(MESSAGE)).rejects.toThrow();
   });

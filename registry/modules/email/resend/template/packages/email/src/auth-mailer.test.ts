@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "vite-plus/test";
 import { createAuthMailer, emailMailer } from "./auth-mailer";
 import { createMemoryEmailProvider } from "./providers/memory.provider";
 import { clearOutbox, outbox } from "./testing";
