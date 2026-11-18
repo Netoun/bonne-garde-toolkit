@@ -1,46 +1,43 @@
 # Bonne Garde
 
-Boîte à outils **shadcn-like** pour applications Cloudflare/Bun : socle vide + CLI `bg` + registry (UI + features). Pas un boilerplate à cloner — tout passe par le CLI.
+Boîte à outils **shadcn-like** pour applications Cloudflare/Bun : socle vide + CLI `bonne-garde` + registry (UI + features). Pas un boilerplate à cloner — tout passe par le CLI.
 
-Ce dépôt contient encore le monorepo applicatif historique (`apps/api`, `apps/spa`, …) pendant la migration vers des items de registry. La cible produit est :
+Le monorepo applicatif historique est dissous dans le registry (modules, items, features) : il ne reste ici que la plateforme. Usage :
 
 ```bash
-bun run bg -- create my-app --yes --no-git --registry local:./registry
+bun run bonne-garde -- create my-app --yes --no-git --registry local:./registry
 cd my-app
 bun run --filter @bonne-garde/cli start -- add ui/shadcn button config/branding provider/cloudflare api/elysia
 ```
 
-Dans ce monorepo (développement local) :
+Dans ce monorepo (développement local, avec le Bun de `package.json#packageManager`) :
 
 ```bash
 bun install --frozen-lockfile
-bun run bg -- list --source local:./registry
+bun run bonne-garde -- list --source local:./registry
 bun run registry:build
-bun run pack:cli         # → dist/npm/create-bonne-garde
+bun run pack:cli         # → dist/npm/bonne-garde
 bun run publish:cli:dry  # tarball dry-run
-bun run publish:cli      # bun publish (needs npm auth)
 bun run gen:playground   # → ./playground (gitignored)
 ```
 
 ### Publish CLI (npm)
 
-The consumer package is **`create-bonne-garde`** (supports `bun create bonne-garde@latest`).
+The consumer package is **`bonne-garde`**: `bunx bonne-garde create my-app` (or `npx`, `pnpm dlx`, `yarn dlx`).
 
-```bash
-bun run pack:cli
-bun publish --cwd dist/npm/create-bonne-garde
-```
+Pushing a tag `vX.Y.Z` publishes it: `.github/workflows/release.yml` packs it and runs `npm publish` with npm trusted publishing, so no npm token is stored anywhere.
 
-Bins: `create-bonne-garde`, `bg`. Templates are embedded; default registry when not in this monorepo is `github:Netoun/bonne-garde-toolkit`.
+Bin: `bonne-garde`, a JavaScript bundle that runs on Node ≥ 22.12 and on Bun (a generated project is a Bun monorepo, so it needs Bun). Templates are embedded; default registry when not in this monorepo is `github:Netoun/bonne-garde-toolkit`.
 
 ## Structure plateforme
 
 ```
-packages/cli/          # @bonne-garde/cli (bins: bg, create-bonne-garde)
+packages/cli/          # @bonne-garde/cli (bin: bonne-garde)
 packages/schema/       # bg.json validation
 packages/registry/     # load / plan / apply
 templates/base/        # empty monorepo template
-registry/              # source registry (ui, apps, lib, features, tooling)
+registry/              # source registry (ui, features, modules)
+scripts/               # golden, registry build, pack, doc generators
 docs/specs/            # normative specs
 ```
 
@@ -48,7 +45,7 @@ docs/specs/            # normative specs
 
 Voir [docs/specs/README.md](./docs/specs/README.md).
 
-## Stack applicative (items / legacy apps)
+## Stack du code installé par le registry
 
 Toolchain: **Vite+** (Vite, Vitest, Oxlint, Oxfmt).
 
@@ -64,26 +61,15 @@ Toolchain: **Vite+** (Vite, Vitest, Oxlint, Oxfmt).
 | Storage  | Cloudflare R2                                       |
 | Email    | Resend + React-Email                                |
 
-## Legacy app (encore présente)
-
-```bash
-bun install --frozen-lockfile
-bun run init
-bun run brand   # rejouable — identité produit + scope npm
-bun run dev
-```
-
-Use the Bun version declared in `package.json#packageManager`. The init wizard keeps workspace dependencies automatically; preview removals with `bun run init -- --dry-run`.
-
 ## Verification
 
-`bun run verify` runs formatting/lint checks, typechecking (including scripts and API tests), all tests, the migration-intentions lint, the registry build, and all app builds.
+`bun run verify` runs formatting/lint checks, knip (unused files, exports and dependencies in the platform code), typechecking (platform packages and scripts), the script, registry-contract and platform package tests, the migration-intentions lint and the registry build.
 
-`bun run test` includes script tests, platform package tests, real SQLite API tests, package tests, and frontend tests through Vite+ (Vitest + RTL + MSW).
+`bun run golden` is what runs the code the registry ships: it creates a fresh project, installs every module and item with one provider, then typechecks, tests, builds and runs `bonne-garde doctor --strict` on it (it also builds and runs the `provider/dockerfile` image when docker is available).
 
 ## Default Admin — local development only
 
-Après seed :
+Après `bun run db:seed` dans un projet généré avec `auth/better-auth` :
 
 - Email: `admin@example.local`
 - Password: `password123`

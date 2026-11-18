@@ -16,6 +16,7 @@ import {
 import {
   assertBranding,
   renderBrandingModule,
+  renderWebManifest,
 } from "../../../registry/modules/config/branding/template/packages/config/src/gen-branding";
 import { formatWithProjectFormatter } from "../test-support/project-formatter";
 import { applyInstallPlan } from "./apply-plan";
@@ -25,6 +26,7 @@ import { patchRegions, writePatch } from "./patch-ops";
 import { plannedPatches } from "./patch-plan";
 import { addNamedExport } from "./ts-patches";
 import { jsoncLeaves, setJsoncLeaves } from "./jsonc-merge";
+import { utf8Text } from "./utf8";
 
 const ROOT = join(import.meta.dir, "../../..");
 const MODULES = join(ROOT, "registry/modules");
@@ -134,8 +136,9 @@ describe("module contract", () => {
   // What only a Bun project installs may: `pm/bun`, a module whose `peers.pm` is bun alone, and a
   // variant whose `match` names one of those.
   test("no template file and no command of a module.json reaches for Bun, but what only a Bun project installs", async () => {
-    // `bun.lock`, a file name, is not a command.
-    const BUN = /\bBun\.|["']bun:|\bbunx?\b(?![-.])|@types\/bun/;
+    // `bun.lock`, a file name, is not a command. `import.meta.dir`, `.path` and `.file` are Bun's alone:
+    // Node, and so Vitest, leaves them undefined; `import.meta.dirname` and `.filename` are on both.
+    const BUN = /\bBun\.|["']bun:|\bbunx?\b(?![-.])|@types\/bun|import\.meta\.(?:dir|path|file)\b/;
     const manifests = await Promise.all(
       (await findModuleManifests()).map(async ([category, id, path]) => ({
         category,
@@ -468,7 +471,7 @@ describe("module contract", () => {
     expect(ignored).toContain("packages/db/migrations/");
   });
 
-  test("tooling/vite-plus leaves bg.json alone: the CLI writes it, and `bg record` makes an array the formatter would collapse", async () => {
+  test("tooling/vite-plus leaves bg.json alone: the CLI writes it, and `bonne-garde record` makes an array the formatter would collapse", async () => {
     const config: unknown = (
       await import(join(MODULES, "tooling/vite-plus/template/vite.config.ts"))
     ).default;
@@ -477,7 +480,7 @@ describe("module contract", () => {
 
     // A recorded intention is `"applied": ["<id>"]` laid out one id per line by `JSON.stringify`, and
     // `vp fmt` wants it on one line, so a project that formats it fails `bun run check` right after
-    // its first `bg record`. Golden is where that was found: the first module to ship an intention.
+    // its first `bonne-garde record`. Golden is where that was found: the first module to ship an intention.
     expect(ignored).toContain("bg.json");
   });
 
@@ -666,17 +669,114 @@ describe("module contract", () => {
         "packages/config/tsconfig.json",
         "packages/config/branding.json",
         "packages/config/scripts/gen-branding.ts",
+        "packages/config/assets/favicons/android-chrome-192x192.png",
+        "packages/config/assets/favicons/android-chrome-512x512.png",
+        "packages/config/assets/favicons/apple-touch-icon.png",
+        "packages/config/assets/favicons/favicon-16x16.png",
+        "packages/config/assets/favicons/favicon-32x32.png",
+        "packages/config/assets/favicons/favicon-48x48.png",
+        "packages/config/assets/favicons/favicon.ico",
         "packages/config/assets/favicons/favicon.svg",
         "packages/config/assets/favicons/site.webmanifest",
         "packages/config/src/branding.generated.ts",
         "packages/config/src/branding.types.ts",
+        "packages/config/src/favicon-links.test.ts",
+        "packages/config/src/favicon-links.ts",
         "packages/config/src/gen-branding.test.ts",
         "packages/config/src/gen-branding.ts",
         "packages/config/src/index.ts",
+        "packages/config/src/vite-favicons.test.ts",
+        "packages/config/src/vite-favicons.ts",
       ]);
       expect(variant.dependencies ?? {}).toEqual({});
       expect(variant.devDependencies ?? {}).toEqual({});
       expect(variant.intent ?? []).toEqual([]);
+    });
+
+    test("the favicons are the seven binaries and the two text files, and the manifest names only icons the module ships", async () => {
+      const favicons = "packages/config/assets/favicons";
+      const shipped = await readdir(join(TEMPLATE, favicons));
+      expect(shipped.sort()).toEqual([
+        "android-chrome-192x192.png",
+        "android-chrome-512x512.png",
+        "apple-touch-icon.png",
+        "favicon-16x16.png",
+        "favicon-32x32.png",
+        "favicon-48x48.png",
+        "favicon.ico",
+        "favicon.svg",
+        "site.webmanifest",
+      ]);
+
+      const manifest: unknown = JSON.parse(await text(`${favicons}/site.webmanifest`));
+      const icons =
+        isRecord(manifest) && Array.isArray(manifest.icons) ? manifest.icons.filter(isRecord) : [];
+      expect(icons.length).toBeGreaterThan(0);
+      // The manifest is served from the site root (`favicons()` emits this directory there), so a
+      // root URL names a file of it.
+      for (const { src } of icons) {
+        expect(typeof src === "string" && src.startsWith("/")).toBe(true);
+        expect(shipped).toContain(String(src).slice(1));
+      }
+    });
+
+    /**
+     * A shell names its icons by `faviconLinks` of the config package, which `favicon-links.test.ts`
+     * holds to the files `favicons()` emits: no shell lists a link of its own.
+     */
+    const expectIconLinksFromConfig = (root: string): void => {
+      expect(root).toMatch(/import \{[^}]*\bfaviconLinks\b[^}]*\} from "\{\{SCOPE\}\}\/config";/);
+      expect(root).not.toMatch(/\brel(?::\s|=)"(?:icon|apple-touch-icon|manifest)"/);
+      expect(root).not.toMatch(/\bhref(?::\s|=)"\//);
+    };
+
+    test("web/spa adds those favicons to its build with the package's Vite plugin, which leaves publicDir free, and links them from faviconLinks", async () => {
+      const spa = join(MODULES, "web/spa/template/apps/spa");
+      const root = await readFile(join(spa, "src/root.tsx"), "utf8");
+      const config = await readFile(join(spa, "vite.config.ts"), "utf8");
+
+      expect(config).toContain('import { favicons } from "{{SCOPE}}/config/vite";');
+      expect(config).toMatch(/\bfavicons\(\)/);
+      // Vite takes one `publicDir`: the plugin adds the favicons, so the app is free to have its own.
+      expect(config).not.toContain("publicDir");
+      expectIconLinksFromConfig(root);
+    });
+
+    test("web/ssr and web/static add those favicons to their build with the package's Vite plugin, keep their own public/, and link them from faviconLinks", async () => {
+      const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+
+      for (const id of ["ssr", "static"]) {
+        const app = join(MODULES, `web/${id}/template/apps/${id}`);
+        const root = await readFile(join(app, "src/root.tsx"), "utf8");
+        const config = await readFile(join(app, "vite.config.ts"), "utf8");
+        const module = catalog.modules.find(({ manifest }) => manifest.id === id);
+        const copy = module?.manifest.variants.flatMap((variant) => variant.copy ?? []) ?? [];
+
+        // Vite takes one `publicDir`: the app keeps its own, and the plugin adds the favicons to the build.
+        expect(config).toContain('import { favicons } from "{{SCOPE}}/config/vite";');
+        expect(config).toMatch(/\bfavicons\(\)/);
+        expect(copy).toContain(`apps/${id}/public/robots.txt`);
+        expect(await readdir(join(app, "public"))).toEqual(["robots.txt"]);
+        // The bundler turns the manifest into a data: URL and renames the svg, which no manifest can name.
+        expect(root).not.toContain("{{SCOPE}}/config/assets/favicons");
+        expect(root).not.toMatch(/import \w+ from "[^"]*\.(?:svg|webmanifest)"/);
+        expect(root).toContain("branding.themeColor");
+        expect(root).not.toContain('content="#000000"');
+        expectIconLinksFromConfig(root);
+      }
+    });
+
+    test("every web shell sets <html lang> from branding.lang, the language the manifest declares", async () => {
+      for (const id of ["spa", "ssr", "static"]) {
+        const root = await readFile(
+          join(MODULES, `web/${id}/template/apps/${id}/src/root.tsx`),
+          "utf8",
+        );
+
+        expect(root).toMatch(/import \{[^}]*\bbranding\b[^}]*\} from "\{\{SCOPE\}\}\/config";/);
+        expect(root).toContain("<html lang={branding.lang}>");
+        expect(root).not.toMatch(/\blang="/);
+      }
     });
 
     test("its package.json carries exports and scripts and no dependency map (the variant has none to merge)", async () => {
@@ -687,6 +787,7 @@ describe("module contract", () => {
         exports: {
           ".": "./src/index.ts",
           "./branding": "./src/branding.generated.ts",
+          "./vite": "./src/vite-favicons.ts",
           "./assets/*": "./assets/*",
         },
         scripts: { typecheck: "tsc --noEmit", test: "vp test" },
@@ -754,88 +855,23 @@ describe("module contract", () => {
       }
     });
 
-    const LEGACY = join(ROOT, "packages/config");
-    const LEGACY_SCRIPT = join(ROOT, "scripts/gen-branding.ts");
-    const LEGACY_BRANDING = join(ROOT, "branding.json");
-    const LEGACY_FAVICONS = join(ROOT, "assets/favicons");
+    test("the shipped manifest is what the generator renders from branding.json, and says what branding.json says", async () => {
+      const json = await text("packages/config/branding.json");
+      const shipped = await text("packages/config/assets/favicons/site.webmanifest");
 
-    /**
-     * The legacy package runs on Bun; the module's runs on Node too (040: bun or pnpm), so its tests
-     * import Vitest and the generated header names a command both package managers have. These lines
-     * are the only difference.
-     */
-    const onNode = (legacy: string): string =>
-      legacy
-        .replace('from "bun:test"', 'from "vite-plus/test"')
-        .replace(
-          "Regenerated by \\`bun run gen:branding\\`",
-          "Regenerated by \\`vp run gen:branding\\`",
-        )
-        .replace("Regenerated by `bun run gen:branding`", "Regenerated by `vp run gen:branding`");
-
-    test.skipIf(!existsSync(LEGACY))(
-      "while the legacy package is in the tree, each file is its legacy file byte for byte, but for running on Node (080: no rewrites)",
-      async () => {
-        const different: string[] = [];
-        const same = async (module: string, legacy: string, scope = "@acme") => {
-          if (rendered(await text(module), scope) !== onNode(await readFile(legacy, "utf8"))) {
-            different.push(`${module} differs from ${legacy}`);
-          }
-        };
-
-        for (const file of [
-          "branding.generated.ts",
-          "branding.types.ts",
-          "gen-branding.test.ts",
-          "gen-branding.ts",
-          "index.ts",
-        ]) {
-          await same(`packages/config/src/${file}`, join(LEGACY, "src", file));
-        }
-        await same("packages/config/branding.json", LEGACY_BRANDING);
-        for (const file of ["favicon.svg", "site.webmanifest"]) {
-          await same(`packages/config/assets/favicons/${file}`, join(LEGACY_FAVICONS, file));
-        }
-
-        expect(different).toEqual([]);
-      },
-    );
-
-    test.skipIf(!existsSync(LEGACY_SCRIPT))(
-      "the generator is the legacy script with its paths moved into the package, and nothing else",
-      async () => {
-        // The legacy script sits in the repo's scripts/ and reads the repo's branding.json. The module
-        // may not write outside packages/config, so both move there; these are the lines that follow,
-        // and the shorter import, which the formatter writes on one line. The legacy runs on Bun, the
-        // module's on tsx: the shebang, the commands and `import.meta.dirname`.
-        const moved = (await readFile(LEGACY_SCRIPT, "utf8"))
-          .replace("#!/usr/bin/env bun", "#!/usr/bin/env tsx")
-          .replace(" *   bun run gen:branding", " *   vp run gen:branding")
-          .replace(
-            " * Reads branding.json and writes packages/config/src/branding.generated.ts",
-            " * Reads packages/config/branding.json and writes packages/config/src/branding.generated.ts",
-          )
-          .replace(
-            " *   bun scripts/gen-branding.ts",
-            " *   tsx packages/config/scripts/gen-branding.ts",
-          )
-          .replace(
-            'import {\n  assertBranding,\n  renderBrandingModule,\n  type Branding,\n} from "../packages/config/src/gen-branding";',
-            'import { assertBranding, renderBrandingModule, type Branding } from "../src/gen-branding";',
-          )
-          .replace(
-            'const ROOT = resolve(import.meta.dir, "..");',
-            'const PACKAGE_DIR = resolve(import.meta.dirname, "..");',
-          )
-          .replace('join(ROOT, "branding.json")', 'join(PACKAGE_DIR, "branding.json")')
-          .replace(
-            'join(ROOT, "packages/config/src/branding.generated.ts")',
-            'join(PACKAGE_DIR, "src/branding.generated.ts")',
-          );
-
-        expect(await text("packages/config/scripts/gen-branding.ts")).toBe(moved);
-      },
-    );
+      // The manifest holds no scope, so one is enough: it is `bg.json`'s sha256 of this file that a
+      // drift would break, as for the generated module above.
+      const branding = assertBranding(JSON.parse(rendered(json, "@acme")));
+      expect(renderWebManifest(branding)).toBe(shipped);
+      expect(JSON.parse(shipped)).toMatchObject({
+        name: branding.displayName,
+        short_name: branding.shortName,
+        description: branding.description,
+        lang: branding.lang,
+        theme_color: branding.themeColor,
+        background_color: branding.backgroundColor,
+      });
+    });
 
     test("its tsconfig extends the project's and covers the generator script", async () => {
       const body: unknown = JSON.parse(await text("packages/config/tsconfig.json"));
@@ -1687,7 +1723,7 @@ describe("module contract", () => {
         ?.files.find((f) => f.target === file);
       const ormPlan = plans.find(({ key }) => key === "orm/drizzle");
 
-      // What `bg add db/d1 orm/drizzle` writes: the vendored file with the variant's maps merged in
+      // What `bonne-garde add db/d1 orm/drizzle` writes: the vendored file with the variant's maps merged in
       // (sorted by the planner), then orm's patches on it, in the order declared.
       let text = planned?.content ?? "";
       for (const patch of ormPlan?.patches ?? []) {
@@ -2591,16 +2627,10 @@ describe("module contract", () => {
       }
     });
 
-    test("R2_PUBLIC_URL is its env key, and the only one, with the local media route as its example", async () => {
+    test("R2_PUBLIC_URL is its env key, and the only one, with no example: it is written down for production and derived in development", async () => {
       const { variant } = await storageModule();
 
-      expect(variant.env).toEqual([
-        {
-          name: "R2_PUBLIC_URL",
-          required: true,
-          example: "http://localhost:5172/v1/media/file",
-        },
-      ]);
+      expect(variant.env).toEqual([{ name: "R2_PUBLIC_URL", required: true, example: "" }]);
     });
 
     test("no provider and no api module declares R2_PUBLIC_URL: a key belongs to the module that reads it (035, 07)", async () => {
@@ -2622,7 +2652,7 @@ describe("module contract", () => {
       expect(config).not.toContain("R2_PUBLIC_URL");
     });
 
-    test("the Worker's wrangler.jsonc gets the BUCKET binding the code reads, and the public url, for both environments", async () => {
+    test("the Worker's wrangler.jsonc gets the BUCKET binding the code reads for both environments, and the public url for production only", async () => {
       const { variant } = await storageModule();
       const value = wranglerValue(variant);
       const production =
@@ -2635,12 +2665,21 @@ describe("module contract", () => {
       expect(binding).toBe("BUCKET");
       for (const scope of [value, production]) {
         expect(scope.r2_buckets).toEqual([{ binding: "BUCKET", bucket_name: "my-app-media" }]);
-        expect(isRecord(scope.vars) ? Object.keys(scope.vars) : []).toEqual(["R2_PUBLIC_URL"]);
       }
-      // The example of the env key is the local value, which `wrangler dev` reads.
-      expect(isRecord(value.vars) ? value.vars.R2_PUBLIC_URL : null).toBe(
-        variant.env?.[0]?.example,
-      );
+      expect(isRecord(production.vars) ? Object.keys(production.vars) : []).toEqual([
+        "R2_PUBLIC_URL",
+      ]);
+      // No default environment value: one would win over the origin the module derives under `wrangler dev`,
+      // and a launcher that moves the API would be wrong about every media url.
+      expect(value.vars).toBeUndefined();
+    });
+
+    test("hands the environment to resolveStorageEnv as `process.env.NODE_ENV`, the expression wrangler replaces: that is what keeps a deployed Worker strict", async () => {
+      const module = await storageText("packages/storage/src/media.module.ts");
+
+      // `wrangler deploy` defines it as "production" and `wrangler dev` as "development"; read through
+      // another name (a destructuring, an alias) it stays a runtime lookup and is undefined in a Worker.
+      expect(module).toContain("{ nodeEnv: process.env.NODE_ENV }");
     });
 
     test("the media route is the one the stored urls carry: /v1/media/file, under the module's own /v1 prefix", async () => {
@@ -3017,7 +3056,7 @@ describe("module contract", () => {
         expect(existsSync(join(auth, String(patch.file)))).toBe(true);
       }
       // A patch there would put a region in the file only to keep it out of `doctor`'s user-modified
-      // list, and leave an unused import between `bg add` and `bg record`: `bg record` marks the file.
+      // list, and leave an unused import between `bonne-garde add` and `bonne-garde record`: `bonne-garde record` marks the file.
       expect(
         (wired.patch ?? []).filter(({ file }) => file === "packages/auth/src/mailer.ts"),
       ).toEqual([]);
@@ -3042,12 +3081,12 @@ describe("module contract", () => {
       expect(document).toContain("unconfiguredMailer(apiLogger)");
       expect(document).toContain("export const mailer: AuthMailer = emailMailer;");
       expect(document).toContain("id: email/resend/wire-email-into-auth");
-      // The import is the intention's too: it says where it goes, and that `bg add` did not write it.
+      // The import is the intention's too: it says where it goes, and that `bonne-garde add` did not write it.
       expect(document).toContain("imported from `{{SCOPE}}/email`");
       expect(document).toContain("`emailMailer` is not imported");
     });
 
-    test("the intention declares mailer.ts, a file auth ships, as its one `adapt` path: it is the file `bg record` marks", async () => {
+    test("the intention declares mailer.ts, a file auth ships, as its one `adapt` path: it is the file `bonne-garde record` marks", async () => {
       const document = await readFile(
         join(MODULES, "email/resend/intent/01-wire-email-into-auth.md"),
         "utf8",
@@ -3180,7 +3219,20 @@ describe("module contract", () => {
     expect(unmatched).toEqual([]);
   });
 
-  test("no module id is also an item name, since `bg add <name>` would be ambiguous", async () => {
+  test("a template file that is an image, a font or an archive is binary by its bytes: 035 decides on them, and text would be rendered", async () => {
+    const extensions = /\.(png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf|pdf|zip|wasm)$/i;
+    const text: string[] = [];
+
+    for await (const path of new Bun.Glob("**/template/**/*").scan({ cwd: MODULES, dot: true })) {
+      if (extensions.test(path) && utf8Text(await readFile(join(MODULES, path))) !== null) {
+        text.push(path);
+      }
+    }
+
+    expect(text).toEqual([]);
+  });
+
+  test("no module id is also an item name, since `bonne-garde add <name>` would be ambiguous", async () => {
     const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
     const itemNames = new Set(catalog.items.map((item) => item.name));
 

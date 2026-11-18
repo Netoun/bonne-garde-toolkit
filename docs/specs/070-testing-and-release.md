@@ -19,21 +19,21 @@ Define verification and release rules for the platform.
 
 Every test file MUST be reachable from `bun run test`. Two failure modes are forbidden by construction:
 
-- Tests under `scripts/` MUST be run. They are outside the `apps/*` / `packages/*` workspace globs, so the root `test` script MUST target them explicitly — a release-tooling test that never runs is worse than none.
+- Tests under `scripts/` MUST be run. They are outside the `packages/*` workspace glob, so the root `test` script MUST target them explicitly — a release-tooling test that never runs is worse than none.
 - A bare `bun test` at the root MUST NOT sweep `registry/` or `templates/`: those trees are **source material**, not workspaces, and their imports resolve only after install into a consumer project. They are verified through golden projects.
 - A module's tests import `vite-plus/test` and run under `vp test` in the project, which is Vitest on Node under bun and pnpm alike ([035](./035-module-registry.md#checks)). The repo's own `bun test` still runs those that import no project-only package, since Bun reads Vitest's API.
 
-### Platform vs legacy
+### Verification scripts
 
-While the legacy monorepo remains in-tree ([080](./080-existing-code-migration.md)), verification MUST be split so platform work is not held hostage:
+The platform scripts cover what runs in this repository: `packages/{cli,registry,schema}`, `scripts/`, and the registry module tests that need no install (`test:scripts` skips the module trees whose imports resolve only in a project). The rest of `registry/` and `templates/` is source material, verified through golden projects.
 
 | Script                                                    | Scope                                        |
 | --------------------------------------------------------- | -------------------------------------------- |
 | `typecheck:platform` / `test:platform` / `check:platform` | `packages/{cli,registry,schema}`, `scripts/` |
-| `typecheck:legacy` / `test:legacy` / `check:legacy`       | Legacy apps and packages pending extraction  |
-| `typecheck` / `test` / `check`                            | Both, for local use                          |
+| `typecheck` / `test`                                      | The platform scripts above                   |
+| `check`                                                   | The whole repository (format and lint)       |
 
-CI MUST run them as independent jobs. A legacy failure MUST NOT block a platform change, and vice versa.
+CI MUST run `verify` (the gate for the code above), then `golden` (the generated projects).
 
 ## TDD
 
@@ -47,7 +47,7 @@ One semver versions **the whole platform** together:
 | Surface              | How it carries the version                                                           |
 | -------------------- | ------------------------------------------------------------------------------------ |
 | Git                  | Annotated tag `vX.Y.Z`                                                               |
-| npm                  | `create-bonne-garde@X.Y.Z` (and matching workspace package versions)                 |
+| npm                  | `bonne-garde@X.Y.Z` (and matching workspace package versions)                        |
 | Base template        | Embedded in that tarball ([010](./010-base-template.md))                             |
 | UI registry          | Resolved from the same tag ([030](./030-ui-registry.md))                             |
 | Module registry      | Resolved from the same tag ([035](./035-module-registry.md))                         |
@@ -58,7 +58,7 @@ One semver versions **the whole platform** together:
 - All five surfaces MUST live in one repository ([000](./000-product.md)). Two repositories would mean two tags for one platform state.
 - MUST NOT publish CLI / tag git / ship catalog changes as independent drifting versions.
 - A module's own `version` field is informational; the lockstep semver recorded in `bg.json` is authoritative.
-- `bg create` MUST write `platform.version` (and default registry pin) to the **same** `X.Y.Z` as the running CLI package — never a mutable branch (`main`).
+- `bonne-garde create` MUST write `platform.version` (and default registry pin) to the **same** `X.Y.Z` as the running CLI package — never a mutable branch (`main`).
 - Release/fixture tests MUST NOT silently install from `main`.
 - Changelog MUST list version bumps and SHOULD list new/changed items, modules, and intention ids for that release.
 
@@ -70,14 +70,13 @@ Pipeline shape:
 
 1. **Changelogs / conventional commits** → intended bump
 2. **Version** → write `X.Y.Z` everywhere required + validate intentions lint
-3. **Publish** → `pack:cli` → npm publish → git tag `vX.Y.Z` (+ GitHub release)
+3. **Publish** → git tag `vX.Y.Z` → `.github/workflows/release.yml` packs and publishes to npm (+ GitHub release)
 
 ## Publish (CLI package)
 
-- CLI published to npm as **`create-bonne-garde`** via `bun run pack:cli` then `bun publish --cwd dist/npm/create-bonne-garde`.
-- `bun create bonne-garde@latest` resolves that package; bins include `create-bonne-garde` and `bg`.
-- The published tarball MUST embed `templates/base` and vendor schema/registry (no `workspace:` deps).
-- Its bins MUST be JavaScript bundled for Node (`#!/usr/bin/env node`): Node strips no type under `node_modules`, so TypeScript sources cannot be what runs. Golden and the pack test drive the packed CLI with `node`, which proves it.
+- CLI published to npm as **`bonne-garde`** by `.github/workflows/release.yml` when a tag `vX.Y.Z` is pushed: `pack:cli`, then `npm publish` with npm trusted publishing (`bun publish` does not do its OIDC exchange). No npm token is stored; npm adds provenance. The workflow refuses a tag that does not name the packed version, and the packed `repository.url` MUST name this repository exactly. A tag pushed before the workflow existed is published by running it by hand with that tag.
+- `bunx bonne-garde create my-app` resolves that package, as do `npx`, `pnpm dlx` and `yarn dlx`; its one bin is `bonne-garde`.
+- The published tarball MUST be JavaScript that runs on Node ≥ 22.12 and on Bun (Node never strips types inside `node_modules`): one bundled bin file, with `templates/base` embedded, schema and registry vendored into the bundle (no `workspace:` deps), and the npm dependencies the bundle imports declared, pinned to an exact version. Golden runs the packed bin with `node`, and CI has a Node of that floor.
 - Registry items pinable by git tag/commit for remote installs (`github:Netoun/bonne-garde-toolkit`).
 - Dry-run: `bun run publish:cli:dry`.
 
@@ -87,4 +86,4 @@ Pipeline shape:
 - Contract suite fails if any `registry.json` is invalid against the shadcn schema, or any `module.json` has an unknown category or an ambiguous `match` set.
 - Every patch type has an idempotency test.
 - Smoke: create + add of the MVP set succeeds in a temp directory with `--yes --no-install` and no TTY.
-- A tagged release `vX.Y.Z` implies npm `create-bonne-garde@X.Y.Z` and matching template / catalogs / intentions for that tag.
+- A tagged release `vX.Y.Z` implies npm `bonne-garde@X.Y.Z` and matching template / catalogs / intentions for that tag.

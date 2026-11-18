@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Generates docs/COMMANDS.md from scripts declared in all package.json files
- * in the monorepo (root + apps/* + packages/*).
+ * in the monorepo (root + packages/*).
  *
  * Usage :
  *   bun run gen:commands       # from root
@@ -60,7 +60,7 @@ function main() {
     sections.push(renderSection("Root", ".", rootPkg));
   }
 
-  const workspaces = [...listWorkspaceDirs("apps"), ...listWorkspaceDirs("packages")].sort();
+  const workspaces = listWorkspaceDirs("packages").sort();
 
   for (const ws of workspaces) {
     const pkg = readPkg(join(ROOT, ws, "package.json"));

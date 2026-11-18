@@ -7,16 +7,13 @@ Define greenfield project creation.
 ## Public command
 
 ```bash
-bun create bonne-garde@latest my-app [flags]
-npm create bonne-garde@latest my-app -- [flags]
-pnpm create bonne-garde my-app [flags]
+bunx bonne-garde create my-app [flags]
+# any runner: npx bonne-garde create ..., pnpm dlx bonne-garde create ..., yarn dlx bonne-garde create ...
 # workspace / local:
 bun run --filter @bonne-garde/cli start -- create my-app [flags]
-# or:
-bunx bg create my-app [flags]
 ```
 
-Package name during monorepo development: `@bonne-garde/cli` with bins `bg` and `create-bonne-garde`.
+Package name during monorepo development: `@bonne-garde/cli` with the bin `bonne-garde`. The published package is `bonne-garde`: JavaScript that runs on Node ≥ 22.12 and on Bun. The project it creates is a Bun monorepo, so `create` and `add` need Bun to run `bun install`: without it they still write the files, print one line saying the project needs Bun (https://bun.sh) and to run `bun install` once it is installed, and exit non-zero.
 
 ## Steps (MUST)
 
@@ -68,7 +65,7 @@ What each answer names, the one table the CLI holds:
 
 ## Naming (normative)
 
-`bg create ../tmp-app`, `bg create /abs/path/my-app`, and `bg create .` MUST all produce the same shape: the package name and derived scope come from the target directory's basename. Slugifying the supplied path is a defect — it leaks the whole path into `package.json`, into `bg.json` `scope`, and from there into every workspace package the scope placeholder reaches.
+`bonne-garde create ../tmp-app`, `bonne-garde create /abs/path/my-app`, and `bonne-garde create .` MUST all produce the same shape: the package name and derived scope come from the target directory's basename. Slugifying the supplied path is a defect — it leaks the whole path into `package.json`, into `bg.json` `scope`, and from there into every workspace package the scope placeholder reaches.
 
 ## Flags (MUST)
 
@@ -93,12 +90,12 @@ What each answer names, the one table the CLI holds:
 
 ## Acceptance
 
-- `bg create tmp-app --yes --no-git --no-install` creates a valid tree with a `version: 2` `bg.json` that records the package manager's module alone.
-- `bg create tmp-app --pm pnpm --apps api,spa --yes` installs with pnpm, and nothing it runs needs Bun.
-- `bg create tmp-app --pm pnpm --apps api,spa --provider dockerfile --yes` makes a project whose image installs with pnpm and runs the API on Node.
-- `bg create tmp-app --apps api,spa --features email --provider dockerfile --yes --no-git --no-install` records the modules of those answers in `bg.json`.
-- `bg create tmp-app --apps spa --yes` creates a SPA with no API: no Eden client, no API variable. With `--provider dockerfile` its container serves the SPA alone.
-- `bg create tmp-app --apps ssr --provider dockerfile --yes` fails with the planner's message (`web/ssr` accepts only `cloudflare`), and writes nothing.
-- `bg create tmp-app --features auth --yes` fails: a feature needs an app.
-- `bg create /abs/path/my-app` yields scope `@my-app`, not a slugified path.
+- `bonne-garde create tmp-app --yes --no-git --no-install` creates a valid tree with a `version: 2` `bg.json` that records the package manager's module alone.
+- `bonne-garde create tmp-app --pm pnpm --apps api,spa --yes` installs with pnpm, and nothing it runs needs Bun.
+- `bonne-garde create tmp-app --pm pnpm --apps api,spa --provider dockerfile --yes` makes a project whose image installs with pnpm and runs the API on Node.
+- `bonne-garde create tmp-app --apps api,spa --features email --provider dockerfile --yes --no-git --no-install` records the modules of those answers in `bg.json`.
+- `bonne-garde create tmp-app --apps spa --yes` creates a SPA with no API: no Eden client, no API variable. With `--provider dockerfile` its container serves the SPA alone.
+- `bonne-garde create tmp-app --apps ssr --provider dockerfile --yes` fails with the planner's message (`web/ssr` accepts only `cloudflare`), and writes nothing.
+- `bonne-garde create tmp-app --features auth --yes` fails: a feature needs an app.
+- `bonne-garde create /abs/path/my-app` yields scope `@my-app`, not a slugified path.
 - Re-running against the same non-empty directory fails.

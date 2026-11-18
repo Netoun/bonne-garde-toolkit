@@ -1,9 +1,25 @@
-import { describe, expect, test } from "bun:test";
-import { join, resolve } from "node:path";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { loadLocalRegistry, patchRegions, plannedPatches } from "../packages/registry/src/index";
+import { cliRunner } from "../packages/schema/src/cli-runner";
+import { sha256Hex } from "../packages/registry/src/index";
 import {
   addArguments,
   assetPath,
+  BINARY_FAVICONS,
+  expectBuildHoldsFavicons,
+  expectFaviconsIdentical,
+  expectFaviconsServed,
+  expectManifestEmitted,
+  expectOwnPublicKept,
+  faviconHrefs,
+  FAVICONS_DIR,
+  faviconShells,
+  hasFavicons,
+  manifestHref,
+  manifestIconPaths,
   AUTH_TABLES,
   buildsImage,
   CONFIGURATIONS,
@@ -51,6 +67,10 @@ import {
   PENDING,
   PORTLESS_MIN_TESTS,
   readPendingIntentions,
+  readReselected,
+  RESELECTED,
+  RESELECT_BASE,
+  expectReselected,
   RESOLUTIONS,
   wiredTest,
   wireEmailIntoAuth,
@@ -68,6 +88,7 @@ import {
   readAddedItems,
   readAddedModules,
   readKept,
+  snapshot,
   readCounts,
   resetTables,
   SEEDED_ADMIN,
@@ -82,14 +103,18 @@ import {
   STORAGE_MIN_TESTS,
   testCounts,
   until,
+  DEPLOY_BUILD_NEEDS,
   DEPLOY_MODULE,
   DEPLOY_PLAN,
+  expectBuildNeeds,
+  expectBuildVarsRefusal,
   expectDeployableApp,
   expectDeployPlan,
   expectEveryAppPlanned,
   expectProviderRefusal,
   expectWorkflow,
   hasDeploy,
+  readDeployNeeds,
   readDeployPlan,
   refusesDeploy,
   type AddedModule,
@@ -124,7 +149,7 @@ describe("selectItems", () => {
     expect(() => selectItems(LISTING, { ghost: "was removed" })).toThrow(/ghost/);
   });
 
-  test("fails when the listing is empty, so a broken `bg list` is not a green run", () => {
+  test("fails when the listing is empty, so a broken `bonne-garde list` is not a green run", () => {
     expect(() => selectItems("\n", {})).toThrow(/no items/);
   });
 
@@ -208,7 +233,7 @@ describe("selectModules", () => {
     "provider/dockerfile": "one provider per project",
   };
 
-  test("takes the module lines of `bg list` and skips the items", () => {
+  test("takes the module lines of `bonne-garde list` and skips the items", () => {
     expect(selectModules(FULL_LISTING, ["tooling/vite-plus"], exclusions)).toEqual({
       modules: ["tooling/vite-plus"],
       excluded: [
@@ -218,7 +243,7 @@ describe("selectModules", () => {
     });
   });
 
-  test("installs the modules in the order it was given, not the order `bg list` printed", () => {
+  test("installs the modules in the order it was given, not the order `bonne-garde list` printed", () => {
     const { modules } = selectModules(FULL_LISTING, ["tooling/vite-plus", "provider/cloudflare"], {
       "provider/dockerfile": "one provider per project",
     });
@@ -231,7 +256,7 @@ describe("selectModules", () => {
     ).toThrow(/provider\/dockerfile.*install.*exclude/s);
   });
 
-  test("fails on an installed module that `bg list` does not show", () => {
+  test("fails on an installed module that `bonne-garde list` does not show", () => {
     expect(() =>
       selectModules(FULL_LISTING, ["tooling/vite-plus", "tooling/ghost"], exclusions),
     ).toThrow(/tooling\/ghost/);
@@ -249,7 +274,7 @@ describe("selectModules", () => {
     ).toThrow(/provider\/cloudflare.*both/s);
   });
 
-  test("fails when nothing is installed, so a broken `bg list` is not a green run", () => {
+  test("fails when nothing is installed, so a broken `bonne-garde list` is not a green run", () => {
     expect(() => selectModules(LISTING, [], {})).toThrow(/no modules/);
   });
 });
@@ -272,12 +297,12 @@ describe("readAddedModules", () => {
     ]);
   });
 
-  test("fails when `bg add` did not report a module golden asked for", () => {
+  test("fails when `bonne-garde add` did not report a module golden asked for", () => {
     expect(() => readAddedModules(output, ["tooling/vite-plus", "db/d1"])).toThrow(/db\/d1/);
   });
 
-  test("fails on output that is not the JSON `bg add` prints", () => {
-    expect(() => readAddedModules("not json", [])).toThrow(/bg add/);
+  test("fails on output that is not the JSON `bonne-garde add` prints", () => {
+    expect(() => readAddedModules("not json", [])).toThrow(/bonne-garde add/);
     expect(() => readAddedModules("{}", [])).toThrow(/modules/);
     expect(() => readAddedModules('{"modules":[{"module":"a/b","checks":[1]}]}', [])).toThrow(
       /checks/,
@@ -357,7 +382,7 @@ describe("the golden project and modules", () => {
     expect(CONFIGURATIONS.find(({ name }) => name === "dockerfile")?.items).toBe(false);
   });
 
-  test("no item golden installs shares its bare name with a module: `bg add` refuses a name that is both", async () => {
+  test("no item golden installs shares its bare name with a module: `bonne-garde add` refuses a name that is both", async () => {
     const catalog = await loadLocalRegistry(
       join(resolve(import.meta.dir, ".."), "registry/registry.json"),
     );
@@ -371,7 +396,7 @@ describe("the golden project and modules", () => {
 });
 
 describe("addArguments", () => {
-  test("is one `bg add`: the modules, then every item, with --yes and --no-install", () => {
+  test("is one `bonne-garde add`: the modules, then every item, with --yes and --no-install", () => {
     expect(addArguments(["tooling/vite-plus", "ui/shadcn"], ["utils", "button"])).toEqual([
       "add",
       "tooling/vite-plus",
@@ -392,11 +417,11 @@ describe("addArguments", () => {
     expect(() => addArguments(["ui/shadcn"], ["ui/shadcn"])).toThrow(/ui\/shadcn/);
   });
 
-  test("fails with no module, so an empty `bg list` is not a green run", () => {
+  test("fails with no module, so an empty `bonne-garde list` is not a green run", () => {
     expect(() => addArguments([], ["button"])).toThrow(/no modules/);
   });
 
-  test("takes no items, for a configuration that installs modules only; selectItems refuses an empty `bg list`", () => {
+  test("takes no items, for a configuration that installs modules only; selectItems refuses an empty `bonne-garde list`", () => {
     expect(addArguments(["api/elysia"], [])).toEqual([
       "add",
       "api/elysia",
@@ -424,8 +449,9 @@ describe("addArguments", () => {
 });
 
 describe("expectRefusal", () => {
-  const stderr =
-    "button needs the ui module, and none is installed or named in this call; run: bg add ui/shadcn button\n";
+  // What the packed CLI prints is prefixed by the runner of the package manager that ran golden.
+  const ADD = `${cliRunner()} add`;
+  const stderr = `button needs the ui module, and none is installed or named in this call; run: ${ADD} ui/shadcn button\n`;
 
   test("passes when the add failed and the message gives the command that fixes it", () => {
     expect(() => expectRefusal({ code: 1, stderr }, "button", "ui/shadcn")).not.toThrow();
@@ -440,12 +466,11 @@ describe("expectRefusal", () => {
   test("fails when it was refused for another reason, and says what it printed", () => {
     expect(() =>
       expectRefusal({ code: 1, stderr: "unknown name: button\n" }, "button", "ui/shadcn"),
-    ).toThrow(/bg add ui\/shadcn button.*unknown name: button/s);
+    ).toThrow(/bonne-garde add ui\/shadcn button.*unknown name: button/s);
   });
 
   test("a feature item in a bare project is refused for every module it needs, named in one command (030)", () => {
-    const all =
-      "spa-auth needs the ui, auth and web/spa modules, and none is installed or named in this call; run: bg add ui/shadcn auth/better-auth web/spa spa-auth\n";
+    const all = `spa-auth needs the ui, auth and web/spa modules, and none is installed or named in this call; run: ${ADD} ui/shadcn auth/better-auth web/spa spa-auth\n`;
 
     expect(() =>
       expectRefusal(
@@ -458,20 +483,19 @@ describe("expectRefusal", () => {
     ).not.toThrow();
     // A fix that leaves a module out is not the fix.
     expect(() => expectRefusal({ code: 1, stderr: all }, "spa-auth", "ui/shadcn")).toThrow(
-      /bg add ui\/shadcn spa-auth/,
+      /bonne-garde add ui\/shadcn spa-auth/,
     );
   });
 
   test("a project missing one module is refused for that one alone", () => {
-    const storage =
-      "spa-backoffice needs the storage module, and none is installed or named in this call; run: bg add storage/r2 spa-backoffice\n";
+    const storage = `spa-backoffice needs the storage module, and none is installed or named in this call; run: ${ADD} storage/r2 spa-backoffice\n`;
 
     expect(() =>
       expectRefusal({ code: 1, stderr: storage }, "spa-backoffice", "storage/r2"),
     ).not.toThrow();
     expect(() =>
       expectRefusal({ code: 1, stderr: storage }, "spa-backoffice", "auth/better-auth"),
-    ).toThrow(/bg add auth\/better-auth spa-backoffice/);
+    ).toThrow(/bonne-garde add auth\/better-auth spa-backoffice/);
   });
 });
 
@@ -555,7 +579,7 @@ describe("readAddedModules: patches", () => {
     ]);
   });
 
-  test("fails on a patch that is not what `bg add` prints", () => {
+  test("fails on a patch that is not what `bonne-garde add` prints", () => {
     expect(() =>
       readAddedModules(
         JSON.stringify({ modules: [{ module: "a/b", patches: [{ type: 1 }] }] }),
@@ -636,7 +660,7 @@ describe("the golden project and patches", () => {
     );
 
     for (const { name, modules } of CONFIGURATIONS) {
-      // What `bg add` does: among the variants whose `match` the configuration satisfies, the most specific.
+      // What `bonne-garde add` does: among the variants whose `match` the configuration satisfies, the most specific.
       const regions: Record<string, string[]> = {};
       for (const { manifest } of catalog.modules) {
         // The package manager's module is `create --pm`'s, not golden's `bg add`'s.
@@ -694,7 +718,6 @@ describe("the golden project and patches", () => {
           "exports[@app/storage/schema]",
           "imports[@app/storage]",
           "r2_buckets",
-          "vars.R2_PUBLIC_URL",
         ],
         "orm/drizzle": [
           "dependencies.@app/db",
@@ -720,7 +743,7 @@ describe("the golden project and patches", () => {
           "scripts.dev:portless",
         ],
         // The import into mailer.ts is the intention's: the file an intention edits is region-checked
-        // by the `intent[<id>]` region `bg record` leaves, not by a patch that imports for it.
+        // by the `intent[<id>]` region `bonne-garde record` leaves, not by a patch that imports for it.
         "email/resend": ["dependencies.@app/email"],
         "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
       },
@@ -785,7 +808,7 @@ describe("diffTrees (a re-add leaves the project the same bytes)", () => {
   });
 });
 
-describe("expectRegionsRecorded (bg.json carries what `bg add` reported)", () => {
+describe("expectRegionsRecorded (bg.json carries what `bonne-garde add` reported)", () => {
   const added: AddedModule[] = [
     {
       module: "config/branding",
@@ -917,6 +940,87 @@ describe("the deploy phases (what golden proves of deploy/cloudflare-actions wit
       expect(() =>
         readDeployPlan(JSON.stringify({ steps: [{ phase: "build" }], buildVars: [] })),
       ).toThrow(/step/);
+    });
+  });
+
+  describe("the variables a build needs", () => {
+    const needs = { "apps/spa": ["VITE_API_URL"], "apps/static": ["VITE_API_URL"] };
+
+    test("golden expects the SPA and the static site to need the API URL, and no other app a variable", () => {
+      expect(DEPLOY_BUILD_NEEDS.cloudflare).toEqual(needs);
+    });
+
+    test("reads them from the plan the dry run printed, by app", () => {
+      expect(
+        readDeployNeeds(JSON.stringify({ steps: [], buildVars: [], requiredBuildVars: needs })),
+      ).toEqual(needs);
+      expect(readDeployNeeds(JSON.stringify({ requiredBuildVars: {} }))).toEqual({});
+    });
+
+    test("fails on a plan that does not say, and on output that is not a plan", () => {
+      expect(() => readDeployNeeds(JSON.stringify({ steps: [] }))).toThrow(/requiredBuildVars/);
+      expect(() =>
+        readDeployNeeds(JSON.stringify({ requiredBuildVars: { "apps/spa": 1 } })),
+      ).toThrow(/requiredBuildVars/);
+      expect(() => readDeployNeeds("deploy: nothing to deploy")).toThrow(/not JSON/);
+    });
+
+    test("passes the plan whose needs are the expected ones, whatever the order of the apps", () => {
+      expect(() => expectBuildNeeds(needs, { ...needs })).not.toThrow();
+      expect(() =>
+        expectBuildNeeds({ "apps/static": ["VITE_API_URL"], "apps/spa": ["VITE_API_URL"] }, needs),
+      ).not.toThrow();
+    });
+
+    test("names the app that needs more, less or another variable than golden expects", () => {
+      expect(() => expectBuildNeeds({ "apps/spa": ["VITE_API_URL"] }, needs)).toThrow(
+        /apps\/static.*\(nothing\).*VITE_API_URL/s,
+      );
+      expect(() => expectBuildNeeds({ ...needs, "apps/ssr": ["VITE_API_URL"] }, needs)).toThrow(
+        /apps\/ssr needs VITE_API_URL.*expects \(nothing\)/s,
+      );
+      expect(() => expectBuildNeeds({ ...needs, "apps/spa": ["VITE_OTHER"] }, needs)).toThrow(
+        /apps\/spa needs VITE_OTHER.*expects VITE_API_URL/s,
+      );
+    });
+
+    describe("expectBuildVarsRefusal", () => {
+      const refusal = {
+        code: 1,
+        output:
+          "deploy: a build is missing a variable it needs: apps/spa needs VITE_API_URL; apps/static needs VITE_API_URL",
+      };
+
+      test("passes a refusal that names every app and variable and prints no value", () => {
+        expect(() =>
+          expectBuildVarsRefusal(refusal, needs, ["https://golden.invalid"]),
+        ).not.toThrow();
+      });
+
+      test("fails a dry run that passed", () => {
+        expect(() => expectBuildVarsRefusal({ code: 0, output: "{}" }, needs, [])).toThrow(
+          /must be refused/,
+        );
+      });
+
+      test("fails a refusal that does not name an app or a variable", () => {
+        expect(() =>
+          expectBuildVarsRefusal({ code: 1, output: "apps/spa needs VITE_API_URL" }, needs, []),
+        ).toThrow(/apps\/static/);
+        expect(() =>
+          expectBuildVarsRefusal({ code: 1, output: "deploy: failed" }, needs, []),
+        ).toThrow(/apps\/spa.*failed/s);
+      });
+
+      test("fails a refusal that printed a value it was handed", () => {
+        expect(() =>
+          expectBuildVarsRefusal(
+            { ...refusal, output: `${refusal.output} (https://golden.invalid)` },
+            needs,
+            ["https://golden.invalid"],
+          ),
+        ).toThrow(/value/);
+      });
     });
   });
 
@@ -1281,8 +1385,12 @@ describe("the launcher phase (dev/portless)", () => {
         ...app,
         url: `https://${app.name}.${tld}`,
         cwd: `apps/${app.dir}`,
-        // A Worker is told through `--var`, every other app through its environment.
-        env: app.dir === "api" ? {} : { API_URL: apiUrl, VITE_API_URL: apiUrl },
+        // A Worker is told through `--var`, every other app through its environment: the Worker a
+        // Vite command runs also asked to read it.
+        env:
+          app.dir === "api"
+            ? {}
+            : { API_URL: apiUrl, VITE_API_URL: apiUrl, CLOUDFLARE_INCLUDE_PROCESS_ENV: "true" },
         ...overrides[app.dir],
       })),
     });
@@ -1312,8 +1420,6 @@ describe("the launcher phase (dev/portless)", () => {
       "wrangler",
       "--var",
       `API_URL:https://api.${SLUG}.localhost`,
-      "--var",
-      `R2_PUBLIC_URL:https://api.${SLUG}.localhost/v1/media/file`,
       "--var",
       `SPA_URL:https://spa.${SLUG}.localhost`,
       "--var",
@@ -1399,6 +1505,38 @@ describe("the launcher phase (dev/portless)", () => {
 
       expect(() => expectPortlessPlan(blind, expected, "localhost")).toThrow(/spa.*API_URL/s);
       expect(() => expectPortlessPlan(noVite, expected, "localhost")).toThrow(/ssr.*VITE_API_URL/s);
+    });
+
+    test("expects the Worker a Vite command runs, and no other app, to be told to read the process environment", () => {
+      expect(expected.filter((app) => app.includesProcessEnv).map(({ dir }) => dir)).toEqual([
+        "spa",
+        "ssr",
+        "static",
+      ]);
+      expect(
+        expectedPortlessApps("dockerfile", "golden-dockerfile", "localhost"),
+      ).not.toContainEqual(expect.objectContaining({ includesProcessEnv: true }));
+    });
+
+    test("names the front that was not told to, whose Worker would keep the API_URL of its config", () => {
+      const apiUrl = `https://api.${SLUG}.localhost`;
+      const unaware = printed("localhost", {
+        ssr: { env: { API_URL: apiUrl, VITE_API_URL: apiUrl } },
+      });
+
+      expect(() => expectPortlessPlan(unaware, expected, "localhost")).toThrow(
+        /ssr.*CLOUDFLARE_INCLUDE_PROCESS_ENV.*not set/s,
+      );
+    });
+
+    test("names an app that was told to when golden did not expect it", () => {
+      const told = printed("localhost", {
+        api: { env: { CLOUDFLARE_INCLUDE_PROCESS_ENV: "true" } },
+      });
+
+      expect(() => expectPortlessPlan(told, expected, "localhost")).toThrow(
+        /api.*CLOUDFLARE_INCLUDE_PROCESS_ENV.*set, expected it not set/s,
+      );
     });
   });
 
@@ -1523,6 +1661,14 @@ describe("testCounts", () => {
     ].join("\n");
 
     expect(testCounts(output)).toEqual({ "@app/config": 6, "@app/db": 12, "@app/ssr": 4 });
+  });
+
+  test("reads Vitest's line when it is coloured, as it is in CI", () => {
+    // The line as GitHub Actions printed it: Vitest colours its output when CI is set.
+    const output =
+      "[@app/spa#test] \u001B[2m      Tests \u001B[22m \u001B[1m\u001B[32m8 passed\u001B[39m\u001B[22m\u001B[90m (8)\u001B[39m";
+
+    expect(testCounts(output)).toEqual({ "@app/spa": 8 });
   });
 });
 
@@ -1740,7 +1886,7 @@ describe("the email phases", () => {
     expect(tests).toBeGreaterThanOrEqual(EMAIL_MIN_TESTS - 2);
   });
 
-  describe("PENDING (050 step 14: what `bg add` leaves for an executor, per configuration)", () => {
+  describe("PENDING (050 step 14: what `bonne-garde add` leaves for an executor, per configuration)", () => {
     test("is the intentions the selected variants ship, and golden knows how to resolve each", async () => {
       const root = resolve(import.meta.dir, "..");
       const catalog = await loadLocalRegistry(join(root, "registry/registry.json"));
@@ -1776,7 +1922,7 @@ describe("the email phases", () => {
   describe("readPendingIntentions", () => {
     const out = (pendingIntentions: unknown) => JSON.stringify({ modules: [], pendingIntentions });
 
-    test("reads the ids `bg add` printed, in order, and none when there are none", () => {
+    test("reads the ids `bonne-garde add` printed, in order, and none when there are none", () => {
       expect(readPendingIntentions(out([{ id: "a/b/c" }, { id: "a/b/d" }]))).toEqual([
         "a/b/c",
         "a/b/d",
@@ -1789,6 +1935,62 @@ describe("the email phases", () => {
       expect(() => readPendingIntentions("{}")).toThrow(/no `pendingIntentions` array/);
       expect(() => readPendingIntentions(out([{}]))).toThrow(/without an id/);
     });
+  });
+
+  describe("readReselected", () => {
+    const out = (reselected: unknown) => JSON.stringify({ modules: [], reselected });
+
+    test("reads the modules `bonne-garde add` planned again, with the variant each left and took, and none when there are none", () => {
+      expect(
+        readReselected(
+          out([
+            {
+              module: "email/resend",
+              from: "default",
+              to: "better-auth",
+              because: ["auth/better-auth"],
+            },
+          ]),
+        ),
+      ).toEqual([{ module: "email/resend", from: "default", to: "better-auth" }]);
+      expect(readReselected(out([]))).toEqual([]);
+    });
+
+    test("fails on output that is not JSON, or has no list, or an entry without a module and its variants", () => {
+      expect(() => readReselected("nope")).toThrow(/did not print JSON/);
+      expect(() => readReselected("{}")).toThrow(/no `reselected` array/);
+      expect(() => readReselected(out([{ module: "email/resend" }]))).toThrow(
+        /without module, from and to/,
+      );
+    });
+  });
+
+  describe("expectReselected", () => {
+    const email = { module: "email/resend", from: "default", to: "better-auth" };
+
+    test("passes on the modules expected, and on none expected and none reported", () => {
+      expect(() => expectReselected([email], [email])).not.toThrow();
+      expect(() => expectReselected([], [])).not.toThrow();
+    });
+
+    test("fails on a module planned again that was not expected, one that was not planned again, and a variant that differs", () => {
+      expect(() => expectReselected([email], [])).toThrow(
+        /planned again \[email\/resend default -> better-auth\], golden expects \[\]/,
+      );
+      expect(() => expectReselected([], [email])).toThrow(
+        /golden expects \[email\/resend default -> better-auth\]/,
+      );
+      expect(() => expectReselected([{ ...email, to: "default" }], [email])).toThrow(
+        /planned again/,
+      );
+    });
+  });
+
+  test("the project that installs email first and auth second is the one golden checks the other order with", () => {
+    expect(RESELECT_BASE).toContain("email/resend");
+    expect(RESELECT_BASE).not.toContain("auth/better-auth");
+    expect(RESELECT_BASE).toEqual(expect.arrayContaining(WITHOUT_ORM));
+    expect(RESELECTED).toEqual({ module: "email/resend", from: "default", to: "better-auth" });
   });
 
   describe("expectPending", () => {
@@ -1844,7 +2046,7 @@ describe("the email phases", () => {
     });
   });
 
-  describe("RESOLUTIONS (each names the file its edit lands in, whose region `bg record` leaves)", () => {
+  describe("RESOLUTIONS (each names the file its edit lands in, whose region `bonne-garde record` leaves)", () => {
     test("the wiring of email into auth edits auth's mailer.ts", () => {
       expect(RESOLUTIONS["email/resend/wire-email-into-auth"]).toMatchObject({
         module: "email/resend",
@@ -1854,7 +2056,7 @@ describe("the email phases", () => {
     });
   });
 
-  describe("the intent[<id>] region `bg record` leaves on a file an intention edited (060, 065)", () => {
+  describe("the intent[<id>] region `bonne-garde record` leaves on a file an intention edited (060, 065)", () => {
     const ID = "email/resend/wire-email-into-auth";
     const manifest = (regions: unknown) => ({ regions });
 
@@ -1913,7 +2115,7 @@ describe("the email phases", () => {
       );
     });
 
-    test("readKept reads the files `bg add` kept as the project has them, and expectKept names the one missing", () => {
+    test("readKept reads the files `bonne-garde add` kept as the project has them, and expectKept names the one missing", () => {
       const out = JSON.stringify({ kept: [MAILER_FILE] });
 
       expect(readKept(out)).toEqual([MAILER_FILE]);
@@ -1979,5 +2181,358 @@ describe("the storage phases", () => {
     expect(() =>
       expectRan({ "@app/storage": STORAGE_MIN_TESTS - 1 }, "@app/storage", STORAGE_MIN_TESTS),
     ).toThrow(new RegExp(`ran ${STORAGE_MIN_TESTS - 1} tests`));
+  });
+});
+
+describe("the favicons config/branding ships, binary template files", () => {
+  const dirs: string[] = [];
+  afterAll(async () => {
+    await Promise.all(dirs.map((dir) => rm(dir, { recursive: true, force: true })));
+  });
+
+  async function put(root: string, path: string, content: string | Uint8Array): Promise<void> {
+    await mkdir(dirname(join(root, path)), { recursive: true });
+    await writeFile(join(root, path), content);
+  }
+
+  // A PNG signature, and the byte 0xff, which UTF-8 text cannot hold. Its lookalike differs by that
+  // byte alone: both read as the same text, and only the bytes tell them apart.
+  const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0xff, 0x00]);
+  const LOOKALIKE = Uint8Array.from(PNG, (byte) => (byte === 0xff ? 0xfe : byte));
+  const SOURCE = "modules/config/branding/template";
+
+  /** A registry and a project that hold the seven favicons, the project's `bg.json` recording their sha256. */
+  async function pair(): Promise<{ registry: string; project: string }> {
+    const root = await mkdtemp(join(tmpdir(), "bg-golden-favicons-"));
+    dirs.push(root);
+    const registry = join(root, "registry");
+    const project = join(root, "project");
+    const files: Record<string, { owner: string; sha256: string }> = {};
+    for (const name of BINARY_FAVICONS) {
+      await put(registry, `${SOURCE}/${FAVICONS_DIR}/${name}`, PNG);
+      await put(project, `${FAVICONS_DIR}/${name}`, PNG);
+      files[`${FAVICONS_DIR}/${name}`] = { owner: "config/branding", sha256: sha256Hex(PNG) };
+    }
+    await put(project, "bg.json", JSON.stringify({ files }));
+    return { registry, project };
+  }
+
+  test("there are seven, each a binary the registry holds, and every configuration with the module and the spa is asked for them", () => {
+    expect(BINARY_FAVICONS).toHaveLength(7);
+    expect(new Set(BINARY_FAVICONS).size).toBe(7);
+    for (const configuration of CONFIGURATIONS) {
+      expect(hasFavicons(configuration)).toBe(
+        configuration.modules.includes("config/branding") &&
+          configuration.modules.includes("web/spa"),
+      );
+    }
+    expect(CONFIGURATIONS.filter(hasFavicons).map(({ name }) => name)).toEqual([
+      "cloudflare",
+      "dockerfile",
+      "fronts",
+    ]);
+  });
+
+  test("the generated project holds each of them byte for byte as the registry does, and bg.json records that sha256", async () => {
+    const { registry, project } = await pair();
+
+    await expect(expectFaviconsIdentical(registry, project)).resolves.toBeUndefined();
+  });
+
+  test("a favicon that differs by a byte that decoded text cannot tell apart is named", async () => {
+    const { registry, project } = await pair();
+    await put(project, `${FAVICONS_DIR}/favicon.ico`, LOOKALIKE);
+
+    await expect(expectFaviconsIdentical(registry, project)).rejects.toThrow(
+      /favicon\.ico differs from the registry's/,
+    );
+  });
+
+  test("a favicon bg.json records another sha256 for, or the project lacks, is named", async () => {
+    const { registry, project } = await pair();
+    await put(project, "bg.json", JSON.stringify({ files: {} }));
+    await expect(expectFaviconsIdentical(registry, project)).rejects.toThrow(
+      /bg\.json records no sha256 for .*favicon-16x16\.png/,
+    );
+
+    const { registry: other, project: bare } = await pair();
+    await rm(join(bare, FAVICONS_DIR, "apple-touch-icon.png"));
+    await expect(expectFaviconsIdentical(other, bare)).rejects.toThrow(
+      /apple-touch-icon\.png is missing/,
+    );
+  });
+
+  test("the manifest of a built index.html is a root URL to a file, never a data: URL", () => {
+    expect(
+      manifestHref(
+        '<head><link rel="icon" href="/a.svg"/><link rel="manifest" href="/site.webmanifest"/></head>',
+      ),
+    ).toBe("/site.webmanifest");
+    expect(manifestHref('<link href="/assets/site-abc.webmanifest" rel="manifest">')).toBe(
+      "/assets/site-abc.webmanifest",
+    );
+    expect(() =>
+      manifestHref('<link rel="manifest" href="data:application/manifest+json;base64,e30="/>'),
+    ).toThrow(/data: URL/);
+    expect(() => manifestHref('<link rel="icon" href="/a.svg"/>')).toThrow(/links no manifest/);
+  });
+
+  test("each icon of a manifest resolves against the manifest's own URL, as a browser does", () => {
+    const manifest = JSON.stringify({
+      icons: [{ src: "/android-chrome-192x192.png" }, { src: "icons/a.png" }, { src: "../b.png" }],
+    });
+
+    expect(manifestIconPaths(manifest, "/assets/site.webmanifest")).toEqual([
+      "/android-chrome-192x192.png",
+      "/assets/icons/a.png",
+      "/b.png",
+    ]);
+    expect(() => manifestIconPaths("{}", "/site.webmanifest")).toThrow(/names no icons/);
+    expect(() =>
+      manifestIconPaths(JSON.stringify({ icons: [{ src: "https://cdn.test/a.png" }] }), "/m"),
+    ).toThrow(/not a path of the build/);
+  });
+
+  test("the built client holds the manifest the index links and every icon it names, and an icon the build lacks is named", async () => {
+    const root = await mkdtemp(join(tmpdir(), "bg-golden-built-"));
+    dirs.push(root);
+    const manifest = JSON.stringify({
+      icons: [{ src: "/android-chrome-192x192.png" }, { src: "/android-chrome-512x512.png" }],
+    });
+    await put(root, "index.html", '<link rel="manifest" href="/site.webmanifest"/>');
+    await put(root, "site.webmanifest", manifest);
+    await put(root, "android-chrome-192x192.png", PNG);
+
+    await expect(expectManifestEmitted(root)).rejects.toThrow(
+      /android-chrome-512x512\.png.*is not in the build/,
+    );
+
+    await put(root, "android-chrome-512x512.png", PNG);
+    expect(await expectManifestEmitted(root)).toEqual([
+      "/android-chrome-192x192.png",
+      "/android-chrome-512x512.png",
+    ]);
+
+    // Emitted from the project's own favicons: an icon of the build that is not theirs is named.
+    await put(root, "android-chrome-512x512.png", LOOKALIKE);
+    const source = join(root, "source");
+    await put(source, "android-chrome-192x192.png", PNG);
+    await put(source, "android-chrome-512x512.png", PNG);
+    await expect(expectManifestEmitted(root, source)).rejects.toThrow(
+      /android-chrome-512x512\.png of the build differs/,
+    );
+  });
+
+  test("a snapshot tells two files apart by their bytes, and keeps bg.json as text", async () => {
+    const root = await mkdtemp(join(tmpdir(), "bg-golden-snapshot-"));
+    dirs.push(root);
+    await put(root, "icon.png", PNG);
+    await put(root, "bg.json", '{"installedAt": "2026-01-01"}');
+    const before = await snapshot(root);
+    await put(root, "icon.png", LOOKALIKE);
+
+    expect(diffTrees(before, await snapshot(root))).toEqual(["icon.png changed"]);
+    expect(before["bg.json"]).toBe('{"installedAt": "2026-01-01"}');
+  });
+});
+
+describe("every web shell serves the favicons and the manifest config/branding ships", () => {
+  const dirs: string[] = [];
+  afterAll(async () => {
+    await Promise.all(dirs.map((dir) => rm(dir, { recursive: true, force: true })));
+  });
+
+  async function put(root: string, path: string, content: string | Uint8Array): Promise<void> {
+    await mkdir(dirname(join(root, path)), { recursive: true });
+    await writeFile(join(root, path), content);
+  }
+
+  // 0xff is a byte UTF-8 text cannot hold, so its lookalike differs by that byte alone.
+  const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0xff, 0x00]);
+  const LOOKALIKE = Uint8Array.from(PNG, (byte) => (byte === 0xff ? 0xfe : byte));
+  const MANIFEST = JSON.stringify({ icons: [{ src: "/android-chrome-192x192.png" }] });
+  const HEAD = [
+    '<link rel="preconnect" href="https://fonts.googleapis.com"/>',
+    '<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>',
+    '<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"/>',
+    '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"/>',
+    '<link rel="manifest" href="/site.webmanifest"/>',
+    '<link rel="stylesheet" href="/assets/root.css"/>',
+  ].join("");
+  const FILES = {
+    "favicon.svg": "<svg/>",
+    "favicon-16x16.png": PNG,
+    "apple-touch-icon.png": PNG,
+    "android-chrome-192x192.png": PNG,
+    "site.webmanifest": MANIFEST,
+  } as const;
+
+  /** The favicons directory of a project, and the client a shell built from it. */
+  async function shell(): Promise<{ root: string; source: string; app: string; client: string }> {
+    const root = await mkdtemp(join(tmpdir(), "bg-golden-shell-"));
+    dirs.push(root);
+    const app = join(root, "apps/ssr");
+    for (const [name, content] of Object.entries(FILES)) {
+      await put(root, `${FAVICONS_DIR}/${name}`, content);
+      await put(app, `build/client/${name}`, content);
+    }
+    await put(app, "public/robots.txt", "User-agent: *\n");
+    await put(app, "build/client/robots.txt", "User-agent: *\n");
+    return { root, source: join(root, FAVICONS_DIR), app, client: join(app, "build/client") };
+  }
+
+  const configuration = (...modules: string[]): Configuration => ({
+    name: "x",
+    modules,
+    items: false,
+  });
+
+  test("a configuration is asked for the shells it installs, when it installs the module that ships the favicons", () => {
+    expect(
+      faviconShells(configuration("config/branding", "web/spa", "web/ssr", "web/static")),
+    ).toEqual(["spa", "ssr", "static"]);
+    expect(faviconShells(configuration("config/branding", "web/static", "web/spa"))).toEqual([
+      "spa",
+      "static",
+    ]);
+    expect(faviconShells(configuration("config/branding", "web/ssr"))).toEqual(["ssr"]);
+    expect(faviconShells(configuration("web/spa", "web/ssr"))).toEqual([]);
+    expect(faviconShells(configuration("config/branding"))).toEqual([]);
+    expect(
+      Object.fromEntries(
+        CONFIGURATIONS.map(({ name, ...rest }) => [name, faviconShells({ name, ...rest })]),
+      ),
+    ).toEqual({
+      cloudflare: ["spa", "ssr", "static"],
+      dockerfile: ["spa"],
+      fronts: ["spa", "ssr", "static"],
+    });
+  });
+
+  test("the links of a page that name a favicon or the manifest are its icons, by root URL", () => {
+    expect(faviconHrefs(`<head>${HEAD}</head>`)).toEqual([
+      "/favicon.svg",
+      "/favicon-16x16.png",
+      "/apple-touch-icon.png",
+      "/site.webmanifest",
+    ]);
+    expect(() => faviconHrefs('<link rel="icon" href="data:image/svg+xml,%3csvg/%3e"/>')).toThrow(
+      /data: URL/,
+    );
+    expect(() => faviconHrefs('<link rel="icon" href="favicon.svg"/>')).toThrow(/not a root URL/);
+    expect(() => faviconHrefs('<link rel="stylesheet" href="/a.css"/>')).toThrow(
+      /links no favicon/,
+    );
+  });
+
+  test("the build holds every file of the favicons directory, byte for byte, and names the ones it lacks or changed", async () => {
+    const { source, client } = await shell();
+
+    expect((await expectBuildHoldsFavicons(client, source)).sort()).toEqual(
+      Object.keys(FILES).sort(),
+    );
+
+    await rm(join(client, "favicon.svg"));
+    await put(client, "apple-touch-icon.png", LOOKALIKE);
+    await expect(expectBuildHoldsFavicons(client, source)).rejects.toThrow(
+      /favicon\.svg is not in the build/,
+    );
+    await expect(expectBuildHoldsFavicons(client, source)).rejects.toThrow(
+      /apple-touch-icon\.png of the build differs/,
+    );
+  });
+
+  test("the files of the app's own public directory are in its build too, which is why the favicons are not its publicDir", async () => {
+    const { app, client } = await shell();
+
+    await expect(expectOwnPublicKept(app)).resolves.toEqual(["robots.txt"]);
+
+    await put(client, "robots.txt", "User-agent: Googlebot\n");
+    await expect(expectOwnPublicKept(app)).rejects.toThrow(/robots\.txt of the build differs/);
+
+    await rm(join(client, "robots.txt"));
+    await expect(expectOwnPublicKept(app)).rejects.toThrow(/robots\.txt is not in the build/);
+
+    // An app with no public directory has nothing to keep.
+    await rm(join(app, "public"), { recursive: true });
+    await expect(expectOwnPublicKept(app)).resolves.toEqual([]);
+  });
+
+  describe("served by the app itself, over HTTP", () => {
+    /** An app of one page: `html` at /, and `files` at their root URL, as a Worker serves its assets. */
+    function serving(html: string, files: Record<string, string | Uint8Array>) {
+      const server = Bun.serve({
+        port: 0,
+        hostname: "127.0.0.1",
+        fetch(request) {
+          const { pathname } = new URL(request.url);
+          if (pathname === "/") {
+            return new Response(html, { headers: { "content-type": "text/html" } });
+          }
+          const body = files[pathname.slice(1)];
+          if (body === undefined) {
+            return new Response("not found", {
+              status: 404,
+              headers: { "content-type": "text/html" },
+            });
+          }
+          const type = pathname.endsWith(".webmanifest")
+            ? "application/manifest+json"
+            : "image/png";
+          return new Response(body, { headers: { "content-type": type } });
+        },
+      });
+      return { origin: `http://127.0.0.1:${server.port}`, stop: () => server.stop(true) };
+    }
+
+    test("the page links the manifest and the icons, and each is served as the file the project holds", async () => {
+      const { source } = await shell();
+      const app = serving(`<head>${HEAD}</head>`, FILES);
+      try {
+        expect((await expectFaviconsServed(app.origin, source)).sort()).toEqual([
+          "/android-chrome-192x192.png",
+          "/apple-touch-icon.png",
+          "/favicon-16x16.png",
+          "/favicon.svg",
+          "/site.webmanifest",
+        ]);
+      } finally {
+        await app.stop();
+      }
+    });
+
+    test("a page that links its manifest as a data: URL, an icon the app does not serve, and a file that differs are each named", async () => {
+      const { source } = await shell();
+      const inlined = serving(
+        '<link rel="manifest" href="data:application/manifest+json;base64,e30="/>',
+        FILES,
+      );
+      try {
+        await expect(expectFaviconsServed(inlined.origin, source)).rejects.toThrow(/data: URL/);
+      } finally {
+        await inlined.stop();
+      }
+
+      const without = Object.fromEntries(
+        Object.entries(FILES).filter(([name]) => name !== "android-chrome-192x192.png"),
+      );
+      const missing = serving(`<head>${HEAD}</head>`, without);
+      try {
+        await expect(expectFaviconsServed(missing.origin, source)).rejects.toThrow(
+          /GET \/android-chrome-192x192\.png: expected 200 image\/png, got 404 text\/html/,
+        );
+      } finally {
+        await missing.stop();
+      }
+
+      const changed = serving(`<head>${HEAD}</head>`, { ...FILES, "favicon-16x16.png": LOOKALIKE });
+      try {
+        await expect(expectFaviconsServed(changed.origin, source)).rejects.toThrow(
+          /\/favicon-16x16\.png differs from \S*favicon-16x16\.png/,
+        );
+      } finally {
+        await changed.stop();
+      }
+    });
   });
 });

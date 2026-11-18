@@ -1,14 +1,16 @@
 import { styleText } from "node:util";
-import type { IntentionOutcome } from "@bonne-garde/schema";
+import { ApplyError } from "@bonne-garde/registry";
+import { type IntentionOutcome } from "@bonne-garde/schema";
 import { addItems, searchItems, viewItem } from "./add";
 import { takeFlag, takeOption } from "./args";
 import { APPS, FEATURES, PROVIDERS } from "./choices";
 import { createCommand } from "./create-command";
 import { doctorExitCode, formatDoctor, runDoctor } from "./doctor";
+import { addNamingCommand } from "./force-command";
 import { lintIntentions } from "./intentions/lint";
 import { lintModuleIntentions } from "./intentions/lint-modules";
 import { listRegistry } from "./list";
-import { PACKAGE_MANAGERS, packageManagerOf } from "./package-manager";
+import { missingPackageManager, PACKAGE_MANAGERS, packageManagerOf } from "./package-manager";
 import { migrationsDir, registryDir } from "./paths";
 import { recordIntentionOutcome } from "./record";
 import { manifestMigrationNotice, reportAdd } from "./report";
@@ -20,28 +22,28 @@ function usage(): string {
 ${logo("compose a full-stack project from a registry of modules")}
 
 ${section("Start")}
-  bg create [dir] [--pm <name>] [--apps <a,b>] [--provider <name>] [--features <a,b>]
-                  [--yes] [--no-git] [--no-install] [--scope @name] [--registry <source>]
+  bonne-garde create [dir] [--pm <name>] [--apps <a,b>] [--provider <name>] [--features <a,b>]
+                           [--yes] [--no-git] [--no-install] [--scope @name] [--registry <source>]
       asks, on a terminal, what no flag says; with --yes or no terminal it takes the defaults:
       the package manager create was started from (bun otherwise), and no app (the base alone)
       pm: ${PACKAGE_MANAGERS.join(", ")} · apps: ${APPS.join(", ")} · provider: ${PROVIDERS.join(", ")}
       features: ${FEATURES.join(", ")}
 
 ${section("Compose")}
-  bg add <name...> [--dry-run] [--force] [--no-install] [--yes] [--json] [--source <source>]
+  bonne-garde add <name...> [--dry-run] [--force] [--no-install] [--yes] [--json] [--source <source>]
       <name> is an item, a module id, or <category>/<id> (provider/cloudflare); prints a summary
       on a terminal, and JSON to a pipe, to an agent, or with --json
-  bg list [--items | --category <category>] [--source <source>]
+  bonne-garde list [--items | --category <category>] [--source <source>]
       with no flag: the items, then the modules as <category>/<id>; --items is the items alone
-  bg search <query> [--source <source>]
-  bg view <item> [--source <source>]
+  bonne-garde search <query> [--source <source>]
+  bonne-garde view <item> [--source <source>]
       <source> is local:<path> or github:owner/repo[@ref]; a github source reads raw.githubusercontent.com
       (set GITHUB_TOKEN to lift the rate limit); with no @ref it reads the tag v<platform.version> of bg.json
 
 ${section("Keep it healthy")}
-  bg doctor [--json] [--strict]
-  bg record <intention-id> [--skip "<reason>"]
-  bg intentions lint [--dir <migrations-dir>] [--registry <registry-dir>]
+  bonne-garde doctor [--json] [--strict]
+  bonne-garde record <intention-id> [--skip "<reason>"]
+  bonne-garde intentions lint [--dir <migrations-dir>] [--registry <registry-dir>]
       the release migrations, and the intentions each module ships under its intent/
 `;
 }
@@ -121,8 +123,18 @@ export async function runCli(argv: string[]): Promise<number> {
     if (args.length === 0) {
       throw new Error("add requires at least one item or module");
     }
+    // `--force` does not reach a module the call plans again without naming it (050 step 7): say which call does.
+    const forceHint = (error: unknown): never => {
+      if (error instanceof ApplyError && error.nameToForce.length > 0) {
+        const { nameToForce } = error;
+        throw new Error(
+          `${error.message}\nname ${nameToForce.join(" and ")} in the same call, so that --force reaches ${nameToForce.length === 1 ? "it" : "them"}:\n  ${addNamingCommand(rest, nameToForce)}`,
+        );
+      }
+      throw error;
+    };
     if (!json) {
-      clack.intro(styleText("inverse", " bg add "));
+      clack.intro(styleText("inverse", " bonne-garde add "));
       try {
         const outcome = await step(
           `${dryRun ? "Planning" : "Adding"} ${args.join(", ")}`,
@@ -134,7 +146,7 @@ export async function runCli(argv: string[]): Promise<number> {
               force,
               install: !noInstall,
               installOutput: "capture",
-            }),
+            }).catch(forceHint),
           ({ modulePlans, plan }) => {
             const names = [
               ...modulePlans.map(({ key }) => key),
@@ -148,6 +160,10 @@ export async function runCli(argv: string[]): Promise<number> {
           },
         );
         showAdd(outcome, dryRun, await packageManagerOf(process.cwd()).catch(() => null));
+        if (outcome.installMissing !== null) {
+          clack.cancel(missingPackageManager(outcome.installMissing));
+          return 1;
+        }
         clack.outro(dryRun ? "Nothing written: --dry-run." : "En garde.");
         return 0;
       } catch (error) {
@@ -161,8 +177,8 @@ export async function runCli(argv: string[]): Promise<number> {
       dryRun,
       force,
       install: !noInstall,
-    });
-    const { plan, modulePlans, result, staged } = outcome;
+    }).catch(forceHint);
+    const { plan, modulePlans, result, staged, reselected } = outcome;
     const { failedPatches, stagedAt } = reportAdd(outcome, dryRun);
     console.log(
       JSON.stringify(
@@ -173,11 +189,16 @@ export async function runCli(argv: string[]): Promise<number> {
           itemPatches: result.patches
             .filter((patch) => plan.items.some((item) => item.name === patch.module))
             .map(({ module, ...patch }) => ({ item: module, ...patch })),
+          // Modules of `modules` that this call did not name, planned again on another variant (050 step 7).
+          reselected: reselected.map(({ ref, ...variants }) => ({
+            module: `${ref.category}/${ref.id}`,
+            ...variants,
+          })),
           modules: modulePlans.map((module) => ({
             module: module.key,
             variant: module.variant,
             options: module.options,
-            files: module.files.map((file) => file.target),
+            files: [...module.files, ...module.binaries].map((file) => file.target).sort(),
             env: module.env.map(({ name, required }) => ({
               name,
               required,
@@ -227,12 +248,16 @@ export async function runCli(argv: string[]): Promise<number> {
         2,
       ),
     );
+    if (outcome.installMissing !== null) {
+      console.error(missingPackageManager(outcome.installMissing));
+      return 1;
+    }
     return 0;
   }
 
   if (command === "remove" || command === "replace") {
     throw new Error(
-      `bg ${command} is not supported yet: spec 050 "remove and replace" is not implemented`,
+      `bonne-garde ${command} is not supported yet: spec 050 "remove and replace" is not implemented`,
     );
   }
 
@@ -258,12 +283,12 @@ export async function runCli(argv: string[]): Promise<number> {
     }
     if (!staged) {
       console.error(
-        `bg: ${id} is not staged under .bg/; recorded anyway (the scratch root is disposable).`,
+        `bonne-garde: ${id} is not staged under .bg/; recorded anyway (the scratch root is disposable).`,
       );
     }
     for (const path of notFiles) {
       console.error(
-        `bg: ${path} is not a file of the project, so ${id} did not mark it as edited by it.`,
+        `bonne-garde: ${path} is not a file of the project, so ${id} did not mark it as edited by it.`,
       );
     }
     console.log(

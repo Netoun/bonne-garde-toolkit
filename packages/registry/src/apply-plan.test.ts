@@ -209,6 +209,22 @@ describe("applyInstallPlan: files", () => {
     expect(withoutInstalledAt(secondJson)).toBe(withoutInstalledAt(firstJson));
   });
 
+  test("an item file that is not valid UTF-8 is refused, naming the item: items are text-only (030)", async () => {
+    const { parent, projectRoot, manifest } = await freshProject();
+    const icon = join(parent, "icon.png");
+    await writeFile(icon, Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0xff, 0x00]));
+    const item: RegistryItem = {
+      name: "icon",
+      type: "registry:file",
+      files: [{ path: icon, type: "registry:file", target: "src/icon.png" }],
+    };
+
+    await expect(
+      applyInstallPlan({ projectRoot, manifest, plan: planOf(item), sourceLabel: "@bg" }),
+    ).rejects.toThrow(/item icon .*icon\.png.*not valid UTF-8.*items are text-only/s);
+    expect(await readdir(projectRoot)).toEqual([]);
+  });
+
   test("a file already on disk and identical, with no record, is claimed by the re-add", async () => {
     const { projectRoot, manifest } = await freshProject();
     await mkdir(join(projectRoot, "src"), { recursive: true });

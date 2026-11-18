@@ -5,7 +5,7 @@ workflow for every combination of `api` and `web` modules, because it does not n
 reads the tree.
 
 ```bash
-bunx bg add provider/cloudflare deploy/cloudflare-actions
+bunx bonne-garde add provider/cloudflare deploy/cloudflare-actions
 ```
 
 ## Peers and variant
@@ -98,13 +98,37 @@ deploy step gets none, and neither does anything else: a variable that is a secr
 `API_URL`, which a Worker reads from its `wrangler.jsonc`, is not forwarded. The dry run prints the
 names it would forward, never the values.
 
+### A build that lacks one is refused
+
+A front built without its API URL deploys, and is broken: `web/spa` throws at load. So the script reads what
+each app it builds needs, and **refuses before the first build** (nothing runs, nothing changes on Cloudflare)
+when a variable is not there:
+
+```text
+deploy: a build is missing a variable it needs, and would ship a front that fails at load: apps/spa needs
+VITE_API_URL; apps/static needs VITE_API_URL. Set each one as a variable of the `cloudflare` GitHub environment ...
+```
+
+What an app needs is the `VITE_*` members of `interface ImportMetaEnv`, in any of its TypeScript files under `src/`,
+that have no `?`: `web/spa` and `web/static` type `VITE_API_URL` in `src/lib/api.ts`, which only their variants with an
+API ship. The script names no variable and no
+app, so a front that reads another one, or a module that drops one, changes the refusal with no edit here. A member
+with a `?` is optional and not asked for; `web/ssr` declares none, since it reads `API_URL` from its
+Worker config at run time. A value counts as missing when it is empty. A variable in the environment of a local run
+counts too, since a build is given that environment.
+
+The dry run lists what each build needs (`requiredBuildVars`, names only). It **refuses only when it is handed
+variables**, that is when `VARS_JSON` is set: the `validate` job runs it with none, because the variables of the
+`cloudflare` environment are the `deploy` job's, so there is nothing there to compare with. The real run, in the
+`deploy` job, is the one that always checks.
+
 ## Turning it on
 
 It is `workflow_dispatch` only, as the legacy workflow was, until these exist:
 
 1. A GitHub environment named `cloudflare`, with the secrets `CLOUDFLARE_API_TOKEN` and
-   `CLOUDFLARE_ACCOUNT_ID`, and the variables the builds need (`VITE_API_URL`, and `VITE_APP_URL` for
-   `web/static`), set to the production URLs.
+   `CLOUDFLARE_ACCOUNT_ID`, and the variables the builds need (`VITE_API_URL`: the run is refused without it), set to the
+   production URLs.
 2. In each `wrangler.jsonc`, the `my-app` placeholders replaced: the Worker and Pages project names,
    the `env.production` routes and URLs, and `db/d1`'s name and `database_id`
    (`wrangler d1 create <name>` in `apps/api` gives the id).
@@ -139,6 +163,8 @@ What it keeps: `workflow_dispatch` only with the CI-gated trigger commented, `co
 
 Golden installs it on the `cloudflare` configuration and checks, with no account and no network, that
 `deploy.yml` parses, that the dry run's plan is exactly the list above and every app in it exists with
-a valid `wrangler.jsonc`, that re-adding it changes nothing and `bg doctor --strict` is green, and that
-the `dockerfile` configuration refuses it, naming the provider. **No deploy has been run**: the commands
+a valid `wrangler.jsonc`, that the dry run names the one variable the builds need (`VITE_API_URL`, for the
+SPA and the static site, and none for the Worker) and refuses variables that lack it, that re-adding it changes
+nothing and `bonne-garde doctor --strict` is green, and that the `dockerfile` configuration refuses it, naming the
+provider. **No deploy has been run**: the commands
 are the legacy workflow's, but this workflow has never talked to Cloudflare.

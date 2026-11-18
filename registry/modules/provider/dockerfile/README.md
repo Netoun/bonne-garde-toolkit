@@ -89,7 +89,7 @@ env_file:
     required: false
 ```
 
-A module declares its keys in the root `.env.example` (`bg add` merges them there), so the flow is
+A module declares its keys in the root `.env.example` (`bonne-garde add` merges them there), so the flow is
 `cp .env.example .env`, fill it, `docker compose up`, with nothing to add to `compose.yaml` when a module
 is installed. `BETTER_AUTH_SECRET=` left blank in `.env` counts as unset, and the runtime generates the
 secret into `DATA_DIR/secrets` on first start; a value an operator sets wins.
@@ -153,12 +153,12 @@ has none of them.
 
 ## Building and running the image
 
-A project made with `bg create` builds this image once it has the modules the container runs. It
+A project made with `bonne-garde create` builds this image once it has the modules the container runs. It
 needs no SPA: the `Dockerfile` builds with the root `build` script, which builds whichever apps the
 project has, and `serve` answers 404 for `GET /` when `apps/spa/build/client` is missing.
 
 ```bash
-bg create my-app --apps api --provider dockerfile --yes --no-git && cd my-app   # --pm bun or pnpm
+bunx bonne-garde create my-app --apps api --provider dockerfile --yes --no-git && cd my-app   # --pm bun or pnpm
 # `create` installs: the image needs the lockfile of the package manager package.json pins
 docker build -t my-app .
 docker run -d --name my-app -p 5172:5172 my-app

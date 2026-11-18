@@ -93,7 +93,7 @@ describe("parseProjectManifest (v2)", () => {
 
   test("round-trips a populated manifest through JSON", () => {
     const input = v2({
-      $schema: "./node_modules/create-bonne-garde/schema/project.json",
+      $schema: "./node_modules/bonne-garde/schema/project.json",
       registries: { "@bg": "github:Netoun/bonne-garde-toolkit@v0.2.0" },
       apps: [{ id: "api", dir: "apps/api", kind: "worker" }],
       modules: { auth: [MODULE_RECORD] },

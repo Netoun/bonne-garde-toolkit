@@ -48,10 +48,10 @@ Every change a module makes to a consumer project declares exactly one tier.
 
 ## Success metrics
 
-- `bun create bonne-garde@latest my-app --yes` produces an installable empty monorepo without prompts.
-- After `bg add api email`, the project typechecks and tests pass for the added surface.
-- `bg add` works on an existing project created earlier (post-init composition).
-- `bg doctor` reports drift between `bg.json` and the tree without network access.
+- `bunx bonne-garde create my-app --yes` produces an installable empty monorepo without prompts.
+- After `bonne-garde add api email`, the project typechecks and tests pass for the added surface.
+- `bonne-garde add` works on an existing project created earlier (post-init composition).
+- `bonne-garde doctor` reports drift between `bg.json` and the tree without network access.
 - Installed code has no Bonne Garde runtime dependency.
 
 ## Journey

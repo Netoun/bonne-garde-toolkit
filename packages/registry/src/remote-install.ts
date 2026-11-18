@@ -1,9 +1,9 @@
-import { isModuleCategory, MODULE_CATEGORIES } from "@bonne-garde/schema";
+import { isModuleCategory, MODULE_CATEGORIES, type ProjectManifest } from "@bonne-garde/schema";
 import { FETCH_CONCURRENCY, RegistryFileNotFoundError } from "./github-source";
 import { parseModuleFile } from "./module-catalog";
 import type { ModuleRef } from "./module-plan";
 import { mapLimit } from "./pool";
-import type { InstallPlan } from "./resolve-plan";
+import { itemFileText, type InstallPlan } from "./resolve-plan";
 import type { RegistryCatalog, RegistryModule } from "./types";
 
 const MODULE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -61,6 +61,29 @@ export async function loadNamedModules(
 }
 
 /**
+ * The installed modules that a catalog read over the network does not hold yet. Selecting a variant
+ * again (050 step 7) needs each installed module's `module.json`, which `loadNamedModules` fetched only
+ * for the names a command gave, so a call that adds a module asks for the others here and a call that adds
+ * none never does. A module the registry no longer has is left out. A local catalog is returned as it is.
+ */
+export async function loadInstalledModules(
+  catalog: RegistryCatalog,
+  project: ProjectManifest,
+): Promise<RegistryCatalog> {
+  if (catalog.reader === undefined) {
+    return catalog;
+  }
+  const held = new Set(
+    catalog.modules.map(({ manifest }) => `${manifest.category}/${manifest.id}`),
+  );
+  const missing = MODULE_CATEGORIES.flatMap((category) =>
+    (project.modules[category] ?? []).map(({ id }) => `${category}/${id}`),
+  ).filter((key) => !held.has(key));
+  const fetched = await loadNamedModules(catalog, missing);
+  return { ...catalog, modules: [...catalog.modules, ...fetched.modules] };
+}
+
+/**
  * Reads the files of the planned items into `content`, which `applyInstallPlan` uses in place of
  * a read from disk. It is the fetch step of a github install: done while planning, before anything
  * is written, so a file the registry lacks fails the whole install and `--dry-run` fetches what a
@@ -74,18 +97,19 @@ export async function readPlanFiles(
   if (reader === undefined) {
     return plan;
   }
-  const paths = [
-    ...new Set(
-      plan.items.flatMap((item) =>
-        (item.files ?? []).filter((file) => file.content === undefined).map((file) => file.path),
-      ),
+  const owners = new Map(
+    plan.items.flatMap((item) =>
+      (item.files ?? [])
+        .filter((file) => file.content === undefined)
+        .map((file) => [file.path, item.name] as const),
     ),
-  ];
+  );
   const content = new Map(
     await mapLimit(
-      paths,
+      [...owners],
       FETCH_CONCURRENCY,
-      async (path) => [path, await reader.read(path)] as const,
+      async ([path, item]) =>
+        [path, itemFileText(item, path, await reader.readBytes(path))] as const,
     ),
   );
   return {

@@ -4,7 +4,7 @@
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { loadLocalRegistry } from "../packages/registry/src/index";
+import { itemFileText, loadLocalRegistry } from "../packages/registry/src/index";
 
 const ROOT = resolve(import.meta.dir, "..");
 const OUT = join(ROOT, "dist/r");
@@ -33,7 +33,7 @@ await writeFile(join(OUT, "registry.json"), `${JSON.stringify(index, null, 2)}\n
 for (const item of catalog.items) {
   const files = [];
   for (const file of item.files ?? []) {
-    const content = await readFile(file.path, "utf8");
+    const content = itemFileText(item.name, file.path, await readFile(file.path));
     files.push({
       path: file.path.startsWith(catalog.rootDir)
         ? file.path.slice(catalog.rootDir.length + 1)

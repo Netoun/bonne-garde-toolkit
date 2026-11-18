@@ -5,16 +5,16 @@ that carries the API URL, a server-side Eden client that forwards the request's 
 page. Extracted from the legacy `apps/ssr` ([080](../../../../docs/specs/080-existing-code-migration.md)).
 
 ```bash
-bunx bg add web/ssr
+bunx bonne-garde add web/ssr
 ```
 
 ## Peers and variants
 
-| Peer       | Allow-list   | Why                                                                                       |
-| ---------- | ------------ | ----------------------------------------------------------------------------------------- |
-| `provider` | `cloudflare` | `workers/app.ts` is a Worker, `vite.config.ts` loads `@cloudflare/vite-plugin`: see below |
-| `config`   | `branding`   | `root.tsx`, the home page and the test read `branding`; the favicons are in its package   |
-| `ui`       | `shadcn`     | `root.tsx` imports `{{SCOPE}}/ui/globals.css`                                             |
+| Peer       | Allow-list   | Why                                                                                                |
+| ---------- | ------------ | -------------------------------------------------------------------------------------------------- |
+| `provider` | `cloudflare` | `workers/app.ts` is a Worker, `vite.config.ts` loads `@cloudflare/vite-plugin`: see below          |
+| `config`   | `branding`   | `root.tsx`, the home page and the test read `branding`; `vite.config.ts` loads its favicons plugin |
+| `ui`       | `shadcn`     | `root.tsx` imports `{{SCOPE}}/ui/globals.css`                                                      |
 
 `api` (`elysia`) is an optional peer (035). The variant `cloudflare`, matched on it, copies
 `lib/api.server.ts` and its test: the Eden client typed with `type App` from `{{SCOPE}}/api/app`,
@@ -27,7 +27,7 @@ vendored `apps/ssr/package.json` with `scripts.merge` (spec 060).
 
 **Why `cloudflare` only** (080, step 3): the app is a Worker, and the `dockerfile` provider has no
 SSR shell. Its `serve()` answers from `apps/spa/build/client` and its image starts the API alone.
-Running this app as a second service is a new feature, and so is a second variant. `bg add web/ssr`
+Running this app as a second service is a new feature, and so is a second variant. `bunx bonne-garde add web/ssr`
 on a `dockerfile` project fails naming the provider.
 
 ## What it writes
@@ -39,7 +39,10 @@ from `README.md` (placeholder text) and `.env.example`, which `env` replaces wit
   `wrangler.jsonc`, `public/robots.txt`.
 - `workers/app.ts`: the Worker entry. It hands the `env` and `ctx` of the request to the loaders
   through `cloudflareContext`.
-- `src/root.tsx`, `src/routes.ts`, `src/entry.server.tsx`, `src/vite-env.d.ts`.
+- `src/root.tsx`, `src/routes.ts`, `src/entry.server.tsx`, `src/vite-env.d.ts`: the last one is Vite's client types
+  and nothing else. The legacy file typed a `VITE_API_URL` that no code of the app reads, and
+  `deploy/cloudflare-actions` asks for the `VITE_*` variables an app types there, so a project with this app and no
+  front that builds with one would be refused a deploy for a variable it does not need.
 - `src/lib/{api.server,cloudflare-context,utils}.ts`, `src/components/client-only.tsx`.
 - `src/features/home/pages/home-page.tsx`.
 - Four tests: `home-page.test.tsx`, and the three of `lib/api.server.test.ts`.
@@ -53,8 +56,16 @@ from `README.md` (placeholder text) and `.env.example`, which `env` replaces wit
 
 Each file is the legacy one with `@acme` rendered as `{{SCOPE}}`, except:
 
-- `root.tsx` imports the favicons from `{{SCOPE}}/config/assets/favicons/…`, and the stylesheet as
-  `{{SCOPE}}/ui/globals.css`: the paths the two packages export.
+- The favicons and the manifest are files of the build, served from the site root, which the Worker
+  serves from its assets. `vite.config.ts` loads `favicons()` from `{{SCOPE}}/config/vite`, which adds
+  them to the client build and keeps `public/robots.txt` (Vite takes one `publicDir`), and `root.tsx`
+  links them from `faviconLinks` of `{{SCOPE}}/config`, as `web/spa` does. Legacy imported
+  `favicon.svg` and the manifest through the bundler, which inlined both as `data:` URLs: the
+  manifest's icons were never served. The page's `theme-color` is `branding.themeColor`, the
+  manifest's.
+- `root.tsx` sets `<html lang>` from `branding.lang`, the language the manifest declares, where legacy
+  wrote `en`.
+- `root.tsx` imports the stylesheet as `{{SCOPE}}/ui/globals.css`: the path the `ui` package exports.
 - `lib/api.server.ts` returns `treaty<App>(…)`, not `treaty<App>(…).v1`, and
   `lib/api.server.test.ts` calls `api.health.get()` where it called `api.media({ id }).get()`. The API
   shell has neither a `/v1` group nor a `media` route (that is the `storage` module's), so both

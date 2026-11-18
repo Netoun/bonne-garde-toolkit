@@ -24,7 +24,7 @@ None. `provider` is first in spec 035's topological order: it peers on nothing, 
 
 ## What the module writes
 
-`bg add provider/cloudflare` writes the `packages/api-runtime` workspace, the package `apps/api`
+`bunx bonne-garde add provider/cloudflare` writes the `packages/api-runtime` workspace, the package `apps/api`
 imports for everything that depends on where it runs:
 
 - `runtimeOptions`: `{ adapter: CloudflareAdapter, aot: false }`.

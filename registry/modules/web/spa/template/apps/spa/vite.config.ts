@@ -1,9 +1,10 @@
 import { reactRouter } from "@react-router/dev/vite";
 import tailwindcss from "@tailwindcss/vite";
+import { favicons } from "{{SCOPE}}/config/vite";
 import { defineConfig, searchForWorkspaceRoot } from "vite-plus";
 
 export default defineConfig(({ mode }) => ({
-  plugins: mode === "test" ? [] : [tailwindcss(), reactRouter()],
+  plugins: mode === "test" ? [] : [favicons(), tailwindcss(), reactRouter()],
   test: {
     environment: "jsdom",
     setupFiles: ["./testing/frontend.setup.ts"],

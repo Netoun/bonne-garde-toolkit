@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { loadLocalRegistry } from "./load-registry";
 import type { RegistryItem } from "./types";
+import { utf8Text } from "./utf8";
 
 const ROOT = join(import.meta.dir, "../../..");
 
@@ -24,6 +25,19 @@ describe("registry contract", () => {
         expect(file.type.length).toBeGreaterThan(0);
       }
     }
+  });
+
+  test("no item ships a file that is not valid UTF-8: items are text-only, a binary file belongs to a module (030)", async () => {
+    const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+    const binary: string[] = [];
+    for (const item of catalog.items) {
+      for (const file of item.files ?? []) {
+        if (file.content === undefined && utf8Text(await readFile(file.path)) === null) {
+          binary.push(`${item.name}: ${file.path}`);
+        }
+      }
+    }
+    expect(binary).toEqual([]);
   });
 
   test("the only meta an item carries is needsModules, on a feature item: provides, requires, conflicts and transforms are gone (030)", async () => {
@@ -120,7 +134,7 @@ describe("registry contract", () => {
       expect(wrong).toEqual([]);
     });
 
-    test("an item declares exactly the items its file imports, so `bg add <item>` brings what it needs and no more", async () => {
+    test("an item declares exactly the items its file imports, so `bonne-garde add <item>` brings what it needs and no more", async () => {
       const wrong: string[] = [];
       for (const item of await uiItems()) {
         const imported = new Set<string>();
@@ -167,25 +181,6 @@ describe("registry contract", () => {
         }),
       ),
     ];
-
-    const LEGACY = join(ROOT, "packages/ui/src");
-    test.skipIf(!existsSync(LEGACY))(
-      "while the legacy package is in the tree, each item is its file byte for byte (080: no rewrites)",
-      async () => {
-        const different: string[] = [];
-        for (const item of await uiItems()) {
-          for (const file of item.files ?? []) {
-            const legacy = join(LEGACY, (file.target ?? "").slice("packages/ui/src/".length));
-            if (!existsSync(legacy)) {
-              different.push(`${item.name}: no ${legacy}`);
-            } else if ((await readFile(legacy, "utf8")) !== (await readFile(file.path, "utf8"))) {
-              different.push(`${item.name}: differs from ${legacy}`);
-            }
-          }
-        }
-        expect(different).toEqual([]);
-      },
-    );
   });
 });
 

@@ -6,7 +6,7 @@ is shared with [`orm/drizzle`](../../orm/drizzle/README.md): this module owns th
 adds to it.
 
 ```bash
-bunx bg add provider/cloudflare db/d1
+bunx bonne-garde add provider/cloudflare db/d1
 ```
 
 ## Peers and variant

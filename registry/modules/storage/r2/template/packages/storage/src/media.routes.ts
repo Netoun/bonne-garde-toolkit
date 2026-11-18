@@ -1,5 +1,5 @@
 import { Elysia } from "elysia";
-// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import type { authMacroPlugin } from "{{SCOPE}}/auth";
 import { deleteMediaBody, mediaParams, uploadMediaBody } from "./media.contract";

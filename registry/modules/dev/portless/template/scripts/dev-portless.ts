@@ -30,7 +30,12 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { delimiter, join, resolve } from "node:path";
 
 /** An app of the project: `apps/<dir>`, started by its `dev` script. */
-export type App = { dir: string; dev: string };
+export type App = {
+  dir: string;
+  dev: string;
+  /** The app has a wrangler config: a Worker or a Pages project, whatever its `dev` script runs. */
+  wrangler?: true;
+};
 
 export type PlannedApp = {
   dir: string;
@@ -56,6 +61,8 @@ function readJson(path: string, label: string): unknown {
   }
 }
 
+const WRANGLER_CONFIGS = ["wrangler.jsonc", "wrangler.json", "wrangler.toml"];
+
 /** Every `apps/<dir>` with a `dev` script in its package.json, sorted by directory. */
 export function discoverApps(root: string): App[] {
   const apps = join(root, "apps");
@@ -73,7 +80,11 @@ export function discoverApps(root: string): App[] {
       }
       const pkg = readJson(file, `apps/${dir}/package.json`);
       const dev = isRecord(pkg) && isRecord(pkg.scripts) ? pkg.scripts.dev : undefined;
-      return typeof dev === "string" && dev.trim() !== "" ? [{ dir, dev }] : [];
+      if (typeof dev !== "string" || dev.trim() === "") {
+        return [];
+      }
+      const wrangler = WRANGLER_CONFIGS.some((name) => existsSync(join(apps, dir, name)));
+      return [wrangler ? { dir, dev, wrangler } : { dir, dev }];
     });
 }
 
@@ -114,18 +125,10 @@ export function needsProxyRestart(currentUrl: string, lan: boolean): boolean {
 }
 
 /**
- * Names the shipped modules read that an app's directory does not give: `web/static` reads the SPA's
- * URL as `VITE_APP_URL`, and `storage/r2` serves its files under the API's `/v1/media/file`. An alias
- * is left out when the app it points at is not installed.
- */
-const ALIASES: readonly { name: string; app: string; path: string }[] = [
-  { name: "VITE_APP_URL", app: "spa", path: "" },
-  { name: "R2_PUBLIC_URL", app: "api", path: "/v1/media/file" },
-];
-
-/**
  * What every app learns of the others, by the directory of the app whose URL it is: `<DIR>_URL` for a
  * server (`API_URL`, `SPA_URL`) and `VITE_<DIR>_URL` for a Vite front, which only exposes `VITE_*`.
+ * It names no key of a module: one that only has a default to derive (`storage/r2`'s public url, from
+ * `API_URL`) is derived by the module that reads it.
  */
 export function urlEnv(urls: Readonly<Record<string, string>>): Record<string, string> {
   const env: Record<string, string> = {};
@@ -133,12 +136,6 @@ export function urlEnv(urls: Readonly<Record<string, string>>): Record<string, s
     const key = dir.toUpperCase().replace(/[^A-Z0-9]+/g, "_");
     env[`${key}_URL`] = url;
     env[`VITE_${key}_URL`] = url;
-  }
-  for (const { name, app, path } of ALIASES) {
-    const url = urls[app];
-    if (url !== undefined) {
-      env[name] = `${url}${path}`;
-    }
   }
   return env;
 }
@@ -211,6 +208,20 @@ export function launchCommand(
   }
 }
 
+/**
+ * What `wrangler` reads from the process environment only when it is asked to. A Worker that a Vite
+ * command runs (the Cloudflare Vite plugin, `react-router dev`) takes its vars from its wrangler
+ * config, so without this the URLs the launcher hands it are ignored and its own `localhost` ones win.
+ * The whole environment of the process becomes visible to the Worker, which is local development only;
+ * and wrangler skips it when the app has a `.dev.vars` file.
+ */
+const WRANGLER_INCLUDES_PROCESS_ENV = { CLOUDFLARE_INCLUDE_PROCESS_ENV: "true" };
+
+/** What an app that is not started by `wrangler` itself is told through its process environment. */
+function processEnv(app: App, vars: Readonly<Record<string, string>>): Record<string, string> {
+  return app.wrangler ? { ...vars, ...WRANGLER_INCLUDES_PROCESS_ENV } : { ...vars };
+}
+
 /** The process of every app, in the order given, with the URL `urlOf` gives each name. */
 export function planStack(options: {
   slug: string;
@@ -228,7 +239,7 @@ export function planStack(options: {
     url,
     cwd: `apps/${app.dir}`,
     cmd: launchCommand(app, name, vars),
-    env: readDev(app.dev).kind === "wrangler" ? {} : vars,
+    env: readDev(app.dev).kind === "wrangler" ? {} : processEnv(app, vars),
   }));
 }
 

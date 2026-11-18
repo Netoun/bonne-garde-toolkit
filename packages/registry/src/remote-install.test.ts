@@ -2,12 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { createEmptyProjectManifest } from "@bonne-garde/schema";
+import { createEmptyProjectManifest, parseProjectManifest } from "@bonne-garde/schema";
 import { serveGithubRaw, type GithubRawServer } from "../test-support/github-raw-server";
 import { RegistrySourceError } from "./github-source";
 import { loadRegistryFromSource } from "./load-registry";
 import { classifyNames, resolveModulePlans } from "./module-plan";
-import { loadNamedModules, readPlanFiles } from "./remote-install";
+import { loadInstalledModules, loadNamedModules, readPlanFiles } from "./remote-install";
 import { resolveInstallPlan } from "./resolve-plan";
 
 const REPO_REGISTRY = join(import.meta.dir, "../../../registry");
@@ -37,8 +37,8 @@ async function remote(raw: GithubRawServer) {
   return loadRegistryFromSource("github:acme/bg@v1", "/", { github: { baseUrl: raw.baseUrl } });
 }
 
-/** A registry on disk: `files` maps a registry-relative path to its text. */
-async function registryOf(files: Record<string, string>): Promise<string> {
+/** A registry on disk: `files` maps a registry-relative path to its text, or to its bytes. */
+async function registryOf(files: Record<string, string | Uint8Array>): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "bg-remote-"));
   temp.push(root);
   for (const [path, text] of Object.entries(files)) {
@@ -135,6 +135,66 @@ describe("loadNamedModules", () => {
   });
 });
 
+describe("loadInstalledModules", () => {
+  const record = (id: string) => ({
+    id,
+    variant: "default",
+    version: "0.1.0",
+    installedAt: "2026-01-01T00:00:00.000Z",
+    options: {},
+    patches: [],
+    intentions: { applied: [], skipped: {} },
+  });
+  const project = (modules: Record<string, string[]>) =>
+    parseProjectManifest({
+      ...PROJECT,
+      modules: Object.fromEntries(
+        Object.entries(modules).map(([category, ids]) => [category, ids.map(record)]),
+      ),
+    });
+  const keys = (modules: { manifest: { category: string; id: string } }[]) =>
+    modules.map(({ manifest }) => `${manifest.category}/${manifest.id}`);
+
+  test("hands back a local catalog untouched, with no request", async () => {
+    const catalog = { name: "x", items: [], modules: [], rootDir: "/r" };
+
+    expect(await loadInstalledModules(catalog, project({ provider: ["cloudflare"] }))).toBe(
+      catalog,
+    );
+  });
+
+  test("fetches the module.json of each installed module the catalog lacks, and no other", async () => {
+    const raw = serve();
+    const catalog = await loadNamedModules(await remote(raw), ["email/resend"]);
+    raw.requested.length = 0;
+
+    const loaded = await loadInstalledModules(
+      catalog,
+      project({ provider: ["cloudflare"], email: ["resend"], db: ["d1"] }),
+    );
+
+    // email/resend is held already: it is not asked for twice.
+    expect([...raw.requested].sort()).toEqual([
+      "modules/db/d1/module.json",
+      "modules/provider/cloudflare/module.json",
+    ]);
+    expect(keys(loaded.modules).sort()).toEqual(["db/d1", "email/resend", "provider/cloudflare"]);
+    expect(loaded.modules.every((module) => module.reader === catalog.reader)).toBe(true);
+  });
+
+  test("a module the registry does not have is left out, and is not an error", async () => {
+    const raw = serve();
+    const catalog = await remote(raw);
+
+    const loaded = await loadInstalledModules(
+      catalog,
+      project({ provider: ["cloudflare"], auth: ["gone-from-registry"] }),
+    );
+
+    expect(keys(loaded.modules)).toEqual(["provider/cloudflare"]);
+  });
+});
+
 describe("readPlanFiles", () => {
   test("is the plan itself for a local catalog", async () => {
     const catalog = { name: "x", items: [], modules: [], rootDir: "/r" };
@@ -164,6 +224,28 @@ describe("readPlanFiles", () => {
     expect(raw.requested).not.toContain("ui/card.tsx");
   });
 
+  test("a file that is not valid UTF-8 fails the whole read, naming the item: items are text-only (030)", async () => {
+    const dir = await registryOf({
+      "registry.json": JSON.stringify({ name: "r", include: ["items/registry.json"] }),
+      "items/registry.json": JSON.stringify({
+        items: [
+          {
+            name: "icon",
+            type: "registry:file",
+            files: [{ path: "icon.png", type: "registry:file", target: "src/icon.png" }],
+          },
+        ],
+      }),
+      "items/icon.png": Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0xff, 0x00]),
+    });
+    const catalog = await remote(serve(dir));
+    const plan = resolveInstallPlan(catalog, ["icon"], PROJECT);
+
+    await expect(readPlanFiles(catalog, plan)).rejects.toThrow(
+      /item icon .*registry\/items\/icon\.png.*not valid UTF-8.*items are text-only/s,
+    );
+  });
+
   test("a file the registry does not have fails the whole read, naming it and the ref", async () => {
     const raw = serve();
     const catalog = await remote(raw);
@@ -181,6 +263,47 @@ describe("readPlanFiles", () => {
 });
 
 describe("a module planned from github", () => {
+  test("config/branding's seven favicons are planned as the bytes of the registry's files, fetched over HTTP", async () => {
+    const raw = serve();
+    const catalog = await loadNamedModules(await remote(raw), ["config/branding"]);
+    const refs = [{ category: "config" as const, id: "branding" }];
+
+    const [plan] = await resolveModulePlans(catalog, refs, PROJECT);
+
+    expect(plan?.binaries.map(({ target }) => target.split("/").pop())).toEqual([
+      "android-chrome-192x192.png",
+      "android-chrome-512x512.png",
+      "apple-touch-icon.png",
+      "favicon-16x16.png",
+      "favicon-32x32.png",
+      "favicon-48x48.png",
+      "favicon.ico",
+    ]);
+    for (const { target, bytes } of plan?.binaries ?? []) {
+      const source = join(REPO_REGISTRY, "modules/config/branding/template", target);
+      expect(Buffer.from(bytes).equals(await Bun.file(source).bytes())).toBe(true);
+    }
+  });
+
+  test("a file that is not text is planned as the same bytes as from a local registry", async () => {
+    // A PNG signature, the placeholder as ASCII, and a byte that UTF-8 text cannot hold.
+    const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, ...Buffer.from("{{SCOPE}}"), 0xff, 0x00]);
+    const dir = await registryOf({
+      "registry.json": JSON.stringify({ name: "r", items: [] }),
+      "modules/config/icons/module.json": moduleJson("icons", "config", ["packages/icons/a.png"]),
+      "modules/config/icons/template/packages/icons/a.png": png,
+    });
+    const refs = [{ category: "config" as const, id: "icons" }];
+    const catalog = await loadNamedModules(await remote(serve(dir)), ["config/icons"]);
+
+    const [plan] = await resolveModulePlans(catalog, refs, PROJECT);
+
+    const local = await loadRegistryFromSource(`local:${dir}`, "/");
+    const [expected] = await resolveModulePlans(local, refs, PROJECT);
+    expect(plan).toEqual(expected);
+    expect(Buffer.from(plan?.binaries[0]?.bytes ?? []).equals(png)).toBe(true);
+  });
+
   test("plans the same files as from a local registry, fetching only the variant's copy", async () => {
     const raw = serve();
     const catalog = await loadNamedModules(await remote(raw), ["provider/cloudflare"]);

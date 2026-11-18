@@ -143,7 +143,7 @@ describe("parseModuleManifest", () => {
   });
 });
 
-describe("parseModuleManifest, the fields `bg add` acts on", () => {
+describe("parseModuleManifest, the fields `bonne-garde add` acts on", () => {
   const variant = (extra: Record<string, unknown>) => ({
     ...valid,
     variants: [{ key: "default", match: {}, ...extra }],

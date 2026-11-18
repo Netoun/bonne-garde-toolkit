@@ -8,6 +8,9 @@ import {
   Scripts,
   ScrollRestoration,
 } from "react-router";
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// oxfmt-ignore
+import { branding, faviconLinks } from "{{SCOPE}}/config";
 import { QueryProvider } from "./providers/query-provider";
 import { AppLoader } from "./components/app-loader";
 import { useInitTheme } from "./hooks/use-init-theme";
@@ -16,19 +19,13 @@ import useLoadApp from "./hooks/use-load-app";
 import "@fontsource-variable/urbanist/wght.css";
 import "@fontsource-variable/faustina/wght.css";
 
-import faviconSvg from "{{SCOPE}}/config/assets/favicons/favicon.svg";
-import siteManifest from "{{SCOPE}}/config/assets/favicons/site.webmanifest";
-
 import "{{SCOPE}}/ui/globals.css";
 
-export const links: Route.LinksFunction = () => [
-  { rel: "icon", type: "image/svg+xml", href: faviconSvg },
-  { rel: "manifest", href: siteManifest },
-];
+export const links: Route.LinksFunction = () => [...faviconLinks];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang={branding.lang}>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />

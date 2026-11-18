@@ -32,7 +32,7 @@ Every extracted piece MUST be assigned a category from [035](./035-module-regist
 ## Rules
 
 - MUST preserve behavior; no feature rewrites during extraction.
-- MUST keep `test:platform` green throughout; `test:legacy` may lag ([070](./070-testing-and-release.md)).
+- MUST keep `test:platform` green throughout ([070](./070-testing-and-release.md)).
 - Module source lives under `registry/modules/<category>/<id>/template/`, mirroring the target tree.
 - Consumer placeholders (`{{SCOPE}}`, `{{DISPLAY_NAME}}`) are rendered at copy time — never patched into project-owned files ([060](./060-patches-and-regions.md)).
 - Every extracted module MUST declare its `peers`, at least one `variant`, and its `checks`.
@@ -46,7 +46,7 @@ Every extracted piece MUST be assigned a category from [035](./035-module-regist
 
 ## Done when
 
-- MVP modules installable via `bg add`, non-interactively.
-- Playground generated from base + MVP is green on typecheck, test, and `bg doctor --strict`.
+- MVP modules installable via `bonne-garde add`, non-interactively.
+- Playground generated from base + MVP is green on typecheck, test, and `bonne-garde doctor --strict`.
 - No `meta.bg` remains in the UI catalog.
 - Specs remain the source of truth for further extractions.

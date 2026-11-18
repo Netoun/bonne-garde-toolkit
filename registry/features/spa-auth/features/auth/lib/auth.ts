@@ -4,7 +4,7 @@ import {
   inferOrgAdditionalFields,
   organizationClient,
 } from "better-auth/client/plugins";
-// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { AUTH_BASE_PATH, type Auth } from "@acme/auth/client";
 

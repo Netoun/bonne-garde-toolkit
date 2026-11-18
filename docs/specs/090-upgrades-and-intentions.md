@@ -8,7 +8,7 @@ Keep consumer projects upgradeable after they diverge, without merging raw diffs
 
 ## Why not diffs
 
-A project generated with `bg create` owns its code from day one. Upstream improvements (tooling, auth patterns, registry baselines) cannot land as a git merge. Intentions declare knowledge; the consumer executes locally.
+A project generated with `bonne-garde create` owns its code from day one. Upstream improvements (tooling, auth patterns, registry baselines) cannot land as a git merge. Intentions declare knowledge; the consumer executes locally.
 
 ## Lockstep prerequisite
 
@@ -59,13 +59,13 @@ migrations/
 
 Document format, frontmatter, required sections, `copy` / `adapt` reference paths, linting, and the executor protocol are defined once in [065](./065-intentions.md) and shared with module install intents. Migration-specific rules only:
 
-| Rule                 | Detail                                                                                                      |
-| -------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Path                 | `migrations/vX.Y.Z/NN-slug.md`                                                                              |
-| Id scope             | `vX.Y.Z` — `kind: migration`                                                                                |
-| Domain               | Maps to a **category** the consumer tracks (`tooling`, `api`, `ui`, `auth`, `db`, …)                        |
-| Release README       | MUST list every id in the release; `bg intentions lint` fails if stale, `bg intentions sync` regenerates it |
-| No-migration release | Documented as prose in the release README                                                                   |
+| Rule                 | Detail                                                                                                                        |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Path                 | `migrations/vX.Y.Z/NN-slug.md`                                                                                                |
+| Id scope             | `vX.Y.Z` — `kind: migration`                                                                                                  |
+| Domain               | Maps to a **category** the consumer tracks (`tooling`, `api`, `ui`, `auth`, `db`, …)                                          |
+| Release README       | MUST list every id in the release; `bonne-garde intentions lint` fails if stale, `bonne-garde intentions sync` regenerates it |
+| No-migration release | Documented as prose in the release README                                                                                     |
 
 ## Filtering
 
@@ -81,9 +81,9 @@ A domain the project never installed MUST instruct skip — never force-add an u
 
 - Platform releases = git tags `vX.Y.Z` on `platform.remote` (same tags as lockstep publish).
 - Consumer fetches into a **dedicated ref namespace** (e.g. `refs/bg/v*`), **not** the consumer’s `refs/tags`, so app tags never collide with platform tags.
-- No publish API required beyond git + the npm CLI package for `create`/`bg`.
+- No publish API required beyond git + the npm CLI package (`bonne-garde`).
 
-## CLI surface (`bg upgrade …`)
+## CLI surface (`bonne-garde upgrade …`)
 
 | Command                              | Behavior                                                                                                                                                                                                                         |
 | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -91,16 +91,16 @@ A domain the project never installed MUST instruct skip — never force-add an u
 | `versions list`                      | Available platform tags from fetched refs                                                                                                                                                                                        |
 | `upgrade path --to <ver\|latest>`    | Print intention plan; read-only                                                                                                                                                                                                  |
 | `upgrade prepare --to <ver\|latest>` | Clean worktree required; build temp workspace; after validation create branch `upgrade/vA-to-vB` and atomically write `.bg/upgrade/` (numbered intentions, source/target projections, session checklist). MUST NOT edit app code |
-| `record` (top-level)                 | Record apply/skip in `bg.json` after validation: `bg record <id>`, `bg record <id> --skip "<reason>"`; shared with install intentions ([050](./050-cli-add.md))                                                                  |
+| `record` (top-level)                 | Record apply/skip in `bg.json` after validation: `bonne-garde record <id>`, `bonne-garde record <id> --skip "<reason>"`; shared with install intentions ([050](./050-cli-add.md))                                                |
 | `upgrade finish --to <ver>`          | Fail closed until every intention in range is applied or skipped; then set `platform.version`                                                                                                                                    |
 
-Everyday form: `bg upgrade` → target latest, refresh publications when needed, interactive selection on TTY.
+Everyday form: `bonne-garde upgrade` → target latest, refresh publications when needed, interactive selection on TTY.
 
 Scratch `.bg/upgrade/` is gitignored and disposable. Deterministic work lives in the CLI; agent skills are thin shims over the runbook.
 
 ## Executor protocol
 
-Defined once in [065](./065-intentions.md) — identical for upgrade and for module install intents. Upgrade adds one terminal step: the human runs `bg upgrade finish`, which advances `platform.version` only once every intention in range is applied or skipped.
+Defined once in [065](./065-intentions.md) — identical for upgrade and for module install intents. Upgrade adds one terminal step: the human runs `bonne-garde upgrade finish`, which advances `platform.version` only once every intention in range is applied or skipped.
 
 ## Maintainer release duties
 
@@ -108,7 +108,7 @@ On each lockstep release ([070](./070-testing-and-release.md)):
 
 1. Classify every meaningful change.
 2. Add `migrations/vX.Y.Z/NN-slug.md` for actionable adaptations (or document release-level `no-migration`).
-3. `bg intentions lint` (+ sync) MUST pass in CI before tagging.
+3. `bonne-garde intentions lint` (+ sync) MUST pass in CI before tagging.
 4. Changelog SHOULD link the release’s intention set.
 
 ## Phasing

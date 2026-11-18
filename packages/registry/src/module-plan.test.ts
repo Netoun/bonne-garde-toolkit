@@ -9,7 +9,13 @@ import {
   type ProjectManifest,
 } from "@bonne-garde/schema";
 import { loadLocalRegistry } from "./load-registry";
-import { checkModuleSet, classifyNames, resolveModulePlans } from "./module-plan";
+import {
+  checkModuleSet,
+  classifyNames,
+  readAuthoredIntention,
+  reselectedModules,
+  resolveModulePlans,
+} from "./module-plan";
 import type { RegistryCatalog } from "./types";
 
 const dirs: string[] = [];
@@ -24,12 +30,12 @@ type ModuleSpec = {
   /** Everything in `module.json` but `id`, `category`, `title` and `description`. */
   json?: Record<string, unknown>;
   /** Files under `template/`, by path. */
-  template?: Record<string, string>;
+  template?: Record<string, string | Uint8Array>;
   /** Files under `intent/`, by file name. */
   intent?: Record<string, string>;
 };
 
-async function write(path: string, content: string): Promise<void> {
+async function write(path: string, content: string | Uint8Array): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, content);
 }
@@ -71,13 +77,15 @@ async function registry(modules: ModuleSpec[], itemNames: string[] = []): Promis
 function project(
   installed: Partial<Record<ModuleCategory, string[]>> = {},
   scope = "@demo",
+  /** The variant a module is recorded on, by `<category>/<id>`; `default` for the others. */
+  variants: Record<string, string> = {},
 ): ProjectManifest {
   const modules = Object.fromEntries(
     Object.entries(installed).map(([category, ids]) => [
       category,
       ids.map((id) => ({
         id,
-        variant: "default",
+        variant: variants[`${category}/${id}`] ?? "default",
         version: "0.1.0",
         installedAt: "2026-01-01T00:00:00.000Z",
         options: {},
@@ -94,6 +102,7 @@ function project(
 
 const CLOUDFLARE: ModuleSpec = { category: "provider", id: "cloudflare" };
 const DOCKERFILE: ModuleSpec = { category: "provider", id: "dockerfile" };
+const DOCKERFILE_REF = { category: "provider", id: "dockerfile" } as const;
 
 describe("classifyNames (050 step 3)", () => {
   test("a bare module id is a module, a bare item name is an item, order kept", async () => {
@@ -298,7 +307,7 @@ describe("resolveModulePlans: peers (050 step 4)", () => {
 });
 
 describe("resolveModulePlans: cardinality (050 step 5)", () => {
-  test("a filled `one` category fails naming the installed module and pointing at bg replace", async () => {
+  test("a filled `one` category fails naming the installed module and pointing at bonne-garde replace", async () => {
     const catalog = await registry([CLOUDFLARE, DOCKERFILE]);
 
     await expect(
@@ -308,7 +317,7 @@ describe("resolveModulePlans: cardinality (050 step 5)", () => {
         project({ provider: ["cloudflare"] }),
       ),
     ).rejects.toThrow(
-      /provider is already filled by provider\/cloudflare.*bg replace provider\/dockerfile/s,
+      /provider is already filled by provider\/cloudflare.*bonne-garde replace provider\/dockerfile/s,
     );
   });
 
@@ -623,21 +632,6 @@ describe("resolveModulePlans: the plan (050 step 8)", () => {
     expect(plan?.files.map((f) => f.target)).toEqual(["a/x.txt"]);
   });
 
-  test("a glob is refused from a local source too, as a github source has to (035)", async () => {
-    const catalog = await registry([
-      {
-        category: "provider",
-        id: "docker",
-        json: { variants: [{ key: "default", match: {}, copy: ["a/*"] }] },
-        template: { "a/x.txt": "x" },
-      },
-    ]);
-
-    await expect(
-      resolveModulePlans(catalog, [{ category: "provider", id: "docker" }], project()),
-    ).rejects.toThrow('copy "a/*" of provider/docker is a glob');
-  });
-
   test("renders {{SCOPE}} with the project's scope", async () => {
     const catalog = await registry([
       {
@@ -657,19 +651,146 @@ describe("resolveModulePlans: the plan (050 step 8)", () => {
     expect(plan?.files[0]?.content).toBe("RUN bun run --filter '@shop/spa' build\n");
   });
 
-  test("an entry that names no file fails, naming the entry", async () => {
+  test("a file whose bytes are not valid UTF-8 is planned as bytes, never rendered, apart from the text files", async () => {
+    // A PNG signature, the scope placeholder as ASCII, and a byte no UTF-8 text holds.
+    const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, ...Buffer.from("{{SCOPE}}"), 0xff, 0x00]);
     const catalog = await registry([
       {
         category: "provider",
         id: "docker",
-        json: { variants: [{ key: "default", match: {}, copy: ["nope.txt"] }] },
+        json: { variants: [{ key: "default", match: {}, copy: ["assets/**", "Dockerfile"] }] },
+        template: {
+          Dockerfile: "RUN bun run --filter '{{SCOPE}}/spa' build\n",
+          "assets/icon.png": png,
+        },
+      },
+    ]);
+
+    const [plan] = await resolveModulePlans(
+      catalog,
+      [{ category: "provider", id: "docker" }],
+      project({}, "@shop"),
+    );
+
+    expect(plan?.files.map((f) => f.target)).toEqual(["Dockerfile"]);
+    expect(plan?.binaries.map((f) => f.target)).toEqual(["assets/icon.png"]);
+    expect(Buffer.from(plan?.binaries[0]?.bytes ?? []).equals(png)).toBe(true);
+  });
+
+  test("a patch on a file the module copies as binary is refused when it is planned, naming both", async () => {
+    const catalog = await registry([
+      {
+        category: "provider",
+        id: "docker",
+        json: {
+          variants: [
+            {
+              key: "default",
+              match: {},
+              copy: ["data.json"],
+              patch: [{ type: "jsonc.merge", file: "data.json", value: { a: 1 } }],
+            },
+          ],
+        },
+        // Named like a text file a patch accepts, and not text.
+        template: { "data.json": Uint8Array.from([0xff, 0xfe, 0x00]) },
+      },
+    ]);
+
+    await expect(
+      resolveModulePlans(catalog, [{ category: "provider", id: "docker" }], project()),
+    ).rejects.toThrow(
+      /provider\/docker patches data\.json.*copies as a binary file.*a patch edits text/,
+    );
+  });
+
+  test("a text file keeps its byte order mark, and a file of any extension is binary by its bytes alone", async () => {
+    const bom = '\uFEFFexport const scope = "{{SCOPE}}";\n';
+    const catalog = await registry([
+      {
+        category: "provider",
+        id: "docker",
+        json: { variants: [{ key: "default", match: {}, copy: ["a.ts", "b.txt"] }] },
+        template: { "a.ts": bom, "b.txt": Uint8Array.from([0xc3, 0x28]) },
+      },
+    ]);
+
+    const [plan] = await resolveModulePlans(
+      catalog,
+      [{ category: "provider", id: "docker" }],
+      project({}, "@shop"),
+    );
+
+    expect(plan?.files[0]?.content).toBe('\uFEFFexport const scope = "@shop";\n');
+    expect(plan?.binaries.map((f) => f.target)).toEqual(["b.txt"]);
+  });
+
+  test("`dir/*` copies the files directly in dir, dotfiles included, and none below it", async () => {
+    const catalog = await registry([
+      {
+        category: "provider",
+        id: "docker",
+        json: { variants: [{ key: "default", match: {}, copy: ["a/*"] }] },
+        template: { "a/x.txt": "x", "a/.env.example": "K=\n", "a/b/y.txt": "y" },
+      },
+    ]);
+
+    const [plan] = await resolveModulePlans(
+      catalog,
+      [{ category: "provider", id: "docker" }],
+      project(),
+    );
+
+    expect(plan?.files.map((f) => f.target)).toEqual(["a/.env.example", "a/x.txt"]);
+  });
+
+  test("`**` enters a hidden directory", async () => {
+    const catalog = await registry([
+      {
+        category: "provider",
+        id: "docker",
+        json: { variants: [{ key: "default", match: {}, copy: [".config/**"] }] },
+        template: { ".config/sub/x.json": "{}\n", "other/y.json": "{}\n" },
+      },
+    ]);
+
+    const [plan] = await resolveModulePlans(
+      catalog,
+      [{ category: "provider", id: "docker" }],
+      project(),
+    );
+
+    expect(plan?.files.map((f) => f.target)).toEqual([".config/sub/x.json"]);
+  });
+
+  test("a copy that names a directory matches no file: `dir/**` is what copies one", async () => {
+    const catalog = await registry([
+      {
+        category: "provider",
+        id: "docker",
+        json: { variants: [{ key: "default", match: {}, copy: ["a"] }] },
+        template: { "a/x.txt": "x" },
+      },
+    ]);
+
+    await expect(
+      resolveModulePlans(catalog, [{ category: "provider", id: "docker" }], project()),
+    ).rejects.toThrow(/copy "a" of provider\/docker matches no file under template\//);
+  });
+
+  test("a glob that matches nothing fails, naming the glob", async () => {
+    const catalog = await registry([
+      {
+        category: "provider",
+        id: "docker",
+        json: { variants: [{ key: "default", match: {}, copy: ["nope/**"] }] },
         template: { "a.txt": "a" },
       },
     ]);
 
     await expect(
       resolveModulePlans(catalog, [{ category: "provider", id: "docker" }], project()),
-    ).rejects.toThrow('copy "nope.txt" of provider/docker names no file under template/');
+    ).rejects.toThrow(/copy "nope\/\*\*" of provider\/docker matches no file under template\//);
   });
 
   test("carries env keys, dependencies, checks, and defaults a missing `required` to false", async () => {
@@ -1591,5 +1712,141 @@ describe("resolveModulePlans: the intentions a module authors under intent/ (065
     await expect(plan(catalog, { auth: ["better-auth"] })).rejects.toThrow(
       /email\/resend: 01-wire-email-into-auth\.md: id must be email\/resend\/wire-email-into-auth, got email\/other\/wire/,
     );
+  });
+
+  describe("readAuthoredIntention: one intention of the variant a project has installed", () => {
+    const ID = "email/resend/wire-email-into-auth";
+    const EMAIL_REF = { category: "email", id: "resend" } as const;
+
+    test("is the document of that id, with the scope rendered, as add planned it", async () => {
+      const catalog = await email({ "01-wire-email-into-auth.md": wire() });
+
+      expect(await readAuthoredIntention(catalog, EMAIL_REF, "with-auth", ID, "@demo")).toEqual({
+        id: ID,
+        module: "email/resend",
+        title: "Send auth's emails through @demo/email",
+        document: wire().replaceAll("{{SCOPE}}", "@demo"),
+      });
+    });
+
+    test("is null when the variant installed ships no such intention, the variant or the module is not in the registry, or the id is another's", async () => {
+      const catalog = await email({ "01-wire-email-into-auth.md": wire() });
+
+      expect(await readAuthoredIntention(catalog, EMAIL_REF, "default", ID, "@demo")).toBeNull();
+      expect(await readAuthoredIntention(catalog, EMAIL_REF, "gone", ID, "@demo")).toBeNull();
+      expect(
+        await readAuthoredIntention(catalog, EMAIL_REF, "with-auth", "email/resend/other", "@demo"),
+      ).toBeNull();
+      expect(
+        await readAuthoredIntention(
+          catalog,
+          { category: "auth", id: "better-auth" },
+          "default",
+          ID,
+          "@demo",
+        ),
+      ).toBeNull();
+    });
+
+    test("refuses a variant whose intent/ is broken, as planning it does", async () => {
+      const catalog = await email({});
+
+      await expect(
+        readAuthoredIntention(catalog, EMAIL_REF, "with-auth", ID, "@demo"),
+      ).rejects.toThrow(/which its intent\/ does not hold/);
+    });
+  });
+});
+
+describe("reselectedModules: an installed module whose variant a module this call adds changes (050 step 7, 035 Variants)", () => {
+  // The email module of the real registry in miniature: `auth` is an optional peer, and the variant that
+  // matches on it comes with the wiring a project with no auth has no use for.
+  const EMAIL: ModuleSpec = {
+    category: "email",
+    id: "resend",
+    json: {
+      peers: { provider: [] },
+      variants: [
+        { key: "default", match: {} },
+        { key: "wired", match: { auth: "better-auth" } },
+      ],
+    },
+  };
+  const AUTH: ModuleSpec = { category: "auth", id: "better-auth" };
+  const AUTH_REF = { category: "auth", id: "better-auth" } as const;
+  const EMAIL_REF = { category: "email", id: "resend" } as const;
+  const INSTALLED = { provider: ["cloudflare"], email: ["resend"] };
+
+  test("an installed module on the variant it had before the peer is planned again, on the variant the peer selects", async () => {
+    const catalog = await registry([CLOUDFLARE, EMAIL, AUTH]);
+
+    expect(reselectedModules(catalog, [AUTH_REF], project(INSTALLED))).toEqual([
+      { ref: EMAIL_REF, from: "default", to: "wired", because: ["auth/better-auth"] },
+    ]);
+  });
+
+  test("the plan of the two together is the plan of one call that names both: auth first, then email on its wired variant", async () => {
+    const catalog = await registry([CLOUDFLARE, EMAIL, AUTH]);
+    const manifest = project(INSTALLED);
+
+    const plans = await resolveModulePlans(
+      catalog,
+      [AUTH_REF, ...reselectedModules(catalog, [AUTH_REF], manifest).map(({ ref }) => ref)],
+      manifest,
+    );
+
+    expect(plans.map(({ key, variant }) => [key, variant])).toEqual([
+      ["auth/better-auth", "default"],
+      ["email/resend", "wired"],
+    ]);
+  });
+
+  test("a module already on the variant the peer selects is left alone: adding auth again pulls nothing in", async () => {
+    const catalog = await registry([CLOUDFLARE, EMAIL, AUTH]);
+    const manifest = project({ ...INSTALLED, auth: ["better-auth"] }, "@demo", {
+      "email/resend": "wired",
+    });
+
+    expect(reselectedModules(catalog, [AUTH_REF], manifest)).toEqual([]);
+  });
+
+  test("a module the call names itself is not reported: it is planned already", async () => {
+    const catalog = await registry([CLOUDFLARE, EMAIL, AUTH]);
+
+    expect(reselectedModules(catalog, [AUTH_REF, EMAIL_REF], project(INSTALLED))).toEqual([]);
+  });
+
+  test("a module whose variants match on none of the modules added is left alone, whatever variant it is recorded on", async () => {
+    const catalog = await registry([CLOUDFLARE, EMAIL, AUTH, DOCKERFILE]);
+
+    expect(
+      reselectedModules(
+        catalog,
+        [DOCKERFILE_REF],
+        project(INSTALLED, "@demo", { "email/resend": "old" }),
+      ),
+    ).toEqual([]);
+  });
+
+  test("another module of the category the variant matches on does not select it", async () => {
+    const catalog = await registry([CLOUDFLARE, EMAIL, { category: "auth", id: "lucia" }]);
+
+    expect(
+      reselectedModules(catalog, [{ category: "auth", id: "lucia" }], project(INSTALLED)),
+    ).toEqual([]);
+  });
+
+  test("a module the registry does not hold cannot be selected again, and is skipped without a word", async () => {
+    const catalog = await registry([CLOUDFLARE, AUTH]);
+
+    expect(reselectedModules(catalog, [AUTH_REF], project(INSTALLED))).toEqual([]);
+  });
+
+  test("naming no module reselects nothing", async () => {
+    const catalog = await registry([CLOUDFLARE, EMAIL, AUTH]);
+
+    expect(
+      reselectedModules(catalog, [], project({ ...INSTALLED, auth: ["better-auth"] })),
+    ).toEqual([]);
   });
 });

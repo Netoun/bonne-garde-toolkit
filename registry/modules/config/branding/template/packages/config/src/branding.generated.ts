@@ -7,6 +7,10 @@ import type { Branding } from "./branding.types";
 export const branding = {
   displayName: "My App",
   shortName: "My App",
+  description: "The My App web app.",
+  lang: "en",
+  themeColor: "#000000",
+  backgroundColor: "#ffffff",
   npmScope: "{{SCOPE}}",
   publicOrigin: "https://www.example.com",
   supportEmail: "support@example.com",

@@ -5,7 +5,7 @@ password reset), a `memory` adapter for tests, and Resend over its HTTP API. It 
 `packages/emails` and `apps/api/src/lib/email.ts` extracted into `packages/email`.
 
 ```bash
-bunx bg add provider/cloudflare config/branding api/elysia db/d1 orm/drizzle auth/better-auth email/resend
+bunx bonne-garde add provider/cloudflare config/branding api/elysia db/d1 orm/drizzle auth/better-auth email/resend
 ```
 
 ## Peers and variants
@@ -27,7 +27,7 @@ module for one consumer. It has two variants instead, and the installed peers pi
 
 The two write the same files, with the same dependencies and env key (a contract test pins that). A
 project without auth (golden's `dockerfile` configuration has none, no database) installs `default`,
-and `bg doctor --strict` is green as it is.
+and `bonne-garde doctor --strict` is green as it is.
 
 ## What it writes
 
@@ -98,36 +98,40 @@ Email comes after auth in 035's order, so it wires itself into auth and auth nev
 Auth owns the `AuthMailer` interface and exports `mailer`, documented as the one place an `email` module
 wires itself in. The `better-auth` variant does it in two steps:
 
-1. **One patch** (tier 2), which `bg add` applies: `package.dependencies` declares `{{SCOPE}}/email` in
+1. **One patch** (tier 2), which `bonne-garde add` applies: `package.dependencies` declares `{{SCOPE}}/email` in
    `packages/auth/package.json`.
-2. **One intention** (tier 3), `email/resend/wire-email-into-auth`, which `bg add` stages in
-   `.bg/add/` and which is pending until `bg record`: make `mailer` `emailMailer`, importing it from
+2. **One intention** (tier 3), `email/resend/wire-email-into-auth`, which `bonne-garde add` stages in
+   `.bg/add/` and which is pending until `bonne-garde record`: make `mailer` `emailMailer`, importing it from
    `{{SCOPE}}/email` in place of the `apiLogger` import only the old initializer used. This is the first
    intention a module ships: no patch of 060's closed catalog replaces the initializer of an exported
    constant, and an import patch on its own would sit unused, and fail `vp run check`, until the
-   initializer is replaced. So `bg add` writes nothing into `mailer.ts`, and there is no lint-red window
-   between `bg add` and `bg record`.
+   initializer is replaced. So `bonne-garde add` writes nothing into `mailer.ts`, and there is no lint-red window
+   between `bonne-garde add` and `bonne-garde record`.
 
-**What `bg record` does to `mailer.ts`.** It is auth's tier-1 file, with its sha256 recorded, and the edit
-changes it: `bg doctor` would report it user-modified, a warning that `--strict` fails on. The intention
-declares `mailer.ts` as an `adapt` Reference Path, so `bg record` records `intent[email/resend/wire-email-into-auth]`,
+**What `bonne-garde record` does to `mailer.ts`.** It is auth's tier-1 file, with its sha256 recorded, and the edit
+changes it: `bonne-garde doctor` would report it user-modified, a warning that `--strict` fails on. The intention
+declares `mailer.ts` as an `adapt` Reference Path, so `bonne-garde record` records `intent[email/resend/wire-email-into-auth]`,
 owned by email, on it. A file with recorded regions is checked by region (060), so `doctor` reads it as the
 project's, and re-adding auth keeps the edit and reports it, even when auth's template changed. Auth's
 recorded sha is not replaced by the edited file's: that would make auth's re-add see an untouched file
-and overwrite the edit. Re-adding email skips its patch and stages nothing. `bg record --skip` records no
+and overwrite the edit. Re-adding email skips its patch and stages nothing. `bonne-garde record --skip` records no
 region. Golden checks all of it: no region before the record, the region after it, `doctor --strict`
 green, and each module added again changing nothing.
 
 What the executor does, and what golden does, the same way: read `.bg/add/session.md`, apply the edit the
 document describes, run its Validation (`typecheck`, `test`, `check`, and a test that signs a user up
-through `createTestAuth({ mailer })` and reads the `outbox`), then `bg record
+through `createTestAuth({ mailer })` and reads the `outbox`), then `bonne-garde record
 email/resend/wire-email-into-auth`. Until then `mailer` is auth's own, which sends nothing and says so, and
 the module's `checks` are withheld (050 step 15).
 
-**Installed in the other order.** `bg add auth/better-auth` after email is installed does not wire
-anything: auth's install knows nothing of email. Run `bg add email/resend` again: the installed auth
-now selects the `better-auth` variant, which adds the patches and stages the intention. 035's order puts
-auth first, and golden installs it that way.
+**Installed in the other order.** `bunx bonne-garde add auth/better-auth` after email is installed wires it all the
+same: auth's install knows nothing of email, but `bonne-garde add` selects the variants of the installed modules
+again (050 step 7), finds that the `better-auth` variant of email now matches, and plans email in the same
+call as a re-add. It reports it (`bonne-garde: email/resend, installed on variant default, is planned again on
+variant better-auth, which matches auth/better-auth`, and `reselected` in the JSON), applies the patch and
+stages the intention, as one call naming both would. A project that is already in that state, from before
+`bonne-garde add` did this, is fixed by `bunx bonne-garde add email/resend`. Golden installs auth first in its configurations, and
+checks the other order in a project of its own.
 
 ## Not here
 

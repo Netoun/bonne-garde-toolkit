@@ -8,7 +8,7 @@ import {
   type ProjectManifest,
 } from "@bonne-garde/schema";
 import { applyInstallPlan } from "./apply-plan";
-import type { ModulePlan } from "./module-plan";
+import type { ModulePlan, Reselected } from "./module-plan";
 import type { PlannedPatch } from "./patch-plan";
 import { sha256Hex } from "./sha256";
 
@@ -43,6 +43,7 @@ function modulePlan(overrides: Partial<ModulePlan> = {}): ModulePlan {
     variant: "default",
     options: {},
     files: [],
+    binaries: [],
     patches: [patch()],
     intentions: [],
     env: [],
@@ -95,7 +96,7 @@ async function install(
   projectRoot: string,
   manifest: ProjectManifest,
   modules: ModulePlan[],
-  extra: { force?: boolean; dryRun?: boolean } = {},
+  extra: { force?: boolean; dryRun?: boolean; reselected?: Reselected[] } = {},
 ) {
   return applyInstallPlan({
     projectRoot,
@@ -219,6 +220,32 @@ describe("applyInstallPlan: scripts.merge (060)", () => {
       status: "applied",
       regions: [{ region: REGION, status: "applied", replaced: "bun my-own-script.ts" }],
     });
+  });
+
+  test("a script that differs from the declared one of a module the call plans again is not overwritten under --force", async () => {
+    const { projectRoot, manifest } = await freshProject();
+    const first = await install(projectRoot, manifest, [modulePlan()]);
+    const edited = (await read(projectRoot, "package.json")).replace(GEN, "bun my-own-script.ts");
+    await writeFile(join(projectRoot, "package.json"), edited);
+    const before = await snapshot(projectRoot);
+
+    const attempt = install(projectRoot, first.manifest, [modulePlan()], {
+      force: true,
+      reselected: [
+        {
+          ref: { category: "config", id: "branding" },
+          from: "default",
+          to: "better-auth",
+          because: ["auth/better-auth"],
+        },
+      ],
+    });
+
+    await expect(attempt).rejects.toThrow(
+      /^nothing was written; config\/branding, installed on variant default, is planned again on variant better-auth because auth\/better-auth is added, .*in the way:\n {2}scripts\.gen:branding of package\.json is "bun my-own-script\.ts", which differs from what config\/branding declares/s,
+    );
+    await expect(attempt).rejects.toMatchObject({ nameToForce: ["config/branding"] });
+    expect(await snapshot(projectRoot)).toEqual(before);
   });
 
   describe("a file the module writes and then patches (the api module's package.json)", () => {
@@ -1750,7 +1777,7 @@ describe("applyInstallPlan: a failed patch becomes a pending intention (060 Degr
     }
   });
 
-  test("once the patch applies the failure and its intention leave the record, which `bg record` closed or not", async () => {
+  test("once the patch applies the failure and its intention leave the record, which `bonne-garde record` closed or not", async () => {
     const { projectRoot, manifest } = await freshProject({});
     const first = await install(projectRoot, manifest, [auth()]);
     await mkdir(join(projectRoot, "apps/api/src"), { recursive: true });
@@ -1818,7 +1845,7 @@ describe("a file another module's intention edited (060: an intent[<id>] region 
       patches: [],
     });
 
-  /** auth installed, its mailer.ts edited by email's intention, and `bg record` having marked the file. */
+  /** auth installed, its mailer.ts edited by email's intention, and `bonne-garde record` having marked the file. */
   async function recorded(marked = true) {
     const { projectRoot, manifest } = await freshProject({});
     const first = await install(projectRoot, manifest, [auth()]);

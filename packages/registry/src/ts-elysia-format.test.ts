@@ -7,7 +7,7 @@ import { addImport } from "./ts-patches";
 
 /**
  * 060: what a patch writes is what the project's formatter writes, so `bun run check` passes right
- * after `bg add`. Each case patches a file the way a module will and hands the result to `vp fmt`.
+ * after `bonne-garde add`. Each case patches a file the way a module will and hands the result to `vp fmt`.
  */
 
 const ROOT = join(import.meta.dir, "../../..");

@@ -26,7 +26,7 @@ typed from it. Never call `fetch`.
 
 Compose the primitives of `{{SCOPE}}/ui/components/<name>`. Never write a raw `<button>`, `<input>`,
 `<select>` or `<textarea>`, or a `div` with a `role`. When a primitive is missing, add it with
-`bg add <item>`.
+`bonne-garde add <item>`.
 
 ## Done when
 

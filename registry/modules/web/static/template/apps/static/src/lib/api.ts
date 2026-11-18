@@ -17,6 +17,6 @@ export const api = treaty<App>(resolveApiUrl(), {
   fetch: { credentials: "include" },
 });
 
-// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 export type { ApiRoute, EdenResponse, EdenBody, EdenQuery } from "{{SCOPE}}/api/lib/eden";

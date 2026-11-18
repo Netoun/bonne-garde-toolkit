@@ -16,7 +16,9 @@
  *
  * Every step runs with `CLOUDFLARE_ENV=production`. A build also gets the `VITE_*` variables of the
  * workflow's GitHub environment (`VARS_JSON`, the JSON of the `vars` context): Vite bakes them into
- * the bundle, and an app such as the SPA throws at load without its API URL.
+ * the bundle, and an app such as the SPA throws at load without its API URL. So a run is refused,
+ * before any build, when an app needs a `VITE_*` variable that is not set: what an app needs is what its
+ * sources under `src/` type, in `ImportMetaEnv`, without a `?`.
  *
  * Usage:
  *   vp run deploy:cloudflare --dry-run      # the plan as JSON: nothing runs, no credentials needed
@@ -43,12 +45,18 @@ const CREDENTIALS = ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"];
 /** Vite exposes to a bundle only the variables with this prefix, so they are the only ones a build is given. */
 const BUILD_VAR_PREFIX = "VITE_";
 
+/** The TypeScript files of a source tree, where an app types the variables its build reads. */
+const TYPESCRIPT_FILE = /\.tsx?$/;
+
 export type Phase = "build" | "migrate" | "deploy";
 
 /** One command of the plan, run in `cwd` (relative to the project root). */
 export type Step = { phase: Phase; app: string; cwd: string; argv: string[] };
 
 export type Env = Record<string, string | undefined>;
+
+/** The variables each built app needs, by the directory it is built in (`apps/spa`); an app that needs none is not a key. */
+export type BuildNeeds = Record<string, string[]>;
 
 /** Runs a step with the given environment and resolves with its exit code. */
 export type Runner = (step: Step, env: Env) => Promise<number>;
@@ -186,6 +194,72 @@ export async function planDeploy(root: string): Promise<Step[]> {
   return [...builds, ...releases];
 }
 
+const IMPORT_META_ENV = /interface\s+ImportMetaEnv\s*\{([^}]*)\}/g;
+const REQUIRED_MEMBER = /^[ \t]*(?:readonly\s+)?(VITE_\w+)\s*:/gm;
+
+/**
+ * The `VITE_*` members of every `interface ImportMetaEnv { ... }` in `source` that have no `?`: the
+ * variables the app reads and has no default for. It reads the plain form `vite/client` documents, one
+ * member per line, and not TypeScript in general; a commented-out line is not a member.
+ */
+function requiredViteVars(source: string): string[] {
+  const names = new Set<string>();
+  for (const [, body = ""] of source.matchAll(IMPORT_META_ENV)) {
+    for (const [, name = ""] of body.matchAll(REQUIRED_MEMBER)) {
+      names.add(name);
+    }
+  }
+  return [...names].sort();
+}
+
+/**
+ * What each app the plan builds needs of the workflow's variables, read from the tree like the plan:
+ * the `VITE_*` variables its sources under `src/` declare as always there. TypeScript merges every
+ * `ImportMetaEnv`, so a declaration may sit beside the code that reads it: `web/spa` types
+ * `VITE_API_URL` in `src/lib/api.ts`, which only its variants with an API ship. A project that adds or
+ * drops an app, or a module that drops a variable, changes what a deploy asks for without anyone
+ * editing this script or the workflow.
+ */
+export async function buildNeeds(root: string): Promise<BuildNeeds> {
+  const needs: BuildNeeds = {};
+  for (const app of await findApps(root)) {
+    const src = join(root, "apps", app.dir, "src");
+    if (typeof app.scripts.build !== "string" || !(await exists(src))) {
+      continue;
+    }
+    const names = new Set<string>();
+    for (const file of await readdir(src, { recursive: true })) {
+      if (TYPESCRIPT_FILE.test(file)) {
+        for (const name of requiredViteVars(await readFile(join(src, file), "utf8"))) {
+          names.add(name);
+        }
+      }
+    }
+    if (names.size > 0) {
+      needs[`apps/${app.dir}`] = [...names].sort();
+    }
+  }
+  return needs;
+}
+
+/**
+ * Throws, naming each app and what it lacks, when a build needs a variable `available` does not have.
+ * An empty value is a missing one: a front built with it throws at load all the same. Values are never
+ * named, since the workflow's variables are not all public.
+ */
+function expectBuildVars(needs: BuildNeeds, available: Env): void {
+  const lacking = Object.entries(needs).flatMap(([cwd, names]) => {
+    const missing = names.filter((name) => !available[name]);
+    return missing.length > 0 ? [`${cwd} needs ${missing.join(", ")}`] : [];
+  });
+  if (lacking.length > 0) {
+    throw new Error(
+      `a build is missing a variable it needs, and would ship a front that fails at load: ${lacking.join("; ")}. ` +
+        "Set each one as a variable of the `cloudflare` GitHub environment (a variable, not a secret: a VITE_ value ends up in the public bundle)",
+    );
+  }
+}
+
 /**
  * The variables a build is given, from `VARS_JSON` (the `vars` context of the workflow, as JSON):
  * those Vite exposes to a bundle. An unset or empty value is no variables. A value that is not an
@@ -213,6 +287,11 @@ export function buildVars(json: string | undefined): Record<string, string> {
   return vars;
 }
 
+/** The workflow's variables went to `buildVars`; a child needs the credentials, not the whole JSON. */
+function inheritedEnv(env: Env): Env {
+  return Object.fromEntries(Object.entries(env).filter(([name]) => name !== "VARS_JSON"));
+}
+
 /** Runs the plan through `run`, stopping at the first step that fails. Needs the Cloudflare credentials in `env`. */
 export async function deploy(
   root: string,
@@ -226,10 +305,9 @@ export async function deploy(
   if (missing.length > 0) {
     throw new Error(`${missing.join(" and ")} must be set to deploy (wrangler reads them)`);
   }
-  // The workflow's variables went to `buildVars`; a child needs the credentials, not the whole JSON.
-  const inherited = Object.fromEntries(
-    Object.entries(env).filter(([name]) => name !== "VARS_JSON"),
-  );
+  const inherited = inheritedEnv(env);
+  // Before the first build: a front built without its API URL deploys, and is broken.
+  expectBuildVars(await buildNeeds(root), { ...inherited, ...vars });
 
   for (const step of steps) {
     log(`==> ${step.phase} ${step.cwd}: ${step.argv.join(" ")}`);
@@ -273,10 +351,25 @@ export async function main(args: readonly string[], io: Io): Promise<number> {
     }
     if (args.includes("--dry-run")) {
       const steps = await planDeploy(io.root);
+      const needs = await buildNeeds(io.root);
+      const vars = buildVars(io.env.VARS_JSON);
+      // The variables are checked when it is handed some: the `validate` job runs this with none, since
+      // the `cloudflare` environment's variables are the `deploy` job's, and has nothing to compare with.
+      if ((io.env.VARS_JSON ?? "").trim() !== "") {
+        expectBuildVars(needs, { ...inheritedEnv(io.env), ...vars });
+      }
       // Names only: the values of the workflow's variables are not this command's to print.
-      const buildVarNames = Object.keys(buildVars(io.env.VARS_JSON));
       io.log(
-        JSON.stringify({ environment: ENVIRONMENT, buildVars: buildVarNames, steps }, null, 2),
+        JSON.stringify(
+          {
+            environment: ENVIRONMENT,
+            buildVars: Object.keys(vars),
+            requiredBuildVars: needs,
+            steps,
+          },
+          null,
+          2,
+        ),
       );
       return 0;
     }

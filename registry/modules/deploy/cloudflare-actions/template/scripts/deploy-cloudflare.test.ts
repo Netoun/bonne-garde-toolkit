@@ -3,7 +3,15 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { buildVars, deploy, main, planDeploy, type Runner, type Step } from "./deploy-cloudflare";
+import {
+  buildNeeds,
+  buildVars,
+  deploy,
+  main,
+  planDeploy,
+  type Runner,
+  type Step,
+} from "./deploy-cloudflare";
 
 type App = {
   /** The directory under `apps/`. */
@@ -11,6 +19,8 @@ type App = {
   /** The `wrangler.jsonc`, or none for an app that is not a Cloudflare one. */
   wrangler?: string;
   scripts?: Record<string, string>;
+  /** The body of `src/vite-env.d.ts`, where an app may type what its build reads. */
+  viteEnv?: string;
 };
 
 const worker = (name: string): string => `{
@@ -49,8 +59,11 @@ async function write(path: string, body: string): Promise<void> {
 }
 
 async function project(apps: readonly App[]): Promise<void> {
-  for (const { dir, wrangler, scripts } of apps) {
+  for (const { dir, wrangler, scripts, viteEnv } of apps) {
     await write(`apps/${dir}/package.json`, JSON.stringify({ name: dir, scripts }));
+    if (viteEnv !== undefined) {
+      await write(`apps/${dir}/src/vite-env.d.ts`, viteEnv);
+    }
     if (wrangler !== undefined) {
       await write(`apps/${dir}/wrangler.jsonc`, wrangler);
     }
@@ -215,14 +228,14 @@ describe("buildVars", () => {
   test("keeps the variables Vite exposes to a build, and drops every other one", () => {
     const json = JSON.stringify({
       VITE_API_URL: "https://api.example.com",
-      VITE_APP_URL: "https://example.com",
+      VITE_ANALYTICS_ID: "ga-1",
       API_URL: "https://api.example.com",
       BETTER_AUTH_SECRET: "oops",
     });
 
     expect(buildVars(json)).toEqual({
       VITE_API_URL: "https://api.example.com",
-      VITE_APP_URL: "https://example.com",
+      VITE_ANALYTICS_ID: "ga-1",
     });
   });
 
@@ -422,5 +435,255 @@ describe("main", () => {
     const unknown = await run(["--production"]);
     expect(unknown.code).toBe(1);
     expect(unknown.lines.join("\n")).toContain("--production");
+  });
+});
+
+/** What `web/spa` ships: the one variable its build reads, typed as always there. */
+const API_URL_REQUIRED = `/// <reference types="vite/client" />
+
+interface ImportMetaEnv {
+  readonly VITE_API_URL: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
+`;
+
+/** The fronts of a project that installed `web/spa`, `web/ssr` and `web/static`: the SPA and the static site read `VITE_API_URL` when they build, the Worker does not. */
+const FRONTS: readonly App[] = FULL.map((app) =>
+  app.dir === "spa" || app.dir === "static" ? { ...app, viteEnv: API_URL_REQUIRED } : app,
+);
+
+describe("buildNeeds", () => {
+  test("is each built app's required VITE_ variables: the ones its vite-env.d.ts types without a question mark", async () => {
+    await project(FRONTS);
+
+    expect(await buildNeeds(root)).toEqual({
+      "apps/spa": ["VITE_API_URL"],
+      "apps/static": ["VITE_API_URL"],
+    });
+  });
+
+  test("is empty for a project whose apps declare none, which is every project that needs no variable to build", async () => {
+    await project(FULL);
+
+    expect(await buildNeeds(root)).toEqual({});
+  });
+
+  test("leaves out an optional variable, a variable that is not Vite's, and what is not in ImportMetaEnv", async () => {
+    await project([
+      {
+        dir: "spa",
+        wrangler: pages("my-app-spa"),
+        scripts: SCRIPTS,
+        viteEnv: `/// <reference types="vite/client" />
+
+interface Unrelated {
+  readonly VITE_NOT_THE_ENV: string;
+}
+
+interface ImportMetaEnv {
+  // readonly VITE_COMMENTED_OUT: string;
+  readonly VITE_ANALYTICS_ID?: string;
+  readonly API_URL: string;
+  readonly VITE_B: string;
+  readonly VITE_A: string;
+}
+
+// A second declaration merges with the first.
+interface ImportMetaEnv {
+  VITE_C: string;
+}
+`,
+      },
+    ]);
+
+    expect(await buildNeeds(root)).toEqual({ "apps/spa": ["VITE_A", "VITE_B", "VITE_C"] });
+  });
+
+  test("reads a declaration in any source file of the app: web/spa types VITE_API_URL in src/lib/api.ts, beside the client that reads it", async () => {
+    await project([{ dir: "spa", wrangler: pages("my-app-spa"), scripts: SCRIPTS, viteEnv: "" }]);
+    await write(
+      "apps/spa/src/lib/api.ts",
+      `declare global {\n  interface ImportMetaEnv {\n    readonly VITE_API_URL: string;\n  }\n}\n`,
+    );
+
+    expect(await buildNeeds(root)).toEqual({ "apps/spa": ["VITE_API_URL"] });
+  });
+
+  test("an app that is not built has no need, and an app without a vite-env.d.ts none either", async () => {
+    await project([
+      {
+        dir: "api",
+        wrangler: worker("my-app-api"),
+        scripts: { deploy: "wrangler deploy" },
+        viteEnv: API_URL_REQUIRED,
+      },
+      { dir: "ssr", wrangler: worker("my-app-ssr"), scripts: SCRIPTS },
+    ]);
+
+    expect(await buildNeeds(root)).toEqual({});
+  });
+});
+
+describe("a deploy that would build a front without the variable it needs", () => {
+  const CREDENTIALS = { CLOUDFLARE_API_TOKEN: "token", CLOUDFLARE_ACCOUNT_ID: "account" };
+
+  function recorder() {
+    const calls: Step[] = [];
+    const run: Runner = async (step) => {
+      calls.push(step);
+      return 0;
+    };
+    return { calls, run };
+  }
+
+  test("is refused before any build, naming each app and the variable, whatever else the environment holds", async () => {
+    await project(FRONTS);
+
+    for (const VARS_JSON of [
+      undefined,
+      "{}",
+      JSON.stringify({ API_URL: "https://api.example.com" }),
+    ]) {
+      const { calls, run } = recorder();
+
+      await expect(deploy(root, { ...CREDENTIALS, VARS_JSON }, run, () => {})).rejects.toThrow(
+        /apps\/spa.*VITE_API_URL.*apps\/static.*VITE_API_URL/s,
+      );
+
+      expect(calls).toEqual([]);
+    }
+  });
+
+  test("tells where the variable is set: a variable of the cloudflare GitHub environment, not a secret", async () => {
+    await project(FRONTS);
+
+    await expect(deploy(root, CREDENTIALS, recorder().run, () => {})).rejects.toThrow(
+      /variables? of the `cloudflare` GitHub environment/,
+    );
+  });
+
+  test("treats an empty variable as missing: a front built with it throws at load all the same", async () => {
+    await project(FRONTS);
+    const { calls, run } = recorder();
+
+    await expect(
+      deploy(
+        root,
+        { ...CREDENTIALS, VARS_JSON: JSON.stringify({ VITE_API_URL: "" }) },
+        run,
+        () => {},
+      ),
+    ).rejects.toThrow(/VITE_API_URL/);
+
+    expect(calls).toEqual([]);
+  });
+
+  test("is not refused when the environment's variables have it, and every build gets it", async () => {
+    await project(FRONTS);
+    const seen: Record<string, string | undefined>[] = [];
+
+    await deploy(
+      root,
+      { ...CREDENTIALS, VARS_JSON: JSON.stringify({ VITE_API_URL: "https://api.example.com" }) },
+      async (step, env) => {
+        if (step.phase === "build") {
+          seen.push({ [step.app]: env.VITE_API_URL });
+        }
+        return 0;
+      },
+      () => {},
+    );
+
+    expect(seen).toEqual([
+      { api: "https://api.example.com" },
+      { spa: "https://api.example.com" },
+      { ssr: "https://api.example.com" },
+      { static: "https://api.example.com" },
+    ]);
+  });
+
+  test("is not refused when a local run has the variable in its own environment", async () => {
+    await project(FRONTS);
+    const { calls, run } = recorder();
+
+    await deploy(root, { ...CREDENTIALS, VITE_API_URL: "https://api.example.com" }, run, () => {});
+
+    expect(calls).toHaveLength(9);
+  });
+
+  test("a project whose apps need nothing is deployed as it always was, with no variable", async () => {
+    await project(FULL);
+    const { calls, run } = recorder();
+
+    await deploy(root, CREDENTIALS, run, () => {});
+
+    expect(calls).toHaveLength(9);
+  });
+
+  test("never prints a value the environment held", async () => {
+    await project(FRONTS);
+    const lines: string[] = [];
+
+    const code = await main([], {
+      root,
+      env: { ...CREDENTIALS, VARS_JSON: JSON.stringify({ OTHER: "hunter2-is-not-for-logs" }) },
+      run: async () => 0,
+      log: (line) => lines.push(line),
+    });
+
+    expect(code).toBe(1);
+    expect(lines.join("\n")).toContain("VITE_API_URL");
+    expect(lines.join("\n")).not.toContain("hunter2");
+    expect(lines.join("\n")).not.toContain("token");
+  });
+
+  describe("--dry-run, which the validate job runs with no variables to check them against", () => {
+    async function dryRun(env: Record<string, string | undefined>) {
+      const lines: string[] = [];
+      const code = await main(["--dry-run"], {
+        root,
+        env,
+        run: async () => 0,
+        log: (line) => lines.push(line),
+      });
+      return { code, output: lines.join("\n") };
+    }
+
+    test("lists the variables each build needs, and passes, when it is handed none", async () => {
+      await project(FRONTS);
+
+      const { code, output } = await dryRun({});
+
+      expect(code).toBe(0);
+      expect(JSON.parse(output)).toMatchObject({
+        requiredBuildVars: { "apps/spa": ["VITE_API_URL"], "apps/static": ["VITE_API_URL"] },
+      });
+    });
+
+    test("refuses when it is handed the environment's variables and one is missing, naming it", async () => {
+      await project(FRONTS);
+
+      for (const VARS_JSON of ["{}", JSON.stringify({ VITE_API_URL: "" })]) {
+        const { code, output } = await dryRun({ VARS_JSON });
+
+        expect(code).toBe(1);
+        expect(output).toMatch(/apps\/spa.*VITE_API_URL.*apps\/static.*VITE_API_URL/s);
+      }
+    });
+
+    test("passes when the variables it is handed have every one, and prints no value", async () => {
+      await project(FRONTS);
+
+      const { code, output } = await dryRun({
+        VARS_JSON: JSON.stringify({ VITE_API_URL: "https://hidden.example.com" }),
+      });
+
+      expect(code).toBe(0);
+      expect(output).not.toContain("hidden.example.com");
+      expect(JSON.parse(output)).toMatchObject({ buildVars: ["VITE_API_URL"] });
+    });
   });
 });

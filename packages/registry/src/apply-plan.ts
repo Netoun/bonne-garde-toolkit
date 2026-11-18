@@ -8,9 +8,9 @@ import {
   type ProjectManifest,
 } from "@bonne-garde/schema";
 import { ApplyError } from "./apply-error";
-import type { ModulePlan } from "./module-plan";
+import type { ModulePlan, Reselected } from "./module-plan";
 import { itemDependencyPatches } from "./item-dependencies";
-import { itemFileTarget, type InstallPlan } from "./resolve-plan";
+import { itemFileTarget, itemFileText, type InstallPlan } from "./resolve-plan";
 import { sha256Hex } from "./sha256";
 import { stageModules, type EnvResult, type TookOver } from "./stage-module";
 import type { AuthoredIntention, PendingIntention } from "./pending-intentions";
@@ -26,7 +26,10 @@ export type ApplyOptions = {
   /** Modules to install in the same all-or-nothing apply, in plan order. */
   modules?: ModulePlan[];
   sourceLabel: string;
+  /** Overwrites what is in the way of the items and the modules named in the call, not of `reselected` ones. */
   force?: boolean;
+  /** The entries of `modules` that the call plans again without naming them (050 step 7). */
+  reselected?: Reselected[];
   dryRun?: boolean;
   now?: () => string;
 };
@@ -51,7 +54,7 @@ export type ApplyResult = {
   /**
    * The intentions the installed modules author (065), minus the ones `bg.json` already records as
    * applied or skipped. They are pending from the day the module is added, so nothing in the tree
-   * says they are: staging them is the caller's, and `bg record` is what closes them.
+   * says they are: staging them is the caller's, and `bonne-garde record` is what closes them.
    */
   authored: AuthoredIntention[];
 };
@@ -156,7 +159,7 @@ export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResu
       const relTarget = itemFileTarget(item, file);
       claimed.set(relTarget, item.name);
       const absTarget = join(options.projectRoot, relTarget);
-      const raw = file.content ?? (await readFile(file.path, "utf8"));
+      const raw = file.content ?? itemFileText(item.name, file.path, await readFile(file.path));
       const content = raw.split("@acme").join(options.manifest.scope);
       const sha256 = sha256Hex(content);
       if (await pathExists(absTarget)) {
@@ -192,6 +195,7 @@ export async function applyInstallPlan(options: ApplyOptions): Promise<ApplyResu
     claimed,
     itemPatches,
     force: options.force ?? false,
+    reselected: options.reselected ?? [],
   });
   staged.push(...staging.staged);
   written.push(...staging.written);

@@ -3,7 +3,7 @@
 Empty Bonne Garde monorepo. Add modules with the CLI:
 
 ```bash
-bg add config/branding provider/cloudflare api/elysia ui/shadcn button
+bunx bonne-garde add config/branding provider/cloudflare api/elysia ui/shadcn button   # or pnpm dlx bonne-garde add …
 ```
 
 ## Scripts

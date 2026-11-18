@@ -11,10 +11,11 @@ import {
   d1Rows,
   seedAdmin,
   seedStatements,
+  wranglerFailure,
   type SeedDatabase,
 } from "./seed";
 import { createTestAuth } from "./testing";
-// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { resetStatements } from "{{SCOPE}}/db/reset";
 
@@ -174,6 +175,29 @@ describe("the seed", () => {
     expect(d1Rows(printed([]))).toEqual([]);
     expect(() => d1Rows(printed([], false))).toThrow(/no successful result/);
     expect(() => d1Rows("[]")).toThrow(/no successful result/);
+  });
+
+  // The failed call of a batch carries the admin's password hash in `--command`: the error is what
+  // lands in a terminal, a CI log and an issue, so it names the command and withholds the SQL.
+  it("reports a failed wrangler call by its command and exit code, and never prints the SQL, whose inserts hold the admin's password hash", async () => {
+    const statements = await seedStatements();
+    const batch = ["d1", "execute", "DB", "--local", "--command", statements.join("\n")];
+
+    const message = wranglerFailure(batch, 1);
+
+    expect(message).toContain("wrangler d1 execute DB --local --command");
+    expect(message).toContain("exited with 1");
+    expect(message).not.toContain("INSERT");
+    expect(message).not.toMatch(/[0-9a-f]{32}/);
+    for (const statement of statements) {
+      expect(message).not.toContain(statement);
+    }
+  });
+
+  it("reports a failed wrangler call with no SQL as it was given", () => {
+    expect(wranglerFailure(["d1", "migrations", "apply", "DB", "--local"], 2)).toBe(
+      "wrangler d1 migrations apply DB --local exited with 2",
+    );
   });
 
   it("owns db:seed and no db:reset: the reset is the ORM's, and the seed deletes nothing", async () => {

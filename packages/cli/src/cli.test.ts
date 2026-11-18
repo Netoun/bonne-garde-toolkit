@@ -42,12 +42,16 @@ async function freshProject(prefix: string): Promise<string> {
   }).then(({ target }) => target);
 }
 
-/** Runs the real `bg` entry in `cwd`, the way a consumer does. */
-async function runBg(cwd: string, ...args: string[]) {
+/** The commands the CLI prints name the runner of the package manager that started it: npm, here. */
+const NPM_USER_AGENT = "npm/10.9.0 node/v22.12.0 darwin arm64";
+
+/** Runs the real `bonne-garde` entry in `cwd`, the way a consumer does, started by npm. */
+async function runBonneGarde(cwd: string, ...args: string[]) {
   const proc = Bun.spawn(["bun", join(repoRoot(), "packages/cli/src/bin.ts"), ...args], {
     cwd,
     stdout: "pipe",
     stderr: "pipe",
+    env: { ...process.env, npm_config_user_agent: NPM_USER_AGENT },
   });
   const [stdout, stderr, code] = await Promise.all([
     new Response(proc.stdout).text(),
@@ -57,10 +61,10 @@ async function runBg(cwd: string, ...args: string[]) {
   return { stdout, stderr, code };
 }
 
-describe("bg add --yes", () => {
+describe("bonne-garde add --yes", () => {
   test("is accepted as a flag, not read as an item name", async () => {
     const target = await freshProject("bg-cli-yes-");
-    const { stdout, stderr, code } = await runBg(
+    const { stdout, stderr, code } = await runBonneGarde(
       target,
       "add",
       "ui/shadcn",
@@ -80,12 +84,18 @@ describe("bg add --yes", () => {
     const target = await freshProject("bg-cli-no-ui-");
     const before = await readFile(join(target, "bg.json"), "utf8");
 
-    const { stdout, stderr, code } = await runBg(target, "add", "button", "--yes", "--no-install");
+    const { stdout, stderr, code } = await runBonneGarde(
+      target,
+      "add",
+      "button",
+      "--yes",
+      "--no-install",
+    );
 
     expect(code).toBe(1);
     expect(stdout).toBe("");
     expect(stderr).toContain(
-      "button needs the ui module, and none is installed or named in this call; run: bg add ui/shadcn button",
+      "button needs the ui module, and none is installed or named in this call; run: npx bonne-garde add ui/shadcn button",
     );
     expect(await readFile(join(target, "bg.json"), "utf8")).toBe(before);
   });
@@ -95,7 +105,7 @@ describe("bg add --yes", () => {
     await addItems({ projectRoot: target, items: ["ui/shadcn"], install: false });
     const before = await readFile(join(target, "bg.json"), "utf8");
 
-    const { stdout, stderr, code } = await runBg(
+    const { stdout, stderr, code } = await runBonneGarde(
       target,
       "add",
       "spa-auth",
@@ -106,7 +116,7 @@ describe("bg add --yes", () => {
     expect(code).toBe(1);
     expect(stdout).toBe("");
     expect(stderr).toContain(
-      "spa-auth needs the auth and web/spa modules, and none is installed or named in this call; run: bg add auth/better-auth web/spa spa-auth",
+      "spa-auth needs the auth and web/spa modules, and none is installed or named in this call; run: npx bonne-garde add auth/better-auth web/spa spa-auth",
     );
     expect(await readFile(join(target, "bg.json"), "utf8")).toBe(before);
     expect(existsSync(join(target, "apps/spa"))).toBe(false);
@@ -115,22 +125,28 @@ describe("bg add --yes", () => {
   test("a feature item in a bare project names every module it needs, ui included, together", async () => {
     const target = await freshProject("bg-cli-no-host-");
 
-    const { stderr, code } = await runBg(target, "add", "spa-backoffice", "--yes", "--no-install");
+    const { stderr, code } = await runBonneGarde(
+      target,
+      "add",
+      "spa-backoffice",
+      "--yes",
+      "--no-install",
+    );
 
     expect(code).toBe(1);
     expect(stderr).toContain(
-      "spa-backoffice needs the ui, auth, web/spa and storage modules, and none is installed or named in this call; run: bg add ui/shadcn auth/better-auth web/spa storage/r2 spa-backoffice",
+      "spa-backoffice needs the ui, auth, web/spa and storage modules, and none is installed or named in this call; run: npx bonne-garde add ui/shadcn auth/better-auth web/spa storage/r2 spa-backoffice",
     );
   });
 
   test("is documented in --help", async () => {
-    const { stdout, code } = await runBg(repoRoot(), "--help");
+    const { stdout, code } = await runBonneGarde(repoRoot(), "--help");
     expect(code).toBe(0);
-    expect(stdout).toMatch(/bg add .*--yes/);
+    expect(stdout).toMatch(/bonne-garde add .*--yes/);
   });
 });
 
-describe("bg doctor", () => {
+describe("bonne-garde doctor", () => {
   const BUTTON = "packages/ui/src/components/button.tsx";
 
   async function projectWithButton(prefix: string): Promise<string> {
@@ -141,7 +157,7 @@ describe("bg doctor", () => {
 
   test("--strict exits 0 right after a clean add", async () => {
     const target = await projectWithButton("bg-cli-doctor-clean-");
-    const { stdout, stderr, code } = await runBg(target, "doctor", "--strict");
+    const { stdout, stderr, code } = await runBonneGarde(target, "doctor", "--strict");
     expect(stderr).toBe("");
     expect(code).toBe(0);
     expect(stdout).toContain("result: ok");
@@ -151,12 +167,12 @@ describe("bg doctor", () => {
     const target = await projectWithButton("bg-cli-doctor-mod-");
     await writeFile(join(target, BUTTON), "// mine now\n");
 
-    const plain = await runBg(target, "doctor");
+    const plain = await runBonneGarde(target, "doctor");
     expect(plain.code).toBe(0);
     expect(plain.stdout).toContain(BUTTON);
     expect(plain.stdout).toContain("user-modified");
 
-    const strict = await runBg(target, "doctor", "--strict");
+    const strict = await runBonneGarde(target, "doctor", "--strict");
     expect(strict.code).toBe(1);
     expect(strict.stdout).toContain(BUTTON);
   });
@@ -165,7 +181,7 @@ describe("bg doctor", () => {
     const target = await projectWithButton("bg-cli-doctor-del-");
     await unlink(join(target, BUTTON));
 
-    const { stdout, code } = await runBg(target, "doctor");
+    const { stdout, code } = await runBonneGarde(target, "doctor");
 
     expect(code).toBe(1);
     expect(stdout).toContain(`${BUTTON} is missing`);
@@ -175,7 +191,7 @@ describe("bg doctor", () => {
     const target = await projectWithButton("bg-cli-doctor-json-");
     await writeFile(join(target, BUTTON), "// mine now\n");
 
-    const { stdout, code } = await runBg(target, "doctor", "--json", "--strict");
+    const { stdout, code } = await runBonneGarde(target, "doctor", "--json", "--strict");
 
     expect(code).toBe(1);
     const parsed = JSON.parse(stdout) as {
@@ -195,23 +211,23 @@ describe("bg doctor", () => {
       expect.objectContaining({ code: "file-modified", path: BUTTON }),
     ]);
 
-    expect((await runBg(target, "doctor", "--json")).code).toBe(0);
+    expect((await runBonneGarde(target, "doctor", "--json")).code).toBe(0);
   });
 
   test("an argument it does not know fails, so a typo cannot pass a CI gate", async () => {
     const target = await projectWithButton("bg-cli-doctor-typo-");
-    const { stderr, code } = await runBg(target, "doctor", "--strcit");
+    const { stderr, code } = await runBonneGarde(target, "doctor", "--strcit");
     expect(code).toBe(1);
     expect(stderr).toContain("--strcit");
   });
 
   test("is listed in --help", async () => {
-    const { stdout } = await runBg(repoRoot(), "--help");
-    expect(stdout).toMatch(/bg doctor \[--json\] \[--strict\]/);
+    const { stdout } = await runBonneGarde(repoRoot(), "--help");
+    expect(stdout).toMatch(/bonne-garde doctor \[--json\] \[--strict\]/);
   });
 });
 
-describe("bg record", () => {
+describe("bonne-garde record", () => {
   async function stageUpgrade(target: string, file: string, id: string): Promise<void> {
     await mkdir(join(target, ".bg/upgrade"), { recursive: true });
     await writeFile(
@@ -236,18 +252,18 @@ describe("bg record", () => {
     await stageUpgrade(target, "00-align-bun-pin.md", "v0.2.0/align-bun-pin");
     await stageUpgrade(target, "01-adopt-x.md", "v0.2.0/adopt-x");
 
-    const pending = await runBg(target, "doctor", "--strict");
+    const pending = await runBonneGarde(target, "doctor", "--strict");
     expect(pending.code).toBe(1);
     expect(pending.stdout).toContain("2 pending");
     expect(pending.stdout).toContain("v0.2.0/align-bun-pin");
 
-    const applied = await runBg(target, "record", "v0.2.0/align-bun-pin");
+    const applied = await runBonneGarde(target, "record", "v0.2.0/align-bun-pin");
     expect(applied.code).toBe(0);
     expect(applied.stdout).toContain("v0.2.0/align-bun-pin");
     expect(applied.stderr).toBe("");
     expect(await intentionsOf(target)).toEqual({ applied: ["v0.2.0/align-bun-pin"], skipped: {} });
 
-    const half = await runBg(target, "doctor", "--json");
+    const half = await runBonneGarde(target, "doctor", "--json");
     const halfReport = JSON.parse(half.stdout) as {
       checks: { intentions: { details: { applied: string[]; pending: { id: string }[] } } };
     };
@@ -256,7 +272,7 @@ describe("bg record", () => {
       "v0.2.0/adopt-x",
     ]);
 
-    const skipped = await runBg(
+    const skipped = await runBonneGarde(
       target,
       "record",
       "v0.2.0/adopt-x",
@@ -269,7 +285,7 @@ describe("bg record", () => {
       skipped: { "v0.2.0/adopt-x": "capability not installed" },
     });
 
-    const done = await runBg(target, "doctor", "--strict");
+    const done = await runBonneGarde(target, "doctor", "--strict");
     expect(done.code).toBe(0);
     expect(done.stdout).toContain("1 applied, 1 skipped, 0 pending");
   });
@@ -299,7 +315,7 @@ describe("bg record", () => {
       "---\nid: auth/fixture-auth/wire-auth-into-api\ndomain: auth\nclassification: migration\n---\n",
     );
 
-    const { stdout, stderr, code } = await runBg(
+    const { stdout, stderr, code } = await runBonneGarde(
       target,
       "record",
       "auth/fixture-auth/wire-auth-into-api",
@@ -320,12 +336,12 @@ describe("bg record", () => {
     });
     expect(after.platform.intentions).toEqual({ applied: [], skipped: {} });
     // the peers check cannot reach a module.json for this fixture, which is a note, so strict stays green
-    expect((await runBg(target, "doctor", "--strict")).code).toBe(0);
+    expect((await runBonneGarde(target, "doctor", "--strict")).code).toBe(0);
   });
 
   test("an id that was never staged is recorded, with a warning on stderr", async () => {
     const target = await freshProject("bg-cli-record-unstaged-");
-    const { stdout, stderr, code } = await runBg(target, "record", "v0.2.0/align-bun-pin");
+    const { stdout, stderr, code } = await runBonneGarde(target, "record", "v0.2.0/align-bun-pin");
     expect(code).toBe(0);
     expect(stdout).toContain("v0.2.0/align-bun-pin");
     expect(stderr).toContain("not staged");
@@ -345,7 +361,7 @@ describe("bg record", () => {
       [["record", "v0.2.0/x", "extra"], /unexpected argument: extra/],
     ];
     for (const [args, message] of cases) {
-      const { stderr, code } = await runBg(target, ...args);
+      const { stderr, code } = await runBonneGarde(target, ...args);
       expect(code).toBe(1);
       expect(stderr).toMatch(message);
     }
@@ -364,7 +380,7 @@ describe("bg record", () => {
       `${JSON.stringify({ ...rest, version: 1, installed: items, capabilities: [] }, null, 2)}\n`,
     );
 
-    const { stderr, code } = await runBg(target, "record", "v0.2.0/align-bun-pin");
+    const { stderr, code } = await runBonneGarde(target, "record", "v0.2.0/align-bun-pin");
 
     expect(code).toBe(0);
     expect(stderr).toContain("rewrote bg.json from version 1 to version 2");
@@ -375,12 +391,12 @@ describe("bg record", () => {
   });
 
   test("is listed in --help", async () => {
-    const { stdout } = await runBg(repoRoot(), "--help");
-    expect(stdout).toMatch(/bg record <intention-id> \[--skip "<reason>"\]/);
+    const { stdout } = await runBonneGarde(repoRoot(), "--help");
+    expect(stdout).toMatch(/bonne-garde record <intention-id> \[--skip "<reason>"\]/);
   });
 });
 
-describe("bg record: the files an install intention edited (060 Region ownership, 065 Recording)", () => {
+describe("bonne-garde record: the files an install intention edited (060 Region ownership, 065 Recording)", () => {
   const ID = "auth/fixture-auth/wire-auth-into-api";
   const REGION = `intent[${ID}]`;
   const APP = "apps/api/src/app.ts";
@@ -444,7 +460,7 @@ describe("bg record: the files an install intention edited (060 Region ownership
       "`copy` `packages/auth/src/new.ts`",
     ]);
 
-    const { stdout, stderr, code } = await runBg(target, "record", ID);
+    const { stdout, stderr, code } = await runBonneGarde(target, "record", ID);
 
     expect(code).toBe(0);
     expect(stderr).toBe("");
@@ -455,17 +471,23 @@ describe("bg record: the files an install intention edited (060 Region ownership
       [MAILER]: { [REGION]: "auth/fixture-auth" },
     });
     // The file is region-checked now, and the record is what doctor reads of the region.
-    const doctor = await runBg(target, "doctor", "--strict");
+    const doctor = await runBonneGarde(target, "doctor", "--strict");
     expect(doctor.stdout).toContain("2 regions in 2 files, 2 read");
     expect(doctor.code).toBe(0);
   });
 
   test("--skip records no region, and one an earlier record left is gone", async () => {
     const target = await withStaged("bg-cli-record-skip-", [`\`adapt\` \`${MAILER}\``]);
-    await runBg(target, "record", ID);
+    await runBonneGarde(target, "record", ID);
     expect(Object.keys(await regionsOf(target))).toEqual([MAILER]);
 
-    const skipped = await runBg(target, "record", ID, "--skip", "the project wires auth itself");
+    const skipped = await runBonneGarde(
+      target,
+      "record",
+      ID,
+      "--skip",
+      "the project wires auth itself",
+    );
 
     expect(skipped.code).toBe(0);
     expect(skipped.stdout).not.toContain("edited");
@@ -478,7 +500,7 @@ describe("bg record: the files an install intention edited (060 Region ownership
       `\`adapt\` \`${MAILER}\``,
     ]);
 
-    const { stderr, code } = await runBg(target, "record", ID);
+    const { stderr, code } = await runBonneGarde(target, "record", ID);
 
     expect(code).toBe(0);
     expect(stderr).toContain("packages/auth/src/not-there.ts is not a file of the project");
@@ -499,7 +521,7 @@ describe("bg record: the files an install intention edited (060 Region ownership
       ],
     });
 
-    const { stderr, code } = await runBg(target, "record", ID);
+    const { stderr, code } = await runBonneGarde(target, "record", ID);
 
     expect(code).toBe(0);
     expect(stderr).toContain("not staged");
@@ -511,19 +533,19 @@ describe("bg record: the files an install intention edited (060 Region ownership
     const target = await withStaged("bg-cli-record-nodoc-", [], { staged: false });
     const before = await readFile(join(target, "bg.json"), "utf8");
 
-    const { stdout, stderr, code } = await runBg(target, "record", ID);
+    const { stdout, stderr, code } = await runBonneGarde(target, "record", ID);
 
     expect(code).toBe(1);
     expect(stdout).toBe("");
     expect(stderr).toContain(`cannot record ${ID} as applied`);
-    expect(stderr).toContain("bg add auth/fixture-auth");
+    expect(stderr).toContain("bonne-garde add auth/fixture-auth");
     expect(await readFile(join(target, "bg.json"), "utf8")).toBe(before);
   });
 
   test("--skip needs no document: a skipped intention edited nothing, so it is recorded in the same state", async () => {
     const target = await withStaged("bg-cli-record-nodoc-skip-", [], { staged: false });
 
-    const { stderr, code } = await runBg(
+    const { stderr, code } = await runBonneGarde(
       target,
       "record",
       ID,
@@ -541,7 +563,7 @@ describe("bg record: the files an install intention edited (060 Region ownership
       "`copy` `packages/auth/src/new.ts`",
     ]);
 
-    const { stderr, code } = await runBg(target, "record", ID);
+    const { stderr, code } = await runBonneGarde(target, "record", ID);
 
     expect(code).toBe(0);
     expect(stderr).toBe("");
@@ -556,11 +578,92 @@ describe("bg record: the files an install intention edited (060 Region ownership
       `---\nid: v0.2.0/align-bun-pin\ndomain: tooling\nclassification: migration\n---\n\n## Reference Paths\n\n- \`adapt\` \`${MAILER}\`\n`,
     );
 
-    const { stderr, code } = await runBg(target, "record", "v0.2.0/align-bun-pin");
+    const { stderr, code } = await runBonneGarde(target, "record", "v0.2.0/align-bun-pin");
 
     expect(code).toBe(0);
     expect(stderr).toBe("");
     expect(await regionsOf(target)).toEqual({});
+  });
+});
+
+describe("bonne-garde record: an intention the module ships, with no .bg/ and no failed patch to read it from (065 Recording)", () => {
+  // The real registry's email module: its `better-auth` variant ships the intention, which adapts auth's mailer.
+  const ID = "email/resend/wire-email-into-auth";
+  const REGION = `intent[${ID}]`;
+  const MAILER = "packages/auth/src/mailer.ts";
+
+  /** A project that has email on `variant`, the intention recorded as `skipped`, no `.bg/`, and auth's mailer. */
+  async function skippedProject(prefix: string, variant: string): Promise<string> {
+    const target = await freshProject(prefix);
+    const bg = JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as Record<
+      string,
+      unknown
+    >;
+    const record = {
+      id: "resend",
+      variant,
+      version: "0.0.0",
+      installedAt: "2026-01-01T00:00:00.000Z",
+      options: {},
+      patches: [],
+      intentions: { applied: [], skipped: { [ID]: "not now" } },
+    };
+    await writeFile(
+      join(target, "bg.json"),
+      `${JSON.stringify({ ...bg, modules: { email: [record] } }, null, 2)}\n`,
+    );
+    await mkdir(join(target, MAILER, ".."), { recursive: true });
+    await writeFile(join(target, MAILER), "// the project's\n");
+    return target;
+  }
+
+  const recorded = async (target: string) =>
+    JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as {
+      modules: { email: { intentions: { applied: string[]; skipped: Record<string, string> } }[] };
+      regions: Record<string, Record<string, string>>;
+    };
+
+  test("a skipped intention is applied later: the paths come from the registry's own document, and the file it edited is marked", async () => {
+    const target = await skippedProject("bg-cli-record-registry-", "better-auth");
+    expect(existsSync(join(target, ".bg"))).toBe(false);
+
+    const { stdout, stderr, code } = await runBonneGarde(target, "record", ID);
+
+    expect(code).toBe(0);
+    expect(stdout).toContain(`recorded ${ID} as applied in email/resend`);
+    expect(stdout).toContain(MAILER);
+    expect(stderr).toContain("not staged");
+    const bg = await recorded(target);
+    expect(bg.modules.email[0]?.intentions).toEqual({ applied: [ID], skipped: {} });
+    expect(bg.regions).toEqual({ [MAILER]: { [REGION]: "email/resend" } });
+  });
+
+  test("the registry is read for the variant the project installed: a variant that ships no such intention leaves the refusal, and nothing is written", async () => {
+    const target = await skippedProject("bg-cli-record-variant-", "default");
+    const before = await readFile(join(target, "bg.json"), "utf8");
+
+    const { stdout, stderr, code } = await runBonneGarde(target, "record", ID);
+
+    expect(code).toBe(1);
+    expect(stdout).toBe("");
+    expect(stderr).toContain(`cannot record ${ID} as applied`);
+    expect(stderr).toContain("the registry");
+    expect(await readFile(join(target, "bg.json"), "utf8")).toBe(before);
+  });
+
+  test("--skip still reads nothing: a registry that cannot be reached does not stop a skip", async () => {
+    const target = await skippedProject("bg-cli-record-skip-offline-", "better-auth");
+    const bg = JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as {
+      registries: Record<string, string>;
+    };
+    await writeFile(
+      join(target, "bg.json"),
+      `${JSON.stringify({ ...bg, registries: { "@bg": "local:./nowhere" } }, null, 2)}\n`,
+    );
+
+    const { code } = await runBonneGarde(target, "record", ID, "--skip", "still not now");
+
+    expect(code).toBe(0);
   });
 });
 
@@ -600,6 +703,8 @@ type ModuleOutput = {
     patches: PatchOutput[];
   }[];
   failedPatches: (PatchOutput & { module: string })[];
+  /** The installed modules this call planned again, on the variant a module it adds selects. */
+  reselected: { module: string; from: string; to: string; because: string[] }[];
   pendingIntentions: {
     id: string;
     module: string;
@@ -622,7 +727,7 @@ type PatchOutput = {
   regions: { region: string; status: string; replaced?: string | null }[];
 };
 
-/** What `provider/cloudflare` writes, in the order `bg add` prints it. */
+/** What `provider/cloudflare` writes, in the order `bonne-garde add` prints it. */
 const CLOUDFLARE_FILES = [
   "packages/api-runtime/package.json",
   "packages/api-runtime/src/index.test.ts",
@@ -631,11 +736,11 @@ const CLOUDFLARE_FILES = [
   "packages/api-runtime/tsconfig.test.json",
 ];
 
-describe("bg add <module>", () => {
+describe("bonne-garde add <module>", () => {
   test("installs the cloudflare provider by its bare id: files, env, records, and doctor is green", async () => {
     const target = await freshProject("bg-cli-mod-cf-");
 
-    const { stdout, stderr, code } = await runBg(
+    const { stdout, stderr, code } = await runBonneGarde(
       target,
       "add",
       "cloudflare",
@@ -705,17 +810,17 @@ describe("bg add <module>", () => {
     expect(bg.files["packages/api-runtime/src/index.ts"]?.owner).toBe("provider/cloudflare");
     expect(bg.regions[".env.example"]).toBeUndefined();
 
-    const doctor = await runBg(target, "doctor", "--strict");
+    const doctor = await runBonneGarde(target, "doctor", "--strict");
     expect(doctor.code).toBe(0);
     expect(doctor.stdout).toContain("result: ok");
   });
 
   test("the qualified name does the same, and a second add is idempotent", async () => {
     const target = await freshProject("bg-cli-mod-twice-");
-    await runBg(target, "add", "provider/cloudflare", "--yes", "--no-install");
+    await runBonneGarde(target, "add", "provider/cloudflare", "--yes", "--no-install");
     const before = await snapshot(target);
 
-    const { stdout, code } = await runBg(
+    const { stdout, code } = await runBonneGarde(
       target,
       "add",
       "provider/cloudflare",
@@ -738,15 +843,14 @@ describe("bg add <module>", () => {
     });
   });
 
-  test("a second provider fails on cardinality, pointing at bg replace, and changes nothing", async () => {
+  test("a second provider fails on cardinality, pointing at bonne-garde replace, and changes nothing", async () => {
     const target = await freshProject("bg-cli-mod-card-");
-    await runBg(target, "add", "cloudflare", "--yes", "--no-install");
+    await runBonneGarde(target, "add", "cloudflare", "--yes", "--no-install");
     const before = await snapshot(target);
 
-    const { stderr, code } = await runBg(
+    const { stderr, code } = await runBonneGarde(
       target,
       "add",
-      "pm/bun",
       "dockerfile",
       "--yes",
       "--no-install",
@@ -754,7 +858,7 @@ describe("bg add <module>", () => {
 
     expect(code).toBe(1);
     expect(stderr).toContain("provider is already filled by provider/cloudflare");
-    expect(stderr).toContain("bg replace provider/dockerfile");
+    expect(stderr).toContain("bonne-garde replace provider/dockerfile");
     expect(await snapshot(target)).toEqual(before);
   });
 
@@ -762,10 +866,9 @@ describe("bg add <module>", () => {
     const target = await freshProject("bg-cli-mod-card2-");
     const before = await snapshot(target);
 
-    const { stderr, code } = await runBg(
+    const { stderr, code } = await runBonneGarde(
       target,
       "add",
-      "pm/bun",
       "cloudflare",
       "dockerfile",
       "--no-install",
@@ -780,20 +883,12 @@ describe("bg add <module>", () => {
     const target = await freshProject("bg-cli-mod-dry-");
     const before = await snapshot(target);
 
-    const { stdout, code } = await runBg(
-      target,
-      "add",
-      "pm/bun",
-      "dockerfile",
-      "--dry-run",
-      "--yes",
-    );
+    const { stdout, code } = await runBonneGarde(target, "add", "dockerfile", "--dry-run", "--yes");
 
     expect(code).toBe(0);
     const out = JSON.parse(stdout) as ModuleOutput;
     expect(out.dryRun).toBe(true);
     expect(out.written).toEqual([
-      ".github/actions/setup/action.yml",
       ".dockerignore",
       "Dockerfile",
       "compose.yaml",
@@ -803,7 +898,7 @@ describe("bg add <module>", () => {
       "packages/api-runtime/src/main.ts",
       "packages/api-runtime/tsconfig.json",
     ]);
-    expect(out.modules[1]?.env.map((key) => key.name)).toEqual([
+    expect(out.modules[0]?.env.map((key) => key.name)).toEqual([
       "PORT",
       "DATA_DIR",
       "APP_URL",
@@ -815,7 +910,7 @@ describe("bg add <module>", () => {
   test("renders the project's scope into the dockerfile module, and its Dockerfile builds with the root script", async () => {
     const target = await freshProject("bg-cli-mod-scope-");
 
-    await runBg(target, "add", "pm/bun", "dockerfile", "--yes", "--no-install");
+    await runBonneGarde(target, "add", "dockerfile", "--yes", "--no-install");
 
     const runtime = JSON.parse(
       await readFile(join(target, "packages/api-runtime/package.json"), "utf8"),
@@ -833,7 +928,7 @@ describe("bg add <module>", () => {
   test("an item and a module go in one call, items first in the output", async () => {
     const target = await freshProject("bg-cli-mod-mixed-");
 
-    const { stdout, code } = await runBg(
+    const { stdout, code } = await runBonneGarde(
       target,
       "add",
       "utils",
@@ -857,29 +952,29 @@ describe("bg add <module>", () => {
   test("an unknown name fails with suggestions from both catalogs", async () => {
     const target = await freshProject("bg-cli-mod-unknown-");
 
-    const { stderr, code } = await runBg(target, "add", "cloud", "--no-install");
+    const { stderr, code } = await runBonneGarde(target, "add", "cloud", "--no-install");
 
     expect(code).toBe(1);
     expect(stderr).toContain("unknown name: cloud");
     expect(stderr).toContain("provider/cloudflare");
   });
 
-  test("--set, bg remove and bg replace say they are not supported yet instead of doing nothing", async () => {
+  test("--set, bonne-garde remove and bonne-garde replace say they are not supported yet instead of doing nothing", async () => {
     const target = await freshProject("bg-cli-mod-todo-");
 
-    const set = await runBg(target, "add", "cloudflare", "--set", "a=b");
+    const set = await runBonneGarde(target, "add", "cloudflare", "--set", "a=b");
     expect(set.code).toBe(1);
     expect(set.stderr).toContain("--set is not supported yet");
 
     for (const command of ["remove", "replace"]) {
-      const result = await runBg(target, command, "cloudflare");
+      const result = await runBonneGarde(target, command, "cloudflare");
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain(`bg ${command} is not supported yet`);
+      expect(result.stderr).toContain(`bonne-garde ${command} is not supported yet`);
     }
   });
 });
 
-describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", () => {
+describe("bonne-garde add config/branding: scripts.merge, the first tier-2 patch (060)", () => {
   const SCRIPT = "tsx packages/config/scripts/gen-branding.ts";
   const REGION = "scripts.gen:branding";
 
@@ -894,7 +989,7 @@ describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", 
     const target = await freshProject("bg-cli-patch-");
     const before = await readFile(join(target, "package.json"), "utf8");
 
-    const { stdout, stderr, code } = await runBg(
+    const { stdout, stderr, code } = await runBonneGarde(
       target,
       "add",
       "config/branding",
@@ -932,16 +1027,22 @@ describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", 
     expect(bg.modules.config[0]?.patches).toEqual([
       { type: "scripts.merge", file: "package.json", status: "applied" },
     ]);
-    const doctor = await runBg(target, "doctor", "--strict");
+    const doctor = await runBonneGarde(target, "doctor", "--strict");
     expect(doctor.code).toBe(0);
   });
 
   test("the same add again reports the patch skipped, and the project is the same bytes", async () => {
     const target = await freshProject("bg-cli-patch-twice-");
-    await runBg(target, "add", "config/branding", "--yes", "--no-install");
+    await runBonneGarde(target, "add", "config/branding", "--yes", "--no-install");
     const before = await snapshot(target);
 
-    const { stdout, code } = await runBg(target, "add", "config/branding", "--yes", "--no-install");
+    const { stdout, code } = await runBonneGarde(
+      target,
+      "add",
+      "config/branding",
+      "--yes",
+      "--no-install",
+    );
 
     expect(code).toBe(0);
     const out = JSON.parse(stdout) as ModuleOutput;
@@ -964,19 +1065,19 @@ describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", 
 
   test("a hand-edited script is refused, naming the region and --force, and --force puts it back", async () => {
     const target = await freshProject("bg-cli-patch-edit-");
-    await runBg(target, "add", "config/branding", "--yes", "--no-install");
+    await runBonneGarde(target, "add", "config/branding", "--yes", "--no-install");
     const clean = await readFile(join(target, "package.json"), "utf8");
     await writeFile(join(target, "package.json"), clean.replace(SCRIPT, "bun my-own.ts"));
     const edited = await snapshot(target);
 
-    const refused = await runBg(target, "add", "config/branding", "--yes", "--no-install");
+    const refused = await runBonneGarde(target, "add", "config/branding", "--yes", "--no-install");
 
     expect(refused.code).toBe(1);
     expect(refused.stderr).toContain(`${REGION} of package.json is "bun my-own.ts"`);
     expect(refused.stderr).toContain("--force");
     expect(await snapshot(target)).toEqual(edited);
 
-    const forced = await runBg(
+    const forced = await runBonneGarde(
       target,
       "add",
       "config/branding",
@@ -992,7 +1093,7 @@ describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", 
     expect(await readFile(join(target, "package.json"), "utf8")).toBe(clean);
   });
 
-  test("a patch that cannot apply is a pending intention: staged, reported by doctor, closed by bg record, and the install completes", async () => {
+  test("a patch that cannot apply is a pending intention: staged, reported by doctor, closed by bonne-garde record, and the install completes", async () => {
     const target = await freshProject("bg-cli-patch-failed-");
     const root = JSON.parse(await readFile(join(target, "package.json"), "utf8")) as Record<
       string,
@@ -1003,7 +1104,7 @@ describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", 
       `${JSON.stringify({ ...root, scripts: "nope" }, null, 2)}\n`,
     );
 
-    const { stdout, stderr, code } = await runBg(
+    const { stdout, stderr, code } = await runBonneGarde(
       target,
       "add",
       "config/branding",
@@ -1052,7 +1153,9 @@ describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", 
     ]);
     expect(out.session).toBe(".bg/add/session.md");
     // Never silent: the failure, the id, and where to start.
-    expect(stderr).toContain("bg: PATCH FAILED scripts.merge on package.json (config/branding)");
+    expect(stderr).toContain(
+      "bonne-garde: PATCH FAILED scripts.merge on package.json (config/branding)",
+    );
     expect(stderr).toContain(failed.reason);
     expect(stderr).toContain(`pending intention ${id}`);
     expect(stderr).toContain("read .bg/add/session.md");
@@ -1077,30 +1180,36 @@ describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", 
     ]);
 
     // doctor: one finding for the failure, pending, and --strict fails on it.
-    const doctor = await runBg(target, "doctor", "--strict");
+    const doctor = await runBonneGarde(target, "doctor", "--strict");
     expect(doctor.code).toBe(1);
     expect(doctor.stdout).toContain("intention-pending");
     expect(doctor.stdout).toContain(id);
     expect(doctor.stdout).toContain(failed.reason);
     expect(doctor.stdout).not.toContain("patch-failed");
-    expect((await runBg(target, "doctor")).code).toBe(0);
+    expect((await runBonneGarde(target, "doctor")).code).toBe(0);
 
     // The same add again is the same intention in the same file: nothing staged moves.
     const staging = async () =>
       (await snapshot(target))[out.pendingIntentions[0]?.staged ?? ""] ?? "missing";
     const before = await staging();
-    const again = await runBg(target, "add", "config/branding", "--yes", "--no-install");
+    const again = await runBonneGarde(target, "add", "config/branding", "--yes", "--no-install");
     expect(again.code).toBe(0);
     expect(await staging()).toBe(before);
 
-    // bg record closes it, and the failed patch it came from is no longer a finding.
-    const recorded = await runBg(target, "record", id, "--skip", "this project has no root script");
+    // bonne-garde record closes it, and the failed patch it came from is no longer a finding.
+    const recorded = await runBonneGarde(
+      target,
+      "record",
+      id,
+      "--skip",
+      "this project has no root script",
+    );
     expect(recorded.code).toBe(0);
-    const closed = await runBg(target, "doctor", "--strict");
+    const closed = await runBonneGarde(target, "doctor", "--strict");
     expect(closed.code).toBe(0);
     expect(closed.stdout).not.toContain("intention-pending");
     // A resolved intention is not pending again on the next add, though the patch still fails.
-    const last = await runBg(target, "add", "config/branding", "--yes", "--no-install");
+    const last = await runBonneGarde(target, "add", "config/branding", "--yes", "--no-install");
     expect(last.code).toBe(0);
     expect((JSON.parse(last.stdout) as ModuleOutput).pendingIntentions).toEqual([]);
     expect((JSON.parse(last.stdout) as ModuleOutput).failedPatches).toHaveLength(1);
@@ -1118,7 +1227,7 @@ describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", 
     );
     const before = await snapshot(target);
 
-    const { stdout, stderr, code } = await runBg(
+    const { stdout, stderr, code } = await runBonneGarde(
       target,
       "add",
       "config/branding",
@@ -1141,7 +1250,7 @@ describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", 
     const target = await freshProject("bg-cli-patch-dry-");
     const before = await snapshot(target);
 
-    const { stdout, code } = await runBg(
+    const { stdout, code } = await runBonneGarde(
       target,
       "add",
       "config/branding",
@@ -1164,7 +1273,7 @@ describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", 
   test("a module without a patch prints an empty list, and nothing on stderr about patches", async () => {
     const target = await freshProject("bg-cli-patch-none-");
 
-    const { stdout, stderr } = await runBg(
+    const { stdout, stderr } = await runBonneGarde(
       target,
       "add",
       "provider/cloudflare",
@@ -1177,13 +1286,13 @@ describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", 
   });
 });
 
-describe("bg add api/elysia: a module that vendors a file and patches it (035, 060)", () => {
+describe("bonne-garde add api/elysia: a module that vendors a file and patches it (035, 060)", () => {
   const FILE = "apps/api/package.json";
   const DEV_CLOUDFLARE = "wrangler dev --port 5172";
 
   async function installed(prefix: string, provider: "cloudflare" | "dockerfile") {
     const target = await freshProject(prefix);
-    const first = await runBg(
+    const first = await runBonneGarde(
       target,
       "add",
       "pm/bun",
@@ -1245,7 +1354,7 @@ describe("bg add api/elysia: a module that vendors a file and patches it (035, 0
         ([path, { owner }]) => owner === "provider/cloudflare" && path.startsWith("apps/"),
       ),
     ).toEqual([]);
-    const doctor = await runBg(target, "doctor", "--strict");
+    const doctor = await runBonneGarde(target, "doctor", "--strict");
     expect(doctor.code).toBe(0);
   });
 
@@ -1260,14 +1369,14 @@ describe("bg add api/elysia: a module that vendors a file and patches it (035, 0
     const scripts = await scriptsOf(target);
     expect(scripts.dev).toBe("tsx watch src/index.ts");
     expect(scripts).not.toHaveProperty("deploy");
-    expect((await runBg(target, "doctor", "--strict")).code).toBe(0);
+    expect((await runBonneGarde(target, "doctor", "--strict")).code).toBe(0);
   });
 
   test("the same add again reports every patch skipped, and the project is the same bytes", async () => {
     const { target } = await installed("bg-cli-api-twice-", "cloudflare");
     const before = await snapshot(target);
 
-    const again = await runBg(target, "add", "api/elysia", "--yes", "--no-install");
+    const again = await runBonneGarde(target, "add", "api/elysia", "--yes", "--no-install");
 
     expect(again.code).toBe(0);
     const out = JSON.parse(again.stdout) as ModuleOutput;
@@ -1296,7 +1405,7 @@ describe("bg add api/elysia: a module that vendors a file and patches it (035, 0
     await writeFile(join(target, FILE), clean.replace(DEV_CLOUDFLARE, "bun my-own-dev.ts"));
     const edited = await snapshot(target);
 
-    const refused = await runBg(target, "add", "api/elysia", "--yes", "--no-install");
+    const refused = await runBonneGarde(target, "add", "api/elysia", "--yes", "--no-install");
 
     expect(refused.code).toBe(1);
     // The region, as for a file the module only patches: not "apps/api/package.json was modified".
@@ -1307,7 +1416,14 @@ describe("bg add api/elysia: a module that vendors a file and patches it (035, 0
     expect(refused.stderr).not.toContain("was modified");
     expect(await snapshot(target)).toEqual(edited);
 
-    const forced = await runBg(target, "add", "api/elysia", "--yes", "--no-install", "--force");
+    const forced = await runBonneGarde(
+      target,
+      "add",
+      "api/elysia",
+      "--yes",
+      "--no-install",
+      "--force",
+    );
 
     expect(forced.code).toBe(0);
     const regions = (JSON.parse(forced.stdout) as ModuleOutput).modules[0]?.patches[0]?.regions;
@@ -1327,7 +1443,14 @@ describe("bg add api/elysia: a module that vendors a file and patches it (035, 0
     await writeFile(join(target, FILE), edited);
 
     for (const flags of [[], ["--force"]]) {
-      const again = await runBg(target, "add", "api/elysia", "--yes", "--no-install", ...flags);
+      const again = await runBonneGarde(
+        target,
+        "add",
+        "api/elysia",
+        "--yes",
+        "--no-install",
+        ...flags,
+      );
 
       expect(again.code).toBe(0);
       const out = JSON.parse(again.stdout) as ModuleOutput;
@@ -1341,13 +1464,19 @@ describe("bg add api/elysia: a module that vendors a file and patches it (035, 0
   test("without a provider it fails naming the category, and without the config module it names that", async () => {
     const target = await freshProject("bg-cli-api-peers-");
 
-    const noProvider = await runBg(target, "add", "config/branding", "api/elysia", "--no-install");
+    const noProvider = await runBonneGarde(
+      target,
+      "add",
+      "config/branding",
+      "api/elysia",
+      "--no-install",
+    );
     expect(noProvider.code).toBe(1);
     expect(noProvider.stderr).toContain(
       "api/elysia needs a module in category provider (any) and none is installed",
     );
 
-    const noConfig = await runBg(
+    const noConfig = await runBonneGarde(
       target,
       "add",
       "provider/cloudflare",
@@ -1362,7 +1491,7 @@ describe("bg add api/elysia: a module that vendors a file and patches it (035, 0
   });
 });
 
-describe("bg add: package.dependencies (060)", () => {
+describe("bonne-garde add: package.dependencies (060)", () => {
   /** A registry of one module, `dev/wiring`, that adds the entries a module declares to the root package.json. */
   async function wiringRegistry(): Promise<string> {
     const root = await mkdtemp(join(tmpdir(), "bg-cli-deps-reg-"));
@@ -1419,7 +1548,13 @@ describe("bg add: package.dependencies (060)", () => {
       devDependencies: Record<string, string>;
     };
 
-    const { stdout, code } = await runBg(target, "add", "dev/wiring", "--yes", "--no-install");
+    const { stdout, code } = await runBonneGarde(
+      target,
+      "add",
+      "dev/wiring",
+      "--yes",
+      "--no-install",
+    );
 
     expect(code).toBe(0);
     const out = JSON.parse(stdout) as ModuleOutput;
@@ -1465,16 +1600,22 @@ describe("bg add: package.dependencies (060)", () => {
       "dependencies.zod": "dev/wiring",
       "devDependencies.drizzle-kit": "dev/wiring",
     });
-    const doctor = await runBg(target, "doctor", "--strict");
+    const doctor = await runBonneGarde(target, "doctor", "--strict");
     expect(doctor.code).toBe(0);
   });
 
   test("the same add again reports every region skipped, and the project is the same bytes", async () => {
     const target = await projectWithWiring("bg-cli-deps-twice-");
-    await runBg(target, "add", "dev/wiring", "--yes", "--no-install");
+    await runBonneGarde(target, "add", "dev/wiring", "--yes", "--no-install");
     const before = await snapshot(target);
 
-    const { stdout, code } = await runBg(target, "add", "dev/wiring", "--yes", "--no-install");
+    const { stdout, code } = await runBonneGarde(
+      target,
+      "add",
+      "dev/wiring",
+      "--yes",
+      "--no-install",
+    );
 
     expect(code).toBe(0);
     expect((JSON.parse(stdout) as ModuleOutput).modules[0]?.patches).toEqual([
@@ -1494,7 +1635,7 @@ describe("bg add: package.dependencies (060)", () => {
 
   test("a version the project changed is refused naming the region and --force, doctor warns, and --force puts it back", async () => {
     const target = await projectWithWiring("bg-cli-deps-edit-");
-    await runBg(target, "add", "dev/wiring", "--yes", "--no-install");
+    await runBonneGarde(target, "add", "dev/wiring", "--yes", "--no-install");
     const clean = await readFile(join(target, "package.json"), "utf8");
     await writeFile(
       join(target, "package.json"),
@@ -1502,12 +1643,12 @@ describe("bg add: package.dependencies (060)", () => {
     );
     const edited = await snapshot(target);
 
-    const doctor = await runBg(target, "doctor", "--strict");
+    const doctor = await runBonneGarde(target, "doctor", "--strict");
     expect(doctor.code).toBe(1);
     expect(doctor.stdout).toContain("region-foreign-edit");
     expect(doctor.stdout).toContain('dependencies.zod of package.json is "4.1.0"');
 
-    const refused = await runBg(target, "add", "dev/wiring", "--yes", "--no-install");
+    const refused = await runBonneGarde(target, "add", "dev/wiring", "--yes", "--no-install");
     expect(refused.code).toBe(1);
     expect(refused.stderr).toContain(
       'dependencies.zod of package.json is "4.1.0", which differs from what dev/wiring declares ("4.0.0")',
@@ -1515,7 +1656,14 @@ describe("bg add: package.dependencies (060)", () => {
     expect(refused.stderr).toContain("--force");
     expect(await snapshot(target)).toEqual(edited);
 
-    const forced = await runBg(target, "add", "dev/wiring", "--yes", "--no-install", "--force");
+    const forced = await runBonneGarde(
+      target,
+      "add",
+      "dev/wiring",
+      "--yes",
+      "--no-install",
+      "--force",
+    );
 
     expect(forced.code).toBe(0);
     expect((JSON.parse(forced.stdout) as ModuleOutput).modules[0]?.patches[0]).toEqual({
@@ -1542,7 +1690,7 @@ describe("bg add: package.dependencies (060)", () => {
       `${JSON.stringify({ ...root, dependencies: ["zod"] }, null, 2)}\n`,
     );
 
-    const { stdout, stderr, code } = await runBg(
+    const { stdout, stderr, code } = await runBonneGarde(
       target,
       "add",
       "dev/wiring",
@@ -1564,11 +1712,225 @@ describe("bg add: package.dependencies (060)", () => {
       },
     ]);
     expect(out.pendingIntentions.map((pending) => pending.id)).toEqual([id]);
-    expect(stderr).toContain("bg: PATCH FAILED package.dependencies on package.json (dev/wiring)");
+    expect(stderr).toContain(
+      "bonne-garde: PATCH FAILED package.dependencies on package.json (dev/wiring)",
+    );
   });
 });
 
-describe("bg add: the intentions a module authors (065)", () => {
+describe("bonne-garde add: an installed module is selected again when a module its variants match on is added (050 step 7, 035 Variants)", () => {
+  const ID = "email/resend/wire-email-into-auth";
+  /** What email needs and what auth needs but email: so that auth comes second. */
+  const BASE = [
+    "provider/cloudflare",
+    "config/branding",
+    "api/elysia",
+    "db/d1",
+    "orm/drizzle",
+    "email/resend",
+  ];
+
+  async function emailFirst(prefix: string): Promise<string> {
+    const target = await freshProject(prefix);
+    const base = await runBonneGarde(target, "add", ...BASE, "--yes", "--no-install");
+    expect(base.code).toBe(0);
+    const out = JSON.parse(base.stdout) as ModuleOutput;
+    expect(out.modules.find(({ module }) => module === "email/resend")?.variant).toBe("default");
+    expect(out.reselected).toEqual([]);
+    expect(out.pendingIntentions).toEqual([]);
+    return target;
+  }
+
+  const emailRecord = async (target: string) =>
+    (
+      JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as {
+        modules: { email: { variant: string }[] };
+      }
+    ).modules.email[0];
+
+  test("auth added after email plans email again, on its better-auth variant, in the same plan, and stages the wiring", async () => {
+    const target = await emailFirst("bg-cli-reselect-");
+
+    const { stdout, stderr, code } = await runBonneGarde(
+      target,
+      "add",
+      "auth/better-auth",
+      "--yes",
+      "--no-install",
+    );
+
+    expect(code).toBe(0);
+    const out = JSON.parse(stdout) as ModuleOutput;
+    expect(out.reselected).toEqual([
+      { module: "email/resend", from: "default", to: "better-auth", because: ["auth/better-auth"] },
+    ]);
+    expect(stderr).toContain(
+      "bonne-garde: email/resend, installed on variant default, is planned again on variant better-auth, which matches auth/better-auth",
+    );
+    expect(out.modules.map(({ module, variant }) => [module, variant])).toEqual([
+      ["auth/better-auth", "default"],
+      ["email/resend", "better-auth"],
+    ]);
+    // The patch that declares the email package in auth's package.json lands in the same apply,
+    // on the file auth writes in this very call.
+    expect(out.modules.find(({ module }) => module === "email/resend")?.patches).toMatchObject([
+      { type: "package.dependencies", file: "packages/auth/package.json", status: "applied" },
+    ]);
+    expect(await readFile(join(target, "packages/auth/package.json"), "utf8")).toContain(
+      '"@cli-app/email": "workspace:*"',
+    );
+    expect(out.pendingIntentions.map(({ id, staged }) => [id, staged])).toEqual([
+      [ID, ".bg/add/01-wire-email-into-auth.md"],
+    ]);
+    expect(await readFile(join(target, ".bg/add/session.md"), "utf8")).toContain(ID);
+    expect((await emailRecord(target))?.variant).toBe("better-auth");
+  });
+
+  test("--dry-run reports it too, and writes nothing", async () => {
+    const target = await emailFirst("bg-cli-reselect-dry-");
+    const before = await snapshot(target);
+
+    const { stdout, code } = await runBonneGarde(
+      target,
+      "add",
+      "auth/better-auth",
+      "--dry-run",
+      "--yes",
+      "--no-install",
+    );
+
+    expect(code).toBe(0);
+    const out = JSON.parse(stdout) as ModuleOutput;
+    expect(out.reselected.map(({ module, to }) => [module, to])).toEqual([
+      ["email/resend", "better-auth"],
+    ]);
+    expect(out.pendingIntentions.map(({ id }) => id)).toEqual([ID]);
+    expect(await snapshot(target)).toEqual(before);
+  });
+
+  test("once planned again it stays so: auth added again, or email alone, selects nothing and changes nothing", async () => {
+    const target = await emailFirst("bg-cli-reselect-again-");
+    await runBonneGarde(target, "add", "auth/better-auth", "--yes", "--no-install");
+
+    // A re-add moves `installedAt` in bg.json and nothing else.
+    const tree = async () => {
+      const { "bg.json": _manifest, ...files } = await snapshot(target);
+      return files;
+    };
+    for (const name of ["auth/better-auth", "email/resend"]) {
+      const before = await tree();
+      const again = await runBonneGarde(target, "add", name, "--yes", "--no-install");
+      expect(again.code).toBe(0);
+      expect((JSON.parse(again.stdout) as ModuleOutput).reselected).toEqual([]);
+      expect(await tree()).toEqual(before);
+    }
+    expect((await emailRecord(target))?.variant).toBe("better-auth");
+  });
+
+  describe("--force reaches what the call names, and a planned-again module is not one of those", () => {
+    /** `emailFirst`, then a line of the project's own in a file of email that auth's variant writes again. */
+    async function emailEdited(prefix: string): Promise<{ target: string; file: string }> {
+      const target = await emailFirst(prefix);
+      const file = join(target, "packages/email/src/send.ts");
+      await writeFile(file, `${await readFile(file, "utf8")}// the project's own\n`);
+      return { target, file };
+    }
+    const commandIn = (stderr: string) =>
+      stderr.split("\n").find((line) => /^ {2}npx bonne-garde add /.test(line));
+
+    test("the error names the module, who added it, and a command that names it in the same call; that command succeeds", async () => {
+      const { target, file } = await emailEdited("bg-cli-reselect-force-");
+      // A file of auth the project wrote before: auth is named, so --force overwrites it.
+      const mine = join(target, "packages/auth/src/base-path.ts");
+      await mkdir(join(mine, ".."), { recursive: true });
+      await writeFile(mine, "// the project's own\n");
+      const before = await snapshot(target);
+
+      const refused = await runBonneGarde(
+        target,
+        "add",
+        "auth/better-auth",
+        "--force",
+        "--yes",
+        "--no-install",
+      );
+
+      expect(refused.code).toBe(1);
+      expect(refused.stdout).toBe("");
+      expect(refused.stderr).toContain(
+        "email/resend, installed on variant default, is planned again on variant better-auth because auth/better-auth is added, and --force reaches only what the call names",
+      );
+      expect(refused.stderr).toContain(
+        "packages/email/src/send.ts was modified since email/resend wrote it",
+      );
+      expect(refused.stderr).not.toContain("base-path.ts");
+      expect(await snapshot(target)).toEqual(before);
+      const command = commandIn(refused.stderr);
+      expect(command).toBe(
+        "  npx bonne-garde add auth/better-auth --yes --no-install email/resend --force",
+      );
+
+      const [npx, bonneGarde, ...args] = (command ?? "").trim().split(" ");
+      expect([npx, bonneGarde]).toEqual(["npx", "bonne-garde"]);
+      const resolved = await runBonneGarde(target, ...args);
+
+      expect(resolved.stderr).not.toContain("is already filled");
+      expect(resolved.code).toBe(0);
+      expect(await readFile(file, "utf8")).not.toContain("the project's own");
+      expect(await readFile(mine, "utf8")).not.toContain("the project's own");
+      const out = JSON.parse(resolved.stdout) as ModuleOutput;
+      // Named in the call, email is a requested module and not a planned-again one.
+      expect(out.reselected).toEqual([]);
+      expect(out.modules.map(({ module, variant }) => [module, variant])).toEqual([
+        ["auth/better-auth", "default"],
+        ["email/resend", "better-auth"],
+      ]);
+      expect((await emailRecord(target))?.variant).toBe("better-auth");
+    });
+
+    test("without --force it is the same refusal, and the command is the one the user would have typed with the module named", async () => {
+      const { target } = await emailEdited("bg-cli-reselect-noforce-");
+      const before = await snapshot(target);
+
+      const refused = await runBonneGarde(target, "add", "auth/better-auth");
+
+      expect(refused.code).toBe(1);
+      expect(refused.stderr).not.toContain("(use --force to overwrite)");
+      expect(commandIn(refused.stderr)).toBe(
+        "  npx bonne-garde add auth/better-auth email/resend --force",
+      );
+      expect(await snapshot(target)).toEqual(before);
+    });
+  });
+
+  test("naming both in one call needs no re-selection: it is the plan that call is", async () => {
+    const target = await freshProject("bg-cli-reselect-both-");
+    await runBonneGarde(
+      target,
+      "add",
+      ...BASE.filter((name) => name !== "email/resend"),
+      "--yes",
+      "--no-install",
+    );
+
+    const { stdout } = await runBonneGarde(
+      target,
+      "add",
+      "email/resend",
+      "auth/better-auth",
+      "--yes",
+      "--no-install",
+    );
+
+    const out = JSON.parse(stdout) as ModuleOutput;
+    expect(out.reselected).toEqual([]);
+    expect(out.modules.find(({ module }) => module === "email/resend")?.variant).toBe(
+      "better-auth",
+    );
+  });
+});
+
+describe("bonne-garde add: the intentions a module authors (065)", () => {
   const ID = "dev/launcher/wire-launcher";
   const DOCUMENT = `---\nid: ${ID}\nkind: install\ndomain: dev\nclassification: migration\n---\n\n# Start the app through {{SCOPE}}/launcher\n\n## Goal\n\nImport {{SCOPE}}/launcher.\n`;
 
@@ -1606,10 +1968,10 @@ describe("bg add: the intentions a module authors (065)", () => {
     }).then(({ target }) => target);
   }
 
-  test("is staged as written with the scope rendered, reported by doctor, and closed by bg record", async () => {
+  test("is staged as written with the scope rendered, reported by doctor, and closed by bonne-garde record", async () => {
     const target = await projectWithLauncher();
 
-    const { stdout, stderr, code } = await runBg(
+    const { stdout, stderr, code } = await runBonneGarde(
       target,
       "add",
       "dev/launcher",
@@ -1633,7 +1995,7 @@ describe("bg add: the intentions a module authors (065)", () => {
     ]);
     expect(out.session).toBe(".bg/add/session.md");
     expect(out.failedPatches).toEqual([]);
-    expect(stderr).toContain("bg: 1 pending intention: read .bg/add/session.md");
+    expect(stderr).toContain("bonne-garde: 1 pending intention: read .bg/add/session.md");
     expect(stderr).toContain("checks withheld while 1 intention is pending");
     expect(await readFile(join(target, ".bg/add/01-wire-launcher.md"), "utf8")).toBe(
       DOCUMENT.replaceAll("{{SCOPE}}", "@cli-app"),
@@ -1641,7 +2003,7 @@ describe("bg add: the intentions a module authors (065)", () => {
     expect(await readFile(join(target, ".bg/add/session.md"), "utf8")).toContain(ID);
 
     // doctor names it, and --strict fails on it: it is pending work, not a clean install.
-    const pending = await runBg(target, "doctor", "--strict");
+    const pending = await runBonneGarde(target, "doctor", "--strict");
     expect(pending.code).toBe(1);
     expect(pending.stdout).toContain(
       `${ID} is staged in .bg/add/01-wire-launcher.md and not recorded`,
@@ -1649,48 +2011,71 @@ describe("bg add: the intentions a module authors (065)", () => {
 
     // The same add again stages the same bytes.
     const before = await snapshot(target);
-    const again = await runBg(target, "add", "dev/launcher", "--yes", "--no-install");
+    const again = await runBonneGarde(target, "add", "dev/launcher", "--yes", "--no-install");
     expect(again.code).toBe(0);
     expect((await snapshot(target))[".bg/add/01-wire-launcher.md"]).toBe(
       before[".bg/add/01-wire-launcher.md"],
     );
 
-    // bg record closes it: doctor is green and a later add does not raise it again.
-    expect((await runBg(target, "record", ID)).code).toBe(0);
-    expect((await runBg(target, "doctor", "--strict")).code).toBe(0);
-    const last = await runBg(target, "add", "dev/launcher", "--yes", "--no-install");
+    // bonne-garde record closes it: doctor is green and a later add does not raise it again.
+    expect((await runBonneGarde(target, "record", ID)).code).toBe(0);
+    expect((await runBonneGarde(target, "doctor", "--strict")).code).toBe(0);
+    const last = await runBonneGarde(target, "add", "dev/launcher", "--yes", "--no-install");
     expect(last.code).toBe(0);
     expect((JSON.parse(last.stdout) as ModuleOutput).pendingIntentions).toEqual([]);
     expect(last.stderr).not.toContain("pending intention");
   });
 
-  test("bg record refuses once .bg/ is gone, and the add the refusal names stages the intention again", async () => {
+  test("bonne-garde record reads the module's own document once .bg/ is gone, so it needs no second add", async () => {
     const target = await projectWithLauncher();
-    await runBg(target, "add", "dev/launcher", "--yes", "--no-install");
+    await runBonneGarde(target, "add", "dev/launcher", "--yes", "--no-install");
+    await rm(join(target, ".bg"), { recursive: true });
+
+    const recorded = await runBonneGarde(target, "record", ID);
+
+    expect(recorded.code).toBe(0);
+    expect(recorded.stderr).toContain("not staged");
+    expect((await runBonneGarde(target, "doctor", "--strict")).code).toBe(0);
+  });
+
+  test("bonne-garde record refuses once .bg/ is gone and the registry cannot give the document, and the add the refusal names stages the intention again", async () => {
+    const target = await projectWithLauncher();
+    await runBonneGarde(target, "add", "dev/launcher", "--yes", "--no-install");
     await rm(join(target, ".bg"), { recursive: true });
     const before = await readFile(join(target, "bg.json"), "utf8");
+    const unreachable = `${JSON.stringify(
+      {
+        ...(JSON.parse(before) as Record<string, unknown>),
+        registries: { "@bg": "local:./nowhere" },
+      },
+      null,
+      2,
+    )}\n`;
+    await writeFile(join(target, "bg.json"), unreachable);
 
-    const refused = await runBg(target, "record", ID);
+    const refused = await runBonneGarde(target, "record", ID);
 
     expect(refused.code).toBe(1);
-    expect(refused.stderr).toContain("bg add dev/launcher");
-    expect(await readFile(join(target, "bg.json"), "utf8")).toBe(before);
+    expect(refused.stderr).toContain("the registry gave none");
+    expect(refused.stderr).toContain("bonne-garde add dev/launcher");
+    expect(await readFile(join(target, "bg.json"), "utf8")).toBe(unreachable);
 
-    // The intention is still pending, so that add stages it again, and then it records.
-    const again = await runBg(target, "add", "dev/launcher", "--yes", "--no-install");
+    // The registry is back and the intention is still pending, so that add stages it again, and then it records.
+    await writeFile(join(target, "bg.json"), before);
+    const again = await runBonneGarde(target, "add", "dev/launcher", "--yes", "--no-install");
     expect(again.code).toBe(0);
     expect(await readFile(join(target, ".bg/add/01-wire-launcher.md"), "utf8")).toBe(
       DOCUMENT.replaceAll("{{SCOPE}}", "@cli-app"),
     );
-    expect((await runBg(target, "record", ID)).code).toBe(0);
-    expect((await runBg(target, "doctor", "--strict")).code).toBe(0);
+    expect((await runBonneGarde(target, "record", ID)).code).toBe(0);
+    expect((await runBonneGarde(target, "doctor", "--strict")).code).toBe(0);
   });
 
   test("--dry-run reports it with nothing staged", async () => {
     const target = await projectWithLauncher();
     const before = await snapshot(target);
 
-    const { stdout, stderr, code } = await runBg(
+    const { stdout, stderr, code } = await runBonneGarde(
       target,
       "add",
       "dev/launcher",
@@ -1708,7 +2093,7 @@ describe("bg add: the intentions a module authors (065)", () => {
   });
 });
 
-describe("bg intentions lint: the intentions modules author (065)", () => {
+describe("bonne-garde intentions lint: the intentions modules author (065)", () => {
   const emptyMigrations = async (): Promise<string> => {
     const dir = await mkdtemp(join(tmpdir(), "bg-cli-lint-mig-"));
     dirs.push(dir);
@@ -1754,7 +2139,7 @@ describe("bg intentions lint: the intentions modules author (065)", () => {
   test("lints the registry beside the migrations, and lists the intentions of each module", async () => {
     const registry = await registryWithIntention("dev/launcher/wire-launcher");
 
-    const { stdout, code } = await runBg(
+    const { stdout, code } = await runBonneGarde(
       await emptyMigrations(),
       "intentions",
       "lint",
@@ -1775,7 +2160,7 @@ describe("bg intentions lint: the intentions modules author (065)", () => {
   test("fails on a module's intention that breaks the format, naming the module and the file", async () => {
     const registry = await registryWithIntention("dev/launcher/other");
 
-    const { stderr, code } = await runBg(
+    const { stderr, code } = await runBonneGarde(
       await emptyMigrations(),
       "intentions",
       "lint",
@@ -1792,7 +2177,7 @@ describe("bg intentions lint: the intentions modules author (065)", () => {
   });
 
   test("with no flag it lints this repository's own migrations and registry, which is what verify runs", async () => {
-    const { stdout, code } = await runBg(repoRoot(), "intentions", "lint");
+    const { stdout, code } = await runBonneGarde(repoRoot(), "intentions", "lint");
 
     expect(code).toBe(0);
     expect(JSON.parse(stdout)).toMatchObject({
@@ -1810,7 +2195,7 @@ describe("bg create with choices (040)", () => {
     const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
     dirs.push(parent);
 
-    const { stdout, stderr, code } = await runBg(
+    const { stdout, stderr, code } = await runBonneGarde(
       parent,
       "create",
       "app",
@@ -1841,7 +2226,7 @@ describe("bg create with choices (040)", () => {
     const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
     dirs.push(parent);
 
-    const { code } = await runBg(
+    const { code } = await runBonneGarde(
       parent,
       "create",
       "app",
@@ -1869,7 +2254,7 @@ describe("bg create with choices (040)", () => {
     const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
     dirs.push(parent);
 
-    const { stderr, code } = await runBg(
+    const { stderr, code } = await runBonneGarde(
       parent,
       "create",
       "app",
@@ -1891,11 +2276,11 @@ describe("bg create with choices (040)", () => {
     const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
     dirs.push(parent);
 
-    const noApp = await runBg(parent, "create", "app", "--features", "auth", "--yes");
+    const noApp = await runBonneGarde(parent, "create", "app", "--features", "auth", "--yes");
     expect(noApp.code).toBe(1);
     expect(noApp.stderr).toContain("--provider and --features need an app (--apps)");
 
-    const unknown = await runBg(parent, "create", "app", "--apps", "api,web", "--yes");
+    const unknown = await runBonneGarde(parent, "create", "app", "--apps", "api,web", "--yes");
     expect(unknown.code).toBe(1);
     expect(unknown.stderr).toContain("--apps: unknown value web");
     expect(await readdir(parent)).toEqual([]);
@@ -1905,7 +2290,7 @@ describe("bg create with choices (040)", () => {
     const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
     dirs.push(parent);
 
-    const { stdout, code } = await runBg(
+    const { stdout, code } = await runBonneGarde(
       parent,
       "create",
       "app",

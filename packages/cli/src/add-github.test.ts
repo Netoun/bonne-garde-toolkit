@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serveGithubRaw, type GithubRawServer } from "@bonne-garde/registry/testing";
+import { cliRunner } from "@bonne-garde/schema";
 import { addItems, listItems, searchItems, viewItem } from "./add";
 import { createProject } from "./create";
 import { findRepoRoot, platformPackageVersion } from "./paths";
+import { recordIntentionOutcome } from "./record";
 
 const REGISTRY_DIR = join(findRepoRoot() ?? "", "registry");
 const REF = "feat/platform-cli-registry";
@@ -79,7 +81,7 @@ function comparable(bg: BgJson) {
 
 const LOCAL = `local:${REGISTRY_DIR}`;
 
-describe("bg add from a github source", () => {
+describe("bonne-garde add from a github source", () => {
   test("installs an item and its dependencies, and records the source as given", async () => {
     const raw = serve();
     const root = await project(SOURCE);
@@ -116,7 +118,7 @@ describe("bg add from a github source", () => {
 
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toBe(
-      "button needs the ui module, and none is installed or named in this call; run: bg add ui/shadcn button",
+      `button needs the ui module, and none is installed or named in this call; run: ${cliRunner()} add ui/shadcn button`,
     );
     expect(await snapshot(root)).toEqual(before);
   });
@@ -299,6 +301,62 @@ describe("bg add from a github source", () => {
     expect(await snapshot(root)).toEqual(before);
   });
 
+  describe("an installed module selected again when a module its variants match on is added (050 step 7)", () => {
+    const BASE = [
+      "provider/cloudflare",
+      "config/branding",
+      "api/elysia",
+      "db/d1",
+      "orm/drizzle",
+      "email/resend",
+    ];
+
+    test("auth added after email plans email again over the network too, and fetches only the installed modules it needs", async () => {
+      const raw = serve();
+      const root = await project(SOURCE);
+      const github = { baseUrl: raw.baseUrl };
+      await addItems({ projectRoot: root, items: BASE, install: false, github });
+      raw.requested.length = 0;
+
+      const { reselected, modulePlans } = await addItems({
+        projectRoot: root,
+        items: ["auth/better-auth"],
+        install: false,
+        github,
+      });
+
+      expect(reselected).toEqual([
+        {
+          ref: { category: "email", id: "resend" },
+          from: "default",
+          to: "better-auth",
+          because: ["auth/better-auth"],
+        },
+      ]);
+      expect(modulePlans.map(({ key, variant }) => [key, variant])).toEqual([
+        ["auth/better-auth", "default"],
+        ["email/resend", "better-auth"],
+      ]);
+      expect(raw.requested).toContain("modules/email/resend/intent/01-wire-email-into-auth.md");
+      expect((await readBg(root)).modules.email?.[0]).toMatchObject({ variant: "better-auth" });
+      expect(Object.keys(await snapshot(root))).toContain(".bg/add/01-wire-email-into-auth.md");
+    });
+
+    test("an add that names no module does not fetch the installed ones", async () => {
+      const raw = serve();
+      const root = await project(SOURCE);
+      const github = { baseUrl: raw.baseUrl };
+      await addItems({ projectRoot: root, items: ["ui/shadcn"], install: false, github });
+      raw.requested.length = 0;
+
+      await addItems({ projectRoot: root, items: ["button"], install: false, github });
+
+      expect(
+        raw.requested.filter((path) => path.endsWith("module.json") && path.includes("ui/shadcn")),
+      ).toEqual([]);
+    });
+  });
+
   test("a source with no ref reads the platform tag of bg.json", async () => {
     const tag = `v${platformPackageVersion()}`;
     const raw = serve(tag);
@@ -333,6 +391,85 @@ describe("bg add from a github source", () => {
       }),
     ).rejects.toThrow(/pin a ref/);
     expect(raw.requested).toEqual([]);
+  });
+
+  describe("bonne-garde record, with no .bg/ and no failed patch to read the intention from (065)", () => {
+    const ID = "email/resend/wire-email-into-auth";
+    const MAILER = "packages/auth/src/mailer.ts";
+
+    /** A project on the github source that has email on its `better-auth` variant and the intention skipped. */
+    async function skipped(patches: unknown[] = []): Promise<string> {
+      const root = await project(SOURCE);
+      const bg = JSON.parse(await readFile(join(root, "bg.json"), "utf8")) as Record<
+        string,
+        unknown
+      >;
+      const record = {
+        id: "resend",
+        variant: "better-auth",
+        version: "0.0.0",
+        installedAt: "2026-01-01T00:00:00.000Z",
+        options: {},
+        patches,
+        intentions: { applied: [], skipped: { [ID]: "not now" } },
+      };
+      await writeFile(
+        join(root, "bg.json"),
+        `${JSON.stringify({ ...bg, modules: { email: [record] } }, null, 2)}\n`,
+      );
+      await mkdir(join(root, MAILER, ".."), { recursive: true });
+      await writeFile(join(root, MAILER), "// the project's\n");
+      return root;
+    }
+
+    test("the module's intent/ is fetched from the source, and the file it adapts is marked", async () => {
+      const raw = serve();
+      const root = await skipped();
+
+      await recordIntentionOutcome(root, ID, { status: "applied" }, { baseUrl: raw.baseUrl });
+
+      expect(raw.requested).toContain("modules/email/resend/intent/01-wire-email-into-auth.md");
+      const bg = JSON.parse(await readFile(join(root, "bg.json"), "utf8")) as {
+        regions: Record<string, Record<string, string>>;
+      };
+      expect(bg.regions).toEqual({ [MAILER]: { [`intent[${ID}]`]: "email/resend" } });
+    });
+
+    test("nothing is fetched when a failed patch of bg.json already names the file: the registry is the last source", async () => {
+      const raw = serve();
+      const root = await skipped([
+        {
+          type: "package.dependencies",
+          file: MAILER,
+          status: "failed",
+          reason: "x",
+          intention: ID,
+        },
+      ]);
+
+      await recordIntentionOutcome(root, ID, { status: "applied" }, { baseUrl: raw.baseUrl });
+
+      expect(raw.requested).toEqual([]);
+    });
+
+    test("a source that cannot be read is the refusal, naming why, and bg.json is as it was", async () => {
+      const raw = serve();
+      const root = await skipped();
+      const before = await readFile(join(root, "bg.json"), "utf8");
+      raw.missing.add("modules/email/resend/module.json");
+
+      const failure = await recordIntentionOutcome(
+        root,
+        ID,
+        { status: "applied" },
+        { baseUrl: raw.baseUrl },
+      ).catch((error: unknown) => error);
+
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as Error).message).toContain(`cannot record ${ID} as applied`);
+      expect((failure as Error).message).toContain("the registry gave none");
+      expect(await readFile(join(root, "bg.json"), "utf8")).toBe(before);
+    });
   });
 
   test("sends the token it is given", async () => {

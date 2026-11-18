@@ -30,10 +30,6 @@ coverage/
 .dev.vars.*
 !.dev.vars*.example
 
-# Init state (local)
-.acme-init.json
-.bonnegarde-init.json
-
 # Local DB
 *.db
 *.sqlite
@@ -44,5 +40,5 @@ coverage/
 # Tasks (local only)
 task/
 
-# Remix (legacy app — à la racine)
-/build
+# Claude Code worktrees nested in the checkout: each one is a whole copy of the repository
+.claude/worktrees/

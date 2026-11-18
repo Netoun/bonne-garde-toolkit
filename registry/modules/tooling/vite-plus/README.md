@@ -4,7 +4,7 @@ The quality gate of a project: the Vite+ lint rules, the fmt options, the staged
 git hook that runs it. `bun run check` is the gate; this module is what makes it strict.
 
 ```bash
-bunx bg add tooling/vite-plus
+bunx bonne-garde add tooling/vite-plus
 ```
 
 ## What it writes
@@ -16,7 +16,7 @@ bunx bg add tooling/vite-plus
 | `oxlint-plugins/structure.js` | rule `structure/route-modules`: a file declared in an app's `routes.ts`, or in a feature's fragment `features/<f>/routes.ts`, lives in `features/<f>/pages/` and is named `<f>-…-page.tsx`, `-layout.tsx` (it has children) or `-redirect.tsx`; those suffixes belong to routed files only. The rules head the file; `structure-plugin.test.ts` pins them. |
 
 It declares no dependency and no workspace: the `vite-plus` and `husky` dependencies and the `fmt`,
-`lint`, `check` and `prepare` scripts come with the base template, because `bg add` cannot edit a
+`lint`, `check` and `prepare` scripts come with the base template, because `bonne-garde add` cannot edit a
 root `package.json` yet. Once the module is added, `bun run check` runs the rules above, and
 `checks: ["bun run check"]` is what a caller runs to prove it.
 
@@ -30,7 +30,7 @@ what this module ships.
 - `lint` and `check` carry `--no-error-on-unmatched-pattern`. The empty base has no source file to
   lint, and `vp lint` exits 1 on "No files found to lint". A file with a lint error still fails.
 - `prepare` is `husky`. With no `.git` it prints "`.git` can't be found" and exits 0, so
-  `bg create --no-git` still installs. In a git project it points `core.hooksPath` at `.husky/_`,
+  `bonne-garde create --no-git` still installs. In a git project it points `core.hooksPath` at `.husky/_`,
   and `.husky/pre-commit` runs from the first commit after this module is added.
 
 Without this module, a project with an app that has its own `vite.config.ts` (`web/spa`)
@@ -49,7 +49,7 @@ config's, unchanged. Four things differ:
   run, so a formatted copy would be undone by the next generation and `bun run check` would fail until
   someone formatted it again. The directory is 035's home for `orm`, which is why a module that
   precedes it can name it, as it names `.wrangler/`.
-- **Added:** `bg.json` in the fmt ignore list. The CLI writes it, and `bg record` writes a recorded
+- **Added:** `bg.json` in the fmt ignore list. The CLI writes it, and `bonne-garde record` writes a recorded
   intention as an array of one id in the layout of `JSON.stringify`, which the formatter wants on one line
   while it fits. The CLI writes it again on every `add` and `record`, so a formatted copy would be undone
   by the next one, and `bun run check` would fail from the first intention a project records until
@@ -83,5 +83,5 @@ with the `react` plugin; its files have no JSX, so the rules have nothing to rep
 
 - `knip` and its `knip.jsonc` wait for the first patch type (`scripts.merge`): a root `package.json`
   edit is a patch, and `add` refuses patches today.
-- It does not run the gate on `bg add`: spec 050 step 15 is not implemented, so `checks` is printed.
+- It does not run the gate on `bonne-garde add`: spec 050 step 15 is not implemented, so `checks` is printed.
   `bun run golden` runs it.

@@ -2,12 +2,12 @@
 /**
  * The golden project: what a consumer does, end to end, in a fresh directory, once per configuration.
  *
- *   bg create → bg add of a UI item, refused → bg add of a feature item, refused in a bare project and in
- *   a project that lacks only auth, or only storage → bg add of the configuration's modules and every
+ *   bonne-garde create → bonne-garde add of a UI item, refused → bonne-garde add of a feature item, refused in a bare project and in
+ *   a project that lacks only auth, or only storage → bonne-garde add of the configuration's modules and every
  *   item in one call (the feature items' dependencies written into apps/spa/package.json) → the same
- *   bg add again, which must skip every patch and change nothing, and each module and each feature
+ *   bonne-garde add again, which must skip every patch and change nothing, and each module and each feature
  *   item again on its own, which must too → bun install
- *   → typecheck → test → build → bg doctor --strict
+ *   → typecheck → test → build → bonne-garde doctor --strict
  *   → for a configuration with a database: a table added to the schema barrel, `bun run db:generate`,
  *     the migration applied to a local D1 (`wrangler`, no network, no account), and what D1 holds read back,
  *     the tables of its modules (`medias`, storage's) in the migration and in D1 as well
@@ -37,26 +37,32 @@
  * Any non-zero exit fails the run and names the phase. It needs a real `bun install` against npm,
  * so it is not part of `verify`; CI runs it as its own step.
  *
- * The CLI under test is the packed one (`bun run pack:cli`), driven as a subprocess so argv
- * parsing is exercised. It runs from a copy outside the repo: the packed `paths.ts` still walks up
- * to find the repo root, and `templateBaseDir()` falls back to the repo's `templates/base`, so in
- * place under `dist/` a pack that dropped its `templates/` would still pass. From a copy under the
- * temp directory, `bg create` can only use what the pack carries.
+ * The CLI under test is the packed one (`bun run pack:cli`), driven by node as a subprocess so argv
+ * parsing is exercised and so the path a user of npm, pnpm or yarn takes is the one proven (it needs
+ * Node 22.12 or later on PATH). It runs from a copy outside the repo: the packed `paths.ts` still
+ * walks up to find the repo root, and `templateBaseDir()` falls back to the repo's `templates/base`,
+ * so in place under `dist/` a pack that dropped its `templates/` would still pass. From a copy under
+ * the temp directory, `bonne-garde create` can only use what the pack carries.
  *
  * Usage:
  *   bun run golden
  *   bun scripts/golden-project.ts
  */
 
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, delimiter, join, resolve } from "node:path";
+import { basename, delimiter, join, relative, resolve } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { type Choices, namesFor } from "../packages/cli/src/choices";
+import { cliRunner } from "../packages/schema/src/cli-runner";
 
 const ROOT = resolve(import.meta.dir, "..");
-const PACKED_CLI = join(ROOT, "dist/npm/create-bonne-garde");
+const PACKED_CLI = join(ROOT, "dist/npm/bonne-garde");
 const BUN = "bun";
+/** The packed CLI is run by node, as `npx`, `pnpm dlx` and `yarn dlx` run it: golden proves that path. */
+const NODE = "node";
 
 /**
  * The project's npm scope. Registry files are authored for `@acme` and `add` rewrites the scope at
@@ -67,7 +73,7 @@ const BUN = "bun";
 export const SCOPE = "@app";
 
 /**
- * Items `bg list` shows that stay out of the golden project, each with its reason. An entry for an
+ * Items `bonne-garde list` shows that stay out of the golden project, each with its reason. An entry for an
  * item the registry no longer lists fails the run, so this list cannot go stale. Empty on purpose:
  * every item the registry ships is installed, and a new one is a decision made here.
  */
@@ -75,7 +81,7 @@ export const EXCLUDED: Readonly<Record<string, string>> = {};
 
 export type Excluded = { name: string; reason: string };
 
-/** The item names to `bg add`, read from `bg list` output (`name<TAB>type<TAB>description`). */
+/** The item names to `bonne-garde add`, read from `bonne-garde list` output (`name<TAB>type<TAB>description`). */
 export function selectItems(
   listing: string,
   exclusions: Readonly<Record<string, string>>,
@@ -92,7 +98,7 @@ export function selectItems(
 
   const items = listed.filter((name) => !Object.hasOwn(exclusions, name));
   if (items.length === 0) {
-    throw new Error("bg list left no items to install");
+    throw new Error("bonne-garde list left no items to install");
   }
 
   return {
@@ -103,17 +109,17 @@ export function selectItems(
   };
 }
 
-/** One project golden builds: the modules `bg add` installs in one call, and whether every item comes with them. */
+/** One project golden builds: the modules `bonne-garde add` installs in one call, and whether every item comes with them. */
 export type Configuration = {
   name: string;
-  /** `<category>/<id>`, in the order they are given to `bg add`. */
+  /** `<category>/<id>`, in the order they are given to `bonne-garde add`. */
   modules: readonly string[];
-  /** Also install every item `bg list --items` shows. Items land in `packages/ui` and need the `ui` module. */
+  /** Also install every item `bonne-garde list --items` shows. Items land in `packages/ui` and need the `ui` module. */
   items: boolean;
 };
 
 /**
- * The answer sets golden builds, each as `bg create` maps it (040), so a set golden proves is one
+ * The answer sets golden builds, each as `bonne-garde create` maps it (040), so a set golden proves is one
  * `create` produces. A module that is in none of them, and not in `EXCLUDED_MODULES`, fails the run,
  * so a new module is a decision made here and not a silent gap. `provider` admits one module, and a
  * variant of `api` is selected on it, which is why each provider has a set.
@@ -149,7 +155,7 @@ export const CONFIGURATIONS: readonly Configuration[] = Object.entries(ANSWER_SE
 
 /**
  * The package manager of a configuration, its `pm` module's id: `create --pm` adds that module, and
- * golden's `bg add` adds the rest.
+ * golden's `bonne-garde add` adds the rest.
  */
 export function packageManagerOf(configuration: Configuration): string {
   const [pm, ...more] = configuration.modules.filter((module) => module.startsWith("pm/"));
@@ -159,7 +165,7 @@ export function packageManagerOf(configuration: Configuration): string {
   return pm.slice("pm/".length);
 }
 
-/** The modules golden's `bg add` installs: all but the package manager's, which `create` added. */
+/** The modules golden's `bonne-garde add` installs: all but the package manager's, which `create` added. */
 export function addedModules(configuration: Configuration): string[] {
   return configuration.modules.filter((module) => !module.startsWith("pm/"));
 }
@@ -278,16 +284,16 @@ export const WITHOUT_ORM: readonly string[] = [
   "db/d1",
 ];
 
-/** `bg add <name>` failed and named `category` as the peer it needs: what an agent reads to fix it. */
+/** `bonne-garde add <name>` failed and named `category` as the peer it needs: what an agent reads to fix it. */
 export function expectPeerRefusal(attempt: Attempt, name: string, category: string): void {
   if (attempt.code === 0) {
     throw new Error(
-      `\`bg add ${name}\` succeeded in a project with no ${category} module: it must be refused`,
+      `\`bonne-garde add ${name}\` succeeded in a project with no ${category} module: it must be refused`,
     );
   }
   if (!attempt.stderr.includes(`category ${category}`)) {
     throw new Error(
-      `\`bg add ${name}\` was refused without naming the missing peer category ${category}; it printed: ${attempt.stderr.trim() || "(nothing)"}`,
+      `\`bonne-garde add ${name}\` was refused without naming the missing peer category ${category}; it printed: ${attempt.stderr.trim() || "(nothing)"}`,
     );
   }
 }
@@ -337,6 +343,18 @@ export const DEPLOY_PLAN: Readonly<Record<string, readonly string[]>> = {
   ],
 };
 
+/**
+ * What each app the plan builds needs of the workflow's variables, in each configuration that installs the
+ * deploy module, by the directory it is built in. Written out by hand, not read from the files the script
+ * reads: the SPA and the static site read `VITE_API_URL` when they build and throw at load without it; and
+ * the Worker `ssr` reads `API_URL` from its wrangler config at run time and needs no build variable.
+ */
+export const DEPLOY_BUILD_NEEDS: Readonly<
+  Record<string, Readonly<Record<string, readonly string[]>>>
+> = {
+  cloudflare: { "apps/spa": ["VITE_API_URL"], "apps/static": ["VITE_API_URL"] },
+};
+
 /** The plan the dry run printed: each step as `<phase> <cwd>: <command>`, the apps once each in order, the build variables it names. */
 export type DeployPlan = { steps: string[]; apps: string[]; buildVars: string[] };
 
@@ -369,6 +387,69 @@ export function readDeployPlan(stdout: string): DeployPlan {
     }
   }
   return { steps, apps, buildVars: printed.buildVars };
+}
+
+/** The variables each build needs, as the dry run prints them (`requiredBuildVars`: names, by app directory). */
+export function readDeployNeeds(stdout: string): Record<string, string[]> {
+  let printed: unknown;
+  try {
+    printed = JSON.parse(stdout);
+  } catch {
+    throw new Error(`the dry run printed output that is not JSON: ${stdout.trim() || "(nothing)"}`);
+  }
+  const needs = isRecord(printed) ? printed.requiredBuildVars : undefined;
+  if (!isRecord(needs) || !Object.values(needs).every(isStringArray)) {
+    throw new Error(
+      "the dry run printed no `requiredBuildVars`, an object of variable names by app",
+    );
+  }
+  return Object.fromEntries(
+    Object.entries(needs).flatMap(([app, names]) => (isStringArray(names) ? [[app, names]] : [])),
+  );
+}
+
+/** What the script derives from the installed apps is what golden expects each build to need: names the first app that differs. */
+export function expectBuildNeeds(
+  planned: Readonly<Record<string, readonly string[]>>,
+  expected: Readonly<Record<string, readonly string[]>>,
+): void {
+  for (const app of [...new Set([...Object.keys(planned), ...Object.keys(expected)])].sort()) {
+    const got = (planned[app] ?? []).join(", ") || "(nothing)";
+    const want = (expected[app] ?? []).join(", ") || "(nothing)";
+    if (got !== want) {
+      throw new Error(`${app} needs ${got} to build, golden expects ${want}`);
+    }
+  }
+}
+
+/**
+ * A dry run handed variables that lack what a build needs is refused: it exits non-zero, names each app
+ * and each variable it lacks, and prints none of the values it was handed (`secrets`).
+ */
+export function expectBuildVarsRefusal(
+  result: { code: number; output: string },
+  expected: Readonly<Record<string, readonly string[]>>,
+  secrets: readonly string[],
+): void {
+  if (result.code === 0) {
+    throw new Error(
+      "the dry run passed variables that lack what a build needs: it must be refused",
+    );
+  }
+  for (const [app, names] of Object.entries(expected)) {
+    for (const name of [app, ...names]) {
+      if (!result.output.includes(name)) {
+        throw new Error(
+          `the refusal does not name ${name}; it printed: ${result.output.trim() || "(nothing)"}`,
+        );
+      }
+    }
+  }
+  for (const secret of secrets) {
+    if (result.output.includes(secret)) {
+      throw new Error("the refusal printed the value of a variable it was handed");
+    }
+  }
 }
 
 /** The plan is the expected list, in the expected order: names the first step that differs. */
@@ -492,7 +573,7 @@ export function expectWorkflow(
   }
 }
 
-/** `bg add` of a module on a provider it does not accept fails and names the provider that is installed (035: a peer outside the allow-list). */
+/** `bonne-garde add` of a module on a provider it does not accept fails and names the provider that is installed (035: a peer outside the allow-list). */
 export function expectProviderRefusal(
   attempt: Attempt,
   module: string,
@@ -501,13 +582,13 @@ export function expectProviderRefusal(
 ): void {
   if (attempt.code === 0) {
     throw new Error(
-      `\`bg add ${module}\` succeeded in a project on provider/${installed}: it accepts only ${allowed}, so it must be refused`,
+      `\`bonne-garde add ${module}\` succeeded in a project on provider/${installed}: it accepts only ${allowed}, so it must be refused`,
     );
   }
   for (const named of [`accepts only ${allowed}`, `provider/${installed}`]) {
     if (!attempt.stderr.includes(named)) {
       throw new Error(
-        `\`bg add ${module}\` was refused without saying \`${named}\`; it printed: ${attempt.stderr.trim() || "(nothing)"}`,
+        `\`bonne-garde add ${module}\` was refused without saying \`${named}\`; it printed: ${attempt.stderr.trim() || "(nothing)"}`,
       );
     }
   }
@@ -680,13 +761,13 @@ export const FEATURE_REFUSALS: readonly {
 ];
 
 /**
- * Modules `bg list` shows that stay out of every configuration, each with its reason. An entry for
+ * Modules `bonne-garde list` shows that stay out of every configuration, each with its reason. An entry for
  * a module the registry no longer lists fails the run, as for `EXCLUDED`. Empty on purpose.
  */
 export const EXCLUDED_MODULES: Readonly<Record<string, string>> = {};
 
 /**
- * The module ids to `bg add`, read from the `module` lines of `bg list` output
+ * The module ids to `bonne-garde add`, read from the `module` lines of `bonne-garde list` output
  * (`<category>/<id><TAB>module<TAB>description`). `installed` is what golden installs, in that order,
  * over all configurations; every other listed module must be in `exclusions`.
  */
@@ -734,7 +815,7 @@ export function selectModules(
  * The modules of each configuration whose variants declare a tier-2 patch, with the regions each
  * one's patches write there. Variants patch differently (`api/elysia` writes `dev` and `deploy` for
  * `wrangler` and only `dev` for the container), so this is per configuration. Golden checks that
- * `bg add` reports exactly these as `applied` and, run again, as `skipped`: a module that gains or
+ * `bonne-garde add` reports exactly these as `applied` and, run again, as `skipped`: a module that gains or
  * loses a patch is a decision made here, as a module that is not installed is.
  */
 export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
@@ -763,7 +844,6 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "exports[@app/storage/schema]",
       "imports[@app/storage]",
       "r2_buckets",
-      "vars.R2_PUBLIC_URL",
     ],
     "orm/drizzle": [
       "dependencies.@app/db",
@@ -789,7 +869,7 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "scripts.dev:portless",
     ],
     // Not the import into mailer.ts: that is the intention's edit, and the file it edits is
-    // region-checked by the `intent[<id>]` region `bg record` leaves.
+    // region-checked by the `intent[<id>]` region `bonne-garde record` leaves.
     "email/resend": ["dependencies.@app/email"],
     "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
   },
@@ -820,7 +900,7 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
 /**
  * The patches the feature items make (030, 060): the `name@version` dependencies each writes into the
  * package.json of the app its files land in, one region each, owned by the item. A bare name is not one.
- * Golden checks that `bg add` reports exactly these as `applied` and, run again, as `skipped`.
+ * Golden checks that `bonne-garde add` reports exactly these as `applied` and, run again, as `skipped`.
  */
 export const PATCHED_ITEMS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> =
   {
@@ -843,7 +923,7 @@ export const PATCHED_ITEMS: Readonly<Record<string, Readonly<Record<string, read
     dockerfile: {},
   };
 
-/** One patch of a module, as `bg add` prints it (spec 060): its outcome and, per region, what it did. */
+/** One patch of a module, as `bonne-garde add` prints it (spec 060): its outcome and, per region, what it did. */
 export type AddedPatch = {
   type: string;
   file: string;
@@ -852,7 +932,7 @@ export type AddedPatch = {
   regions: { region: string; status: string }[];
 };
 
-/** A module `bg add` reported, with the commands it declares to validate itself (spec 050 step 15) and its patches. */
+/** A module `bonne-garde add` reported, with the commands it declares to validate itself (spec 050 step 15) and its patches. */
 export type AddedModule = { module: string; checks: string[]; patches: AddedPatch[] };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -871,7 +951,9 @@ function readPatch(module: string, patch: unknown): AddedPatch {
     typeof patch.status !== "string" ||
     !Array.isArray(patch.regions)
   ) {
-    throw new Error(`bg add printed a patch of ${module} without type, file, status and regions`);
+    throw new Error(
+      `bonne-garde add printed a patch of ${module} without type, file, status and regions`,
+    );
   }
   const regions = patch.regions.map((region: unknown) => {
     if (
@@ -879,7 +961,9 @@ function readPatch(module: string, patch: unknown): AddedPatch {
       typeof region.region !== "string" ||
       typeof region.status !== "string"
     ) {
-      throw new Error(`bg add printed a region of a patch of ${module} without region and status`);
+      throw new Error(
+        `bonne-garde add printed a region of a patch of ${module} without region and status`,
+      );
     }
     return { region: region.region, status: region.status };
   });
@@ -893,7 +977,7 @@ function readPatch(module: string, patch: unknown): AddedPatch {
 }
 
 /**
- * The modules in the JSON `bg add` prints, which is where the packed CLI says what it installed
+ * The modules in the JSON `bonne-garde add` prints, which is where the packed CLI says what it installed
  * and what each module checks: `add` prints those commands and does not run them. Fails when a
  * module in `expected` is not among them.
  */
@@ -902,35 +986,37 @@ export function readAddedModules(stdout: string, expected: readonly string[]): A
   try {
     parsed = JSON.parse(stdout);
   } catch {
-    throw new Error("bg add did not print JSON");
+    throw new Error("bonne-garde add did not print JSON");
   }
   if (!isRecord(parsed) || !Array.isArray(parsed.modules)) {
-    throw new Error("bg add printed no `modules` array");
+    throw new Error("bonne-garde add printed no `modules` array");
   }
   const added = parsed.modules.map((entry: unknown): AddedModule => {
     if (!isRecord(entry) || typeof entry.module !== "string") {
-      throw new Error("bg add printed a module with no `module` key");
+      throw new Error("bonne-garde add printed a module with no `module` key");
     }
     const checks = entry.checks ?? [];
     if (!isStringArray(checks)) {
-      throw new Error(`bg add printed \`checks\` of ${entry.module} that is not a list of strings`);
+      throw new Error(
+        `bonne-garde add printed \`checks\` of ${entry.module} that is not a list of strings`,
+      );
     }
     const patches = entry.patches ?? [];
     if (!Array.isArray(patches)) {
-      throw new Error(`bg add printed \`patches\` of ${entry.module} that is not a list`);
+      throw new Error(`bonne-garde add printed \`patches\` of ${entry.module} that is not a list`);
     }
     const { module } = entry;
     return { module, checks, patches: patches.map((patch) => readPatch(module, patch)) };
   });
   const missing = expected.filter((name) => !added.some(({ module }) => module === name));
   if (missing.length > 0) {
-    throw new Error(`bg add did not report ${missing.join(", ")}`);
+    throw new Error(`bonne-garde add did not report ${missing.join(", ")}`);
   }
   return added;
 }
 
 /**
- * The dependencies the items added, in the `itemPatches` `bg add` prints (030), shaped as the modules' are
+ * The dependencies the items added, in the `itemPatches` `bonne-garde add` prints (030), shaped as the modules' are
  * (an item is the owner of its regions) so `expectPatches` and `expectRegionsRecorded` read both alike.
  */
 export function readAddedItems(stdout: string): AddedModule[] {
@@ -938,15 +1024,15 @@ export function readAddedItems(stdout: string): AddedModule[] {
   try {
     parsed = JSON.parse(stdout);
   } catch {
-    throw new Error("bg add did not print JSON");
+    throw new Error("bonne-garde add did not print JSON");
   }
   if (!isRecord(parsed) || !Array.isArray(parsed.itemPatches)) {
-    throw new Error("bg add printed no `itemPatches` array");
+    throw new Error("bonne-garde add printed no `itemPatches` array");
   }
   const byItem = new Map<string, AddedPatch[]>();
   for (const entry of parsed.itemPatches as unknown[]) {
     if (!isRecord(entry) || typeof entry.item !== "string") {
-      throw new Error("bg add printed an item patch with no `item` key");
+      throw new Error("bonne-garde add printed an item patch with no `item` key");
     }
     const { item, ...patch } = entry;
     byItem.set(item, [...(byItem.get(item) ?? []), readPatch(item, patch)]);
@@ -956,7 +1042,7 @@ export function readAddedItems(stdout: string): AddedModule[] {
 
 /**
  * Spec 060: a failed patch is never silent, and a re-add finds every region present and equal.
- * Checks every patch `bg add` reported against `status`, and the regions of each module against
+ * Checks every patch `bonne-garde add` reported against `status`, and the regions of each module against
  * `expected`, which is where golden says which modules patch what.
  */
 export function expectPatches(
@@ -996,7 +1082,7 @@ export function expectPatches(
 }
 
 /**
- * The regions `bg add` reported must be in `bg.json` under `regions`, owned by the module that
+ * The regions `bonne-garde add` reported must be in `bg.json` under `regions`, owned by the module that
  * reported them: the printed outcome and the recorded state are two things, and this ties them.
  */
 export function expectRegionsRecorded(manifest: unknown, added: readonly AddedModule[]): void {
@@ -1011,7 +1097,7 @@ export function expectRegionsRecorded(manifest: unknown, added: readonly AddedMo
         const owner = isRecord(owned) ? owned[region] : undefined;
         if (owner !== module) {
           throw new Error(
-            `bg.json records ${region} of ${file} for ${String(owner)}, and bg add reported it for ${module}`,
+            `bg.json records ${region} of ${file} for ${String(owner)}, and bonne-garde add reported it for ${module}`,
           );
         }
       }
@@ -1044,22 +1130,27 @@ export function diffTrees(
   });
 }
 
-/** Every file of a project with its text, `node_modules` and `.git` left out. */
-async function snapshot(root: string): Promise<Record<string, string>> {
+/**
+ * Every file of a project, `node_modules` and `.git` left out: `bg.json` as text, which `diffTrees` settles,
+ * and any other by the sha256 of its bytes. Decoded as text, two icons that differ by an invalid byte
+ * read the same, and a re-add that changed one would pass for a re-add that changed nothing.
+ */
+export async function snapshot(root: string): Promise<Record<string, string>> {
   const tree: Record<string, string> = {};
   for await (const path of new Bun.Glob("**/*").scan({ cwd: root, dot: true, onlyFiles: true })) {
     if (!/^(?:node_modules|\.git)\//.test(path)) {
-      tree[path] = await Bun.file(join(root, path)).text();
+      const file = Bun.file(join(root, path));
+      tree[path] = path === "bg.json" ? await file.text() : sha256(await file.bytes());
     }
   }
   return tree;
 }
 
 /**
- * The argv of the one `bg add` golden runs per configuration: every module, then every item the
+ * The argv of the one `bonne-garde add` golden runs per configuration: every module, then every item the
  * configuration has. One call, so a module and the items that need it are planned together, and never
  * `--force`: two installs that write the same file have to fail here and not be settled by an
- * overwrite. A name given twice, and no module, fail, so a broken `bg list` is not a green run (an
+ * overwrite. A name given twice, and no module, fail, so a broken `bonne-garde list` is not a green run (an
  * empty item list is `selectItems`'s to refuse: a configuration may have none).
  */
 export function addArguments(modules: readonly string[], items: readonly string[]): string[] {
@@ -1069,9 +1160,298 @@ export function addArguments(modules: readonly string[], items: readonly string[
   const names = [...modules, ...items];
   const twice = names.filter((name, index) => names.indexOf(name) !== index);
   if (twice.length > 0) {
-    throw new Error(`named twice in one \`bg add\`: ${[...new Set(twice)].join(", ")}`);
+    throw new Error(`named twice in one \`bonne-garde add\`: ${[...new Set(twice)].join(", ")}`);
   }
   return ["add", ...names, "--yes", "--no-install"];
+}
+
+const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+
+/** Where `config/branding` puts the favicons in a project. */
+export const FAVICONS_DIR = "packages/config/assets/favicons";
+
+/**
+ * The favicons that are binary template files (035): the first the registry ships. `favicon.svg` and
+ * `site.webmanifest` are text, and the project holds those like any other file.
+ */
+export const BINARY_FAVICONS = [
+  "android-chrome-192x192.png",
+  "android-chrome-512x512.png",
+  "apple-touch-icon.png",
+  "favicon-16x16.png",
+  "favicon-32x32.png",
+  "favicon-48x48.png",
+  "favicon.ico",
+] as const;
+
+/** Whether the configuration installs the favicons and the SPA that serves them, so golden reads them in the build. */
+export function hasFavicons(configuration: Configuration): boolean {
+  return (
+    configuration.modules.includes("config/branding") && configuration.modules.includes("web/spa")
+  );
+}
+
+/**
+ * Each binary favicon of the project is the registry's, byte for byte, and `bg.json` records the sha256 of
+ * those bytes: the file survived the transport, and what `doctor` hashes is what was written. Names every
+ * favicon that is not, so one run shows them all.
+ */
+export async function expectFaviconsIdentical(registry: string, project: string): Promise<void> {
+  const manifest: unknown = JSON.parse(await Bun.file(join(project, "bg.json")).text());
+  const recorded = isRecord(manifest) && isRecord(manifest.files) ? manifest.files : {};
+  const problems: string[] = [];
+  for (const name of BINARY_FAVICONS) {
+    const path = `${FAVICONS_DIR}/${name}`;
+    const written = Bun.file(join(project, path));
+    if (!(await written.exists())) {
+      problems.push(`${path} is missing from the project`);
+      continue;
+    }
+    const actual = sha256(await written.bytes());
+    const expected = sha256(
+      await Bun.file(join(registry, "modules/config/branding/template", path)).bytes(),
+    );
+    if (actual !== expected) {
+      problems.push(`${path} differs from the registry's: sha256 ${actual}, expected ${expected}`);
+    }
+    const record = recorded[path];
+    const sha = isRecord(record) ? record.sha256 : undefined;
+    if (sha === undefined) {
+      problems.push(`bg.json records no sha256 for ${path}`);
+    } else if (sha !== actual) {
+      problems.push(
+        `bg.json records sha256 ${String(sha)} for ${path}, and the file's is ${actual}`,
+      );
+    }
+  }
+  if (problems.length > 0) {
+    throw new Error(problems.join("; "));
+  }
+}
+
+/**
+ * The `href` of the manifest a built `index.html` links, which has to be a root URL: a `data:` URL is what
+ * Vite makes of a manifest it bundles, and no path in it, the icons' included, resolves against it.
+ */
+export function manifestHref(html: string): string {
+  for (const [tag] of html.matchAll(/<link\b[^>]*>/g)) {
+    if (!/\brel="manifest"/.test(tag)) {
+      continue;
+    }
+    const href = /\bhref="([^"]*)"/.exec(tag)?.[1];
+    if (href === undefined || href.startsWith("data:")) {
+      throw new Error(
+        `index.html links its manifest as ${href === undefined ? "nothing" : "a data: URL"}, not as a file of the build`,
+      );
+    }
+    if (!href.startsWith("/")) {
+      throw new Error(`index.html links its manifest as ${href}, which is not a root URL`);
+    }
+    return href;
+  }
+  throw new Error("index.html links no manifest");
+}
+
+/** The path of the build that each icon of a web manifest names, resolved against the manifest's own URL as a browser does. */
+export function manifestIconPaths(manifest: string, href: string): string[] {
+  const parsed: unknown = JSON.parse(manifest);
+  const icons = isRecord(parsed) && Array.isArray(parsed.icons) ? parsed.icons : [];
+  if (icons.length === 0) {
+    throw new Error(`the manifest ${href} names no icons`);
+  }
+  const origin = "http://site.test";
+  return icons.map((icon: unknown) => {
+    const src = isRecord(icon) ? icon.src : undefined;
+    if (typeof src !== "string") {
+      throw new Error(`an icon of the manifest ${href} has no src`);
+    }
+    const url = new URL(src, `${origin}${href}`);
+    if (url.origin !== origin) {
+      throw new Error(`the icon ${src} of the manifest ${href} is not a path of the build`);
+    }
+    return url.pathname;
+  });
+}
+
+/**
+ * The built client (`build/client`) serves what its `index.html` links: the manifest is a file of it, and every
+ * icon the manifest names is one too. With `source`, the favicons directory it was copied from, each icon is
+ * also that file byte for byte. Names every icon the build lacks, and returns the paths of the icons.
+ */
+export async function expectManifestEmitted(client: string, source?: string): Promise<string[]> {
+  const href = manifestHref(await Bun.file(join(client, "index.html")).text());
+  const manifest = Bun.file(join(client, href));
+  if (!(await manifest.exists())) {
+    throw new Error(`the manifest ${href} is not in the build`);
+  }
+  const icons = manifestIconPaths(await manifest.text(), href);
+  const problems: string[] = [];
+  for (const icon of icons) {
+    const built = Bun.file(join(client, icon));
+    if (!(await built.exists())) {
+      problems.push(`${icon} is not in the build`);
+      continue;
+    }
+    const name = icon.split("/").pop() ?? icon;
+    if (
+      source !== undefined &&
+      sha256(await built.bytes()) !== sha256(await Bun.file(join(source, name)).bytes())
+    ) {
+      problems.push(`${name} of the build differs from ${join(source, name)}`);
+    }
+  }
+  if (problems.length > 0) {
+    throw new Error(
+      `the manifest ${href} names icons the build does not serve: ${problems.join("; ")}`,
+    );
+  }
+  return icons;
+}
+
+/** The web shells that serve the favicons: `web/<shell>` is the module that ships each. */
+const FAVICON_SHELLS = ["spa", "ssr", "static"] as const;
+export type FaviconShell = (typeof FAVICON_SHELLS)[number];
+
+/** The shells of the configuration that serve the favicons: the ones it installs, once it installs the module that ships them. */
+export function faviconShells(configuration: Configuration): FaviconShell[] {
+  if (!configuration.modules.includes("config/branding")) {
+    return [];
+  }
+  return FAVICON_SHELLS.filter((shell) => configuration.modules.includes(`web/${shell}`));
+}
+
+/** What a page links to name its icons and its manifest. */
+const FAVICON_RELS = new Set(["icon", "apple-touch-icon", "manifest"]);
+
+/**
+ * The `href` of every `<link>` of a page that is an icon or the manifest. Each has to be a root URL: a
+ * `data:` URL is what Vite makes of a file it bundles, and no path in it, a manifest's icons included, resolves.
+ */
+export function faviconHrefs(html: string): string[] {
+  const hrefs: string[] = [];
+  for (const [tag] of html.matchAll(/<link\b[^>]*>/g)) {
+    const rel = /\brel="([^"]*)"/.exec(tag)?.[1];
+    if (rel === undefined || !FAVICON_RELS.has(rel)) {
+      continue;
+    }
+    const href = /\bhref="([^"]*)"/.exec(tag)?.[1];
+    if (href === undefined) {
+      throw new Error(`a <link rel="${rel}"> of the page has no href`);
+    }
+    if (href.startsWith("data:")) {
+      throw new Error(`the page links its ${rel} as a data: URL, not as a file of the build`);
+    }
+    if (!href.startsWith("/")) {
+      throw new Error(`the page links its ${rel} as ${href}, which is not a root URL`);
+    }
+    hrefs.push(href);
+  }
+  if (hrefs.length === 0) {
+    throw new Error("the page links no favicon");
+  }
+  return hrefs;
+}
+
+/** What of `names` the `client` build lacks or holds other than as `source` has it, byte for byte, each as a sentence. */
+async function unbuilt(
+  client: string,
+  source: string,
+  names: readonly string[],
+): Promise<string[]> {
+  const problems: string[] = [];
+  for (const name of names) {
+    const built = Bun.file(join(client, name));
+    if (!(await built.exists())) {
+      problems.push(`${name} is not in the build`);
+    } else if (sha256(await built.bytes()) !== sha256(await Bun.file(join(source, name)).bytes())) {
+      problems.push(`${name} of the build differs from ${join(source, name)}`);
+    }
+  }
+  return problems;
+}
+
+/**
+ * The built client holds every file of the favicons directory under its own name, byte for byte: the
+ * manifest and the icons it names, and the ones the page links and the manifest does not. Names each it
+ * lacks or changed, and returns the names.
+ */
+export async function expectBuildHoldsFavicons(client: string, source: string): Promise<string[]> {
+  const names = (await readdir(source)).sort();
+  const problems = await unbuilt(client, source, names);
+  if (problems.length > 0) {
+    throw new Error(`the build does not hold the favicons of ${source}: ${problems.join("; ")}`);
+  }
+  return names;
+}
+
+/** The files under `dir`, relative to it, sorted; none when `dir` does not exist. */
+async function filesUnder(dir: string): Promise<string[]> {
+  const entries = await readdir(dir, { recursive: true, withFileTypes: true }).catch(
+    (error: unknown) => {
+      if (isRecord(error) && error.code === "ENOENT") {
+        return [];
+      }
+      throw error;
+    },
+  );
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => relative(dir, join(entry.parentPath, entry.name)))
+    .sort();
+}
+
+/**
+ * The app's own `public/` is in its build next to the favicons: Vite takes one `publicDir`, which is why
+ * the favicons are not it. Names each file of `public/` the build lacks or changed, and returns them.
+ */
+export async function expectOwnPublicKept(app: string): Promise<string[]> {
+  const source = join(app, "public");
+  const names = await filesUnder(source);
+  const problems = await unbuilt(join(app, "build/client"), source, names);
+  if (problems.length > 0) {
+    throw new Error(`the build does not hold the files of ${source}: ${problems.join("; ")}`);
+  }
+  return names;
+}
+
+/**
+ * An app that answers over HTTP at `origin` links the manifest and the icons as root URLs and serves each as
+ * the file `source` holds: the manifest as `application/manifest+json`, the icons it names as `image/png`,
+ * the other links with a 200. Returns the paths it asked for.
+ */
+export async function expectFaviconsServed(origin: string, source: string): Promise<string[]> {
+  const get = async (path: string) => {
+    const response = await fetch(`${origin}${path}`, { signal: AbortSignal.timeout(5000) });
+    return {
+      served: { status: response.status, contentType: response.headers.get("content-type") },
+      bytes: await response.bytes(),
+    };
+  };
+  const html = new TextDecoder().decode((await get("/")).bytes);
+  const links = faviconHrefs(html);
+  const manifestUrl = manifestHref(html);
+  const manifest = await get(manifestUrl);
+  expectServed(`GET ${manifestUrl}`, manifest.served, 200, "application/manifest+json");
+  const icons = manifestIconPaths(new TextDecoder().decode(manifest.bytes), manifestUrl);
+
+  const paths = [...new Set([...links, ...icons])];
+  const problems: string[] = [];
+  for (const path of paths) {
+    const { served, bytes } = await get(path);
+    if (icons.includes(path)) {
+      expectServed(`GET ${path}`, served, 200, "image/png");
+    } else if (served.status !== 200) {
+      throw new Error(`GET ${path}: expected 200, got ${served.status}`);
+    }
+    const file = join(source, path.split("/").pop() ?? path);
+    if (sha256(bytes) !== sha256(await Bun.file(file).bytes())) {
+      problems.push(`${path} differs from ${file}`);
+    }
+  }
+  if (problems.length > 0) {
+    throw new Error(`the app serves favicons other than the project's: ${problems.join("; ")}`);
+  }
+  return paths;
 }
 
 /** The module whose package is `<scope>/email`, whose tests golden counts. */
@@ -1090,7 +1470,7 @@ export const MAILER_FILE = "packages/auth/src/mailer.ts";
 const WIRED_TEST_FILE = "packages/auth/src/mailer.wired.test.ts";
 
 /**
- * The intentions `bg add` leaves pending (050 step 14, 065), per configuration: what the variants it
+ * The intentions `bonne-garde add` leaves pending (050 step 14, 065), per configuration: what the variants it
  * selects ship. Golden resolves each the way an executor would, and a configuration that gains one is a
  * decision made here. The dockerfile project has no auth, so email selects the variant that wires nothing
  * and nothing is pending: it installs cleanly and `doctor --strict` is green as it is.
@@ -1101,20 +1481,20 @@ export const PENDING: Readonly<Record<string, readonly string[]>> = {
   fronts: [],
 };
 
-/** The ids in the `pendingIntentions` list `bg add` prints. */
+/** The ids in the `pendingIntentions` list `bonne-garde add` prints. */
 export function readPendingIntentions(stdout: string): string[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stdout);
   } catch {
-    throw new Error("bg add did not print JSON");
+    throw new Error("bonne-garde add did not print JSON");
   }
   if (!isRecord(parsed) || !Array.isArray(parsed.pendingIntentions)) {
-    throw new Error("bg add printed no `pendingIntentions` array");
+    throw new Error("bonne-garde add printed no `pendingIntentions` array");
   }
   return parsed.pendingIntentions.map((entry: unknown) => {
     if (!isRecord(entry) || typeof entry.id !== "string") {
-      throw new Error("bg add printed a pending intention without an id");
+      throw new Error("bonne-garde add printed a pending intention without an id");
     }
     return entry.id;
   });
@@ -1124,15 +1504,64 @@ export function readPendingIntentions(stdout: string): string[] {
 export function expectPending(reported: readonly string[], expected: readonly string[]): void {
   if (JSON.stringify([...reported].sort()) !== JSON.stringify([...expected].sort())) {
     throw new Error(
-      `bg add left pending [${reported.join(", ")}], golden expects [${expected.join(", ")}]`,
+      `bonne-garde add left pending [${reported.join(", ")}], golden expects [${expected.join(", ")}]`,
+    );
+  }
+}
+
+/** A module `bonne-garde add` planned again though the command did not name it (050 step 7): the variant it left and the one it took. */
+export type Reselected = { module: string; from: string; to: string };
+
+/** The modules in the `reselected` list `bonne-garde add` prints. */
+export function readReselected(stdout: string): Reselected[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    throw new Error("bonne-garde add did not print JSON");
+  }
+  if (!isRecord(parsed) || !Array.isArray(parsed.reselected)) {
+    throw new Error("bonne-garde add printed no `reselected` array");
+  }
+  return parsed.reselected.map((entry: unknown) => {
+    if (
+      !isRecord(entry) ||
+      typeof entry.module !== "string" ||
+      typeof entry.from !== "string" ||
+      typeof entry.to !== "string"
+    ) {
+      throw new Error("bonne-garde add printed a reselected module without module, from and to");
+    }
+    return { module: entry.module, from: entry.from, to: entry.to };
+  });
+}
+
+/** The modules planned again are the ones golden expects: no more, which would be an add that touches what it was not asked to, and no fewer. */
+export function expectReselected(
+  reported: readonly Reselected[],
+  expected: readonly Reselected[],
+): void {
+  const show = (list: readonly Reselected[]) =>
+    list.map(({ module, from, to }) => `${module} ${from} -> ${to}`).join(", ");
+  if (JSON.stringify(reported) !== JSON.stringify(expected)) {
+    throw new Error(
+      `bonne-garde add planned again [${show(reported)}], golden expects [${show(expected)}]`,
     );
   }
 }
 
 /**
+ * The other order (050 step 7, 035): email installed first, so on the variant that wires nothing, then
+ * auth, whose install has to plan email again on the variant that matches it. The configurations
+ * install auth first, which is the order 035 gives, so this has a project of its own.
+ */
+export const RESELECT_BASE: readonly string[] = [...WITHOUT_ORM, "orm/drizzle", "email/resend"];
+export const RESELECTED: Reselected = { module: EMAIL_MODULE, from: "default", to: "better-auth" };
+
+/**
  * The edit `email/resend/wire-email-into-auth` describes, as an executor makes it: `mailer` becomes
  * `emailMailer`, imported from the email package in place of the import of the logger that only the old
- * initializer used. `bg add` imports nothing into `mailer.ts`: the whole edit is the intention's. It fails,
+ * initializer used. `bonne-garde add` imports nothing into `mailer.ts`: the whole edit is the intention's. It fails,
  * naming what it looked for, when auth ships something else or the edit was made already, so a seam that
  * moved is not edited blind.
  */
@@ -1215,7 +1644,7 @@ test("a password reset request is sent the reset email, with the page that takes
  * typecheck and tests, which run that test, have passed.
  */
 export type Resolution = {
-  /** The module that ships the intention, whose `bg add` stages it and whose region `bg record` leaves. */
+  /** The module that ships the intention, whose `bonne-garde add` stages it and whose region `bonne-garde record` leaves. */
   module: string;
   /** The module that owns the file the edit lands in: it has to survive its own re-add. */
   editedOwner: string;
@@ -1248,7 +1677,7 @@ function resolution(id: string): Resolution {
   return found;
 }
 
-/** The region `bg record` leaves on a file an intention edited (060): `intent[<id>]`, spelled out here as a consumer reads it. */
+/** The region `bonne-garde record` leaves on a file an intention edited (060): `intent[<id>]`, spelled out here as a consumer reads it. */
 export function intentRegion(id: string): string {
   return `intent[${id}]`;
 }
@@ -1261,7 +1690,7 @@ function regionsOf(manifest: unknown): Record<string, unknown> {
 }
 
 /**
- * After `bg record`, `bg.json` holds the intention's region on the file it edited, owned by the module
+ * After `bonne-garde record`, `bg.json` holds the intention's region on the file it edited, owned by the module
  * that ships it. That region is what makes `doctor --strict` read the edit as the project's, and what
  * makes the owner's re-add keep it: a recorded sha would have the owner overwrite it.
  */
@@ -1274,7 +1703,9 @@ export function expectIntentRegion(
   const owned = regionsOf(manifest)[file];
   const found = isRecord(owned) ? owned[intentRegion(id)] : undefined;
   if (found === undefined) {
-    throw new Error(`bg.json records no ${intentRegion(id)} on ${file} after \`bg record ${id}\``);
+    throw new Error(
+      `bg.json records no ${intentRegion(id)} on ${file} after \`bonne-garde record ${id}\``,
+    );
   }
   if (found !== owner) {
     throw new Error(
@@ -1283,27 +1714,27 @@ export function expectIntentRegion(
   }
 }
 
-/** Before `bg record`, no file carries the region: it is what the record leaves, never what an add does. */
+/** Before `bonne-garde record`, no file carries the region: it is what the record leaves, never what an add does. */
 export function expectNoIntentRegion(manifest: unknown, id: string): void {
   for (const [file, owned] of Object.entries(regionsOf(manifest))) {
     if (isRecord(owned) && Object.hasOwn(owned, intentRegion(id))) {
       throw new Error(
-        `bg.json already records ${intentRegion(id)} on ${file}, before \`bg record\``,
+        `bg.json already records ${intentRegion(id)} on ${file}, before \`bonne-garde record\``,
       );
     }
   }
 }
 
-/** The files `bg add` printed under `kept`: left as the project has them, since they carry recorded regions. */
+/** The files `bonne-garde add` printed under `kept`: left as the project has them, since they carry recorded regions. */
 export function readKept(stdout: string): string[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stdout);
   } catch {
-    throw new Error("bg add did not print JSON");
+    throw new Error("bonne-garde add did not print JSON");
   }
   if (!isRecord(parsed) || !isStringArray(parsed.kept)) {
-    throw new Error("bg add printed no `kept` list");
+    throw new Error("bonne-garde add printed no `kept` list");
   }
   return parsed.kept;
 }
@@ -1312,7 +1743,7 @@ export function readKept(stdout: string): string[] {
 export function expectKept(stdout: string, file: string): void {
   if (!readKept(stdout).includes(file)) {
     throw new Error(
-      `bg add did not keep ${file}: the edit an intention made to it is the project's`,
+      `bonne-garde add did not keep ${file}: the edit an intention made to it is the project's`,
     );
   }
 }
@@ -1383,10 +1814,11 @@ export function expectNothingToApply(stdout: string): void {
 /**
  * How many tests each workspace ran, read from the prefixed output of the root `test` script: the
  * `Ran N tests` line of `bun test` (which prints it on stderr) and the `Tests  N passed` line of Vitest.
+ * Vitest colours that line when `CI` is set, so the colours are stripped first.
  */
 export function testCounts(output: string): Record<string, number> {
   const counts: Record<string, number> = {};
-  for (const line of output.split("\n")) {
+  for (const line of stripVTControlCharacters(output).split("\n")) {
     const [, workspace, ran] = /^\[(\S+)#test\]\s+Tests\s+(\d+) passed/.exec(line) ?? [];
     if (workspace !== undefined && ran !== undefined) {
       counts[workspace] = Number(ran);
@@ -1402,7 +1834,7 @@ export const AUTH_MIN_TESTS = 53;
  * How many tests the storage package runs in the project: the legacy media tests (r2, routes, e2e)
  * ported, and the ones the extraction added. Fewer means the root `test` stopped reaching them.
  */
-export const STORAGE_MIN_TESTS = 65;
+export const STORAGE_MIN_TESTS = 75;
 
 /** Whether the configuration installs the feature items, which need the auth module. */
 export function hasFeatures(configuration: Configuration): boolean {
@@ -1444,7 +1876,7 @@ export function hasPortless(configuration: Configuration): boolean {
  * How many tests the launcher runs in the project (`vp test scripts/dev-portless.test.ts`: it is a
  * root script, so the root `test` fan-out over workspaces never reaches it); fewer means they went.
  */
-export const PORTLESS_MIN_TESTS = 33;
+export const PORTLESS_MIN_TESTS = 36;
 
 /** The count in the `Tests  N passed` line of the summary Vitest prints. */
 export function ranTests(output: string): number {
@@ -1455,15 +1887,26 @@ export function ranTests(output: string): number {
   return Number(ran);
 }
 
-/** One app of the launcher's plan, as golden expects it: its directory, its portless name and the command. */
-export type ExpectedPortlessApp = { dir: string; name: string; cmd: string[] };
+/**
+ * One app of the launcher's plan, as golden expects it: its directory, its portless name and the
+ * command, and whether it is a Worker or a Pages project that a Vite command runs, which has to be
+ * told to read the URLs from its process environment.
+ */
+export type ExpectedPortlessApp = {
+  dir: string;
+  name: string;
+  cmd: string[];
+  includesProcessEnv?: true;
+};
 
 /**
  * What `scripts/dev-portless.ts --dry-run` has to plan in a configuration, written out by hand and not
  * by the launcher's own rules, for a project whose root package is `slug` and a proxy serving `tld`: the
  * apps the modules install, and for each the command that follows from its `dev` script. The Worker API
  * runs through wrangler with the free port and every sibling's URL, the container's API reads PORT, and a front
- * runs `react-router dev` as it is, which portless recognises by name.
+ * runs `react-router dev` as it is, which portless recognises by name. The fronts of the cloudflare configuration
+ * each have a wrangler config, so each is told `CLOUDFLARE_INCLUDE_PROCESS_ENV`: the Cloudflare Vite plugin
+ * ignores the process environment otherwise, and `ssr` would keep the `localhost` API_URL of its config.
  */
 export function expectedPortlessApps(
   configuration: string,
@@ -1475,8 +1918,11 @@ export function expectedPortlessApps(
     name: `${dir}.${slug}`,
     cmd: ["portless", "run", "--name", `${dir}.${slug}`, ...run],
   });
-  const url = (dir: string, path = "") => `https://${dir}.${slug}.${tld}${path}`;
-  const front = (dir: string) => app(dir, ["react-router", "dev"]);
+  const url = (dir: string) => `https://${dir}.${slug}.${tld}`;
+  const front = (dir: string): ExpectedPortlessApp => ({
+    ...app(dir, ["react-router", "dev"]),
+    ...(configuration === "cloudflare" ? { includesProcessEnv: true as const } : {}),
+  });
 
   if (configuration === "cloudflare") {
     return [
@@ -1487,8 +1933,6 @@ export function expectedPortlessApps(
         "wrangler",
         "--var",
         `API_URL:${url("api")}`,
-        "--var",
-        `R2_PUBLIC_URL:${url("api", "/v1/media/file")}`,
         "--var",
         `SPA_URL:${url("spa")}`,
         "--var",
@@ -1560,7 +2004,8 @@ function readPortlessPlan(stdout: string): PlannedPortlessApp[] {
 /**
  * The launcher's dry run planned exactly the apps `expected` names, each with the name, the address under
  * `tld`, the directory and the command golden expects, and told every app but the API where the API is
- * (`API_URL` and `VITE_API_URL`: a Worker is told through `--var`, which the command carries).
+ * (`API_URL` and `VITE_API_URL`: a Worker is told through `--var`, which the command carries). An app with a
+ * wrangler config that a Vite command runs is told `CLOUDFLARE_INCLUDE_PROCESS_ENV=true`, and no other app is.
  */
 export function expectPortlessPlan(
   stdout: string,
@@ -1609,6 +2054,15 @@ export function expectPortlessPlan(
       }
     }
   }
+  for (const want of expected) {
+    const includes =
+      planned.find(({ dir }) => dir === want.dir)?.env.CLOUDFLARE_INCLUDE_PROCESS_ENV === "true";
+    if (includes !== (want.includesProcessEnv === true)) {
+      throw new Error(
+        `${want.dir}: CLOUDFLARE_INCLUDE_PROCESS_ENV is ${includes ? "set" : "not set"}, expected it ${want.includesProcessEnv === true ? "set" : "not set"}`,
+      );
+    }
+  }
 }
 
 /** How a command ended, for one that is expected to fail. */
@@ -1618,18 +2072,18 @@ export type Attempt = { code: number; stderr: string };
  * An item that lands in `packages/ui` is refused until a `ui` module is named, and one that lands in an
  * app's `features` folder until an `auth` module is (030). Golden tries each with the packed CLI in a
  * project that has none, before installing anything: the refusal has to carry the command that fixes
- * it, every missing module in it, as an agent running `bg add` reads it and nothing else.
+ * it, every missing module in it, as an agent running `bonne-garde add` reads it and nothing else.
  */
 export function expectRefusal(attempt: Attempt, item: string, ...modules: string[]): void {
   if (attempt.code === 0) {
     throw new Error(
-      `\`bg add ${item}\` succeeded in a project with no ${modules.join(" and ")}: it must be refused`,
+      `\`bonne-garde add ${item}\` succeeded in a project with no ${modules.join(" and ")}: it must be refused`,
     );
   }
-  const fix = `bg add ${[...modules, item].join(" ")}`;
+  const fix = `${cliRunner()} add ${[...modules, item].join(" ")}`;
   if (!attempt.stderr.includes(fix)) {
     throw new Error(
-      `\`bg add ${item}\` was refused without naming \`${fix}\`; it printed: ${attempt.stderr.trim() || "(nothing)"}`,
+      `\`bonne-garde add ${item}\` was refused without naming \`${fix}\`; it printed: ${attempt.stderr.trim() || "(nothing)"}`,
     );
   }
 }
@@ -1789,6 +2243,27 @@ async function captureBoth(
   return { stdout, stderr };
 }
 
+/** A command that has to fail, run with some variables set, and everything it printed: the deploy script logs its refusals on stdout. */
+async function refused(
+  argv: string[],
+  cwd: string,
+  env: Record<string, string>,
+): Promise<{ code: number; output: string }> {
+  const proc = Bun.spawn(argv, {
+    cwd,
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, ...env },
+  });
+  const [code, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  return { code, output: `${stdout}${stderr}` };
+}
+
 async function attempt(argv: string[], cwd: string, timeoutMs?: number): Promise<Attempt> {
   const proc = Bun.spawn(argv, {
     cwd,
@@ -1816,25 +2291,24 @@ async function phase<T>(timings: Timing[], name: string, body: () => Promise<T>)
 
 async function golden(work: string, timings: Timing[]): Promise<void> {
   const cli = join(work, "cli");
-  // `node`, not `bun`: the packed CLI has to run where `npm create` and `pnpm create` run it (040).
-  const bg = (...args: string[]) => ["node", join(cli, "dist/bin.js"), ...args];
+  const bonneGarde = (...args: string[]) => [NODE, join(cli, "bin.js"), ...args];
   const registry = `local:${join(ROOT, "registry")}`;
 
   await phase(timings, "pack", async () => {
     await run([BUN, "run", "pack:cli"], ROOT);
     await cp(PACKED_CLI, cli, { recursive: true });
-    // What `bunx create-bonne-garde` does first: the packed package has dependencies of its own,
+    // What `npx bonne-garde` does first: the packed package has dependencies of its own,
     // and this copy sits in a temp directory with no node_modules to find them in.
     await run([BUN, "install"], cli);
   });
 
   const { items, excluded } = await phase(timings, "list", async () => {
     const fromItems = selectItems(
-      await capture(bg("list", "--items", "--source", registry), work),
+      await capture(bonneGarde("list", "--items", "--source", registry), work),
       EXCLUDED,
     );
     const fromModules = selectModules(
-      await capture(bg("list", "--source", registry), work),
+      await capture(bonneGarde("list", "--source", registry), work),
       MODULES,
       EXCLUDED_MODULES,
     );
@@ -1848,23 +2322,29 @@ async function golden(work: string, timings: Timing[]): Promise<void> {
   }
 
   for (const [index, configuration] of CONFIGURATIONS.entries()) {
-    await configured(work, timings, { bg, registry, items, configuration, first: index === 0 });
+    await configured(work, timings, {
+      bonneGarde,
+      registry,
+      items,
+      configuration,
+      first: index === 0,
+    });
   }
 }
 
-/** One configuration, from `bg create` to the modules' `checks`. */
+/** One configuration, from `bonne-garde create` to the modules' `checks`. */
 async function configured(
   work: string,
   timings: Timing[],
   options: {
-    bg: (...args: string[]) => string[];
+    bonneGarde: (...args: string[]) => string[];
     registry: string;
     items: readonly string[];
     configuration: Configuration;
     first: boolean;
   },
 ): Promise<void> {
-  const { bg, registry, configuration, first } = options;
+  const { bonneGarde, registry, configuration, first } = options;
   const { name } = configuration;
   const modules = addedModules(configuration);
   const pm = runnerOf(packageManagerOf(configuration));
@@ -1879,7 +2359,7 @@ async function configured(
   console.log(`\ngolden: configuration ${name}: ${configuration.modules.join(" ")}`);
   await step("create", () =>
     run(
-      bg(
+      bonneGarde(
         "create",
         project,
         "--pm",
@@ -1905,40 +2385,43 @@ async function configured(
       }
       const manifest = await Bun.file(join(project, "bg.json")).text();
       expectRefusal(
-        await attempt(bg("add", REFUSED_ITEM, "--yes", "--no-install"), project),
+        await attempt(bonneGarde("add", REFUSED_ITEM, "--yes", "--no-install"), project),
         REFUSED_ITEM,
         REFUSED_MODULE,
       );
       if ((await Bun.file(join(project, "bg.json")).text()) !== manifest) {
-        throw new Error(`the refused \`bg add ${REFUSED_ITEM}\` changed bg.json`);
+        throw new Error(`the refused \`bonne-garde add ${REFUSED_ITEM}\` changed bg.json`);
       }
       expectRefusal(
-        await attempt(bg("add", REFUSED_FEATURE, "--yes", "--no-install"), project),
+        await attempt(bonneGarde("add", REFUSED_FEATURE, "--yes", "--no-install"), project),
         REFUSED_FEATURE,
         ...REFUSED_FEATURE_MODULES,
       );
       if ((await Bun.file(join(project, "bg.json")).text()) !== manifest) {
-        throw new Error(`the refused \`bg add ${REFUSED_FEATURE}\` changed bg.json`);
+        throw new Error(`the refused \`bonne-garde add ${REFUSED_FEATURE}\` changed bg.json`);
       }
     });
   }
   if (first && hasAuth(configuration)) {
-    await refusedPeer(work, timings, bg, registry);
+    await refusedPeer(work, timings, bonneGarde, registry);
+  }
+  if (first && hasAuth(configuration) && hasEmail(configuration)) {
+    await reselected(work, timings, bonneGarde, registry);
   }
   if (first && hasFeatures(configuration)) {
     for (const refusal of FEATURE_REFUSALS) {
-      await refusedFeature(work, timings, bg, registry, refusal);
+      await refusedFeature(work, timings, bonneGarde, registry, refusal);
     }
   }
   const added = await step("add", async () => {
-    const stdout = await capture(bg(...addArguments(modules, installed)), project);
+    const stdout = await capture(bonneGarde(...addArguments(modules, installed)), project);
     process.stdout.write(stdout);
     const reported = [...readAddedModules(stdout, modules), ...readAddedItems(stdout)];
     expectPatches(reported, "applied", { ...patched, ...patchedItems });
     expectPending(readPendingIntentions(stdout), pending);
     const manifest: unknown = JSON.parse(await Bun.file(join(project, "bg.json")).text());
     expectRegionsRecorded(manifest, reported);
-    // Pending is not recorded: no file carries an intention's region before `bg record` leaves it.
+    // Pending is not recorded: no file carries an intention's region before `bonne-garde record` leaves it.
     for (const id of pending) {
       expectNoIntentRegion(manifest, id);
     }
@@ -1947,7 +2430,7 @@ async function configured(
   // Before `bun install`, so that node_modules and the lockfile are not in the comparison.
   await step("re-add", async () => {
     const before = await snapshot(project);
-    const stdout = await capture(bg(...addArguments(modules, installed)), project);
+    const stdout = await capture(bonneGarde(...addArguments(modules, installed)), project);
     expectPatches([...readAddedModules(stdout, modules), ...readAddedItems(stdout)], "skipped", {
       ...patched,
       ...patchedItems,
@@ -1956,7 +2439,9 @@ async function configured(
     expectPending(readPendingIntentions(stdout), pending);
     const changed = diffTrees(before, await snapshot(project));
     if (changed.length > 0) {
-      throw new Error(`the same \`bg add\` again changed the project: ${changed.join(", ")}`);
+      throw new Error(
+        `the same \`bonne-garde add\` again changed the project: ${changed.join(", ")}`,
+      );
     }
   });
   // Each module on its own, after the whole set was installed in one call: a file one module vendors
@@ -1965,25 +2450,29 @@ async function configured(
   await step("re-add alone", async () => {
     for (const module of modules) {
       const before = await snapshot(project);
-      const stdout = await capture(bg(...addArguments([module], [])), project);
+      const stdout = await capture(bonneGarde(...addArguments([module], [])), project);
       const expected = Object.fromEntries(
         Object.entries(patched).filter(([name]) => name === module),
       );
       expectPatches(readAddedModules(stdout, [module]), "skipped", expected);
       const changed = diffTrees(before, await snapshot(project));
       if (changed.length > 0) {
-        throw new Error(`\`bg add ${module}\` alone changed the project: ${changed.join(", ")}`);
+        throw new Error(
+          `\`bonne-garde add ${module}\` alone changed the project: ${changed.join(", ")}`,
+        );
       }
     }
     // Each feature item on its own too: its dependencies are in a file its module owns, the item
     // finds them present and equal, and the project is as it was.
     for (const item of installed.filter((name) => Object.hasOwn(patchedItems, name))) {
       const before = await snapshot(project);
-      const stdout = await capture(bg("add", item, "--yes", "--no-install"), project);
+      const stdout = await capture(bonneGarde("add", item, "--yes", "--no-install"), project);
       expectPatches(readAddedItems(stdout), "skipped", { [item]: patchedItems[item] ?? [] });
       const changed = diffTrees(before, await snapshot(project));
       if (changed.length > 0) {
-        throw new Error(`\`bg add ${item}\` alone changed the project: ${changed.join(", ")}`);
+        throw new Error(
+          `\`bonne-garde add ${item}\` alone changed the project: ${changed.join(", ")}`,
+        );
       }
     }
   });
@@ -1992,7 +2481,7 @@ async function configured(
     await step("deploy: refuse", async () => {
       const before = await snapshot(project);
       expectProviderRefusal(
-        await attempt(bg("add", DEPLOY_MODULE, "--yes", "--no-install"), project),
+        await attempt(bonneGarde("add", DEPLOY_MODULE, "--yes", "--no-install"), project),
         DEPLOY_MODULE,
         DEPLOY_PROVIDER.split("/")[1] ?? "",
         modules.find((module) => module.startsWith("provider/"))?.split("/")[1] ?? "",
@@ -2000,7 +2489,7 @@ async function configured(
       const changed = diffTrees(before, await snapshot(project));
       if (changed.length > 0) {
         throw new Error(
-          `the refused \`bg add ${DEPLOY_MODULE}\` changed the project: ${changed.join(", ")}`,
+          `the refused \`bonne-garde add ${DEPLOY_MODULE}\` changed the project: ${changed.join(", ")}`,
         );
       }
     });
@@ -2036,13 +2525,44 @@ async function configured(
     );
   });
   await step("build", () => run(pm.run("build"), project));
+  // The binary favicons are the registry's bytes, and the build the SPA made serves the manifest it
+  // links and the icons that manifest names, from the files the project holds.
+  if (hasFavicons(configuration)) {
+    await step("favicons", async () => {
+      await expectFaviconsIdentical(join(ROOT, "registry"), project);
+      const icons = await expectManifestEmitted(
+        join(project, "apps/spa/build/client"),
+        join(project, FAVICONS_DIR),
+      );
+      console.log(`golden: the build serves the manifest's icons: ${icons.join(", ")}`);
+      // Every shell holds the favicons the way the spa does, and keeps its own `public/`. A static site
+      // has an index.html to read; an SSR app has none, so its built Worker answers.
+      const favicons = join(project, FAVICONS_DIR);
+      for (const shell of faviconShells(configuration)) {
+        const app = join(project, "apps", shell);
+        const client = join(app, "build/client");
+        const held = await expectBuildHoldsFavicons(client, favicons);
+        const kept = await expectOwnPublicKept(app);
+        if (shell === "static") {
+          await expectManifestEmitted(client, favicons);
+        }
+        if (shell === "ssr") {
+          const served = await previewed(app, (origin) => expectFaviconsServed(origin, favicons));
+          console.log(`golden: apps/ssr serves ${served.join(", ")}`);
+        }
+        console.log(
+          `golden: apps/${shell} holds ${held.length} favicons and keeps ${kept.join(", ") || "no file of its own"}`,
+        );
+      }
+    });
+  }
   // Typecheck, test and build passed with the edit and its test in place, and the formatter has to
   // accept the edit too: that is the intention's Validation, so it is recorded now and not before.
   if (pending.length > 0) {
     await step("intentions: record", async () => {
       await run(pm.run("check"), project);
       for (const id of pending) {
-        await run(bg("record", id), project);
+        await run(bonneGarde("record", id), project);
         // The edited file is region-checked from here on: bg.json holds the intention's region on it.
         const { module, file } = resolution(id);
         expectIntentRegion(
@@ -2054,7 +2574,7 @@ async function configured(
       }
     });
   }
-  await step("doctor", () => run(bg("doctor", "--strict"), project));
+  await step("doctor", () => run(bonneGarde("doctor", "--strict"), project));
   if (hasDeploy(configuration)) {
     await deployPlanned(project, timings, name, pm);
   }
@@ -2066,7 +2586,7 @@ async function configured(
         const { module, editedOwner, file } = resolution(id);
         for (const owner of [module, editedOwner]) {
           const before = await snapshot(project);
-          const stdout = await capture(bg(...addArguments([owner], [])), project);
+          const stdout = await capture(bonneGarde(...addArguments([owner], [])), project);
           const expected = Object.fromEntries(
             Object.entries(patched).filter(([key]) => key === owner),
           );
@@ -2080,7 +2600,7 @@ async function configured(
           const changed = diffTrees(before, await snapshot(project));
           if (changed.length > 0) {
             throw new Error(
-              `\`bg add ${owner}\` after ${id} was recorded changed the project: ${changed.join(", ")}`,
+              `\`bonne-garde add ${owner}\` after ${id} was recorded changed the project: ${changed.join(", ")}`,
             );
           }
         }
@@ -2122,6 +2642,42 @@ async function configured(
  * neither portless nor a proxy, compared with the apps this configuration installs: their names, addresses,
  * directories and commands, on `.localhost` and, with `--lan`, on `.local`.
  */
+/**
+ * Runs `vite preview` on a built app, which has the Cloudflare plugin run the built Worker with its assets in
+ * workerd, as long as `body` takes. Its output is `preview.log` in the app, which stays with a failed run's project.
+ */
+async function previewed<T>(app: string, body: (origin: string) => Promise<T>): Promise<T> {
+  const probe = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response() });
+  const port = probe.port;
+  await probe.stop(true);
+  const origin = `http://127.0.0.1:${port}`;
+  const log = join(app, "preview.log");
+  const server = Bun.spawn(
+    ["bunx", "vp", "preview", "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
+    { cwd: app, stdin: "ignore", stdout: Bun.file(log), stderr: Bun.file(log), detached: true },
+  );
+  try {
+    const ready = await until(
+      async () => (await fetch(`${origin}/`, { signal: AbortSignal.timeout(2000) })).status === 200,
+      { timeoutMs: 60_000, intervalMs: 500 },
+    );
+    if (!ready) {
+      throw new Error(`\`vite preview\` did not answer GET / with 200 within 60 s, see ${log}`);
+    }
+    const result = await body(origin);
+    await rm(log);
+    return result;
+  } finally {
+    // The group: `bunx` starts node, which starts workerd. A preview that already exited has no group left.
+    try {
+      process.kill(-server.pid, "SIGTERM");
+    } catch {
+      // nothing to stop
+    }
+    await server.exited;
+  }
+}
+
 async function launched(
   project: string,
   timings: Timing[],
@@ -2146,20 +2702,20 @@ async function launched(
 }
 
 /**
- * 035 and 050 acceptance: `bg add better-auth` in a project that has everything but an `orm` fails,
+ * 035 and 050 acceptance: `bonne-garde add better-auth` in a project that has everything but an `orm` fails,
  * names the missing peer's category, and writes nothing. It needs a project of its own, because the
  * configuration under test has the ORM, and runs before the `add` of that one.
  */
 async function refusedPeer(
   work: string,
   timings: Timing[],
-  bg: (...args: string[]) => string[],
+  bonneGarde: (...args: string[]) => string[],
   registry: string,
 ): Promise<void> {
   const project = join(work, "golden-peer");
   await phase(timings, "peer: create", () =>
     run(
-      bg(
+      bonneGarde(
         "create",
         project,
         "--pm",
@@ -2176,20 +2732,94 @@ async function refusedPeer(
     ),
   );
   await phase(timings, "peer: add the modules but the orm", () =>
-    run(bg("add", ...WITHOUT_ORM, "--yes", "--no-install"), project),
+    run(bonneGarde("add", ...WITHOUT_ORM, "--yes", "--no-install"), project),
   );
   await phase(timings, "peer: refuse", async () => {
     const before = await snapshot(project);
     expectPeerRefusal(
-      await attempt(bg("add", "better-auth", "--yes", "--no-install"), project),
+      await attempt(bonneGarde("add", "better-auth", "--yes", "--no-install"), project),
       "better-auth",
       "orm",
     );
     const changed = diffTrees(before, await snapshot(project));
     if (changed.length > 0) {
       throw new Error(
-        `the refused \`bg add better-auth\` changed the project: ${changed.join(", ")}`,
+        `the refused \`bonne-garde add better-auth\` changed the project: ${changed.join(", ")}`,
       );
+    }
+  });
+}
+
+/**
+ * 035 and 050 step 7: `bonne-garde add auth/better-auth` in a project that has email on its default variant plans
+ * email again on the `better-auth` one, in the same plan, and says so. The patch that declares the email
+ * package in auth's package.json is applied, the wiring intention is staged and pending, and adding either
+ * module again afterwards changes nothing and plans nothing again. It needs a project of its own: the
+ * configuration under test installs auth first.
+ */
+async function reselected(
+  work: string,
+  timings: Timing[],
+  bonneGarde: (...args: string[]) => string[],
+  registry: string,
+): Promise<void> {
+  const project = join(work, "golden-reselect");
+  const [wired] = PENDING.cloudflare ?? [];
+  if (wired === undefined) {
+    throw new Error("the other-order check needs the wiring intention in PENDING.cloudflare");
+  }
+  await phase(timings, "reselect: create and add email first", async () => {
+    await run(
+      bonneGarde(
+        "create",
+        project,
+        "--yes",
+        "--no-git",
+        "--no-install",
+        "--scope",
+        SCOPE,
+        "--registry",
+        registry,
+      ),
+      work,
+    );
+    const stdout = await capture(bonneGarde(...addArguments(RESELECT_BASE, [])), project);
+    expectReselected(readReselected(stdout), []);
+    expectPending(readPendingIntentions(stdout), []);
+  });
+  await phase(timings, "reselect: add auth", async () => {
+    const stdout = await capture(bonneGarde("add", AUTH_MODULE, "--yes", "--no-install"), project);
+    expectReselected(readReselected(stdout), [RESELECTED]);
+    expectPending(readPendingIntentions(stdout), [wired]);
+    const reported = readAddedModules(stdout, [AUTH_MODULE, EMAIL_MODULE]);
+    const patched = PATCHED.cloudflare ?? {};
+    expectPatches(reported, "applied", {
+      [AUTH_MODULE]: patched[AUTH_MODULE] ?? [],
+      [EMAIL_MODULE]: patched[EMAIL_MODULE] ?? [],
+    });
+    const manifest: unknown = JSON.parse(await Bun.file(join(project, "bg.json")).text());
+    expectRegionsRecorded(manifest, reported);
+    expectNoIntentRegion(manifest, wired);
+    const email = isRecord(manifest) && isRecord(manifest.modules) ? manifest.modules.email : null;
+    if (!Array.isArray(email) || !isRecord(email[0]) || email[0].variant !== RESELECTED.to) {
+      throw new Error(`bg.json does not record email on variant ${RESELECTED.to}`);
+    }
+    const staged = await Bun.file(join(project, ".bg/add/session.md")).text();
+    if (!staged.includes(wired)) {
+      throw new Error(`.bg/add/session.md does not list ${wired}`);
+    }
+  });
+  await phase(timings, "reselect: add either again", async () => {
+    for (const name of [AUTH_MODULE, EMAIL_MODULE]) {
+      const before = await snapshot(project);
+      const stdout = await capture(bonneGarde("add", name, "--yes", "--no-install"), project);
+      expectReselected(readReselected(stdout), []);
+      const changed = diffTrees(before, await snapshot(project));
+      if (changed.length > 0) {
+        throw new Error(
+          `\`bonne-garde add ${name}\` after the other order changed the project: ${changed.join(", ")}`,
+        );
+      }
     }
   });
 }
@@ -2197,8 +2827,9 @@ async function refusedPeer(
 /**
  * What deploying would do, proved with no account and no network: the workflow parses and only calls
  * scripts the project has, the script's dry run plans exactly the expected steps in order, every app
- * in it has a wrangler config and a deploy script and every app with a config is in it, and a
- * `VITE_*` variable handed to the script is named in the plan and its value never printed.
+ * in it has a wrangler config and a deploy script and every app with a config is in it, a
+ * `VITE_*` variable handed to the script is named in the plan and its value never printed, and the
+ * plan names the variable each build needs, refusing variables that lack it.
  */
 async function deployPlanned(
   project: string,
@@ -2217,9 +2848,17 @@ async function deployPlanned(
       existsSync(join(project, action, "action.yml")),
     );
 
+    const needs = DEPLOY_BUILD_NEEDS[name];
+    if (needs === undefined) {
+      throw new Error(
+        `no expected build variables for the ${name} configuration (DEPLOY_BUILD_NEEDS)`,
+      );
+    }
     const dryRun = pm.run(DEPLOY_SCRIPT, "--dry-run");
-    const plan = readDeployPlan(await capture(dryRun, project));
+    const printed = await capture(dryRun, project);
+    const plan = readDeployPlan(printed);
     expectDeployPlan(plan.steps, expected);
+    expectBuildNeeds(readDeployNeeds(printed), needs);
     if (plan.buildVars.length > 0) {
       throw new Error(
         `the dry run forwards ${plan.buildVars.join(", ")} with no variable handed to it`,
@@ -2259,6 +2898,17 @@ async function deployPlanned(
       throw new Error(
         `the dry run forwards ${JSON.stringify(buildVars)}, expected only VITE_API_URL`,
       );
+    }
+
+    // A front built without its API URL deploys and is broken: handed variables that lack what a build
+    // needs (none at all, an unrelated one, an empty one), the dry run refuses. The real run does the
+    // same before its first build; golden does not start it, since a regression would reach Cloudflare.
+    for (const VARS_JSON of [
+      "{}",
+      JSON.stringify({ API_URL: secretish }),
+      JSON.stringify({ VITE_API_URL: "" }),
+    ]) {
+      expectBuildVarsRefusal(await refused(dryRun, project, { VARS_JSON }), needs, [secretish]);
     }
   });
 }
@@ -2508,6 +3158,14 @@ async function answers(project: string, docker: string): Promise<void> {
   expectServed("GET /", home, 200, "text/html");
   const asset = assetPath(home.body);
   expectServed(`GET ${asset}`, await get(asset), 200, "text/javascript");
+  // The favicons are files of the build: the container serves the manifest the page links and each
+  // icon it names, and not the index.html it answers a route with when it finds no file.
+  const manifestUrl = manifestHref(home.body);
+  const manifest = await get(manifestUrl);
+  expectServed(`GET ${manifestUrl}`, manifest, 200, "application/manifest+json");
+  for (const icon of manifestIconPaths(manifest.body, manifestUrl)) {
+    expectServed(`GET ${icon}`, await get(icon), 200, "image/png");
+  }
   // A client route has no file: the runtime answers a navigation with the SPA's index.html.
   const route = "/golden/unknown-client-route";
   const client = await get(route, "text/html");
@@ -2557,7 +3215,7 @@ if (import.meta.main) {
 async function refusedFeature(
   work: string,
   timings: Timing[],
-  bg: (...args: string[]) => string[],
+  bonneGarde: (...args: string[]) => string[],
   registry: string,
   refusal: (typeof FEATURE_REFUSALS)[number],
 ): Promise<void> {
@@ -2565,7 +3223,7 @@ async function refusedFeature(
   const project = join(work, `golden-feature-${label}`);
   await phase(timings, `feature: ${label}: create`, async () => {
     await run(
-      bg(
+      bonneGarde(
         "create",
         project,
         "--pm",
@@ -2580,18 +3238,20 @@ async function refusedFeature(
       ),
       work,
     );
-    await run(bg("add", ...modules, "--yes", "--no-install"), project);
+    await run(bonneGarde("add", ...modules, "--yes", "--no-install"), project);
   });
   await phase(timings, `feature: ${label}: refuse`, async () => {
     const before = await snapshot(project);
     expectRefusal(
-      await attempt(bg("add", item, "--yes", "--no-install"), project),
+      await attempt(bonneGarde("add", item, "--yes", "--no-install"), project),
       item,
       ...missing,
     );
     const changed = diffTrees(before, await snapshot(project));
     if (changed.length > 0) {
-      throw new Error(`the refused \`bg add ${item}\` changed the project: ${changed.join(", ")}`);
+      throw new Error(
+        `the refused \`bonne-garde add ${item}\` changed the project: ${changed.join(", ")}`,
+      );
     }
   });
 }

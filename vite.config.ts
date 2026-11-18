@@ -1,9 +1,9 @@
 import { defineConfig } from "vite-plus";
 
 /**
- * Root Vite+ config for the monorepo.
- * Shared lint / fmt / staged live here; each app keeps its own vite.config.ts
- * for Vite / React Router / Cloudflare. See https://viteplus.dev/guide/monorepo
+ * Root Vite+ config of the platform repository: lint / fmt / staged, and the lint rules that hold
+ * the code the registry ships (registry/**), which only runs once `bonne-garde add` has copied it into a
+ * project. A generated project gets its own config from the tooling/vite-plus module.
  */
 export default defineConfig({
   lint: {
@@ -41,8 +41,14 @@ export default defineConfig({
     },
     overrides: [
       {
-        // Front apps + shared React packages — plugins replace the base list.
-        files: ["apps/spa/**", "packages/ui/**", "packages/emails/**"],
+        // React sources the registry ships — plugins replace the base list: the web modules' apps,
+        // the feature items, and the UI items and the ui module's package.
+        files: [
+          "registry/modules/web/*/template/apps/**",
+          "registry/features/**",
+          "registry/modules/ui/*/template/packages/ui/**",
+          "registry/ui/**",
+        ],
         plugins: ["typescript", "import", "unicorn", "react", "node"],
         env: {
           browser: true,
@@ -50,40 +56,25 @@ export default defineConfig({
         },
       },
       {
-        files: ["apps/api/**"],
-        plugins: ["typescript", "import", "unicorn", "node"],
-        env: {
-          node: true,
-          es2022: true,
-        },
+        // Programs whose stderr and stdout are their interface: this repo's scripts, the entry
+        // files of `bonne-garde`, and the scripts the modules ship. The generated project turns the rule off
+        // for the same two script directories (tooling/vite-plus), so the template is held to what
+        // the project it lands in is held to.
+        files: [
+          "scripts/**",
+          "packages/cli/src/cli.ts",
+          "packages/cli/src/bin.ts",
+          "registry/modules/*/*/template/scripts/**",
+          "registry/modules/*/*/template/packages/config/scripts/**",
+        ],
         rules: {
           "no-console": "off",
-        },
-      },
-      {
-        files: ["scripts/**"],
-        rules: {
-          "no-console": "off",
-        },
-      },
-      {
-        // The other React fronts, legacy and registry templates: same plugins as apps/spa.
-        files: ["apps/ssr/**", "apps/static/**", "registry/modules/web/*/template/apps/**"],
-        plugins: ["typescript", "import", "unicorn", "react", "node"],
-        env: {
-          browser: true,
-          es2022: true,
         },
       },
       {
         // Front conventions (AGENTS.md › Non-negotiables, docs/RULES.md › Product conventions).
         // A rule only runs where its plugin is listed in the same override: react for forbid-elements.
-        files: [
-          "apps/spa/**",
-          "apps/ssr/**",
-          "apps/static/**",
-          "registry/modules/web/*/template/apps/**",
-        ],
+        files: ["registry/modules/web/*/template/apps/**", "registry/features/**"],
         plugins: ["typescript", "import", "unicorn", "react", "node"],
         rules: {
           "no-restricted-globals": [
@@ -141,11 +132,8 @@ export default defineConfig({
       {
         // Component files are kebab-case (AGENTS.md › Do).
         files: [
-          "apps/spa/**",
-          "apps/ssr/**",
-          "apps/static/**",
-          "packages/ui/**",
           "registry/modules/web/*/template/apps/**",
+          "registry/features/**",
           "registry/modules/ui/*/template/packages/ui/**",
           "registry/ui/**",
         ],
@@ -155,7 +143,7 @@ export default defineConfig({
       },
       {
         // API conventions: TypeBox input, no Cloudflare API outside the DB / BUCKET bindings.
-        files: ["apps/api/**", "registry/modules/api/*/template/apps/api/**"],
+        files: ["registry/modules/api/*/template/apps/api/**"],
         rules: {
           "no-restricted-imports": [
             "error",
@@ -224,7 +212,7 @@ export default defineConfig({
       },
       {
         // API tests call the app through treaty(app), never a launched server.
-        files: ["apps/api/**/*.test.ts", "registry/modules/api/*/template/apps/api/**/*.test.ts"],
+        files: ["registry/modules/api/*/template/apps/api/**/*.test.ts"],
         rules: {
           "no-restricted-globals": [
             "error",

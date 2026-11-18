@@ -38,9 +38,10 @@ describe("installDependencies", () => {
   test("says which package manager is missing, instead of a spawn error", async () => {
     const root = await project({ packageManager: "pnpm@12.17.0" });
 
-    await expect(installDependencies(root, { env: { PATH: "/nonexistent" } })).rejects.toThrow(
-      /pnpm not found/,
-    );
+    expect(await installDependencies(root, { env: { PATH: "/nonexistent" } })).toEqual({
+      pm: "pnpm",
+      missing: true,
+    });
   });
 });
 

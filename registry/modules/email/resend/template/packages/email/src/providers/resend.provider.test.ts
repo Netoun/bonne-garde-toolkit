@@ -1,6 +1,6 @@
 import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
 import { afterEach, describe, expect, test } from "vite-plus/test";
-// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { branding } from "{{SCOPE}}/config";
 import { createResendEmailProvider } from "./resend.provider";

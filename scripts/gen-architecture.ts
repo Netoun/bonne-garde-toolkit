@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Generates the dynamic sections of docs/ARCHITECTURE.md from workspace
- * package.json files. Static content (Communication, Module Pattern) is
- * preserved between markers.
+ * Generates the dynamic sections of docs/ARCHITECTURE.md from the workspace
+ * packages and the registry tree. Static content (Communication, Module Pattern)
+ * is preserved between markers.
  *
  * Usage:
  *   bun run gen:architecture       # from root
@@ -17,16 +17,20 @@ const OUTPUT = join(ROOT, "docs/ARCHITECTURE.md");
 const MARKER_START = "<!-- GEN:START -->";
 const MARKER_END = "<!-- GEN:END -->";
 
-type AppInfo = {
-  name: string;
-  framework: string;
-  mode: string;
-  platform: string;
-};
-
 type PackageInfo = {
   name: string;
   role: string;
+};
+
+type CategoryInfo = {
+  category: string;
+  modules: string[];
+};
+
+type RegistryInfo = {
+  categories: CategoryInfo[];
+  uiItems: string[];
+  featureItems: string[];
 };
 
 // ─── Detection ───────────────────────────────────────────────────────────────
@@ -40,81 +44,44 @@ function listDirs(parent: string): string[] {
     .sort();
 }
 
-function readPkg(appDir: string, name: string): Record<string, unknown> | null {
-  const path = join(ROOT, appDir, name, "package.json");
-  if (!existsSync(path)) return null;
-  return JSON.parse(readFileSync(path, "utf8"));
-}
-
-function getDeps(pkg: Record<string, unknown>): string[] {
-  const deps = (pkg.dependencies as Record<string, string>) ?? {};
-  const devDeps = (pkg.devDependencies as Record<string, string>) ?? {};
-  return [...Object.keys(deps), ...Object.keys(devDeps)];
-}
-
-function readRouterConfig(name: string): Record<string, unknown> | null {
-  const path = join(ROOT, "apps", name, "react-router.config.ts");
-  if (!existsSync(path)) return null;
-  const content = readFileSync(path, "utf8");
-  const ssr = content.includes("ssr: true");
-  return { ssr };
-}
-
-function detectApp(name: string): AppInfo | null {
-  const pkg = readPkg("apps", name);
-  if (!pkg) return null;
-  const deps = getDeps(pkg);
-
-  const isApi = deps.some((d) => d === "elysia");
-  const isReactRouter = deps.some((d) => d === "@react-router/dev");
-
-  if (isApi) {
-    return { name, framework: "Elysia", mode: "CF Worker", platform: "Workers" };
-  }
-
-  if (isReactRouter) {
-    const config = readRouterConfig(name);
-    const ssr = config?.ssr ?? false;
-    const dependencies = pkg.dependencies;
-    const version =
-      dependencies && typeof dependencies === "object" && "react-router" in dependencies
-        ? String(dependencies["react-router"])
-        : "";
-    const major = version.match(/\d+/)?.[0] ?? "?";
-    return {
-      name,
-      framework: `React Router v${major}`,
-      mode: ssr ? "SSR" : "SPA",
-      platform: ssr ? "Workers" : "Pages",
-    };
-  }
-
-  return { name, framework: "?", mode: "?", platform: "?" };
-}
-
 function detectPackage(name: string): PackageInfo {
   const roles: Record<string, string> = {
-    config: "Shared branding / white-label config",
-    ui: "shadcn/ui + global CSS",
-    emails: "React-Email templates",
+    cli: "`bonne-garde`: create, add, doctor, record",
+    registry: "Load, plan and apply registry items and modules",
+    schema: "`bg.json` and `module.json` validation",
   };
 
   return { name, role: roles[name] ?? "—" };
 }
 
-// ─── Rendering ───────────────────────────────────────────────────────────────
-
-function renderApps(apps: AppInfo[]): string {
-  if (apps.length === 0) return "No apps detected.\n";
-
-  const rows = apps.map(
-    (a) => `| \`apps/${a.name}\` | ${a.framework} | ${a.mode} | ${a.platform} |`,
+function itemNames(catalog: string): string[] {
+  const path = join(ROOT, catalog);
+  if (!existsSync(path)) return [];
+  const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+  const items =
+    typeof parsed === "object" && parsed !== null && "items" in parsed ? parsed.items : [];
+  if (!Array.isArray(items)) return [];
+  return items.flatMap((item: unknown) =>
+    typeof item === "object" && item !== null && "name" in item && typeof item.name === "string"
+      ? [item.name]
+      : [],
   );
-
-  return `| App | Framework | Mode | Platform |
-|-----|-----------|------|----------|
-${rows.join("\n")}`;
 }
+
+function detectRegistry(): RegistryInfo {
+  const categories = listDirs("registry/modules").map((category) => ({
+    category,
+    modules: listDirs(join("registry/modules", category)),
+  }));
+
+  return {
+    categories,
+    uiItems: itemNames("registry/ui/registry.json"),
+    featureItems: itemNames("registry/features/registry.json"),
+  };
+}
+
+// ─── Rendering ───────────────────────────────────────────────────────────────
 
 function renderPackages(packages: PackageInfo[]): string {
   if (packages.length === 0) return "No packages detected.\n";
@@ -126,14 +93,31 @@ function renderPackages(packages: PackageInfo[]): string {
 ${rows.join("\n")}`;
 }
 
-function renderOverview(apps: AppInfo[], packages: PackageInfo[]): string {
-  const appCount = apps.length;
-  const pkgCount = packages.length;
+function renderRegistry(registry: RegistryInfo): string {
+  const modules = registry.categories.map(
+    (c) =>
+      `| \`registry/modules/${c.category}\` | ${c.modules.map((m) => `\`${m}\``).join(", ")} |`,
+  );
+  const items = [
+    ["registry/ui", registry.uiItems],
+    ["registry/features", registry.featureItems],
+  ] as const;
+  // A long list makes the cell unreadable: past ten, the count says it.
+  const itemRows = items.map(
+    ([path, names]) =>
+      `| \`${path}\` | ${names.length} items${names.length > 0 && names.length <= 10 ? `: ${names.join(", ")}` : ""} |`,
+  );
 
-  const appWord = appCount === 1 ? "app" : "apps";
-  const pkgWord = pkgCount === 1 ? "package" : "packages";
+  return `| Path | Content |
+|------|---------|
+${[...modules, ...itemRows].join("\n")}`;
+}
 
-  return `My App is a Bun monorepo with ${appCount} ${appWord} and ${pkgCount} ${pkgWord}, deployed on Cloudflare.`;
+function renderOverview(packages: PackageInfo[], registry: RegistryInfo): string {
+  const moduleCount = registry.categories.reduce((sum, c) => sum + c.modules.length, 0);
+  const itemCount = registry.uiItems.length + registry.featureItems.length;
+
+  return `Bonne Garde is a Bun monorepo of a CLI, the registry it installs from and the base template it copies: ${packages.length} packages, ${moduleCount} modules in ${registry.categories.length} categories, ${itemCount} items.`;
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
@@ -141,23 +125,23 @@ function renderOverview(apps: AppInfo[], packages: PackageInfo[]): string {
 function main() {
   const now = new Date().toISOString().slice(0, 10);
 
-  const apps = listDirs("apps").map(detectApp).filter(Boolean) as AppInfo[];
   const packages = listDirs("packages").map(detectPackage);
+  const registry = detectRegistry();
 
   const generated = [
-    `> Auto-generated from \`package.json\` files. Regenerate: \`bun run gen:architecture\`. Last: ${now}.`,
+    `> Auto-generated from \`package.json\` files and the \`registry/\` tree. Regenerate: \`bun run gen:architecture\`. Last: ${now}.`,
     "",
     "## Overview",
     "",
-    renderOverview(apps, packages),
-    "",
-    "### Apps",
-    "",
-    renderApps(apps),
+    renderOverview(packages, registry),
     "",
     "### Packages",
     "",
     renderPackages(packages),
+    "",
+    "### Registry",
+    "",
+    renderRegistry(registry),
     "",
   ].join("\n");
 
@@ -179,7 +163,9 @@ function main() {
     writeFileSync(OUTPUT, `# Architecture\n\n${MARKER_START}\n\n${generated}\n\n${MARKER_END}\n`);
   }
 
-  console.log(`✓ ${OUTPUT} generated (${apps.length} apps, ${packages.length} packages)`);
+  console.log(
+    `✓ ${OUTPUT} generated (${packages.length} packages, ${registry.categories.length} module categories)`,
+  );
 }
 
 main();

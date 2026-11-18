@@ -51,20 +51,13 @@
         "packages/storage/src/schema.ts",
         "packages/storage/src/testing.ts"
       ],
-      "env": [
-        {
-          "name": "R2_PUBLIC_URL",
-          "required": true,
-          "example": "http://localhost:5172/v1/media/file"
-        }
-      ],
+      "env": [{ "name": "R2_PUBLIC_URL", "required": true, "example": "" }],
       "patch": [
         {
           "type": "jsonc.merge",
           "file": "apps/api/wrangler.jsonc",
           "value": {
             "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "my-app-media" }],
-            "vars": { "R2_PUBLIC_URL": "http://localhost:5172/v1/media/file" },
             "env": {
               "production": {
                 "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "my-app-media" }],
@@ -72,7 +65,7 @@
               }
             }
           },
-          "intent": "Declare the BUCKET R2 binding and the R2_PUBLIC_URL variable in the Worker's wrangler.jsonc, for the default environment and for production."
+          "intent": "Declare the BUCKET R2 binding in the Worker's wrangler.jsonc, for the default environment and for production, and the R2_PUBLIC_URL variable for production only: in development the module derives it from API_URL."
         },
         {
           "type": "package.dependencies",

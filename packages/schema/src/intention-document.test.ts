@@ -170,7 +170,7 @@ describe("referencePaths (065 Sections: each path declares copy or adapt)", () =
   });
 });
 
-describe("adaptedPaths: what `bg record` marks as edited by the intention (060)", () => {
+describe("adaptedPaths: what `bonne-garde record` marks as edited by the intention (060)", () => {
   test("is the paths declared adapt, and not the ones declared copy", () => {
     expect(adaptedPaths(WITH_PATHS)).toEqual([
       "packages/auth/src/mailer.ts",

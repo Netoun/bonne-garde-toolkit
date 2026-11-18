@@ -37,6 +37,8 @@ export type RegistryReader = {
   /** `github:owner/repo@ref`, as an error names the source. */
   label: string;
   read(path: string): Promise<string>;
+  /** The same file as bytes: a template file that is not valid UTF-8 cannot be read as text. */
+  readBytes(path: string): Promise<Uint8Array>;
 };
 
 export type RegistryCatalog = {

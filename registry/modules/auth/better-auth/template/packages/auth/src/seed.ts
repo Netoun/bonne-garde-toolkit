@@ -77,6 +77,19 @@ const API_DIRECTORY = join(import.meta.dirname, "../../../apps/api");
 /** The `wrangler` `apps/api` depends on, which the package manager links into its `node_modules/.bin`. */
 const WRANGLER = join(API_DIRECTORY, "node_modules/.bin/wrangler");
 
+/**
+ * What a failed `wrangler` call is reported as: the command and its exit code. The value of
+ * `--command` is the SQL, and the batch's inserts hold the admin's password hash, so the error that
+ * reaches a terminal or a CI log says how long the SQL was and not what it said. Wrangler explains the
+ * failure itself, on the stderr this process shares.
+ */
+export function wranglerFailure(args: string[], exitCode: number): string {
+  const shown = args.map((arg, index) =>
+    args[index - 1] === "--command" ? `<SQL withheld, ${arg.length} characters>` : arg,
+  );
+  return `wrangler ${shown.join(" ")} exited with ${exitCode}`;
+}
+
 /** Runs `wrangler` in `apps/api` and returns what it printed; `inherit` shows it instead, and returns "". */
 async function wrangler(args: string[], stdout: "pipe" | "inherit"): Promise<string> {
   const child = spawn(WRANGLER, args, {
@@ -93,7 +106,7 @@ async function wrangler(args: string[], stdout: "pipe" | "inherit"): Promise<str
     child.once("close", resolve);
   });
   if (code !== 0) {
-    throw new Error(`wrangler ${args.join(" ")} failed`);
+    throw new Error(wranglerFailure(args, code ?? 1));
   }
   return printed;
 }

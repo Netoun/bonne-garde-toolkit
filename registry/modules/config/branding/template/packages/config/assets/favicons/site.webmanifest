@@ -1,14 +1,14 @@
 {
   "name": "My App",
   "short_name": "My App",
-  "description": "",
+  "description": "The My App web app.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#000000",
   "orientation": "portrait",
   "scope": "/",
-  "lang": "fr",
+  "lang": "en",
   "icons": [
     {
       "src": "/android-chrome-192x192.png",

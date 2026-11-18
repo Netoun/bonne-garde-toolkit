@@ -1,7 +1,9 @@
 import { readFile, stat } from "node:fs/promises";
 import { join, posix } from "node:path";
+import { glob } from "tinyglobby";
 import {
   categoryCardinality,
+  cliRunner,
   isModuleCategory,
   MODULE_CATEGORIES,
   readModuleIntention,
@@ -18,11 +20,14 @@ import { plannedPatches, type PlannedPatch } from "./patch-plan";
 import { mapLimit } from "./pool";
 import { PlanError, searchCatalog } from "./resolve-plan";
 import type { RegistryCatalog, RegistryModule } from "./types";
+import { utf8Text } from "./utf8";
 
 /** A module named on the command line, once classified (050 step 3). */
 export type ModuleRef = { category: ModuleCategory; id: string };
 
 export type PlannedFile = { target: string; content: string };
+/** A tier-1 file that is not text (035): its bytes land as they are, and no patch or placeholder touches it. */
+type PlannedBinary = { target: string; bytes: Uint8Array };
 export type PlannedEnvKey = { name: string; required: boolean; example: string };
 
 /** One module's share of an install plan: everything decided before any file is looked at (050 steps 4-8). */
@@ -36,6 +41,8 @@ export type ModulePlan = {
   options: Record<string, ModuleOptionValue>;
   /** Tier 1, as it will land: paths relative to the project, content with `{{SCOPE}}` rendered. */
   files: PlannedFile[];
+  /** Tier 1 files that are not valid UTF-8, copied byte for byte; `{{SCOPE}}` is not rendered in them. */
+  binaries: PlannedBinary[];
   env: PlannedEnvKey[];
   /** Tier 2, as declared and checked: applied in the virtual tree, after every tier-1 file is known. */
   patches: PlannedPatch[];
@@ -49,7 +56,7 @@ export type ModulePlan = {
   checks: string[];
 };
 
-const keyOf = (ref: ModuleRef): string => `${ref.category}/${ref.id}`;
+export const keyOf = (ref: ModuleRef): string => `${ref.category}/${ref.id}`;
 
 function qualifiedForms(modules: RegistryModule[]): string {
   return modules.map(({ manifest }) => keyOf(manifest)).join(", ");
@@ -201,7 +208,7 @@ function checkCardinality(requested: ModuleRef[], manifest: ProjectManifest): vo
     const installed = manifest.modules[category]?.[0];
     if (wanted && installed && installed.id !== wanted.id) {
       throw new PlanError(
-        `${category} is already filled by ${category}/${installed.id}; \`bg replace ${keyOf(wanted)}\` swaps it`,
+        `${category} is already filled by ${category}/${installed.id}; \`${cliRunner()} replace ${keyOf(wanted)}\` swaps it`,
       );
     }
   }
@@ -294,9 +301,34 @@ async function authoredIntentions(
   return authored;
 }
 
-async function isFile(path: string): Promise<boolean> {
+/**
+ * One intention a module authors, for a project that has the module installed already (065): the
+ * document of `id` among the intentions of the variant `bg.json` records, read from the registry and
+ * rendered as `add` staged it. `null` when the catalog does not hold the module or the variant, or the
+ * variant ships no such intention. A variant whose `intent/` is broken is refused, as planning it is.
+ */
+export async function readAuthoredIntention(
+  catalog: RegistryCatalog,
+  ref: ModuleRef,
+  variantKey: string,
+  id: string,
+  scope: string,
+): Promise<AuthoredIntention | null> {
+  const module = catalog.modules.find(
+    ({ manifest }) => manifest.category === ref.category && manifest.id === ref.id,
+  );
+  const variant = module?.manifest.variants.find(({ key }) => key === variantKey);
+  if (module === undefined || variant === undefined) {
+    return null;
+  }
+  return (
+    (await authoredIntentions(module, variant, scope)).find((entry) => entry.id === id) ?? null
+  );
+}
+
+async function isDirectory(path: string): Promise<boolean> {
   try {
-    return (await stat(path)).isFile();
+    return (await stat(path)).isDirectory();
   } catch {
     return false;
   }
@@ -304,36 +336,67 @@ async function isFile(path: string): Promise<boolean> {
 
 const GLOB_CHARS = /[*?[\]{}!\\]/;
 
-/** Tier 1: `copy` entries, relative to `template/`, which mirrors the target tree (spec 035). */
+/**
+ * Tier 1 over the network: a `copy` entry names a file to fetch, since raw HTTP lists no directory
+ * a glob could be expanded against. A glob is refused rather than skipped, as a patch is.
+ */
+function remoteCopyTarget(module: RegistryModule, label: string, pattern: string): string {
+  const key = keyOf(module.manifest);
+  if (GLOB_CHARS.test(pattern)) {
+    throw new PlanError(
+      `copy "${pattern}" of ${key} is a glob, and ${label} cannot expand one (raw HTTP has no directory listing): name the files in module.json, or install from a local: registry`,
+    );
+  }
+  return pattern;
+}
+
+/**
+ * Tier 1: `copy` entries, relative to `template/`, which mirrors the target tree (spec 035). A file
+ * whose bytes are valid UTF-8 is text and has `{{SCOPE}}` rendered; any other is binary and is kept as it is.
+ */
 async function copiedFiles(
   module: RegistryModule,
   variant: ModuleVariant,
   scope: string,
-): Promise<PlannedFile[]> {
+): Promise<{ files: PlannedFile[]; binaries: PlannedBinary[] }> {
   const key = keyOf(module.manifest);
   const { reader } = module;
   const targets = new Set<string>();
-  // 035: an entry is a file path. A glob is refused from every source, as a github one has to:
-  // raw HTTP lists no directory to expand it against.
-  for (const path of variant.copy ?? []) {
-    if (GLOB_CHARS.test(path)) {
-      throw new PlanError(
-        `copy "${path}" of ${key} is a glob: name the files in module.json (${reader?.label ?? "a github: source"} has no listing to expand one)`,
-      );
+  if (reader) {
+    for (const pattern of variant.copy ?? []) {
+      targets.add(remoteCopyTarget(module, reader.label, pattern));
     }
-    if (!reader && !(await isFile(join(module.dir, "template", path)))) {
-      throw new PlanError(`copy "${path}" of ${key} names no file under template/`);
+  } else {
+    const templateDir = join(module.dir, "template");
+    const present = await isDirectory(templateDir);
+    for (const pattern of variant.copy ?? []) {
+      let matched = 0;
+      if (present) {
+        // `expandDirectories` off: a pattern naming a directory matches no file, as it always did.
+        for (const path of await glob(pattern, {
+          cwd: templateDir,
+          dot: true,
+          onlyFiles: true,
+          expandDirectories: false,
+        })) {
+          targets.add(path);
+          matched += 1;
+        }
+      }
+      if (matched === 0) {
+        throw new PlanError(`copy "${pattern}" of ${key} matches no file under template/`);
+      }
     }
-    targets.add(path);
   }
 
-  const readTarget = async (target: string): Promise<string> => {
+  const readTarget = async (target: string): Promise<Uint8Array> => {
     if (!reader) {
-      return readFile(join(module.dir, "template", target), "utf8");
+      const bytes = await readFile(join(module.dir, "template", target));
+      return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     }
     const path = posix.join(module.dir, "template", target);
     try {
-      return await reader.read(path);
+      return await reader.readBytes(path);
     } catch (error) {
       if (error instanceof RegistryFileNotFoundError) {
         throw new PlanError(
@@ -344,11 +407,19 @@ async function copiedFiles(
     }
   };
   const sorted = [...targets].sort();
-  const texts = await mapLimit(sorted, FETCH_CONCURRENCY, readTarget);
-  return sorted.map((target, index) => ({
-    target,
-    content: (texts[index] ?? "").replaceAll("{{SCOPE}}", scope),
-  }));
+  const read = await mapLimit(sorted, FETCH_CONCURRENCY, readTarget);
+  const files: PlannedFile[] = [];
+  const binaries: PlannedBinary[] = [];
+  for (const [index, target] of sorted.entries()) {
+    const bytes = read[index] ?? new Uint8Array();
+    const text = utf8Text(bytes);
+    if (text === null) {
+      binaries.push({ target, bytes });
+    } else {
+      files.push({ target, content: text.replaceAll("{{SCOPE}}", scope) });
+    }
+  }
+  return { files, binaries };
 }
 
 /** npm's four dependency maps: 035 declares a dependency once, in the variant, so a vendored file carries none. */
@@ -479,10 +550,17 @@ async function planModule(
   const intentions = await authoredIntentions(module, variant, project.scope);
 
   const copied = await copiedFiles(module, variant, project.scope);
-  const packageJson = workspacePackageJson(manifest, variant, project.scope, copied);
+  for (const { file } of patches) {
+    if (copied.binaries.some(({ target }) => target === file)) {
+      throw new PlanError(
+        `${key} patches ${file}, which it copies as a binary file (not valid UTF-8): a patch edits text`,
+      );
+    }
+  }
+  const packageJson = workspacePackageJson(manifest, variant, project.scope, copied.files);
   const files = packageJson
-    ? [...copied.filter((file) => file.target !== packageJson.target), packageJson]
-    : copied;
+    ? [...copied.files.filter((file) => file.target !== packageJson.target), packageJson]
+    : copied.files;
   files.sort((a, b) => (a.target < b.target ? -1 : a.target > b.target ? 1 : 0));
 
   return {
@@ -492,6 +570,7 @@ async function planModule(
     variant: variant.key,
     options: resolveOptions(manifest),
     files,
+    binaries: copied.binaries,
     patches,
     intentions,
     env: (variant.env ?? []).map((entry) => ({
@@ -504,6 +583,62 @@ async function planModule(
     workspace: variant.workspace?.path ?? null,
     checks: manifest.checks ?? [],
   };
+}
+
+/** An installed module that a call plans again, because a module it adds changes the variant selected for it. */
+export type Reselected = {
+  ref: ModuleRef;
+  /** The variant `bg.json` records for it. */
+  from: string;
+  /** The variant selected over the installed peers and the modules this call adds. */
+  to: string;
+  /** The modules of this call that the variant `to` matches on, as `<category>/<id>`. */
+  because: string[];
+};
+
+/**
+ * 050 step 7 for the modules already installed: one whose variants match on a module this call adds
+ * is selected again over the peers the project will hold, and is returned when that is not the variant
+ * `bg.json` records, so installing `auth` after `email` plans `email` again exactly as one call naming
+ * both would have. A module none of whose variants names a module added is left alone, whatever it is
+ * recorded on, and so is one the call names itself or the registry does not hold. The caller plans the
+ * returned modules with the requested ones, a re-add, so the rules of a re-add decide each file.
+ */
+export function reselectedModules(
+  catalog: RegistryCatalog,
+  requested: ModuleRef[],
+  project: ProjectManifest,
+): Reselected[] {
+  const named = new Set(requested.map(keyOf));
+  const present = presentModules(project, requested);
+  const reselected: Reselected[] = [];
+  for (const category of MODULE_CATEGORIES) {
+    for (const record of project.modules[category] ?? []) {
+      const ref = { category, id: record.id };
+      const module = catalog.modules.find(
+        ({ manifest }) => manifest.category === category && manifest.id === record.id,
+      );
+      const addedMatches = (variant: ModuleVariant) =>
+        requested.filter((added) => variant.match[added.category] === added.id);
+      if (
+        named.has(keyOf(ref)) ||
+        module === undefined ||
+        !module.manifest.variants.some((variant) => addedMatches(variant).length > 0)
+      ) {
+        continue;
+      }
+      const selected = selectVariant(module.manifest, present);
+      if (selected.key !== record.variant) {
+        reselected.push({
+          ref,
+          from: record.variant,
+          to: selected.key,
+          because: addedMatches(selected).map(keyOf),
+        });
+      }
+    }
+  }
+  return reselected;
 }
 
 /** 050 steps 4, 5 and 7, in category order: peers, cardinality, then a variant for each module. */

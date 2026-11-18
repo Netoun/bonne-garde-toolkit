@@ -5,6 +5,7 @@
  */
 import { styleText } from "node:util";
 import * as clack from "@clack/prompts";
+import { cliRunner } from "@bonne-garde/schema";
 import type { AddOutcome } from "./add";
 import type { Choice, Prompter } from "./choices";
 import { manifestMigrationNotice } from "./report";
@@ -155,12 +156,12 @@ export function runnableCheck(check: string, pm: PackageManager | null): string 
     .join("");
 }
 
-/** What `bg add` did, on a terminal: per module and item, then what is left to the user. */
+/** What `bonne-garde add` did, on a terminal: per module and item, then what is left to the user. */
 export function showAdd(outcome: AddOutcome, dryRun: boolean, pm: PackageManager | null): void {
   const { modulePlans, plan, result, staged, migratedFrom } = outcome;
   const dim = (text: string) => styleText("dim", text);
   if (migratedFrom !== null) {
-    clack.log.info(manifestMigrationNotice(dryRun).replace(/^bg: /, ""));
+    clack.log.info(manifestMigrationNotice(dryRun).replace(/^bonne-garde: /, ""));
   }
   for (const module of modulePlans) {
     const patches = result.patches.filter((patch) => patch.module === module.key);
@@ -174,6 +175,9 @@ export function showAdd(outcome: AddOutcome, dryRun: boolean, pm: PackageManager
   }
   if (plan.items.length > 0) {
     clack.log.success(`${plan.items.map((item) => item.name).join(", ")} ${dim("(items)")}`);
+  }
+  for (const { ref, from, to } of outcome.reselected) {
+    clack.log.info(`${ref.category}/${ref.id} planned again: variant ${from} → ${to}`);
   }
   for (const { path, from, by } of result.tookOver) {
     clack.log.info(`${path} was ${from}'s, it is ${by}'s now`);
@@ -199,7 +203,7 @@ export function showAdd(outcome: AddOutcome, dryRun: boolean, pm: PackageManager
         ...intentions.map(({ id }) => `• ${id}`),
         "",
         `Hand ${staged.session} to your coding agent: it applies each one,`,
-        'then bg record <id> (or bg record <id> --skip "<reason>").',
+        `then ${cliRunner()} record <id> (or ${cliRunner()} record <id> --skip "<reason>").`,
       ].join("\n"),
       `${intentions.length} intention${intentions.length === 1 ? "" : "s"} to apply`,
     );

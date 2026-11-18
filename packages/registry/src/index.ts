@@ -15,11 +15,14 @@ export {
 export {
   checkModuleSet,
   classifyNames,
+  readAuthoredIntention,
+  reselectedModules,
   resolveModulePlans,
   type ModulePlan,
   type ModuleRef,
   type PlannedEnvKey,
   type PlannedFile,
+  type Reselected,
 } from "./module-plan";
 export {
   inspectPatch,
@@ -44,10 +47,11 @@ export {
   type AuthoredIntention,
   type PendingIntention,
 } from "./pending-intentions";
-export { loadNamedModules, readPlanFiles } from "./remote-install";
+export { loadInstalledModules, loadNamedModules, readPlanFiles } from "./remote-install";
 export { readInstalledModuleManifest, type ModuleManifestLookup } from "./read-module-manifest";
 export {
   itemFileTarget,
+  itemFileText,
   PlanError,
   resolveInstallPlan,
   searchCatalog,

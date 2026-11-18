@@ -7,14 +7,14 @@ Define post-create composition. One `add` handles both catalogs: shadcn UI items
 ## Commands
 
 ```bash
-bg list [--category <cat>] [--items] [--source <source>]
-bg search <query> [--source <source>]
-bg view <name> [--source <source>]
-bg add <name...> [--dry-run] [--force] [--no-install] [--yes] [--json] [--set key=value] [--source <source>]
-bg replace <name> [--dry-run]          # swap the module filling a `cardinality: one` category
-bg remove <name> [--dry-run]           # revert tier 1 + tier 2; tier 3 is reported, not undone
-bg record <intention-id> [--skip "<reason>"]
-bg doctor [--json] [--strict]
+bonne-garde list [--category <cat>] [--items] [--source <source>]
+bonne-garde search <query> [--source <source>]
+bonne-garde view <name> [--source <source>]
+bonne-garde add <name...> [--dry-run] [--force] [--no-install] [--yes] [--json] [--set key=value] [--source <source>]
+bonne-garde replace <name> [--dry-run]          # swap the module filling a `cardinality: one` category
+bonne-garde remove <name> [--dry-run]           # revert tier 1 + tier 2; tier 3 is reported, not undone
+bonne-garde record <intention-id> [--skip "<reason>"]
+bonne-garde doctor [--json] [--strict]
 ```
 
 ## `add` algorithm (MUST)
@@ -23,7 +23,7 @@ bg doctor [--json] [--strict]
 2. Resolve the registry source(s); load both catalogs.
 3. Classify each requested name as **item** or **module**.
 4. Resolve the graph: `registryDependencies` for items, `peers` + `consumesPackages` for modules.
-5. Check category cardinality against `modules`; a filled `one` category fails pointing at `bg replace`.
+5. Check category cardinality against `modules`; a filled `one` category fails pointing at `bonne-garde replace`.
 6. Resolve `options` (flags, then defaults; prompts only on a TTY without `--yes`).
 7. Select one **variant** per module by most-specific `match` over the resolved peers.
 8. Build the plan: files, regions, workspace packages, deps, env keys, checks, pending intents.
@@ -39,6 +39,7 @@ bg doctor [--json] [--strict]
 
 - Steps 1–13 MUST be fully deterministic. A plan with zero pending intents MUST complete with no agent in the loop and no TTY.
 - Dependencies MUST come from the variant and nowhere else: written into the workspace `package.json` generated from it, or merged into the module's vendored `package.json`, which carries no dependency maps of its own ([035](./035-module-registry.md)).
+- An installed module the call does not name, one of whose variants `match`es a module this call adds, MUST be selected again at step 7 and, when the variant selected is not the one `bg.json` records, planned in the same call as a re-add and reported with the variant it leaves and the one it takes. `--force` MUST NOT reach it: it overwrites only what the modules and items the call names have in the way. A collision of a module planned again fails naming that module and the module of the call that selects it again, and prints the call that resolves it, which names the module as well (`bonne-garde add auth/better-auth email/resend --force`).
 - `--yes` MUST be honoured: it selects defaults for every `option` and never prompts. It is not a no-op flag.
 - MUST support `local:` sources for monorepo development and `github:owner/repo@ref` for consumers, with the same UX for both, for **install** and not only for index fetch.
 
@@ -49,7 +50,7 @@ Reads `bg.json` and the tree, no network. Reports:
 | Check      | Signal                                                                                                                                                  |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Manifest   | Schema version, module and item counts                                                                                                                  |
-| Files      | Missing, user-modified (sha mismatch), untracked-but-expected. A file with recorded regions is checked by region, not by sha                            |
+| Files      | Missing, user-modified (sha mismatch, of the bytes), untracked-but-expected. A file with recorded regions is checked by region, not by sha              |
 | Regions    | Present / missing / owned by another module / foreign edit. An `intent[<id>]` region is present when its module's record lists the intention as applied |
 | Patches    | Recorded `failed` outcomes                                                                                                                              |
 | Intentions | Pending (staged, unresolved), applied, skipped                                                                                                          |
@@ -70,16 +71,16 @@ Reads `bg.json` and the tree, no network. Reports:
 | Unknown name                        | Fail with suggestions from `search`                     |
 | Missing peer category               | Fail listing the category and its allow-list            |
 | Peer outside allow-list             | Fail naming the incompatible module                     |
-| Category already filled             | Fail pointing at `bg replace`                           |
+| Category already filled             | Fail pointing at `bonne-garde replace`                  |
 | No variant matches                  | Fail listing installed peers and available `match` keys |
 | Collision with a user-modified file | Fail listing paths; `--force` overwrites                |
 | Region owned by another module      | Fail always — `--force` does not bypass                 |
 
 ## Acceptance
 
-- `bg add email --dry-run` prints files, regions, env keys, deps and pending intents, and leaves the tree byte-identical.
-- `bg add email` twice is idempotent: second run reports every file and region as skipped.
-- `bg add better-auth` without an `orm` fails naming the missing peer, before writing anything.
-- `bg add api ui button --yes --no-install` completes in CI with no TTY.
-- `bg doctor --strict` is green immediately after a clean `add` with no pending intents.
-- `bg remove email` restores the tree to its pre-add state except for user-modified files and applied intents.
+- `bonne-garde add email --dry-run` prints files, regions, env keys, deps and pending intents, and leaves the tree byte-identical.
+- `bonne-garde add email` twice is idempotent: second run reports every file and region as skipped.
+- `bonne-garde add better-auth` without an `orm` fails naming the missing peer, before writing anything.
+- `bonne-garde add api ui button --yes --no-install` completes in CI with no TTY.
+- `bonne-garde doctor --strict` is green immediately after a clean `add` with no pending intents.
+- `bonne-garde remove email` restores the tree to its pre-add state except for user-modified files and applied intents.

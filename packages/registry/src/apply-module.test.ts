@@ -8,7 +8,7 @@ import {
   type ProjectManifest,
 } from "@bonne-garde/schema";
 import { ApplyError, applyInstallPlan } from "./apply-plan";
-import type { ModulePlan } from "./module-plan";
+import type { ModulePlan, Reselected } from "./module-plan";
 import { sha256Hex } from "./sha256";
 import type { RegistryItem } from "./types";
 
@@ -28,6 +28,7 @@ function modulePlan(overrides: Partial<ModulePlan> = {}): ModulePlan {
     variant: "default",
     options: {},
     files: [{ target: "apps/api/wrangler.jsonc", content: '{ "name": "api" }\n' }],
+    binaries: [],
     env: [],
     patches: [],
     intentions: [],
@@ -95,7 +96,7 @@ async function install(
   projectRoot: string,
   manifest: ProjectManifest,
   modules: ModulePlan[],
-  extra: { force?: boolean; dryRun?: boolean } = {},
+  extra: { force?: boolean; dryRun?: boolean; reselected?: Reselected[] } = {},
 ) {
   return applyInstallPlan({
     projectRoot,
@@ -385,6 +386,241 @@ describe("applyInstallPlan: modules (050 steps 10-12)", () => {
   });
 });
 
+describe("applyInstallPlan: --force reaches what the call names, not a module it plans again (050 step 7)", () => {
+  const auth = (content = "v1") =>
+    modulePlan({
+      category: "auth",
+      id: "better-auth",
+      key: "auth/better-auth",
+      files: [{ target: "auth.txt", content }],
+    });
+  const email = (content: string) =>
+    modulePlan({
+      category: "email",
+      id: "resend",
+      key: "email/resend",
+      variant: "better-auth",
+      files: [{ target: "email.txt", content }],
+    });
+  const RESELECTED = {
+    ref: { category: "email", id: "resend" },
+    from: "default",
+    to: "better-auth",
+    because: ["auth/better-auth"],
+  } satisfies Reselected;
+
+  test("a planned-again module's edited file is not overwritten under --force: nothing is written, and the error names it, who added it, and what to name", async () => {
+    const { projectRoot, manifest } = await freshProject();
+    const first = await install(projectRoot, manifest, [email("v1")]);
+    await writeFile(join(projectRoot, "email.txt"), "edited by the user");
+    const before = await snapshot(projectRoot);
+
+    const attempt = install(projectRoot, first.manifest, [auth(), email("v2")], {
+      force: true,
+      reselected: [RESELECTED],
+    });
+
+    await expect(attempt).rejects.toBeInstanceOf(ApplyError);
+    await expect(attempt).rejects.toThrow(
+      /^nothing was written; email\/resend, installed on variant default, is planned again on variant better-auth because auth\/better-auth is added, and --force reaches only what the call names; this file of it is in the way:\n {2}email\.txt was modified since email\/resend wrote it$/,
+    );
+    await expect(attempt).rejects.toMatchObject({ nameToForce: ["email/resend"] });
+    expect(await snapshot(projectRoot)).toEqual(before);
+
+    // Naming it in the same call, which is what the error asks for, is what --force reaches.
+    const named = await install(projectRoot, first.manifest, [auth(), email("v2")], {
+      force: true,
+    });
+    expect(named.written).toEqual(["auth.txt", "email.txt"]);
+    expect(await readFile(join(projectRoot, "email.txt"), "utf8")).toBe("v2");
+  });
+
+  test("a named module's collision keeps the message it had, and the planned-again one's follows it in the same error", async () => {
+    const { projectRoot, manifest } = await freshProject();
+    const first = await install(projectRoot, manifest, [auth(), email("v1")]);
+    await writeFile(join(projectRoot, "auth.txt"), "edited by the user");
+    await writeFile(join(projectRoot, "email.txt"), "edited by the user");
+
+    const attempt = install(projectRoot, first.manifest, [auth("v2"), email("v2")], {
+      reselected: [RESELECTED],
+    });
+
+    await expect(attempt).rejects.toThrow(
+      /^nothing was written; this file is in the way \(use --force to overwrite\):\n {2}auth\.txt was modified since auth\/better-auth wrote it\nemail\/resend, installed on variant default, is planned again on variant better-auth because auth\/better-auth is added, and --force reaches only what the call names; this file of it is in the way:\n {2}email\.txt was modified since email\/resend wrote it$/,
+    );
+    await expect(attempt).rejects.toMatchObject({ nameToForce: ["email/resend"] });
+  });
+
+  test("a planned-again module with nothing in the way is installed under --force, and an error that is not its own does not mention it", async () => {
+    const { projectRoot, manifest } = await freshProject();
+    const first = await install(projectRoot, manifest, [auth(), email("v1")]);
+    await writeFile(join(projectRoot, "auth.txt"), "edited by the user");
+
+    const attempt = install(projectRoot, first.manifest, [auth("v2"), email("v2")], {
+      reselected: [RESELECTED],
+    });
+    await expect(attempt).rejects.toThrow(
+      /^nothing was written; this file is in the way \(use --force to overwrite\):\n {2}auth\.txt was modified since auth\/better-auth wrote it$/,
+    );
+    await expect(attempt).rejects.toMatchObject({ nameToForce: [] });
+
+    const forced = await install(projectRoot, first.manifest, [auth("v2"), email("v2")], {
+      force: true,
+      reselected: [RESELECTED],
+    });
+    expect(forced.written).toEqual(["auth.txt", "email.txt"]);
+  });
+});
+
+describe("applyInstallPlan: binary files (035)", () => {
+  // A PNG signature, the placeholder as ASCII, and the byte 0xff, which UTF-8 text cannot hold.
+  const ICON = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, ...Buffer.from("{{SCOPE}}"), 0xff, 0x00]);
+  // The same but for that byte. Read as UTF-8, both decode to the same text, so a comparison of
+  // decoded text cannot tell them apart and a comparison of bytes can.
+  const LOOKALIKE = Uint8Array.from(ICON, (byte) => (byte === 0xff ? 0xfe : byte));
+  const TARGET = "assets/icon.png";
+
+  const withIcon = (bytes: Uint8Array) =>
+    modulePlan({ files: [], binaries: [{ target: TARGET, bytes }] });
+  const onDisk = async (root: string) => Buffer.from(await readFile(join(root, TARGET)));
+
+  /** Every file of a tree by the sha256 of its bytes: a snapshot of text would call two lookalikes equal. */
+  async function hashes(root: string): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    for await (const path of new Bun.Glob("**/*").scan({ cwd: root, dot: true, onlyFiles: true })) {
+      out[path] = sha256Hex(await readFile(join(root, path)));
+    }
+    return out;
+  }
+
+  test("is written byte for byte, and bg.json records the sha256 of its bytes", async () => {
+    const { projectRoot, manifest } = await freshProject();
+
+    const result = await install(projectRoot, manifest, [withIcon(ICON)]);
+
+    expect((await onDisk(projectRoot)).equals(ICON)).toBe(true);
+    expect(result.written).toEqual([TARGET]);
+    expect(result.manifest.files[TARGET]).toEqual({
+      owner: "provider/cloudflare",
+      sha256: sha256Hex(ICON),
+    });
+  });
+
+  test("--dry-run lists it and writes nothing", async () => {
+    const { projectRoot, manifest } = await freshProject();
+
+    const result = await install(projectRoot, manifest, [withIcon(ICON)], { dryRun: true });
+
+    expect(result.written).toEqual([TARGET]);
+    expect(await hashes(projectRoot)).toEqual({});
+  });
+
+  test("a second add skips it and changes nothing", async () => {
+    const { projectRoot, manifest } = await freshProject();
+    const first = await install(projectRoot, manifest, [withIcon(ICON)]);
+    const before = await hashes(projectRoot);
+
+    const second = await install(projectRoot, first.manifest, [withIcon(ICON)]);
+
+    expect(second.written).toEqual([]);
+    expect(second.skippedIdentical).toEqual([TARGET]);
+    expect(second.manifest.files).toEqual(first.manifest.files);
+    expect(await hashes(projectRoot)).toEqual(before);
+  });
+
+  test("a changed template overwrites a file nobody touched", async () => {
+    const { projectRoot, manifest } = await freshProject();
+    const first = await install(projectRoot, manifest, [withIcon(ICON)]);
+
+    const updated = await install(projectRoot, first.manifest, [withIcon(LOOKALIKE)]);
+
+    expect(updated.written).toEqual([TARGET]);
+    expect((await onDisk(projectRoot)).equals(LOOKALIKE)).toBe(true);
+    expect(updated.manifest.files[TARGET]?.sha256).toBe(sha256Hex(LOOKALIKE));
+  });
+
+  test("an edit of one byte is the user's: a re-add fails naming the file, and --force overwrites it", async () => {
+    const { projectRoot, manifest } = await freshProject();
+    const first = await install(projectRoot, manifest, [withIcon(ICON)]);
+    await writeFile(join(projectRoot, TARGET), LOOKALIKE);
+    const before = await hashes(projectRoot);
+
+    await expect(install(projectRoot, first.manifest, [withIcon(ICON)])).rejects.toThrow(
+      /assets\/icon\.png was modified since provider\/cloudflare wrote it/,
+    );
+    expect(await hashes(projectRoot)).toEqual(before);
+
+    const forced = await install(projectRoot, first.manifest, [withIcon(ICON)], { force: true });
+    expect(forced.written).toEqual([TARGET]);
+    expect((await onDisk(projectRoot)).equals(ICON)).toBe(true);
+  });
+
+  test("an edited binary file of a module the call plans again is not overwritten under --force", async () => {
+    const { projectRoot, manifest } = await freshProject();
+    const first = await install(projectRoot, manifest, [withIcon(ICON)]);
+    await writeFile(join(projectRoot, TARGET), LOOKALIKE);
+    const before = await hashes(projectRoot);
+
+    const attempt = install(projectRoot, first.manifest, [withIcon(ICON)], {
+      force: true,
+      reselected: [
+        {
+          ref: { category: "provider", id: "cloudflare" },
+          from: "default",
+          to: "better-auth",
+          because: ["auth/better-auth"],
+        },
+      ],
+    });
+
+    await expect(attempt).rejects.toThrow(
+      /^nothing was written; provider\/cloudflare, installed on variant default, is planned again on variant better-auth because auth\/better-auth is added, .*in the way:\n {2}assets\/icon\.png was modified since provider\/cloudflare wrote it$/s,
+    );
+    await expect(attempt).rejects.toMatchObject({ nameToForce: ["provider/cloudflare"] });
+    expect(await hashes(projectRoot)).toEqual(before);
+  });
+
+  test("a file bg.json does not record is refused when its bytes differ, and recorded when they are the same", async () => {
+    const { projectRoot, manifest } = await freshProject();
+    await mkdir(join(projectRoot, "assets"));
+    await writeFile(join(projectRoot, TARGET), LOOKALIKE);
+    const before = await hashes(projectRoot);
+
+    await expect(install(projectRoot, manifest, [withIcon(ICON)])).rejects.toThrow(
+      /assets\/icon\.png exists and is not recorded in bg\.json/,
+    );
+    expect(await hashes(projectRoot)).toEqual(before);
+
+    await writeFile(join(projectRoot, TARGET), ICON);
+    const result = await install(projectRoot, manifest, [withIcon(ICON)]);
+    expect(result.skippedIdentical).toEqual([TARGET]);
+    expect(result.manifest.files[TARGET]?.sha256).toBe(sha256Hex(ICON));
+  });
+
+  test("one named by two modules in the same call fails, and --force does not decide between them", async () => {
+    const { projectRoot, manifest } = await freshProject();
+
+    await expect(
+      install(
+        projectRoot,
+        manifest,
+        [
+          withIcon(ICON),
+          modulePlan({
+            category: "tooling",
+            id: "fmt",
+            key: "tooling/fmt",
+            files: [],
+            binaries: [{ target: TARGET, bytes: ICON }],
+          }),
+        ],
+        { force: true },
+      ),
+    ).rejects.toThrow(/assets\/icon\.png is named by both provider\/cloudflare and tooling\/fmt/);
+    expect(await hashes(projectRoot)).toEqual({});
+  });
+});
+
 describe("applyInstallPlan: module env keys", () => {
   const SECRET = { name: "SECRET", required: true, example: "" };
   const PORT = { name: "PORT", required: false, example: "5172" };
@@ -488,6 +724,40 @@ describe("applyInstallPlan: a module's workspace package", () => {
       /auth\/better-auth: workspace packages\/auth is not covered by the workspaces of package\.json \(apps\/\*\): registering it is a workspace\.add patch, which is not supported yet/,
     );
     expect(await snapshot(projectRoot)).toEqual(before);
+  });
+});
+
+describe("applyInstallPlan: which workspace globs cover a module's package", () => {
+  const withDeps = modulePlan({
+    category: "auth",
+    id: "better-auth",
+    key: "auth/better-auth",
+    files: [{ target: "packages/auth/package.json", content: '{ "name": "@demo/auth" }\n' }],
+    dependencies: { "better-auth": "1.4.2" },
+    workspace: "packages/auth",
+  });
+
+  test.each([
+    { globs: ["packages/**"], covered: true },
+    { globs: ["apps/*", "{apps,packages}/*"], covered: true },
+    { globs: ["packages/auth"], covered: true },
+    { globs: ["./packages/*"], covered: true },
+    { globs: ["packages/*/*"], covered: false },
+    { globs: ["package/*", "packages"], covered: false },
+  ])("$globs covers packages/auth: $covered", async ({ globs, covered }) => {
+    const { projectRoot, manifest } = await freshProject();
+    await writeFile(
+      join(projectRoot, "package.json"),
+      JSON.stringify({ name: "demo", workspaces: globs }),
+    );
+
+    const outcome = install(projectRoot, manifest, [withDeps]);
+
+    if (covered) {
+      expect((await outcome).written).toEqual(["packages/auth/package.json"]);
+    } else {
+      await expect(outcome).rejects.toThrow(/workspace packages\/auth is not covered/);
+    }
   });
 });
 

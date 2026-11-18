@@ -21,7 +21,7 @@ async function subdirectories(dir: string): Promise<string[]> {
 /**
  * One `module.json` read from `modules/<category>/<id>/`. The path is the identity (spec 035): a
  * file whose category or id disagrees with the directory it sits in is refused, since
- * `bg add <category>/<id>` and the owner string in `bg.json` are both read off the path.
+ * `bonne-garde add <category>/<id>` and the owner string in `bg.json` are both read off the path.
  */
 export function parseModuleFile(raw: string, category: string, id: string): ModuleManifest {
   const where = `modules/${category}/${id}/module.json`;

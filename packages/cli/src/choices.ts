@@ -1,6 +1,6 @@
 /**
  * Spec 040: what `create` asks, and the registry names each answer stands for. Which answers go
- * together is the registry's to say: a set is checked as `bg add` would plan it (`Check`), so no
+ * together is the registry's to say: a set is checked as `bonne-garde add` would plan it (`Check`), so no
  * compatibility rule lives here.
  */
 import type { PackageManager } from "./package-manager";
@@ -49,7 +49,7 @@ export type Choices = {
   pm: PackageManager;
 };
 
-/** Every module an answer can name, in the order `bg add` is given them. */
+/** Every module an answer can name, in the order `bonne-garde add` is given them. */
 export const CANDIDATE_MODULES = [
   "pm/bun",
   "pm/pnpm",
@@ -147,7 +147,7 @@ export function parseFlagList<T extends string>(
   return values;
 }
 
-/** Throws the planner's message when `bg add` would refuse these names in an empty project. */
+/** Throws the planner's message when `bonne-garde add` would refuse these names in an empty project. */
 export type Check = (names: string[]) => void;
 
 /**

@@ -14,6 +14,6 @@ export function checksNotice(
   // One module a line: a reader, person or agent, finds a module's checks without parsing a sentence.
   const list = declared.map(({ key, checks }) => `  ${key}: ${checks.join("; ")}`).join("\n");
   return pending > 0
-    ? `bg: checks withheld while ${pending} intention${pending === 1 ? " is" : "s are"} pending (spec 050 step 15); they are the Validation of each:\n${list}`
-    : `bg: checks were not run (spec 050 step 15 is not implemented):\n${list}`;
+    ? `bonne-garde: checks withheld while ${pending} intention${pending === 1 ? " is" : "s are"} pending (spec 050 step 15); they are the Validation of each:\n${list}`
+    : `bonne-garde: checks were not run (spec 050 step 15 is not implemented):\n${list}`;
 }

@@ -4,9 +4,11 @@ import {
   applyInstallPlan,
   checkModuleSet,
   classifyNames,
+  loadInstalledModules,
   loadNamedModules,
   loadRegistryFromSource,
   readPlanFiles,
+  reselectedModules,
   resolveInstallPlan,
   resolveModulePlans,
   searchCatalog,
@@ -19,14 +21,16 @@ import { installDependencies } from "./package-manager";
 
 /**
  * How a github source is read. A caller that does not say gets GitHub raw, with `GITHUB_TOKEN` when
- * it is set; one that points `baseUrl` elsewhere (a test) is trusted with the token too, or with none.
+ * it is set, or the mirror `BONNE_GARDE_GITHUB_RAW` names (the same paths as raw.githubusercontent.com);
+ * one that points `baseUrl` elsewhere (a test) is trusted with the token too, or with none.
  */
 function githubOptions(override: GithubOptions | undefined): GithubOptions {
   if (override) {
     return override;
   }
   const token = process.env.GITHUB_TOKEN;
-  return token ? { token } : {};
+  const baseUrl = process.env.BONNE_GARDE_GITHUB_RAW;
+  return { ...(token ? { token } : {}), ...(baseUrl ? { baseUrl } : {}) };
 }
 
 export async function openCatalog(projectRoot: string, explicit?: string, github?: GithubOptions) {
@@ -94,7 +98,7 @@ export type AddOptions = {
 };
 
 /**
- * Spec 040: a check that throws what `bg add` would refuse of a set of names in an empty project,
+ * Spec 040: a check that throws what `bonne-garde add` would refuse of a set of names in an empty project,
  * reading no template file. The module manifests of `candidates` are fetched once, here: on a github
  * source that is one request each, and none for a later check.
  */
@@ -135,7 +139,18 @@ export async function addItems(options: AddOptions) {
   const catalog = await loadNamedModules(loaded, options.items);
   const { items, modules } = classifyNames(catalog, options.items);
   const plan = await readPlanFiles(catalog, resolveInstallPlan(catalog, items, manifest, modules));
-  const modulePlans = await resolveModulePlans(catalog, modules, manifest);
+  // 050 step 7: an installed module whose variant a module added here changes is planned again with
+  // them, so installing auth after email wires email as one call naming both would have. Only a call
+  // that adds a module can change one, so only it asks a github source for the installed modules.
+  // `force` reaches what the call names and not those: they are the project's, planned again.
+  const withInstalled =
+    modules.length === 0 ? catalog : await loadInstalledModules(catalog, manifest);
+  const reselected = reselectedModules(withInstalled, modules, manifest);
+  const modulePlans = await resolveModulePlans(
+    withInstalled,
+    [...modules, ...reselected.map(({ ref }) => ref)],
+    manifest,
+  );
   const { dryRun = false, force = false } = options;
   const result = await applyInstallPlan({
     projectRoot,
@@ -145,19 +160,23 @@ export async function addItems(options: AddOptions) {
     sourceLabel: source.startsWith("local:") ? "@bg" : source,
     dryRun,
     force,
+    reselected,
   });
 
   const modulesNeedInstall = modulePlans.some(
     (module) =>
       Object.keys(module.dependencies).length + Object.keys(module.devDependencies).length > 0,
   );
-  if (
+  // No package manager to install with is not a failed add: the files are written, and what the add did
+  // is still reported. The caller says so (`missingPackageManager`) and exits non-zero.
+  const installs =
     !dryRun &&
     options.install !== false &&
-    (plan.npmDependencies.length + plan.npmDevDependencies.length > 0 || modulesNeedInstall)
-  ) {
-    await installDependencies(projectRoot, { output: options.installOutput ?? "inherit" });
-  }
+    (plan.npmDependencies.length + plan.npmDevDependencies.length > 0 || modulesNeedInstall);
+  const installed = installs
+    ? await installDependencies(projectRoot, { output: options.installOutput ?? "inherit" })
+    : null;
+  const installMissing = installed?.missing ? installed.pm : null;
 
   // 050 step 14: what the failed patches became is staged for whoever resolves it. `.bg/` is scratch,
   // outside the all-or-nothing apply, and a dry run writes nothing.
@@ -173,5 +192,5 @@ export async function addItems(options: AddOptions) {
     ? null
     : await stagePendingIntentions(projectRoot, [...result.pending, ...result.authored], resolved);
 
-  return { plan, modulePlans, result, migratedFrom, staged };
+  return { plan, modulePlans, result, migratedFrom, staged, reselected, installMissing };
 }

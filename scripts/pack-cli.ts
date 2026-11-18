@@ -1,71 +1,89 @@
 #!/usr/bin/env bun
 /**
- * Build a publishable npm package at dist/npm/create-bonne-garde: the CLI, with schema and registry,
- * bundled into JavaScript for Node (040, 070), and templates/base (no workspace: deps).
+ * Build a publishable npm package at dist/npm/bonne-garde: one JavaScript file for Node ≥ 22.12
+ * (and Bun) that bundles the CLI, schema and registry, plus templates/base.
+ *
+ * Node never strips types inside node_modules, so what is published is JavaScript. The runtime npm
+ * dependencies stay external and are declared in the package's `dependencies`; nothing else is
+ * needed to run it, and no `workspace:` dependency is left.
  */
 import { chmod, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
-const OUT = join(ROOT, "dist/npm/create-bonne-garde");
-const NODE_SHEBANG = "#!/usr/bin/env node\n";
+const OUT = join(ROOT, "dist/npm/bonne-garde");
+const BIN = "bin.js";
 
-// Schema and registry are bundled in, so what their `package.json` files depend on is what the
-// packed package has to declare. Read from there, so the pin lives in one place.
-const registryManifest: unknown = JSON.parse(
-  await readFile(join(ROOT, "packages/registry/package.json"), "utf8"),
+/** What a workspace package asks npm for, its sibling workspace packages left out: they are bundled. */
+async function runtimeDependencies(name: string): Promise<[string, string][]> {
+  const manifest: unknown = JSON.parse(
+    await readFile(join(ROOT, "packages", name, "package.json"), "utf8"),
+  );
+  if (
+    typeof manifest !== "object" ||
+    manifest === null ||
+    !("dependencies" in manifest) ||
+    typeof manifest.dependencies !== "object" ||
+    manifest.dependencies === null
+  ) {
+    return [];
+  }
+  return Object.entries(manifest.dependencies).flatMap(([dependency, version]) =>
+    typeof version === "string" && !dependency.startsWith("@bonne-garde/")
+      ? [[dependency, version] as [string, string]]
+      : [],
+  );
+}
+
+// What the bundled workspace packages depend on is what the packed package has to declare. Read from
+// their manifests, so the pin lives in one place.
+/** The platform's one version (070: lockstep), the CLI package's: what `create` pins and the tag names. */
+const cliManifest: unknown = JSON.parse(
+  await readFile(join(ROOT, "packages/cli/package.json"), "utf8"),
 );
-const registryDependencies =
-  typeof registryManifest === "object" &&
-  registryManifest !== null &&
-  "dependencies" in registryManifest &&
-  typeof registryManifest.dependencies === "object" &&
-  registryManifest.dependencies !== null
-    ? Object.entries(registryManifest.dependencies)
-    : [];
+const cliVersion =
+  typeof cliManifest === "object" &&
+  cliManifest !== null &&
+  "version" in cliManifest &&
+  typeof cliManifest.version === "string"
+    ? cliManifest.version
+    : "0.0.0";
+
 const dependencies = Object.fromEntries(
-  registryDependencies.filter(([name]) => !name.startsWith("@bonne-garde/")),
+  (await Promise.all(["cli", "registry", "schema"].map(runtimeDependencies))).flat(),
 );
 
 await rm(OUT, { recursive: true, force: true });
 await mkdir(OUT, { recursive: true });
 
-// Node strips no type under node_modules, so what runs is JavaScript. The npm dependencies stay
-// outside the bundle: the package declares them, and npm installs them.
 const build = await Bun.build({
-  entrypoints: [
-    join(ROOT, "packages/cli/src/bin.ts"),
-    join(ROOT, "packages/cli/src/create-bin.ts"),
-  ],
-  outdir: join(OUT, "dist"),
+  entrypoints: [join(ROOT, "packages/cli/src/bin.ts")],
+  outdir: OUT,
+  naming: BIN,
   target: "node",
   format: "esm",
   external: Object.keys(dependencies),
-  naming: "[name].js",
 });
 if (!build.success) {
   throw new AggregateError(build.logs, "bundling the CLI failed");
 }
-for (const bin of ["bin.js", "create-bin.js"]) {
-  const path = join(OUT, "dist", bin);
-  const source = await readFile(path, "utf8");
-  await writeFile(path, NODE_SHEBANG + source.replace(/^#![^\n]*\n/, ""));
-  await chmod(path, 0o755);
-}
 
-await mkdir(join(OUT, "lib/schema"), { recursive: true });
-await cp(
-  join(ROOT, "packages/schema/project.schema.json"),
-  join(OUT, "lib/schema/project.schema.json"),
-);
+// The bin is run by node (`npx`, `pnpm dlx`, `yarn dlx`): the source's shebang is for Bun, and the
+// `// @bun` pragma the bundler leaves marks a file that only Bun runs.
+const bundle = (await readFile(join(OUT, BIN), "utf8"))
+  .replace(/^#!.*\n/, "")
+  .replace(/^\/\/ @bun\n/, "");
+await writeFile(join(OUT, BIN), `#!/usr/bin/env node\n${bundle}`);
+await chmod(join(OUT, BIN), 0o755);
+
 await cp(join(ROOT, "templates/base"), join(OUT, "templates/base"), {
   recursive: true,
 });
 await cp(join(ROOT, "LICENSE"), join(OUT, "LICENSE"));
 
 const pkg = {
-  name: "create-bonne-garde",
-  version: "0.1.0",
+  name: "bonne-garde",
+  version: cliVersion,
   description:
     "Bonne Garde CLI — create an empty Bun/Cloudflare monorepo and add modules from a shadcn-compatible registry",
   type: "module",
@@ -90,14 +108,13 @@ const pkg = {
     "cli",
   ],
   engines: {
-    bun: ">=1.3.0",
-    node: ">=22.20.0",
+    node: ">=22.12.0",
   },
+  // npm rewrites a bin path that starts with `./` at publish, with a warning that reads as an error.
   bin: {
-    "create-bonne-garde": "./dist/create-bin.js",
-    bg: "./dist/bin.js",
+    "bonne-garde": BIN,
   },
-  files: ["dist", "lib", "templates", "README.md", "LICENSE"],
+  files: [BIN, "templates", "README.md", "LICENSE"],
   dependencies,
   publishConfig: {
     access: "public",
@@ -106,31 +123,31 @@ const pkg = {
 
 await writeFile(join(OUT, "package.json"), `${JSON.stringify(pkg, null, 2)}\n`);
 
-const readme = `# create-bonne-garde
+const readme = `# bonne-garde
 
 Scaffold an empty Bonne Garde monorepo, then add UI and full-stack modules from the registry.
 
 ## Create
 
 \`\`\`bash
-bun create bonne-garde@latest my-app
-# or
-npm create bonne-garde@latest my-app
-# or
-pnpm create bonne-garde my-app
+bunx bonne-garde create my-app
+npx bonne-garde create my-app
+pnpm dlx bonne-garde create my-app
+yarn dlx bonne-garde create my-app
 \`\`\`
 
 ## Add modules
 
 \`\`\`bash
 cd my-app
-bunx bg add config/branding provider/cloudflare api/elysia ui/shadcn button --source github:Netoun/bonne-garde-toolkit
+bunx bonne-garde add config/branding provider/cloudflare api/elysia ui/shadcn button --source github:Netoun/bonne-garde-toolkit
 \`\`\`
 
-The CLI runs on Node 22.20+ or Bun. The project it creates is installed with Bun or pnpm (\`--pm\`, by default
-the one you ran \`create\` with), and runs its scripts and tests on Node.
+The CLI runs on Node ≥ 22.12 and on Bun, with any package manager. The project it generates is a Bun
+monorepo: it needs [Bun](https://bun.sh) to install and run. Without Bun, \`create\` writes the files and
+tells you to run \`bun install\` once Bun is installed.
 `;
 
 await writeFile(join(OUT, "README.md"), readme);
 
-console.log(`packed create-bonne-garde → ${OUT}`);
+console.log(`packed bonne-garde → ${OUT}`);

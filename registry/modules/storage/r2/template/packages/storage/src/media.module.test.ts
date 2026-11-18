@@ -2,6 +2,33 @@ import { describe, it, expect } from "vite-plus/test";
 import { Elysia } from "elysia";
 import { mediaModule, resolveRuntimeStorage } from "./media.module";
 
+/**
+ * Runs `body` with some variables of the process set (or unset, for `undefined`), then puts them back.
+ * Under Bun `readRuntimeEnv()` is the process environment, and `NODE_ENV` is what wrangler inlines in
+ * a Worker: `production` in what it deploys, `development` under `wrangler dev`.
+ */
+async function withEnv<T>(
+  vars: Record<string, string | undefined>,
+  body: () => Promise<T>,
+): Promise<T> {
+  const before = Object.fromEntries(Object.keys(vars).map((name) => [name, process.env[name]]));
+  const set = (values: Record<string, string | undefined>) => {
+    for (const [name, value] of Object.entries(values)) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    }
+  };
+  set(vars);
+  try {
+    return await body();
+  } finally {
+    set(before);
+  }
+}
+
 // What `apps/api` mounts, over the runtime this test runs in: no Worker, so no D1 and no R2 binding.
 describe("resolveRuntimeStorage", () => {
   it("has no bucket where the runtime binds none, and the local media route as the public url under test", async () => {
@@ -9,6 +36,37 @@ describe("resolveRuntimeStorage", () => {
 
     expect(context.bucket).toBeUndefined();
     expect(context.publicUrl).toBe("http://localhost:5172/v1/media/file");
+  });
+
+  it("serves its files under the origin the API was given in development, with no public url to set", async () => {
+    const context = await withEnv(
+      { NODE_ENV: "development", R2_PUBLIC_URL: undefined, API_URL: "https://api.acme.localhost" },
+      resolveRuntimeStorage,
+    );
+
+    expect(context.publicUrl).toBe("https://api.acme.localhost/v1/media/file");
+  });
+
+  it("keeps the public url it is given in development", async () => {
+    const context = await withEnv(
+      {
+        NODE_ENV: "development",
+        R2_PUBLIC_URL: "https://media.acme.com",
+        API_URL: "https://api.acme.localhost",
+      },
+      resolveRuntimeStorage,
+    );
+
+    expect(context.publicUrl).toBe("https://media.acme.com");
+  });
+
+  it("fails naming R2_PUBLIC_URL in production, whatever origin the API has", async () => {
+    const resolve = withEnv(
+      { NODE_ENV: "production", R2_PUBLIC_URL: undefined, API_URL: "https://api.acme.com" },
+      resolveRuntimeStorage,
+    );
+
+    await expect(resolve).rejects.toThrow(/Missing required environment variables: R2_PUBLIC_URL/);
   });
 
   it("builds a database that names the D1 binding when something first uses it", async () => {
@@ -28,6 +86,18 @@ describe("mediaModule, as the API mounts it", () => {
 
     expect(response.status).toBe(500);
     expect(await response.json()).toMatchObject({ code: "BUCKET_NOT_CONFIGURED" });
+  });
+
+  it("fails the first request that needs the public url in production, naming the key, and not before", async () => {
+    // The shell boots, and nothing is read, until a route of the module is asked something.
+    await withEnv({ NODE_ENV: "production", R2_PUBLIC_URL: undefined }, async () => {
+      const response = await app.handle(
+        new Request("http://api.test/v1/media/file/medias/a/b.png"),
+      );
+
+      expect(response.status).toBe(500);
+      expect(await response.text()).toContain("R2_PUBLIC_URL");
+    });
   });
 
   it("answers 401 to a request with no session before it reaches the database or the bucket", async () => {

@@ -1,5 +1,6 @@
+import { cliRunner } from "@bonne-garde/schema";
 /**
- * `bg create` (spec 040): the answers, then the project, then its install. On a terminal it is the
+ * `bonne-garde create` (spec 040): the answers, then the project, then its install. On a terminal it is the
  * logo, clack's questions, a spinner per step and the next steps; elsewhere (a pipe, an agent, CI) the
  * plain lines `report.ts` prints, which do not change with the look.
  */
@@ -20,7 +21,12 @@ import {
   resolveChoices,
 } from "./choices";
 import { createProject } from "./create";
-import { installDependencies, invokingPackageManager, PACKAGE_MANAGERS } from "./package-manager";
+import {
+  installDependencies,
+  invokingPackageManager,
+  missingPackageManager,
+  PACKAGE_MANAGERS,
+} from "./package-manager";
 import { defaultRegistrySource } from "./paths";
 import { reportAdd } from "./report";
 import { Cancelled, clack, logo, nextSteps, renderSteps, step, terminalPrompter } from "./terminal";
@@ -114,7 +120,10 @@ export async function createCommand(rest: readonly string[]): Promise<number> {
     });
     const { target, added } = await create(name, choices);
     if (!noInstall) {
-      await installDependencies(target);
+      const { pm, missing } = await installDependencies(target);
+      if (missing) {
+        throw new Error(missingPackageManager(pm));
+      }
     }
     console.log(createdLine(target, choices));
     if (added !== null) {
@@ -128,7 +137,7 @@ export async function createCommand(rest: readonly string[]): Promise<number> {
   try {
     let name = args[0];
     console.log(`\n${logo(name ? `a new project in ${name}` : "a new project")}\n`);
-    clack.intro(styleText("inverse", " bg create "));
+    clack.intro(styleText("inverse", " bonne-garde create "));
     if (!name) {
       if (prompter === null) {
         throw new Error("create requires a directory name");
@@ -168,7 +177,12 @@ export async function createCommand(rest: readonly string[]): Promise<number> {
       const started = Date.now();
       await step(
         `Installing with ${choices.pm}`,
-        () => installDependencies(target, { output: "capture" }),
+        async () => {
+          const { pm, missing } = await installDependencies(target, { output: "capture" });
+          if (missing) {
+            throw new Error(missingPackageManager(pm));
+          }
+        },
         () => `Installed with ${choices.pm} in ${Math.round((Date.now() - started) / 1000)}s`,
       );
     }
@@ -188,7 +202,7 @@ export async function createCommand(rest: readonly string[]): Promise<number> {
           ...ids,
           "",
           `Hand ${session.path} to your coding agent: it applies each one,`,
-          'then bg record <id> (or bg record <id> --skip "<reason>").',
+          `then ${cliRunner()} record <id> (or ${cliRunner()} record <id> --skip "<reason>").`,
         ].join("\n"),
         `${pending} intention${pending === 1 ? "" : "s"} to apply`,
       );

@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { runCapturing } from "./run";
+import { runCapturing } from "./run-command";
 
 /** The package managers a project can be created with: one `pm` module each (040). */
 export const PACKAGE_MANAGERS = ["bun", "pnpm"] as const;
@@ -29,32 +29,32 @@ export async function packageManagerOf(projectRoot: string): Promise<PackageMana
   return pm;
 }
 
+/** What a command says when the package manager the project pins is not installed. */
+export function missingPackageManager(pm: PackageManager): string {
+  return `${pm} is not installed, and the project's package.json pins it: the files are written; install ${pm}, then run \`${pm} install\` in the project`;
+}
+
 /**
  * `<pm> install` in the project, with the package manager its package.json pins. Its output is the
- * caller's (`inherit`), or kept and put in the error when it fails (`capture`, under a spinner).
+ * caller's (`inherit`), or kept and put in the error when it fails (`capture`, under a spinner). A
+ * package manager that is not installed is a result, not an error: what was written stays written,
+ * and the caller says so (`missingPackageManager`).
  */
 export async function installDependencies(
   projectRoot: string,
   options: { env?: NodeJS.ProcessEnv; output?: "inherit" | "capture" } = {},
-): Promise<PackageManager> {
+): Promise<{ pm: PackageManager; missing: boolean }> {
   const pm = await packageManagerOf(projectRoot);
   const { env = process.env, output = "inherit" } = options;
-  const { code, printed } = await runCapturing([pm, "install"], {
-    cwd: projectRoot,
-    output,
-    env,
-  }).catch((error: unknown) => {
-    throw error instanceof Error && "code" in error && error.code === "ENOENT"
-      ? new Error(
-          `${pm} not found: the project's package.json pins it. Install ${pm}, or run bg with --no-install`,
-        )
-      : error;
-  });
-  if (code !== 0) {
-    const tail = printed.trim().split("\n").slice(-20).join("\n");
+  const result = await runCapturing([pm, "install"], { cwd: projectRoot, output, env });
+  if (result.status === "not-found") {
+    return { pm, missing: true };
+  }
+  if (result.code !== 0) {
+    const tail = result.printed.trim().split("\n").slice(-20).join("\n");
     throw new Error(`${pm} install failed${tail === "" ? "" : `:\n${tail}`}`);
   }
-  return pm;
+  return { pm, missing: false };
 }
 
 /** The package manager `create` was started from (`bun create`, `pnpm create`), when a project can use it. */

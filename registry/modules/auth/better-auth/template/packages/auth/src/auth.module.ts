@@ -1,11 +1,11 @@
 import { Elysia } from "elysia";
 import { and, eq, isNull } from "drizzle-orm";
-// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { clientIpHeaders, readRuntimeEnv } from "{{SCOPE}}/api-runtime";
 import { config } from "{{SCOPE}}/api/lib/app.config";
 import { logger } from "{{SCOPE}}/api/lib/logger";
-// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { allowedOrigins, applyCorsHeaders } from "{{SCOPE}}/api/lib/origins";
 import { createDB } from "{{SCOPE}}/db";

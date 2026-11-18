@@ -8,7 +8,7 @@ It replaces the `portless` registry item, which was hard-wired to four apps (`Ap
 runtime path ([035](../../../../docs/specs/035-module-registry.md), [09](../../../../docs/plans/2026-10-sync/09-dissolution.md) row 19).
 
 ```bash
-bunx bg add dev/portless
+bunx bonne-garde add dev/portless
 vp run dev:portless           # or: vp run dev:lan:portless
 ```
 
@@ -53,16 +53,20 @@ from its `dev` script, and runs it with the bins a package manager's `run` would
 ## What each app is told of the others
 
 Every app gets `<DIR>_URL` and `VITE_<DIR>_URL` for each app of the project (`API_URL`, `SPA_URL`,
-`VITE_API_URL`, …). Two names the shipped modules read do not follow from a directory, so they are aliases,
-left out when the app they point at is not installed:
+`VITE_API_URL`, …), and nothing else: the launcher names no key of a module that reads it from the
+runtime. `storage/r2`'s `R2_PUBLIC_URL` used to be one (the `api` app's URL + `/v1/media/file`, passed to
+the API as a `--var`); the module now derives it from `API_URL` under `wrangler dev`, so a launcher, or
+none, only has to give the API its origin ([`storage/r2`](../../storage/r2/README.md#environment)).
 
-| Variable        | Value                                  | Read by                                    |
-| --------------- | -------------------------------------- | ------------------------------------------ |
-| `VITE_APP_URL`  | the `spa` app's URL                    | `web/static`                               |
-| `R2_PUBLIC_URL` | the `api` app's URL + `/v1/media/file` | `storage/r2` (a Worker var, hence `--var`) |
+A Worker started by `wrangler` gets these as `--var` flags (without the `VITE_` ones, which only Vite reads);
+every other app gets them in its environment.
 
-A Worker gets these as `--var` flags (without the `VITE_` ones, which only Vite reads); every other app gets
-them in its environment.
+An app that has a wrangler config (`wrangler.jsonc`, `.json` or `.toml`) and is not started by `wrangler`
+itself, such as `web/ssr`'s `react-router dev` behind the Cloudflare Vite plugin, gets one more variable,
+`CLOUDFLARE_INCLUDE_PROCESS_ENV=true`. Without it the plugin runs the Worker with the vars of its
+`wrangler.jsonc` and ignores the process environment, so `ssr` would keep calling the `localhost` API of its
+config. Checked in a real project: under `react-router dev` with `API_URL` set, the Worker saw the config's value;
+with the variable, the launcher's.
 
 ## See the plan without starting anything
 
@@ -77,9 +81,9 @@ It needs neither portless nor a proxy, and the URLs it prints are those of a pro
 
 ## Known limits
 
-- **`ssr`'s `API_URL` is probably not reached.** `web/ssr` reads it from the Cloudflare context, so a Worker var
-  of its own `wrangler.jsonc`, and the launcher passes it as a process variable, as the legacy item did.
-  Unverified; `wrangler` may need `CLOUDFLARE_INCLUDE_PROCESS_ENV` to read it.
+- **`CLOUDFLARE_INCLUDE_PROCESS_ENV` shows the whole shell environment to a local Worker, and wrangler skips it
+  when the app has a `.dev.vars` file.** The first is local development only. For the second, put the URL the
+  Worker needs (`API_URL`) in that `.dev.vars`: the file wins over both the process and the config.
 - **The first app's name probes the proxy mode.** The proxy is shared by every portless project and remembers
   whether it is in LAN mode, so a run in the other mode restarts it for every project that uses it.
 - **No app takes the bare `<slug>.localhost`.** The legacy item gave it to `static`; every app is now a

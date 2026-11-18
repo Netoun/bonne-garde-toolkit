@@ -28,12 +28,12 @@ migrations/
     01-align-bun-pin.md
 ```
 
-| Rule           | Detail                                                                      |
-| -------------- | --------------------------------------------------------------------------- |
-| Filename       | `NN-slug.md` — the `NN-` prefix **is** execution order                      |
-| Id             | Frontmatter `id`, never containing `NN-`                                    |
-| Requires       | Optional `requires:` list; staging MUST refuse missing deps                 |
-| Release README | Migration releases MUST list their ids; `bg intentions lint` fails if stale |
+| Rule           | Detail                                                                               |
+| -------------- | ------------------------------------------------------------------------------------ |
+| Filename       | `NN-slug.md` — the `NN-` prefix **is** execution order                               |
+| Id             | Frontmatter `id`, never containing `NN-`                                             |
+| Requires       | Optional `requires:` list; staging MUST refuse missing deps                          |
+| Release README | Migration releases MUST list their ids; `bonne-garde intentions lint` fails if stale |
 
 ## Frontmatter (MUST)
 
@@ -62,7 +62,7 @@ requires:
 - **Applies When / Do Not Apply When** — observable conditions. A prior stack being migrated away from is an **apply** signal, never a skip reason
 - **Observable Gaps** — greppable, binary done-when
 - **Out of Scope**
-- **Reference Paths** — each path declares `copy` (take verbatim) or `adapt` (diff first, replay the meaning, preserve project deltas). An `adapt` path names one project file, repo-relative with no glob: `bg record` marks it (see Recording)
+- **Reference Paths** — each path declares `copy` (take verbatim) or `adapt` (diff first, replay the meaning, preserve project deltas). An `adapt` path names one project file, repo-relative with no glob: `bonne-garde record` marks it (see Recording)
 - **Validation** — commands to run after applying (a module's `checks` land here)
 - **Record Result** — how to mark applied or skipped
 
@@ -82,8 +82,8 @@ Outcomes live in `bg.json` ([020](./020-project-manifest.md)), same shape for bo
 
 - `applied` is a list of ids; `skipped` is a map id → human reason.
 - An intention MUST NOT be recorded before its Validation passes.
-- `bg doctor` MUST report every staged-but-unresolved intention.
-- **Applied, an install intention marks the files it edited.** `bg record <id>` also records an `intent[<id>]` region, owned by the intention's module, under `regions` in `bg.json` ([060](./060-patches-and-regions.md)) on every project file its Reference Paths declare `adapt`. The file an intention edited is then region-checked like a patched file, so `doctor --strict` does not call another module's file user-modified, and its owner's re-add keeps the edit. The paths come from the failed patch `bg.json` records for the intention, else from its document staged under `.bg/`. A path that is not a file of the project takes no region and is reported; when neither source is there, `bg record` refuses, writes nothing, and says to run `bg add <module>`: every add stages again an intention that is not recorded yet. `bg record --skip` needs neither source: it records no region, and removes one an earlier record left. A release intention has no module to own a region and records none. `bg doctor` checks the region by the record: the intention MUST be in the module's `applied` list.
+- `bonne-garde doctor` MUST report every staged-but-unresolved intention.
+- **Applied, an install intention marks the files it edited.** `bonne-garde record <id>` also records an `intent[<id>]` region, owned by the intention's module, under `regions` in `bg.json` ([060](./060-patches-and-regions.md)) on every project file its Reference Paths declare `adapt`. The file an intention edited is then region-checked like a patched file, so `doctor --strict` does not call another module's file user-modified, and its owner's re-add keeps the edit. The paths come from the failed patch `bg.json` records for the intention, else from its document staged under `.bg/`, else from the module's own document under `intent/` in the registry the project uses, for the variant `bg.json` records, so an intention recorded `skipped` can be applied later with `.bg/` gone. A path that is not a file of the project takes no region and is reported; when no source has it (the registry cannot be read, or ships no such intention for that variant), `bonne-garde record` refuses, writes nothing, and says to run `bonne-garde add <module>` if the intention is not recorded yet: an add stages again only an intention that is not recorded. `bonne-garde record --skip` needs no source: it records no region, and removes one an earlier record left. A release intention has no module to own a region and records none. `bonne-garde doctor` checks the region by the record: the intention MUST be in the module's `applied` list.
 
 ## Executor protocol (normative)
 
@@ -93,16 +93,16 @@ Identical for install and upgrade:
 2. **Propose** apply or skip per pending intention, citing observable signals — then wait for human confirmation before any edit or record.
 3. One confirmed intention at a time. Diff Reference Paths first; never retype from memory.
 4. Run the intention's Validation plus the project's `typecheck` / `test` / `check` as applicable.
-5. `bg record <id>` and one commit per intention.
+5. `bonne-garde record <id>` and one commit per intention.
 6. Stop and write `blocked.md` beside the session file on `breaking-manual`, failed validation, or an unconfirmed decision — do not record.
 
-**Fail-closed:** staging refuses a dirty worktree; `bg upgrade finish` refuses to advance `platform.version` while any intention in range is neither applied nor skipped.
+**Fail-closed:** staging refuses a dirty worktree; `bonne-garde upgrade finish` refuses to advance `platform.version` while any intention in range is neither applied nor skipped.
 
 `.bg/` is the scratch root — gitignored and disposable. No state persists until a `record`; `bg.json` is the only durable surface.
 
 ## Linting
 
-`bg intentions lint` MUST validate, for install and migration alike:
+`bonne-garde intentions lint` MUST validate, for install and migration alike:
 
 - filename shape and unique order prefixes within a scope;
 - frontmatter presence, id agreement with path and slug, known `kind` / `classification`;
@@ -117,5 +117,5 @@ CI MUST run it before tagging.
 
 - One parser and one linter cover `registry/modules/**/intent/` and `migrations/**`.
 - A module install intent and a release migration intent differ only by `id` scope and `kind`.
-- `bg doctor` distinguishes applied, skipped, and pending intentions.
+- `bonne-garde doctor` distinguishes applied, skipped, and pending intentions.
 - An intention whose Validation fails is never recorded.

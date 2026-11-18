@@ -1,10 +1,14 @@
 import { cp, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
-import { createEmptyProjectManifest, DEFAULT_PLATFORM_REMOTE } from "@bonne-garde/schema";
+import {
+  cliRunner,
+  createEmptyProjectManifest,
+  DEFAULT_PLATFORM_REMOTE,
+} from "@bonne-garde/schema";
 import { addItems, namesChecker, type AddOutcome } from "./add";
 import { defaultRegistrySource, platformPackageVersion, templateBaseDir } from "./paths";
-import { installDependencies } from "./package-manager";
-import { run } from "./run";
+import { installDependencies, missingPackageManager } from "./package-manager";
+import { runCommand } from "./run-command";
 
 export type CreateOptions = {
   name: string;
@@ -19,7 +23,7 @@ export type CreateOptions = {
 
 export type CreatedProject = {
   target: string;
-  /** What the `bg add` of `names` did, to report as `bg add` does; `null` when there are none. */
+  /** What the `bonne-garde add` of `names` did, to report as `bonne-garde add` does; `null` when there are none. */
   added: AddOutcome | null;
 };
 
@@ -75,7 +79,7 @@ async function replaceInFile(path: string, replacements: Record<string, string>)
 export async function createProject(options: CreateOptions): Promise<CreatedProject> {
   const cwd = options.cwd ?? process.cwd();
   // The project is named after the directory it lands in, never after the path that led there:
-  // `bg create /tmp/work/my-app` is `my-app`, and `bg create .` is the current directory's name.
+  // `bonne-garde create /tmp/work/my-app` is `my-app`, and `bonne-garde create .` is the current directory's name.
   const target = resolve(cwd, options.name);
   const displayName = basename(target);
   const slug = slugify(displayName);
@@ -86,7 +90,7 @@ export async function createProject(options: CreateOptions): Promise<CreatedProj
   if (scope.length > MAX_SCOPE_LENGTH) {
     throw new Error(
       `scope ${scope} is ${scope.length} characters and at most ${MAX_SCOPE_LENGTH} are accepted, ` +
-        `so that the files \`bg add\` copies stay formatted: pass a shorter one, bg create ${options.name} --scope @name`,
+        `so that the files \`bonne-garde add\` copies stay formatted: pass a shorter one, ${cliRunner()} create ${options.name} --scope @name`,
     );
   }
   const registry = options.registry ?? defaultRegistrySource();
@@ -126,7 +130,7 @@ export async function createProject(options: CreateOptions): Promise<CreatedProj
   });
   await writeFile(join(target, "bg.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 
-  // One `bg add` call, so a module and the items that need it are planned together; the one
+  // One `bonne-garde add` call, so a module and the items that need it are planned together; the one
   // install below covers what it added.
   const added =
     names.length === 0
@@ -134,11 +138,15 @@ export async function createProject(options: CreateOptions): Promise<CreatedProj
       : await addItems({ projectRoot: target, items: names, install: false });
 
   if (options.git !== false) {
-    await run(["git", "init"], { cwd: target, output: "ignore" });
+    // Best effort: a project without a repository is still a project.
+    await runCommand("git", ["init"], { cwd: target, stdio: "ignore" });
   }
 
   if (options.install !== false) {
-    await installDependencies(target);
+    const { pm, missing } = await installDependencies(target);
+    if (missing) {
+      throw new Error(missingPackageManager(pm));
+    }
   }
 
   return { target, added };

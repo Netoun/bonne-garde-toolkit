@@ -1,7 +1,7 @@
 import type { Route } from "./+types/organization-members-page";
 import { Link } from "react-router";
 import { Users, ArrowLeft } from "lucide-react";
-// `bg add` rewrites the scope in this line, so the formatter cannot know how wide it is.
+// `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { Card, CardContent, CardHeader, CardTitle } from "@acme/ui/components/card";
 import { Button } from "@acme/ui/components/button";

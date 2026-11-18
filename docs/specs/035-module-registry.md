@@ -134,7 +134,7 @@ The combinatorial explosion is data, not branching code. A module ships one vari
 | `patch`                            | Tier 2 — typed patches, see [060](./060-patches-and-regions.md)                                                                                                                                                                             |
 | `intent`                           | Tier 3 — intention filenames under `intent/`, see [065](./065-intentions.md)                                                                                                                                                                |
 
-**Selection:** the most specific `match` satisfied by the installed peers wins. A variant's `match` may name a category absent from `peers`; that is an **optional peer**, and the variant applies only when that category is installed: the module installs without it, and it counts for specificity like any other peer. A `match` key that is not a category is a registry authoring error. Ties are a registry authoring error and MUST fail the contract test, not be resolved at runtime.
+**Selection:** the most specific `match` satisfied by the installed peers wins. A variant's `match` may name a category absent from `peers`; that is an **optional peer**, and the variant applies only when that category is installed: the module installs without it, and it counts for specificity like any other peer, and it selects the variant whenever it is installed, even after the module: installing `auth` after `email` re-selects `email`'s variant, as installing both in one call would have. A `match` key that is not a category is a registry authoring error. Ties are a registry authoring error and MUST fail the contract test, not be resolved at runtime.
 
 **Normative:**
 
@@ -142,6 +142,7 @@ The combinatorial explosion is data, not branching code. A module ships one vari
 - A dependency is declared once, in the variant's `dependencies` / `devDependencies`. A vendored `package.json` MAY carry `exports` and `scripts` but no dependency maps; the planner merges the variant's maps into it. Without a vendored `package.json`, the workspace one is generated from the variant.
 - A variant selects among files at distinct paths. A file every provider ships but that differs per provider belongs to the provider module, or to one module per implementation (`db/d1`, `db/libsql`) with a `peers.provider` allow-list.
 - A module MUST declare peers by category, never by capability string.
+- A `template/` file is **binary** when its bytes are not valid UTF-8, and text otherwise: the bytes decide, not the extension. A text file has `{{SCOPE}}` rendered; a binary file is listed in `copy` like any other and copied byte for byte, and is never rendered, formatted or patched. A `github:` source serves it as bytes.
 
 ### Checks
 
@@ -163,8 +164,9 @@ A project runs on bun or on pnpm ([040](./040-cli-create.md)), and its tests run
 
 ## Acceptance
 
-- `bg list --category auth` shows every auth module.
-- `bg add better-auth` on a project without an `orm` fails naming the missing peer.
+- `bonne-garde list --category auth` shows every auth module.
+- `bonne-garde add better-auth` on a project without an `orm` fails naming the missing peer.
 - Installing a second `auth` module fails without any `conflicts` field existing in the schema.
 - A module with only `copy` and `patch` installs non-interactively in CI.
+- A binary template file lands byte-identical from a `local:` and from a `github:` source, `bonne-garde doctor --strict` is green after the add, and a second add skips it.
 - Contract tests reject a module whose `match` set is ambiguous or whose category is unknown.

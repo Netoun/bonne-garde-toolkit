@@ -344,9 +344,9 @@ Golden runs 210 tests in the `cloudflare` project: storage 65, auth 53, api 33, 
 
 **Open:**
 
-- installing auth after email wires nothing until `bg add email/resend` runs again;
-- an intention recorded `--skip` and later wanted as applied, once `.bg/` is gone, cannot be staged again, because `add` treats it as resolved; recommended: `bg record` reads the module's `intent/` itself;
-- a failed `wrangler` call during the seed prints the whole SQL, including the dev admin's password hash;
+- installing auth after email wires nothing until `bg add email/resend` runs again; **fixed** (`bd58ed1`);
+- an intention recorded `--skip` and later wanted as applied, once `.bg/` is gone, cannot be staged again, because `add` treats it as resolved; recommended: `bg record` reads the module's `intent/` itself; **fixed** (`0aebfc0`);
+- a failed `wrangler` call during the seed prints the whole SQL, including the dev admin's password hash; **fixed** (`311111e`);
 - a second `web` module cannot peer on another `web` module under the strict order test.
 
 - **Scope:** `storage/r2` (row 15) and `email/resend` (row 16, renamed `emails` to `email`). `queue`
@@ -361,6 +361,68 @@ orm/drizzle auth/better-auth storage/r2 email/resend`) with no `--force`, and ty
 - **Size:** about 32 files: `storage` 14, `email` 16, wiring 2.
 
 ### Stage 6: what 080 does not list, then the deletions.
+
+**The deletions are done, 2026-11-16, and so is the dissolution** (`3dc3486`..`669ed1b`). 186 files are gone:
+
+- `apps/spa` (57) and `apps/api` (54), so `apps/` no longer exists;
+- `packages/{ui,emails,config,api-runtime}` (62);
+- `testing/`, the scripts `init`, `brand` and `gen-branding`, `branding.json`, `.bonnegarde-init.json`, `tsconfig.base.json` and the root `.env.example`;
+- the repo's `deploy.yml`, which `deploy/cloudflare-actions` replaces in generated projects;
+- every `*:legacy` script, plus the root `dev` and `build` scripts, which no platform package has.
+
+The front rules of the root `vite.config.ts` keep their content and now target the shipped sources: `registry/modules/web/*/template/apps/**`, `registry/features/**`, and the UI sources for kebab-case. A deliberate violation set them off, and was reverted.
+
+Every legacy test has its copy in a module, with the reason written down for each renaming or split. `AGENTS.md`, `README.md` and the docs describe the platform, and `ARCHITECTURE.md` and `COMMANDS.md` were regenerated.
+
+**Accept met.**
+
+- `verify` exits 0 with no `*:legacy` script.
+- `golden` installs the 16 modules and 34 items, with one provider per configuration and no `--force`. The `cloudflare` project runs 217 tests, against a floor of 110. The docker phase builds and runs.
+- `packages/` holds only `cli`, `registry` and `schema`.
+
+**After the dissolution, done 2026-11-16, on the user's answers:**
+
+- **Binary templates (`a8364ff`..`960c4c8`).** A template file whose bytes are not valid UTF-8 is binary. It is copied byte for byte, hashed by its bytes, and fetched as bytes from `github:` (035, 020, 060, 050). Items stay text-only (030).
+- **Favicons.** `config/branding` ships the seven favicons. The SPA serves them from the site root, so the manifest's icons are in the build. Golden proves this up to the container, and `assets/` is deleted.
+- **Cleanup (`1bf2a30`..`aebb357`).**
+  - 070 and 080 no longer mention `*:legacy`.
+  - The root package is `bonne-garde-toolkit`.
+  - knip ignores the registry templates, is green, and runs in `verify`.
+
+**Open items closed 2026-11-16** (`0241276`..`9d260db`):
+
+- **Engine.**
+  - `bg add` selects again the variant of an installed module that a module it adds is a peer of, and plans it as a re-add in the same call, so auth installed after email wires email (`bd58ed1`, 050 step 7).
+  - `bg record` reads an intention's `adapt` paths from the module's `intent/` document in the registry when no failed patch and no `.bg/` has them (`0aebfc0`, 065).
+  - A failed `wrangler` call in auth's `db:seed` names its command and exit code and withholds the SQL, which holds the admin's password hash (`311111e`).
+- **Web.**
+  - `config/branding` renders `site.webmanifest` from `branding.json`, which gains `description`, `lang`, `themeColor` and `backgroundColor` (`735bffb`).
+  - `web/ssr` and `web/static` add the favicons and the manifest to their build with the config package's `favicons()` Vite plugin, and keep their own `public/` (`715a5c9`). Golden proves it on every shell, up to the SSR Worker serving the manifest and each icon (`7ce6765`).
+- **Env and deploy.**
+  - `dev/portless` sets `CLOUDFLARE_INCLUDE_PROCESS_ENV=true` for an app with a wrangler config it does not start itself, so `web/ssr` under `react-router dev` reads the launcher's `API_URL` (`1c8b1bf`).
+  - `storage/r2` derives its public URL from `API_URL` under `wrangler dev` and fails anywhere else, so `dev/portless` no longer injects `R2_PUBLIC_URL` (`587c250`).
+  - `deploy/cloudflare-actions` refuses, before any build, a front missing a `VITE_*` variable that its `vite-env.d.ts` requires (`9d260db`).
+- **Repo.** `docs/AGENTING.md` records what Claude Code 2.1.325 was observed to load (`0241276`). knip's `ignoreExportsUsedInFile` covers types and interfaces only (`10f680b`).
+
+Golden runs 239 tests in the `cloudflare` project: storage 75, auth 55, api 33, db 21, email 19, config 16, spa 8, api-runtime 7, ssr 4, static 1.
+
+**Polish 2026-11-16** (`1816bac`..`814d980`):
+
+- **CI.** Golden read the spa as running 0 tests in CI, where Vitest and bun's filter print colours, so CI was red from `83eee60` to `4006d54`; `testCounts` strips them (`1816bac`).
+- **Web.** `config/branding` exports `faviconLinks`, held to the files `favicons()` emits in both directions; `web/spa` loads `favicons()` like ssr and static, and its `publicDir` is free; the three shells render their icon links from `faviconLinks` and set `<html lang>` from `branding.lang` (`a9bb2a9`..`c679040`).
+- **Engine.** `--force` reaches only the modules and items a call names. A module planned again because of an added one is refused when something is in the way, and `bg add` prints the call that names it, which succeeds (`a71de1e`, `814d980`, 050 step 7).
+- **Hygiene.** `no-console` is off for `bg`'s entry files and the scripts modules ship, so `check` reports no warning; `.claude/worktrees/` is in `.gitignore` instead of knip's ignore; `VITE_APP_URL`, which nothing read, is gone from `web/static` and `dev/portless` (`89758f3`..`1f2dc07`).
+- **Kept on purpose.** `orm/drizzle`'s `db:reset` and `auth/better-auth`'s `db:seed` each run `wrangler` with their own fifteen lines: sharing them would make `auth` import a dev tool from `orm`.
+
+Golden runs 242 tests in the `cloudflare` project (config 19); the portless suite is 36.
+
+**Still open:**
+
+- a second `web` module cannot peer on another `web` module under the strict order test;
+- two items cannot pin the same package, because a region has one owner;
+- 030's validation of every `registry.json` against the published shadcn schema is not built;
+- the generated project's `check` warns `no-useless-empty-export` on `packages/db/src/schema/index.ts` (`export {};`);
+- an item pulled in through `registryDependencies` is still overwritten under `--force`, though the call does not name it.
 
 **Everything but the deletions done 2026-11-16** (`b24c0c4`..`2b9f681`):
 
@@ -377,9 +439,9 @@ Golden runs 217 tests in the `cloudflare` project: storage 65, auth 53, api 33, 
 
 **Open:**
 
-- a dispatch without `VITE_API_URL` deploys a broken SPA silently;
-- `dev/portless` injects `R2_PUBLIC_URL` whenever an `api` app exists, a storage key in a `dev` module;
-- `ssr` probably does not receive `API_URL` from the launcher, because a Worker reads Cloudflare vars;
+- a dispatch without `VITE_API_URL` deploys a broken SPA silently; **fixed** (`9d260db`);
+- `dev/portless` injects `R2_PUBLIC_URL` whenever an `api` app exists, a storage key in a `dev` module; **fixed** (`587c250`);
+- `ssr` probably does not receive `API_URL` from the launcher, because a Worker reads Cloudflare vars; it did not, **fixed** (`1c8b1bf`);
 - two items cannot pin the same package, because a region has one owner;
 - 030's validation of every `registry.json` against the published shadcn schema is not built.
 

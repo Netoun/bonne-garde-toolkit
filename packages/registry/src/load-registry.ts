@@ -176,7 +176,7 @@ export type SourceOptions = {
 /** Where a repository's registry lives; fixed by the repo layout, as `registry/` is on disk. */
 const GITHUB_REGISTRY_DIR = "registry";
 
-/** A file that `bg add` would write outside the project, or read from outside the registry. */
+/** A file that `bonne-garde add` would write outside the project, or read from outside the registry. */
 function assertConfined(label: string, items: RegistryItem[]): void {
   for (const item of items) {
     for (const file of item.files ?? []) {

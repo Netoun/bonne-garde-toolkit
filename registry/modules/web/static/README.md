@@ -5,16 +5,16 @@ Pages: a marketing front with a header, a footer and a home page. Extracted from
 `apps/static` ([080](../../../../docs/specs/080-existing-code-migration.md)).
 
 ```bash
-bunx bg add web/static
+bunx bonne-garde add web/static
 ```
 
 ## Peers and variants
 
-| Peer       | Allow-list   | Why                                                                                    |
-| ---------- | ------------ | -------------------------------------------------------------------------------------- |
-| `provider` | `cloudflare` | see below                                                                              |
-| `config`   | `branding`   | the header, the footer, the home page and `root.tsx` read `branding`, and the favicons |
-| `ui`       | `shadcn`     | `app.css` imports `{{SCOPE}}/ui/globals.css`: the legacy `package.json` did not say so |
+| Peer       | Allow-list   | Why                                                                                                              |
+| ---------- | ------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `provider` | `cloudflare` | see below                                                                                                        |
+| `config`   | `branding`   | the header, the footer, the home page and `root.tsx` read `branding`; `vite.config.ts` loads its favicons plugin |
+| `ui`       | `shadcn`     | `app.css` imports `{{SCOPE}}/ui/globals.css`: the legacy `package.json` did not say so                           |
 
 `api` (`elysia`) is an optional peer (035). The variant `cloudflare`, matched on it, copies
 `lib/api.ts`, the Eden client typed with `type App` from `{{SCOPE}}/api/app`, which declares
@@ -27,7 +27,7 @@ Both copy `wrangler.jsonc` and add `dev` and `deploy` to the vendored `apps/stat
 `apps/spa/build/client` and nothing else, and the image's command starts the API alone. A static site
 installed under it would be built into the image and never served; serving a second app is a change
 to the provider, which is a new feature and not part of this extraction. So `static` declares
-`peers.provider: ["cloudflare"]`, as `web/ssr` does, and `bg add web/static` on a `dockerfile`
+`peers.provider: ["cloudflare"]`, as `web/ssr` does, and `bunx bonne-garde add web/static` on a `dockerfile`
 project fails naming the provider.
 
 ## What it writes
@@ -43,13 +43,20 @@ apart from `.env.example`, which `env` replaces:
 - `testing/{frontend.setup.ts,matchers.d.ts}`: the Vitest setup with the `jest-dom` matchers. Legacy
   shared `testing/` at the repo root with `server.ts` (MSW), which this site's one test does not use.
 
-`env` adds `VITE_APP_URL` and `VITE_API_URL` to `.env.example`. `bun run test` runs one test.
+`env` adds `VITE_API_URL` to `.env.example`. `bun run test` runs one test.
 
 ## What changed from the legacy `apps/static`
 
 Each file is the legacy one with `@acme` rendered as `{{SCOPE}}`, except:
 
-- `root.tsx` imports the favicons from `{{SCOPE}}/config/assets/favicons/…`, not `@acme/assets/…`.
+- The favicons and the manifest are files of the build, served from the site root. `vite.config.ts`
+  loads `favicons()` from `{{SCOPE}}/config/vite`, which adds them to `build/client` and keeps
+  `public/robots.txt` (Vite takes one `publicDir`), and `root.tsx` links them from `faviconLinks` of
+  `{{SCOPE}}/config`, as `web/spa` does. Legacy imported them as `@acme/assets/…` through the bundler,
+  which inlined `favicon.svg` and the manifest as `data:` URLs: the manifest's icons were never served.
+  The page's `theme-color` is `branding.themeColor`, the manifest's.
+- `root.tsx` sets `<html lang>` from `branding.lang`, the language the manifest declares, where legacy
+  wrote `en`.
 - `app.css` imports `{{SCOPE}}/ui/globals.css`, not `../../../packages/ui/src/styles/globals.css`:
   a path into another package's `src` is not something 035 lets a module write.
 - `lib/api.ts` exports `api`, not `apiV1`: the API shell has no `/v1` group, so `.v1` would not
