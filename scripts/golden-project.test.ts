@@ -60,6 +60,8 @@ import {
   MODULE_TABLES,
   MODULES,
   PATCHED,
+  packageManagerOf,
+  runnerOf,
   publishedPort,
   ranTests,
   hasFeatures,
@@ -295,7 +297,7 @@ describe("the golden project and modules", () => {
     const { modules } = selectModules(listing, MODULES, EXCLUDED_MODULES);
 
     expect(modules).toEqual([
-      "pm/bun",
+      "pm/pnpm",
       "provider/cloudflare",
       "tooling/vite-plus",
       "config/branding",
@@ -311,8 +313,22 @@ describe("the golden project and modules", () => {
       "dev/portless",
       "email/resend",
       "deploy/cloudflare-actions",
+      "pm/bun",
       "provider/dockerfile",
     ]);
+  });
+
+  test("each package manager drives at least one configuration, the one with the most modules on pnpm", () => {
+    const managers = CONFIGURATIONS.map((configuration) => packageManagerOf(configuration));
+
+    expect([...new Set(managers)].sort()).toEqual(["bun", "pnpm"]);
+    expect(packageManagerOf(CONFIGURATIONS[0] ?? { name: "none", modules: [], items: false })).toBe(
+      "pnpm",
+    );
+    expect(runnerOf("pnpm").run("db:seed")).toEqual(["pnpm", "run", "db:seed"]);
+    expect(runnerOf("pnpm").exec("wrangler", "d1")).toEqual(["pnpm", "exec", "wrangler", "d1"]);
+    expect(runnerOf("bun").exec("tsx", "x.ts")).toEqual(["bun", "x", "tsx", "x.ts"]);
+    expect(() => runnerOf("yarn")).toThrow(/yarn/);
   });
 
   test("each configuration has one provider, and every provider the registry has is in one", async () => {
@@ -328,8 +344,7 @@ describe("the golden project and modules", () => {
     );
     expect(used.every((names) => names.length === 1)).toBe(true);
     expect([...new Set(used.flat())].sort()).toEqual([...providers].sort());
-    // Until golden has a configuration it installs and runs with pnpm.
-    expect(Object.keys(EXCLUDED_MODULES)).toEqual(["pm/pnpm"]);
+    expect(Object.keys(EXCLUDED_MODULES)).toEqual([]);
   });
 
   test("only the configuration with a ui module installs items, which land in packages/ui", () => {

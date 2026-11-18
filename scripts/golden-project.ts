@@ -123,7 +123,8 @@ export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
     apps: ["api", "spa", "ssr", "static"],
     provider: "cloudflare",
     features: ["db", "auth", "storage", "email", "deploy", "backoffice"],
-    pm: "bun",
+    // The most modules, under the stricter install: pnpm links only what a package.json declares.
+    pm: "pnpm",
   },
   dockerfile: { apps: ["api", "spa"], provider: "dockerfile", features: ["email"], pm: "bun" },
   // The fronts alone (040: `--apps spa`): no api, so no Eden client and no API variable, deployed.
@@ -161,6 +162,31 @@ export function packageManagerOf(configuration: Configuration): string {
 /** The modules golden's `bg add` installs: all but the package manager's, which `create` added. */
 export function addedModules(configuration: Configuration): string[] {
   return configuration.modules.filter((module) => !module.startsWith("pm/"));
+}
+
+/** How golden drives a project with its package manager: the install, a script, a bin the project has. */
+export type Runner = {
+  install: string[];
+  run: (script: string, ...args: string[]) => string[];
+  exec: (bin: string, ...args: string[]) => string[];
+};
+
+export function runnerOf(pm: string): Runner {
+  if (pm === "bun") {
+    return {
+      install: [BUN, "install"],
+      run: (script, ...args) => [BUN, "run", script, ...args],
+      exec: (bin, ...args) => [BUN, "x", bin, ...args],
+    };
+  }
+  if (pm === "pnpm") {
+    return {
+      install: ["pnpm", "install"],
+      run: (script, ...args) => ["pnpm", "run", script, ...args],
+      exec: (bin, ...args) => ["pnpm", "exec", bin, ...args],
+    };
+  }
+  throw new Error(`golden does not drive ${pm}`);
 }
 
 /** The module that ships the `Dockerfile` golden builds. */
@@ -657,10 +683,7 @@ export const FEATURE_REFUSALS: readonly {
  * Modules `bg list` shows that stay out of every configuration, each with its reason. An entry for
  * a module the registry no longer lists fails the run, as for `EXCLUDED`. Empty on purpose.
  */
-export const EXCLUDED_MODULES: Readonly<Record<string, string>> = {
-  "pm/pnpm":
-    "golden installs and runs its projects with bun: a pnpm configuration needs a golden that drives pnpm",
-};
+export const EXCLUDED_MODULES: Readonly<Record<string, string>> = {};
 
 /**
  * The module ids to `bg add`, read from the `module` lines of `bg list` output
@@ -1844,6 +1867,7 @@ async function configured(
   const { bg, registry, configuration, first } = options;
   const { name } = configuration;
   const modules = addedModules(configuration);
+  const pm = runnerOf(packageManagerOf(configuration));
   const installed = configuration.items ? options.items : [];
   const patched = PATCHED[name] ?? {};
   const patchedItems = configuration.items ? (PATCHED_ITEMS[name] ?? {}) : {};
@@ -1991,10 +2015,10 @@ async function configured(
       }
     });
   }
-  await step("install", () => run([BUN, "install"], project));
-  await step("typecheck", () => run([BUN, "run", "typecheck"], project));
+  await step("install", () => run(pm.install, project));
+  await step("typecheck", () => run(pm.run("typecheck"), project));
   await step("test", async () => {
-    const { stdout, stderr } = await captureBoth([BUN, "run", "test"], project);
+    const { stdout, stderr } = await captureBoth(pm.run("test"), project);
     const ran = testCounts(`${stdout}\n${stderr}`);
     if (hasAuth(configuration)) {
       expectRan(ran, `${SCOPE}/auth`, AUTH_MIN_TESTS);
@@ -2011,12 +2035,12 @@ async function configured(
       `golden: tests run: ${counts.map(([workspace, ran]) => `${workspace} ${ran}`).join(", ")}`,
     );
   });
-  await step("build", () => run([BUN, "run", "build"], project));
+  await step("build", () => run(pm.run("build"), project));
   // Typecheck, test and build passed with the edit and its test in place, and the formatter has to
   // accept the edit too: that is the intention's Validation, so it is recorded now and not before.
   if (pending.length > 0) {
     await step("intentions: record", async () => {
-      await run([BUN, "run", "check"], project);
+      await run(pm.run("check"), project);
       for (const id of pending) {
         await run(bg("record", id), project);
         // The edited file is region-checked from here on: bg.json holds the intention's region on it.
@@ -2032,7 +2056,7 @@ async function configured(
   }
   await step("doctor", () => run(bg("doctor", "--strict"), project));
   if (hasDeploy(configuration)) {
-    await deployPlanned(project, timings, name);
+    await deployPlanned(project, timings, name, pm);
   }
   // The owner of the file the edit landed in, and the module that shipped the intention, asked for again:
   // the edit is the project's by now, so each has to keep it, skip its patches, stage nothing and change nothing.
@@ -2064,17 +2088,17 @@ async function configured(
     });
   }
   if (hasAuth(configuration)) {
-    await regenerated(project, timings, name);
+    await regenerated(project, timings, name, pm);
   }
   if (hasDatabase(configuration)) {
-    await migrated(project, timings, name, expectedTables(configuration));
+    await migrated(project, timings, name, pm, expectedTables(configuration));
     if (hasAuth(configuration)) {
-      await seeded(project, timings, name, configuration);
+      await seeded(project, timings, name, pm, configuration);
     }
   }
-  await step("check", () => run([BUN, "run", "check"], project));
+  await step("check", () => run(pm.run("check"), project));
   if (hasPortless(configuration)) {
-    await launched(project, timings, name);
+    await launched(project, timings, name, pm);
   }
   // A check names the project's own bins (`vp`, `tsc`), which bun or pnpm finds the way its `run` does.
   const bins = {
@@ -2098,14 +2122,19 @@ async function configured(
  * neither portless nor a proxy, compared with the apps this configuration installs: their names, addresses,
  * directories and commands, on `.localhost` and, with `--lan`, on `.local`.
  */
-async function launched(project: string, timings: Timing[], name: string): Promise<void> {
+async function launched(
+  project: string,
+  timings: Timing[],
+  name: string,
+  pm: Runner,
+): Promise<void> {
   const slug = basename(project);
   const plan = (...flags: string[]) =>
-    capture([BUN, "x", "tsx", "scripts/dev-portless.ts", "--dry-run", ...flags], project);
+    capture(pm.exec("tsx", "scripts/dev-portless.ts", "--dry-run", ...flags), project);
 
   await phase(timings, `${name}: portless tests`, async () => {
     const { stdout } = await captureBoth(
-      [BUN, "x", "vp", "test", "scripts/dev-portless.test.ts"],
+      pm.exec("vp", "test", "scripts/dev-portless.test.ts"),
       project,
     );
     expectRan({ [PORTLESS_MODULE]: ranTests(stdout) }, PORTLESS_MODULE, PORTLESS_MIN_TESTS);
@@ -2171,7 +2200,12 @@ async function refusedPeer(
  * in it has a wrangler config and a deploy script and every app with a config is in it, and a
  * `VITE_*` variable handed to the script is named in the plan and its value never printed.
  */
-async function deployPlanned(project: string, timings: Timing[], name: string): Promise<void> {
+async function deployPlanned(
+  project: string,
+  timings: Timing[],
+  name: string,
+  pm: Runner,
+): Promise<void> {
   await phase(timings, `${name}: deploy plan`, async () => {
     const expected = DEPLOY_PLAN[name];
     if (expected === undefined) {
@@ -2183,7 +2217,7 @@ async function deployPlanned(project: string, timings: Timing[], name: string): 
       existsSync(join(project, action, "action.yml")),
     );
 
-    const dryRun = [BUN, "run", DEPLOY_SCRIPT, "--dry-run"];
+    const dryRun = pm.run(DEPLOY_SCRIPT, "--dry-run");
     const plan = readDeployPlan(await capture(dryRun, project));
     expectDeployPlan(plan.steps, expected);
     if (plan.buildVars.length > 0) {
@@ -2234,11 +2268,16 @@ async function deployPlanned(project: string, timings: Timing[], name: string): 
  * formatter, has to write the schema the module shipped: byte for byte, or the module carries an edit
  * the next regeneration would drop.
  */
-async function regenerated(project: string, timings: Timing[], name: string): Promise<void> {
+async function regenerated(
+  project: string,
+  timings: Timing[],
+  name: string,
+  pm: Runner,
+): Promise<void> {
   await phase(timings, `${name}: auth generate`, async () => {
     const file = join(project, AUTH_SCHEMA_FILE);
     const shipped = await Bun.file(file).text();
-    await run([BUN, "run", "auth:generate"], join(project, "packages/auth"));
+    await run(pm.run("auth:generate"), join(project, "packages/auth"));
     expectRegenerated(shipped, await Bun.file(file).text());
   });
 }
@@ -2255,6 +2294,7 @@ async function migrated(
   project: string,
   timings: Timing[],
   name: string,
+  pm: Runner,
   tables: readonly string[],
 ): Promise<void> {
   const db = join(project, "packages/db");
@@ -2265,7 +2305,7 @@ async function migrated(
     await Bun.write(join(project, GOLDEN_SCHEMA_FILE), GOLDEN_SCHEMA);
     const barrel = join(project, GOLDEN_BARREL_FILE);
     await Bun.write(barrel, `${await Bun.file(barrel).text()}${GOLDEN_BARREL_LINE}`);
-    await run([BUN, "run", "db:generate"], db);
+    await run(pm.run("db:generate"), db);
     const directory = join(db, "migrations");
     const files = await readdir(directory);
     const [first] = files.filter((file) => file.endsWith(".sql"));
@@ -2276,11 +2316,11 @@ async function migrated(
   });
 
   await phase(timings, `${name}: db migrate`, async () => {
-    await run([BUN, "run", "db:migrate:local"], api, OFFLINE);
+    await run(pm.run("db:migrate:local"), api, OFFLINE);
     const rows = async (statement: string, column: string): Promise<string[]> =>
       d1Rows(
         await capture(
-          ["bunx", "wrangler", "d1", "execute", "DB", "--local", "--json", "--command", statement],
+          pm.exec("wrangler", "d1", "execute", "DB", "--local", "--json", "--command", statement),
           api,
           OFFLINE,
         ),
@@ -2292,7 +2332,7 @@ async function migrated(
     for (const table of tables) {
       expectMigrated(database, table, migration);
     }
-    expectNothingToApply(await capture([BUN, "run", "db:migrate:local"], api, OFFLINE));
+    expectNothingToApply(await capture(pm.run("db:migrate:local"), api, OFFLINE));
   });
 }
 
@@ -2309,6 +2349,7 @@ async function seeded(
   project: string,
   timings: Timing[],
   name: string,
+  pm: Runner,
   configuration: Configuration,
 ): Promise<void> {
   const api = join(project, "apps/api");
@@ -2317,19 +2358,19 @@ async function seeded(
   const select = async (statement: string) =>
     d1Rows(
       await capture(
-        ["bunx", "wrangler", "d1", "execute", "DB", "--local", "--json", "--command", statement],
+        pm.exec("wrangler", "d1", "execute", "DB", "--local", "--json", "--command", statement),
         api,
         OFFLINE,
       ),
     );
   const execute = (statement: string) =>
     run(
-      ["bunx", "wrangler", "d1", "execute", "DB", "--local", "--command", statement],
+      pm.exec("wrangler", "d1", "execute", "DB", "--local", "--command", statement),
       api,
       OFFLINE,
     );
   const seedAdmin = async () => {
-    await run([BUN, "run", "db:seed"], auth, OFFLINE);
+    await run(pm.run("db:seed"), auth, OFFLINE);
     expectSeeded(
       await select('SELECT email, email_verified FROM "user"'),
       await select('SELECT role FROM "member"'),
@@ -2353,7 +2394,7 @@ async function seeded(
       ...(storage ? { medias: 1 } : {}),
     });
 
-    await run([BUN, "run", "db:reset"], db, OFFLINE);
+    await run(pm.run("db:reset"), db, OFFLINE);
 
     expectRows(
       readCounts(await select(countStatement(tables))),
@@ -2366,7 +2407,7 @@ async function seeded(
   await phase(timings, `${name}: auth db:seed on a seeded database`, async () => {
     const tables = resetTables(configuration);
     const before = readCounts(await select(countStatement(tables)));
-    expectAlreadySeeded(await capture([BUN, "run", "db:seed"], auth, OFFLINE));
+    expectAlreadySeeded(await capture(pm.run("db:seed"), auth, OFFLINE));
     expectRows(readCounts(await select(countStatement(tables))), before);
   });
 }
