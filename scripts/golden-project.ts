@@ -347,12 +347,14 @@ export const DEPLOY_PLAN: Readonly<Record<string, readonly string[]>> = {
  * What each app the plan builds needs of the workflow's variables, in each configuration that installs the
  * deploy module, by the directory it is built in. Written out by hand, not read from the files the script
  * reads: the SPA and the static site read `VITE_API_URL` when they build and throw at load without it; and
- * the Worker `ssr` reads `API_URL` from its wrangler config at run time and needs no build variable.
+ * the Worker `ssr` reads `API_URL` from its wrangler config at run time and needs no build variable. Fronts
+ * installed without the API have no API URL to read, so they need none.
  */
 export const DEPLOY_BUILD_NEEDS: Readonly<
   Record<string, Readonly<Record<string, readonly string[]>>>
 > = {
   cloudflare: { "apps/spa": ["VITE_API_URL"], "apps/static": ["VITE_API_URL"] },
+  fronts: {},
 };
 
 /** The plan the dry run printed: each step as `<phase> <cwd>: <command>`, the apps once each in order, the build variables it names. */
@@ -2906,6 +2908,12 @@ async function deployPlanned(
       throw new Error(
         `the dry run forwards ${JSON.stringify(buildVars)}, expected only VITE_API_URL`,
       );
+    }
+
+    if (Object.keys(needs).length === 0) {
+      // No build needs a variable: a run handed none goes ahead.
+      await capture(dryRun, project, { VARS_JSON: "{}" });
+      return;
     }
 
     // A front built without its API URL deploys and is broken: handed variables that lack what a build
