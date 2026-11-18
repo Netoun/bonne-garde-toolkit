@@ -19,6 +19,12 @@ One lockstep version for the CLI, the base template, the registry and the migrat
 - `provider/dockerfile`: one Node container for either package manager; it serves the SPA alone when the project has no API.
 - Every module tests on Vitest and runs its scripts with tsx, on Node as on Bun.
 
+### Fixes
+
+- `--help` and `-h` print the usage whatever the command; `create` refuses an option it does not know instead of creating a directory named after it.
+- `create --registry local:<relative path>` reads the path from where it runs, and the project records it absolute.
+- `web/spa`: the loader no longer stays up for good under StrictMode in dev, and the `dark` class the theme store sets before hydration no longer warns.
+
 ### Intentions
 
 - None added. `email/resend/wire-email-into-auth` is unchanged.
