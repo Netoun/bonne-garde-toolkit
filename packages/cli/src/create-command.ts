@@ -40,12 +40,14 @@ function one<T extends string>(flag: string, value: string, allowed: readonly T[
 }
 
 /** What `create` prints when it is done, on one line: the plain output's, which tests and agents read. */
-function createdLine(target: string, choices: Choices): string {
+function createdLine(target: string, choices: Choices, installed: boolean): string {
   return choices.provider === null
     ? `created ${target} with ${choices.pm}`
     : `created ${target} with ${choices.apps.join(", ")} on ${choices.provider}` +
         (choices.features.length > 0 ? `, and ${choices.features.join(", ")}` : "") +
-        `, installed with ${choices.pm}`;
+        (installed
+          ? `, installed with ${choices.pm}`
+          : `; not installed: run \`${choices.pm} install\` in it`);
 }
 
 /** A registry source as a person reads it: a local path from here, or from ~ when it is not under here. */
@@ -93,6 +95,11 @@ export async function createCommand(rest: readonly string[]): Promise<number> {
   if (features !== undefined) {
     given.features = parseFlagList("--features", features, FEATURES);
   }
+  // What is left is the directory: an option no flag above took is a typo, never a directory to create.
+  const unknown = args.find((arg) => arg.startsWith("-"));
+  if (unknown !== undefined) {
+    throw new Error(`create: unknown option ${unknown}`);
+  }
   const source = registry ?? defaultRegistrySource();
   const defaultPm = invokingPackageManager() ?? "bun";
   const create = (name: string, choices: Choices) => {
@@ -125,7 +132,7 @@ export async function createCommand(rest: readonly string[]): Promise<number> {
         throw new Error(missingPackageManager(pm));
       }
     }
-    console.log(createdLine(target, choices));
+    console.log(createdLine(target, choices, !noInstall));
     if (added !== null) {
       reportAdd(added, false);
     }

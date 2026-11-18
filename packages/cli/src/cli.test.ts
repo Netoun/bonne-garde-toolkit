@@ -2216,6 +2216,9 @@ describe("bg create with choices (040)", () => {
     expect(stdout).toContain(
       `created ${join(parent, "app")} with api, spa, ssr, static on cloudflare`,
     );
+    // --no-install: the line says what is left to do, not that it was installed.
+    expect(stdout).toContain("not installed: run `bun install` in it");
+    expect(stdout).not.toContain("installed with");
     expect(stderr).toContain("pending intention");
     expect(stderr).toContain("read .bg/add/session.md");
     const bg = JSON.parse(await readFile(join(parent, "app", "bg.json"), "utf8")) as {
@@ -2286,6 +2289,49 @@ describe("bg create with choices (040)", () => {
     expect(unknown.code).toBe(1);
     expect(unknown.stderr).toContain("--apps: unknown value web");
     expect(await readdir(parent)).toEqual([]);
+  });
+
+  test("--help and -h print the usage and create nothing; an unknown option is refused, never taken for a directory", async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
+    dirs.push(parent);
+
+    for (const flag of ["--help", "-h"]) {
+      const help = await runBonneGarde(parent, "create", flag);
+      expect(help.code).toBe(0);
+      expect(help.stdout).toContain("bonne-garde create");
+    }
+    const unknown = await runBonneGarde(parent, "create", "--bogus", "--yes", "--no-install");
+    expect(unknown.code).toBe(1);
+    expect(unknown.stderr).toContain("create: unknown option --bogus");
+    expect(await readdir(parent)).toEqual([]);
+  });
+
+  test("reads a relative local registry from where it runs, and the project records it absolute", async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
+    dirs.push(parent);
+    const absolute = join(repoRoot(), "registry");
+
+    const { stderr, code } = await runBonneGarde(
+      parent,
+      "create",
+      "app",
+      "--apps",
+      "api",
+      "--provider",
+      "dockerfile",
+      "--yes",
+      "--no-git",
+      "--no-install",
+      "--registry",
+      `local:${relative(parent, absolute)}`,
+    );
+
+    expect(stderr).not.toContain("ENOENT");
+    expect(code).toBe(0);
+    const bg = JSON.parse(await readFile(join(parent, "app", "bg.json"), "utf8")) as {
+      registries: Record<string, string>;
+    };
+    expect(bg.registries["@bg"]).toBe(`local:${absolute}`);
   });
 
   test("without a TTY and without flags, creates the base and its package manager without asking", async () => {

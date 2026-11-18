@@ -50,7 +50,8 @@ ${section("Keep it healthy")}
 
 export async function runCli(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
-  if (!command || command === "-h" || command === "--help") {
+  // `--help` asks for the usage whatever the command: never a directory to create or an item to add.
+  if (!command || [command, ...rest].some((arg) => arg === "-h" || arg === "--help")) {
     console.log(usage());
     return 0;
   }

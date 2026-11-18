@@ -93,7 +93,12 @@ export async function createProject(options: CreateOptions): Promise<CreatedProj
         `so that the files \`bonne-garde add\` copies stay formatted: pass a shorter one, ${cliRunner()} create ${options.name} --scope @name`,
     );
   }
-  const registry = options.registry ?? defaultRegistrySource();
+  // A `local:` path is read from where `create` runs, and recorded absolute: the project's own
+  // `bonne-garde add` reads it from the project, where a relative path would name another directory.
+  const given = options.registry ?? defaultRegistrySource();
+  const registry = given.startsWith("local:")
+    ? `local:${resolve(cwd, given.slice("local:".length))}`
+    : given;
   const names = [...(options.names ?? [])];
   if (names.length > 0) {
     (await namesChecker(registry, cwd, names))(names);
