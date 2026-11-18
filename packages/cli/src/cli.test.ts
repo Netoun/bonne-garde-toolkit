@@ -820,10 +820,11 @@ describe("bg add <module>", () => {
       await readFile(join(target, "packages/api-runtime/package.json"), "utf8"),
     ) as { name: string; dependencies: Record<string, string> };
     expect(runtime.name).toBe("@cli-app/api-runtime");
-    expect(runtime.dependencies).toEqual({ elysia: "1.4.29" });
+    expect(runtime.dependencies).toEqual({ elysia: "1.4.29", srvx: "1.0.8" });
     // 09 (c): a project with no SPA workspace has to build, so no `--filter '<scope>/spa'`.
     const dockerfile = await readFile(join(target, "Dockerfile"), "utf8");
-    expect(dockerfile).toContain("RUN bun run build\n");
+    // The package manager package.json pins runs the root build script.
+    expect(dockerfile).toContain('&& "${pinned%@*}" run build\n');
     expect(dockerfile).not.toContain("--filter");
     expect(dockerfile).not.toContain("{{SCOPE}}");
   });
@@ -1256,7 +1257,7 @@ describe("bg add api/elysia: a module that vendors a file and patches it (035, 0
     expect(api?.devDependencies).toEqual({});
     expect(api?.patches[0]?.regions).toEqual([{ region: "scripts.dev", status: "applied" }]);
     const scripts = await scriptsOf(target);
-    expect(scripts.dev).toBe("bun --watch src/index.ts");
+    expect(scripts.dev).toBe("tsx watch src/index.ts");
     expect(scripts).not.toHaveProperty("deploy");
     expect((await runBg(target, "doctor", "--strict")).code).toBe(0);
   });

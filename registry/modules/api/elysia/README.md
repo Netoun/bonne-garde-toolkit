@@ -18,7 +18,7 @@ vendored `apps/api/package.json` with `scripts.merge` (spec 060):
 | Variant      | Extra file                | `scripts.merge` on `apps/api/package.json`                     | Extra dependency |
 | ------------ | ------------------------- | -------------------------------------------------------------- | ---------------- |
 | `cloudflare` | `apps/api/wrangler.jsonc` | `dev`: `wrangler dev --port 5172`, `deploy`: `wrangler deploy` | `wrangler` (dev) |
-| `dockerfile` | none                      | `dev`: `bun --watch src/index.ts`                              | none             |
+| `dockerfile` | none                      | `dev`: `tsx watch src/index.ts`                                | none             |
 
 The package.json the module vendors carries no `dev` and no `deploy`: a patch is computed on the
 template, so a script already in it would be reported `skipped` on the first install. Both variants

@@ -20,7 +20,7 @@ the project works without running them. pnpm runs none it was not told to trust,
 install on them by default; `strictDepBuilds: false` makes it list them instead. `pnpm approve-builds`
 allows the ones you choose.
 
-## What it cannot have yet
+## In the container
 
-`provider/dockerfile`: its container runs the API on Bun, so it peers on `pm: ["bun"]`, and `bg create
---pm pnpm --provider dockerfile` is refused with that message.
+`provider/dockerfile`'s image installs pnpm at this pin (`npm install --global`), installs with it and
+runs the API on Node, as it does for a Bun project.

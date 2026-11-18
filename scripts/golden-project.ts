@@ -1462,7 +1462,7 @@ export type ExpectedPortlessApp = { dir: string; name: string; cmd: string[] };
  * What `scripts/dev-portless.ts --dry-run` has to plan in a configuration, written out by hand and not
  * by the launcher's own rules, for a project whose root package is `slug` and a proxy serving `tld`: the
  * apps the modules install, and for each the command that follows from its `dev` script. The Worker API
- * runs through wrangler with the free port and every sibling's URL, the Bun API reads PORT, and a front
+ * runs through wrangler with the free port and every sibling's URL, the container's API reads PORT, and a front
  * runs `react-router dev` as it is, which portless recognises by name.
  */
 export function expectedPortlessApps(
@@ -1502,7 +1502,7 @@ export function expectedPortlessApps(
     ];
   }
   if (configuration === "dockerfile") {
-    return [app("api", ["bun", "--watch", "src/index.ts"]), front("spa")];
+    return [app("api", ["tsx", "watch", "src/index.ts"]), front("spa")];
   }
   if (configuration === "fronts") {
     return [front("spa"), front("ssr"), front("static")];

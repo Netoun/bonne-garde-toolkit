@@ -19,7 +19,7 @@ const APP_LABELS = {
 
 const PROVIDER_LABELS = {
   cloudflare: "Cloudflare Workers and Pages",
-  dockerfile: "one Bun container",
+  dockerfile: "one Node container",
 } as const;
 
 const FEATURE_LABELS = {

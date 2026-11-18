@@ -17,5 +17,5 @@ whichever package manager the project has: `vp test` is Vitest, a module's scrip
 
 ## Who peers on it
 
-`provider/dockerfile` peers on `pm: ["bun"]`: its container runs the API on Bun. `deploy/cloudflare-actions`
-peers on `pm: []`, so the setup action its workflow calls is there.
+`deploy/cloudflare-actions` peers on `pm: []`, so the setup action its workflow calls is there.
+`provider/dockerfile` peers on none: its image installs with whichever `packageManager` names.

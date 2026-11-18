@@ -152,7 +152,7 @@ describe("module contract", () => {
         )
         .map(({ category, id }) => `${category}/${id}`),
     );
-    expect([...bunOnly].sort()).toEqual(["pm/bun", "provider/dockerfile"]);
+    expect([...bunOnly].sort()).toEqual(["pm/bun"]);
 
     const found: string[] = [];
     for (const { category, id, manifest } of manifests) {
@@ -352,8 +352,11 @@ describe("module contract", () => {
         ]) {
           expect(variant?.copy).toContain(path);
         }
-        // Spec 035 declares a dependency once: `elysia` is the variant's, pinned the same everywhere.
-        expect(variant?.dependencies).toEqual({ elysia: "1.4.29" });
+        // Spec 035 declares a dependency once: `elysia` is the variant's, pinned the same everywhere;
+        // the container's runtime also has srvx, the server it listens with.
+        expect(variant?.dependencies).toEqual(
+          manifest.id === "dockerfile" ? { elysia: "1.4.29", srvx: "1.0.8" } : { elysia: "1.4.29" },
+        );
       }
     });
 
@@ -365,11 +368,7 @@ describe("module contract", () => {
         expect(body).toMatchObject({
           name: "{{SCOPE}}/api-runtime",
           exports: { ".": "./src/index.ts" },
-          // The container's package runs on Bun, the runtime it serves the API with.
-          scripts: {
-            typecheck: expect.any(String),
-            test: manifest.id === "dockerfile" ? "bun test" : "vp test",
-          },
+          scripts: { typecheck: expect.any(String), test: "vp test" },
         });
         for (const map of ["dependencies", "devDependencies", "peerDependencies"]) {
           expect(isRecord(body) && map in body ? `${manifest.id}: ${map}` : null).toBeNull();
@@ -922,7 +921,7 @@ describe("module contract", () => {
         {
           type: "scripts.merge",
           file: "apps/api/package.json",
-          scripts: { dev: "bun --watch src/index.ts" },
+          scripts: { dev: "tsx watch src/index.ts" },
         },
       ]);
       expect(variants.get("dockerfile")?.devDependencies ?? {}).toEqual({});

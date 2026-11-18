@@ -1324,20 +1324,12 @@ describe("the launcher phase (dev/portless)", () => {
     expect(apps.slice(1).map(({ cmd }) => cmd)).toEqual(["spa", "ssr", "static"].map(frontCommand));
   });
 
-  test("a project on the dockerfile provider plans two apps, the API as a Bun process that reads PORT", () => {
+  test("a project on the dockerfile provider plans two apps, the API as a tsx process that reads PORT", () => {
     expect(expectedPortlessApps("dockerfile", "golden-dockerfile", "localhost")).toEqual([
       {
         dir: "api",
         name: "api.golden-dockerfile",
-        cmd: [
-          "portless",
-          "run",
-          "--name",
-          "api.golden-dockerfile",
-          "bun",
-          "--watch",
-          "src/index.ts",
-        ],
+        cmd: ["portless", "run", "--name", "api.golden-dockerfile", "tsx", "watch", "src/index.ts"],
       },
       {
         dir: "spa",

@@ -1,14 +1,15 @@
 # provider/dockerfile
 
-One container. The Bun API listens on `PORT` and serves the built SPA from the same origin; a
+One container. The API, on Node, listens on `PORT` and serves the built SPA from the same origin; a
 single `/data` volume is meant to hold the database, media and generated secrets. No Cloudflare
 account. Today the container runs and serves the API shell and the SPA, but it has **no database
 and no object storage**, so sign-up, sign-in and media do not work — see
 [What runs, and what does not](#what-runs-and-what-does-not).
 
-It peers on `pm: ["bun"]`: the container runs the API on Bun, so a pnpm project cannot have it yet,
-and `bg create --pm pnpm --provider dockerfile` is refused with that message. The package keeps
-`@types/bun` among its devDependencies for the same reason; the base no longer has it.
+It peers on no package manager: the image installs the project with the one `package.json` pins
+(`packageManager`, the `pm` module's) — `npm install --global` of that exact version, then its `install
+--frozen-lockfile` and the root `build` — and runs the API on Node in both cases, the TypeScript entry
+loaded through `tsx` (`node --import tsx apps/api/src/index.ts`, so Node is PID 1).
 
 Harvested from `bonne-garde-keeper`, which shipped this runtime and whose design document
 (`2026-10-18-labo-49-standalone-docker`) is the source for the decisions below.
@@ -17,7 +18,7 @@ Harvested from `bonne-garde-keeper`, which shipped this runtime and whose design
 
 | Seam            | Choice                                                                   | State                 |
 | --------------- | ------------------------------------------------------------------------ | --------------------- |
-| Runtime adapter | Elysia's default Bun adapter, listening on `PORT`; `aot` left on         | done                  |
+| Runtime adapter | Elysia's web-standard adapter behind srvx, listening on `PORT`; `aot` on | done                  |
 | Environment     | `process.env`, completed for one origin                                  | done                  |
 | Origins         | One `APP_URL`, which fills the `SPA_URL` / `SSR_URL` / `API_URL` triple  | done, with one caveat |
 | Secrets         | `BETTER_AUTH_SECRET` generated into `DATA_DIR` on first start when unset | done, `auth` reads it |
@@ -36,27 +37,29 @@ writes at the same paths, so swapping providers swaps this package and leaves `a
 `src/index.ts` exports the same four names `apps/api` and the modules import, so `app.ts` and the
 entry stay as they are:
 
-- `runtimeOptions`: `{ aot: true }`. Elysia picks its Bun adapter itself.
+- `runtimeOptions`: `{ aot: true }`. Elysia picks its adapter by the runtime: web-standard on Node.
 - `readRuntimeEnv(source = process.env)`: fills `SPA_URL`, `SSR_URL` and `API_URL` from `APP_URL`, and
   `BETTER_AUTH_SECRET` from `DATA_DIR/secrets/better-auth-secret`. It invents no other key: a key
   belongs to the module whose code reads it (035), so `RESEND_API_KEY` is the `email` module's and
   `R2_PUBLIC_URL` is `storage/r2`'s, which is Cloudflare-only and has no variant for this provider.
 - `clientIpHeaders`: `["x-client-ip"]`, the header `serve` fills with the client's address. See
   [The client's address](#the-clients-address-and-a-reverse-proxy).
-- `serve(app, { spaDir, port, trustedProxyHeader })`: returns `{ port, fetch }`, which Bun serves by itself when
-  `apps/api/src/index.ts` is the entry. Nothing calls `.listen()`: a default export that has `fetch`
-  plus a `listen()` starts two servers on one port. A file under `apps/spa/build/client` is served
-  as is, anything else goes to the app, and a `GET` the app answers 404 gets `index.html` when the
-  client accepts `text/html`. It also exits on SIGINT and SIGTERM, see below.
+- `serve(app, { spaDir, port, trustedProxyHeader })`: starts [srvx](https://srvx.h3.dev), which runs the
+  same on Node and on Bun, and resolves with the server once it listens. It returns a promise, which
+  has no `fetch`, so a runtime that serves a default-exported `{ fetch }` by itself starts no second one.
+  What it answers is `handler(app, options)`: a file under `apps/spa/build/client` is served as is with
+  its content type, anything else goes to the app, and a `GET` the app answers 404 gets `index.html`
+  when the client accepts `text/html`. It also exits on SIGINT and SIGTERM, see below. `listenPort` is
+  the port: the one given, `PORT`, or 5172.
 
 Its tests (`index.test.ts`, 36) travel with it. In a project, `packages/api-runtime` is a workspace
-and `bun run test` runs them; in this repo `registry/` is not one, so they run through
+and `vp test` runs them; in this repo `registry/` is not one, so they run through
 `bun run test:scripts`.
 
 ## Two decisions taken from keeper rather than invented
 
-**The build stage runs on `node:24-slim` with Bun copied in.** React Router prerenders the SPA
-through Vite preview, which needs a real Node; Bun alone cannot run that step. This is the kind of
+**The build stage runs on `node:24-slim`.** React Router prerenders the SPA through Vite preview,
+which needs a real Node; Bun alone cannot run that step. This is the kind of
 thing that costs an afternoon to rediscover.
 
 **`BETTER_AUTH_SECRET` is generated, not required.** The key is the `auth` module's: it declares it in
@@ -152,8 +155,8 @@ needs no SPA: the `Dockerfile` builds with the root `build` script, which builds
 project has, and `serve` answers 404 for `GET /` when `apps/spa/build/client` is missing.
 
 ```bash
-bunx bg create my-app --yes --no-git && cd my-app
-bunx bg add config/branding provider/dockerfile api/elysia     # `add` runs `bun install`: the image needs bun.lock
+bg create my-app --apps api --provider dockerfile --yes --no-git && cd my-app   # --pm bun or pnpm
+# `create` installs: the image needs the lockfile of the package manager package.json pins
 docker build -t my-app .
 docker run -d --name my-app -p 5172:5172 my-app
 curl -s localhost:5172/health
