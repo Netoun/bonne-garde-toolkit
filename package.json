@@ -31,7 +31,8 @@
     "golden": "bun scripts/golden-project.ts",
     "gen:playground": "bun scripts/gen-playground.ts",
     "gen:commands": "bun scripts/gen-commands.ts",
-    "gen:architecture": "bun scripts/gen-architecture.ts"
+    "gen:architecture": "bun scripts/gen-architecture.ts",
+    "gen:logo": "bun scripts/gen-logo.ts"
   },
   "devDependencies": {
     "@types/bun": "1.3.14",

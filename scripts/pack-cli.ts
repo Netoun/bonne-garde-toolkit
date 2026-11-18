@@ -111,7 +111,9 @@ const pkg = {
 
 await writeFile(join(OUT, "package.json"), `${JSON.stringify(pkg, null, 2)}\n`);
 
-const readme = `# bonne-garde
+const readme = `<p align="center"><img src="https://cdn.jsdelivr.net/gh/Netoun/bonne-garde-toolkit@main/assets/logo/logo.svg" alt="Bonne Garde" width="160"></p>
+
+# bonne-garde
 
 Scaffold an empty Bonne Garde monorepo, then add UI and full-stack modules from the registry.
 
