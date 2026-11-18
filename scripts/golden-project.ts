@@ -1906,9 +1906,9 @@ export type ExpectedPortlessApp = {
  * by the launcher's own rules, for a project whose root package is `slug` and a proxy serving `tld`: the
  * apps the modules install, and for each the command that follows from its `dev` script. The Worker API
  * runs through wrangler with the free port and every sibling's URL, the container's API reads PORT, and a front
- * runs `react-router dev` as it is, which portless recognises by name. The fronts of the cloudflare configuration
- * each have a wrangler config, so each is told `CLOUDFLARE_INCLUDE_PROCESS_ENV`: the Cloudflare Vite plugin
- * ignores the process environment otherwise, and `ssr` would keep the `localhost` API_URL of its config.
+ * runs `react-router dev` as it is, which portless recognises by name. The fronts of a configuration on the
+ * cloudflare provider each have a wrangler config, so each is told `CLOUDFLARE_INCLUDE_PROCESS_ENV`: the Cloudflare
+ * Vite plugin ignores the process environment otherwise, and `ssr` would keep the `localhost` API_URL of its config.
  */
 export function expectedPortlessApps(
   configuration: string,
@@ -1923,7 +1923,9 @@ export function expectedPortlessApps(
   const url = (dir: string) => `https://${dir}.${slug}.${tld}`;
   const front = (dir: string): ExpectedPortlessApp => ({
     ...app(dir, ["react-router", "dev"]),
-    ...(configuration === "cloudflare" ? { includesProcessEnv: true as const } : {}),
+    ...(ANSWER_SETS[configuration]?.provider === "cloudflare"
+      ? { includesProcessEnv: true as const }
+      : {}),
   });
 
   if (configuration === "cloudflare") {
