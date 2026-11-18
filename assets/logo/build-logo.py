@@ -24,8 +24,9 @@ F = (cx + 144, bar + 55.0); rF = 55   # cove under the right arm, tangent to E: 
 UB = (cx, 55.0); rU = 21              # upper bowl of the B (hollow)
 LB = (cx, 110.0); rL = 34             # lower bowl of the B (hollow), 34/21 = phi
 P = (cx, 199.0); rP = 55              # pommel, tangent to the lower bowl
-Q = (cx + rP, P[1] - 89); rQ = 89     # hollow that cuts the pommel into a G: bar at the pommel's right edge, point under the hilt
-EQ = max(circle_inter(E, rE, Q, rQ), key=lambda p: p[1])
+Q = (cx + rP, P[1] - 89); rQ = 89     # opening of the G, its bottom is the G bar
+V = P; rV = 21                        # counter of the G, its top touches the hilt: 178 = 199 - 21
+QV = max(circle_inter(Q, rQ, V, rV), key=lambda p: p[1])  # tip of the G bar
 
 tip = (W - 21.0, float(bar))          # right tip: same 21:34 slant as the left one
 
@@ -40,8 +41,9 @@ def arc(c, r, p0, p1, cw):
 
 M((21.0, 0.0)); L((W, 0.0)); L(tip); L((F[0], float(bar)))
 arc(F, rF, (F[0], float(bar)), (cx + rE, E[1]), False)
-arc(E, rE, (cx + rE, E[1]), EQ, True)
-arc(Q, rQ, EQ, (cx + rP, P[1]), False)
+arc(E, rE, (cx + rE, E[1]), (cx, 178.0), True)
+arc(V, rV, (cx, 178.0), QV, False)
+arc(Q, rQ, QV, (cx + rP, P[1]), False)
 arc(P, rP, (cx + rP, P[1]), (cx, 144.0), True)
 arc(LB, rL, (cx, 144.0), (cx, 76.0), False)
 arc(UB, rU, (cx, 76.0), (cx, float(bar)), False)
@@ -53,7 +55,7 @@ with open(os.path.join(HERE, "logo.svg"), "w") as f:
     f.write(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{-pad} {-pad} {W + 2 * pad} {H + 2 * pad}">'
             f'<path fill="#1c1a17" d="{path}"/></svg>\n')
 
-circles = [(E, rE), (F, rF), (UB, rU), (LB, rL), (P, rP), (Q, rQ)]
+circles = [(E, rE), (F, rF), (UB, rU), (LB, rL), (P, rP), (Q, rQ), (V, rV)]
 rings = "".join(f'<circle cx="{c[0]:.2f}" cy="{c[1]:.2f}" r="{r}"/>' for c, r in circles)
 guides = (f'<line x1="{cx}" y1="-40" x2="{cx}" y2="{H + 42}"/>'
           f'<line x1="-40" y1="0" x2="{W + 43}" y2="0"/><line x1="-40" y1="{bar}" x2="{W + 43}" y2="{bar}"/>')

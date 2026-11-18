@@ -20,6 +20,7 @@
         "packages/api-runtime/package.json",
         "packages/api-runtime/tsconfig.json",
         "packages/api-runtime/src/index.ts",
+        "packages/api-runtime/src/main.ts",
         "packages/api-runtime/src/index.test.ts"
       ],
       "env": [

@@ -800,6 +800,7 @@ describe("bg add <module>", () => {
       "packages/api-runtime/package.json",
       "packages/api-runtime/src/index.test.ts",
       "packages/api-runtime/src/index.ts",
+      "packages/api-runtime/src/main.ts",
       "packages/api-runtime/tsconfig.json",
     ]);
     expect(out.modules[1]?.env.map((key) => key.name)).toEqual([

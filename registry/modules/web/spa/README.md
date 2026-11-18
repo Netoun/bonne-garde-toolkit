@@ -26,16 +26,18 @@ Without it (`bg create --apps spa`, spec 040), none of that is written.
 
 A variant per provider, with the API, which list the same files except `wrangler.jsonc`, and differ in
 what `scripts.merge` (spec 060) adds to the vendored `apps/spa/package.json`; and on `cloudflare` one
-more, `cloudflare-without-api`, matched on the provider alone:
+more per provider, `cloudflare-without-api` and `dockerfile-without-api`, matched on the provider alone:
 
 | Variant                  | Extra file                | `scripts.merge` on `apps/spa/package.json`                                | Extra dependency |
 | ------------------------ | ------------------------- | ------------------------------------------------------------------------- | ---------------- |
 | `cloudflare`             | `apps/spa/wrangler.jsonc` | `dev`: `react-router dev`, `deploy`: `wrangler pages deploy build/client` | `wrangler` (dev) |
 | `dockerfile`             | none                      | `dev`: `react-router dev`                                                 | none             |
 | `cloudflare-without-api` | `apps/spa/wrangler.jsonc` | as `cloudflare`                                                           | `wrangler` (dev) |
+| `dockerfile-without-api` | none                      | as `dockerfile`                                                           | none             |
 
-The `dockerfile` provider serves `apps/spa/build/client` from the API's origin, so this variant has
-no deploy script of its own. The package.json the module vendors carries no `dev` and no `deploy`:
+The `dockerfile` provider serves `apps/spa/build/client` from the API's origin, or alone when the
+project has no API (its container starts `packages/api-runtime/src/main.ts`, which picks), so neither
+variant has a deploy script of its own. The package.json the module vendors carries no `dev` and no `deploy`:
 a patch is computed on the template, so a script already in it would be reported `skipped` on the
 first install. The dependency maps come from the variant (spec 035), pinned exactly.
 

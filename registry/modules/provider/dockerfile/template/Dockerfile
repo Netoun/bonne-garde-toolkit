@@ -32,4 +32,5 @@ EXPOSE 5172
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD ["node", "-e", "fetch(`http://127.0.0.1:${process.env.PORT}/health`).then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
 # tsx loaded into Node itself, not as a parent process, so Node is PID 1 and gets `docker stop`'s signal.
-CMD ["node", "--import", "tsx", "apps/api/src/index.ts"]
+# The entry starts the API when the project has one, else serves the SPA alone.
+CMD ["node", "--import", "tsx", "packages/api-runtime/src/main.ts"]

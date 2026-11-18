@@ -97,7 +97,7 @@ What each answer names, the one table the CLI holds:
 - `bg create tmp-app --pm pnpm --apps api,spa --yes` installs with pnpm, and nothing it runs needs Bun.
 - `bg create tmp-app --pm pnpm --apps api,spa --provider dockerfile --yes` makes a project whose image installs with pnpm and runs the API on Node.
 - `bg create tmp-app --apps api,spa --features email --provider dockerfile --yes --no-git --no-install` records the modules of those answers in `bg.json`.
-- `bg create tmp-app --apps spa --yes` creates a SPA with no API: no Eden client, no API variable.
+- `bg create tmp-app --apps spa --yes` creates a SPA with no API: no Eden client, no API variable. With `--provider dockerfile` its container serves the SPA alone.
 - `bg create tmp-app --apps ssr --provider dockerfile --yes` fails with the planner's message (`web/ssr` accepts only `cloudflare`), and writes nothing.
 - `bg create tmp-app --features auth --yes` fails: a feature needs an app.
 - `bg create /abs/path/my-app` yields scope `@my-app`, not a slugified path.

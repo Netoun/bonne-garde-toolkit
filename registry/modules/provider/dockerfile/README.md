@@ -9,7 +9,9 @@ and no object storage**, so sign-up, sign-in and media do not work — see
 It peers on no package manager: the image installs the project with the one `package.json` pins
 (`packageManager`, the `pm` module's) — `npm install --global` of that exact version, then its `install
 --frozen-lockfile` and the root `build` — and runs the API on Node in both cases, the TypeScript entry
-loaded through `tsx` (`node --import tsx apps/api/src/index.ts`, so Node is PID 1).
+loaded through `tsx` (`node --import tsx packages/api-runtime/src/main.ts`, so Node is PID 1). That entry
+starts the API when the project has one (`apps/api/src/index.ts`, which serves the SPA beside it), and
+serves the SPA alone otherwise: `bg create --apps spa --provider dockerfile` is a container too.
 
 Harvested from `bonne-garde-keeper`, which shipped this runtime and whose design document
 (`2026-10-18-labo-49-standalone-docker`) is the source for the decisions below.
@@ -32,7 +34,8 @@ The caveat on origins is in the list of what does not work: the URLs agree, the 
 
 The module owns the `packages/api-runtime` workspace whole: `package.json` (the `@scope/api-runtime`
 name, an `exports` map and the `typecheck` and `test` scripts; `elysia` is merged in from the
-variant), `tsconfig.json`, `src/index.ts` and `src/index.test.ts`. It is what `provider/cloudflare`
+variant), `tsconfig.json`, `src/index.ts`, `src/index.test.ts` and `src/main.ts`, the container's entry.
+`src/index.ts` is what `provider/cloudflare`
 writes at the same paths, so swapping providers swaps this package and leaves `apps/api` alone.
 `src/index.ts` exports the same four names `apps/api` and the modules import, so `app.ts` and the
 entry stay as they are:
