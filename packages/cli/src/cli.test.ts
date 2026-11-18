@@ -797,11 +797,13 @@ describe("bonne-garde add <module>", () => {
       files: Record<string, { owner: string; sha256: string }>;
       regions: Record<string, Record<string, string>>;
     };
+    // 070: a module is recorded at the lockstep version, the running CLI package's.
+    const cli = JSON.parse(await readFile(join(import.meta.dir, "../package.json"), "utf8"));
     expect(bg.modules.provider).toEqual([
       expect.objectContaining({
         id: "cloudflare",
         variant: "default",
-        version: "0.1.0",
+        version: cli.version,
         options: {},
         patches: [],
         intentions: { applied: [], skipped: {} },
