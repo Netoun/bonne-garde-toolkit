@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env tsx
 /**
  * Start every app of the project behind portless (named HTTPS URLs instead of ports):
  *   https://api.<slug>.localhost, https://spa.<slug>.localhost, one per `apps/<dir>`.
@@ -22,7 +22,7 @@
  * Usage (from the project root):
  *   vp run dev:portless                  start the stack
  *   vp run dev:lan:portless              the same, reachable from the LAN
- *   node scripts/dev-portless.ts --dry-run [--lan]   print the plan as JSON, start nothing
+ *   tsx scripts/dev-portless.ts --dry-run [--lan]    print the plan as JSON, start nothing
  */
 
 import { spawn, spawnSync } from "node:child_process";

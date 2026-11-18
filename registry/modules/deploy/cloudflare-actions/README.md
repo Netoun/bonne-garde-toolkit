@@ -31,13 +31,13 @@ with no edit here. `bg.json`'s `apps` is not read: it stays empty after the app-
 
 ## What it writes
 
-| File                                | What it is                                                                                              |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `.github/workflows/deploy.yml`      | `validate`, then `deploy`; runs `workflow_dispatch` only                                                |
-| `scripts/deploy-cloudflare.ts`      | `planDeploy`, `buildVars`, `deploy` and the command, run by Node; `jsonc-parser` reads `wrangler.jsonc` |
-| `scripts/deploy-cloudflare.test.ts` | its tests, over fixture trees in a temp directory; no test starts a process                             |
+| File                                | What it is                                                                                             |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `.github/workflows/deploy.yml`      | `validate`, then `deploy`; runs `workflow_dispatch` only                                               |
+| `scripts/deploy-cloudflare.ts`      | `planDeploy`, `buildVars`, `deploy` and the command, run by tsx; `jsonc-parser` reads `wrangler.jsonc` |
+| `scripts/deploy-cloudflare.test.ts` | its tests, over fixture trees in a temp directory; no test starts a process                            |
 
-Two patches: `scripts.merge` adds `deploy:cloudflare` (`node scripts/deploy-cloudflare.ts`) to the root
+Two patches: `scripts.merge` adds `deploy:cloudflare` (`tsx scripts/deploy-cloudflare.ts`) to the root
 `package.json`, which is what the workflow and you call, and `package.dependencies` adds `jsonc-parser`
 to its `devDependencies`, exact. It declares no workspace and no env key: a key belongs to the module whose code reads it, and the two secrets are GitHub's, named only
 in the workflow.

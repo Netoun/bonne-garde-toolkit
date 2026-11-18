@@ -48,7 +48,7 @@ The module adds one script to the project's root `package.json`, the first use o
   {
     "type": "scripts.merge",
     "file": "package.json",
-    "scripts": { "gen:branding": "node packages/config/scripts/gen-branding.ts" }
+    "scripts": { "gen:branding": "tsx packages/config/scripts/gen-branding.ts" }
   }
 ]
 ```

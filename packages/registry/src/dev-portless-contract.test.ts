@@ -73,8 +73,8 @@ describe("dev/portless is the launcher of the apps' named HTTPS URLs (035, 060)"
         type: "scripts.merge",
         file: "package.json",
         scripts: {
-          "dev:portless": "node scripts/dev-portless.ts",
-          "dev:lan:portless": "node scripts/dev-portless.ts --lan",
+          "dev:portless": "tsx scripts/dev-portless.ts",
+          "dev:lan:portless": "tsx scripts/dev-portless.ts --lan",
         },
       },
       {

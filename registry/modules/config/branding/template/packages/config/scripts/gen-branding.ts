@@ -1,15 +1,15 @@
-#!/usr/bin/env node
+#!/usr/bin/env tsx
 /**
  * Reads packages/config/branding.json and writes packages/config/src/branding.generated.ts
  *
  * Usage:
  *   vp run gen:branding
- *   node packages/config/scripts/gen-branding.ts
+ *   tsx packages/config/scripts/gen-branding.ts
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { assertBranding, renderBrandingModule, type Branding } from "../src/gen-branding.ts";
+import { assertBranding, renderBrandingModule, type Branding } from "../src/gen-branding";
 
 const PACKAGE_DIR = resolve(import.meta.dirname, "..");
 const BRANDING_JSON = join(PACKAGE_DIR, "branding.json");

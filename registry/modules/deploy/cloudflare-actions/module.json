@@ -20,7 +20,7 @@
         {
           "type": "scripts.merge",
           "file": "package.json",
-          "scripts": { "deploy:cloudflare": "node scripts/deploy-cloudflare.ts" }
+          "scripts": { "deploy:cloudflare": "tsx scripts/deploy-cloudflare.ts" }
         },
         {
           "type": "package.dependencies",

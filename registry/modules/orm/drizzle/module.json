@@ -48,7 +48,7 @@
           "file": "packages/db/package.json",
           "scripts": {
             "db:generate": "drizzle-kit generate --config ./src/drizzle.config.ts",
-            "db:reset": "node src/reset.ts",
+            "db:reset": "tsx src/reset.ts",
             "db:studio": "drizzle-kit studio --config ./src/drizzle.config.ts"
           }
         },

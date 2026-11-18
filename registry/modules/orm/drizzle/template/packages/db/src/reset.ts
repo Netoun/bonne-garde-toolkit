@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { getTableName, is } from "drizzle-orm";
 import { getTableConfig, SQLiteTable } from "drizzle-orm/sqlite-core";
-import * as barrel from "./schema/index.ts";
+import * as barrel from "./schema";
 
 /**
  * The tables of `schema`, each before the tables it points at: a foreign key refuses to delete a row

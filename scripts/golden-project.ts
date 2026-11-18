@@ -1089,7 +1089,7 @@ export function wireEmailIntoAuth(source: string, scope: string): string {
  * sends the reset one, each with a link that works), not the email package, which has tests of its own.
  */
 export function wiredTest(scope: string): string {
-  return `import { beforeEach, expect, test } from "bun:test";
+  return `import { beforeEach, expect, test } from "vite-plus/test";
 import { clearOutbox, outbox } from "${scope}/email/testing";
 import { mailer } from "./mailer";
 import { createTestAuth } from "./testing";
@@ -1320,8 +1320,7 @@ export function expectNothingToApply(stdout: string): void {
 export function testCounts(output: string): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const line of output.split("\n")) {
-    const [, workspace, ran] =
-      /^(\S+):test\s*\|\s*(?:Ran |Tests\s+)(\d+) (?:tests? |passed)/.exec(line) ?? [];
+    const [, workspace, ran] = /^\[(\S+)#test\]\s+Tests\s+(\d+) passed/.exec(line) ?? [];
     if (workspace !== undefined && ran !== undefined) {
       counts[workspace] = Number(ran);
     }
@@ -1375,16 +1374,16 @@ export function hasPortless(configuration: Configuration): boolean {
 }
 
 /**
- * How many tests the launcher runs in the project (`bun test ./scripts/dev-portless.test.ts`: it is a
+ * How many tests the launcher runs in the project (`vp test scripts/dev-portless.test.ts`: it is a
  * root script, so the root `test` fan-out over workspaces never reaches it); fewer means they went.
  */
 export const PORTLESS_MIN_TESTS = 33;
 
-/** The count in the `Ran N tests across M files` line `bun test` prints on stderr. */
+/** The count in the `Tests  N passed` line of the summary Vitest prints. */
 export function ranTests(output: string): number {
-  const ran = /Ran (\d+) tests?\b/.exec(output)?.[1];
+  const ran = /^\s*Tests\s+(\d+) passed/m.exec(output)?.[1];
   if (ran === undefined) {
-    throw new Error(`bun test printed no \`Ran N tests\` line: ${output.trim() || "(nothing)"}`);
+    throw new Error(`vp test printed no \`Tests N passed\` line: ${output.trim() || "(nothing)"}`);
   }
   return Number(ran);
 }
@@ -1704,7 +1703,7 @@ async function capture(argv: string[], cwd: string, env?: Record<string, string>
   return stdout;
 }
 
-/** Both streams of a command that has to succeed: `bun test` prints its report on stderr. */
+/** Both streams of a command that has to succeed. */
 async function captureBoth(
   argv: string[],
   cwd: string,
@@ -2055,11 +2054,14 @@ async function configured(
 async function launched(project: string, timings: Timing[], name: string): Promise<void> {
   const slug = basename(project);
   const plan = (...flags: string[]) =>
-    capture([BUN, "scripts/dev-portless.ts", "--dry-run", ...flags], project);
+    capture([BUN, "x", "tsx", "scripts/dev-portless.ts", "--dry-run", ...flags], project);
 
   await phase(timings, `${name}: portless tests`, async () => {
-    const { stderr } = await captureBoth([BUN, "test", "./scripts/dev-portless.test.ts"], project);
-    expectRan({ [PORTLESS_MODULE]: ranTests(stderr) }, PORTLESS_MODULE, PORTLESS_MIN_TESTS);
+    const { stdout } = await captureBoth(
+      [BUN, "x", "vp", "test", "scripts/dev-portless.test.ts"],
+      project,
+    );
+    expectRan({ [PORTLESS_MODULE]: ranTests(stdout) }, PORTLESS_MODULE, PORTLESS_MIN_TESTS);
   });
   await phase(timings, `${name}: portless plan`, async () => {
     expectPortlessPlan(await plan(), expectedPortlessApps(name, slug, "localhost"), "localhost");

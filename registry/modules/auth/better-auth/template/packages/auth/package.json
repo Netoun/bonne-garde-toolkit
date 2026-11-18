@@ -15,6 +15,6 @@
     "test": "vp test",
     "auth:generate": "auth generate --config ./src/auth.cli.ts --output ./src/schema.ts --adapter drizzle --dialect sqlite --yes && vp fmt --write ./src/schema.ts",
     "auth:secret": "auth secret",
-    "db:seed": "node src/seed.ts"
+    "db:seed": "tsx src/seed.ts"
   }
 }

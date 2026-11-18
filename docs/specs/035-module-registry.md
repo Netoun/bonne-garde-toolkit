@@ -146,7 +146,7 @@ The combinatorial explosion is data, not branching code. A module ships one vari
 A project runs on bun or on pnpm ([040](./040-cli-create.md)), and its tests run on Vitest, which is Node under both. So what a module ships runs on Node:
 
 - A check is a shell command run at the project root with the project's `node_modules/.bin` first on `PATH`. It names no package manager: `vp run <script>`, `cd <package> && vp run <script>`, or a bin.
-- A test imports `vite-plus/test` and runs under `vp test`. A script a module adds runs as `node <file>.ts` (Node strips the types): each relative import it reaches names its `.ts` file.
+- A test imports `vite-plus/test` and runs under `vp test`. A script a module adds runs as `tsx <file>.ts` (`tsx` is a devDependency of the base): it resolves imports as the project's typecheck does (`moduleResolution: bundler`), where `node` would refuse an import without its extension, the user's own included, only when the script runs.
 - No template file and no command reaches for Bun (`Bun.`, `bun:`, `bun`, `bunx`), except the files of a variant that only a Bun project installs. The contract test enforces it.
 
 ## Errors

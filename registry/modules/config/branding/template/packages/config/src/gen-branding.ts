@@ -1,5 +1,5 @@
 import type { Branding } from "./branding.types";
-import { BRANDING_KEYS } from "./branding.types.ts";
+import { BRANDING_KEYS } from "./branding.types";
 
 export type { Branding };
 

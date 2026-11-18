@@ -1236,7 +1236,7 @@ describe("the launcher phase (dev/portless)", () => {
     "dev",
   ];
 
-  /** The JSON `node scripts/dev-portless.ts --dry-run` prints, for the apps of the cloudflare configuration. */
+  /** The JSON `tsx scripts/dev-portless.ts --dry-run` prints, for the apps of the cloudflare configuration. */
   const printed = (tld: string, overrides: Record<string, Record<string, unknown>> = {}) => {
     const apiUrl = `https://api.${SLUG}.${tld}`;
     return JSON.stringify({
@@ -1376,13 +1376,13 @@ describe("the launcher phase (dev/portless)", () => {
   });
 
   describe("ranTests", () => {
-    test("reads the count from the line `bun test` prints on stderr", () => {
-      expect(ranTests("\n 33 pass\n 0 fail\nRan 33 tests across 1 file. [557.00ms]\n")).toBe(33);
-      expect(ranTests("Ran 1 test across 1 file.")).toBe(1);
+    test("reads the count from the summary Vitest prints", () => {
+      expect(ranTests("\n Test Files  1 passed (1)\n      Tests  33 passed (33)\n")).toBe(33);
+      expect(ranTests("      Tests  1 passed (1)")).toBe(1);
     });
 
     test("fails when there is no such line, so a run that printed nothing is not a pass", () => {
-      expect(() => ranTests("")).toThrow(/Ran/);
+      expect(() => ranTests("")).toThrow(/Tests/);
     });
   });
 });
@@ -1486,13 +1486,13 @@ describe("the database phases", () => {
 });
 
 describe("testCounts", () => {
-  test("reads how many tests each workspace ran from the prefixed output of the root test script", () => {
+  test("reads how many tests each workspace ran from the labeled output of the root test script", () => {
     const output = [
-      "@app/config:test      |  6 pass",
-      "@app/config:test      | Ran 6 tests across 1 file. [5.00ms]",
-      "@app/db:test          | Ran 12 tests across 4 files. [437.00ms]",
-      "@app/ssr:test         |       Tests  4 passed (4)",
-      "bun test v1.4.2",
+      "[@app/config#test]  Test Files  1 passed (1)",
+      "[@app/config#test]       Tests  6 passed (6)",
+      "[@app/db#test]       Tests  12 passed (12)",
+      "[@app/ssr#test]       Tests  4 passed (4)",
+      "      Tests  9 passed (9)",
     ].join("\n");
 
     expect(testCounts(output)).toEqual({ "@app/config": 6, "@app/db": 12, "@app/ssr": 4 });

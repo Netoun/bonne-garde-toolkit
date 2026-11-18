@@ -10,7 +10,6 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
-    "allowImportingTsExtensions": true,
     "types": ["node"],
     "paths": {
       "{{SCOPE}}/static/*": ["./src/*"]

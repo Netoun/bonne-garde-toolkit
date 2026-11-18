@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env tsx
 /**
  * Deploys every Cloudflare app of this project to its `production` environment, in an order that
  * cannot leave a deploy half made by a build that fails.

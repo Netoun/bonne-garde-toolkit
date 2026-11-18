@@ -185,7 +185,7 @@ describe("runDoctor: files", () => {
 });
 
 describe("runDoctor: a file with recorded regions is checked by region, not by sha (060, Q5)", () => {
-  const SCRIPT = "node packages/config/scripts/gen-branding.ts";
+  const SCRIPT = "tsx packages/config/scripts/gen-branding.ts";
 
   /** A project with `config/branding`, whose root package.json a patch edited. */
   async function brandingProject(): Promise<string> {

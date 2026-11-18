@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { join } from "node:path";
-import { hashPassword } from "./password.ts";
+import { hashPassword } from "./password";
 
 export const ADMIN_EMAIL = "admin@example.local";
 export const ADMIN_PASSWORD = "password123";

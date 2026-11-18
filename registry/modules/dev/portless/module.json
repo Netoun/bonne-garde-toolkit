@@ -24,8 +24,8 @@
           "type": "scripts.merge",
           "file": "package.json",
           "scripts": {
-            "dev:portless": "node scripts/dev-portless.ts",
-            "dev:lan:portless": "node scripts/dev-portless.ts --lan"
+            "dev:portless": "tsx scripts/dev-portless.ts",
+            "dev:lan:portless": "tsx scripts/dev-portless.ts --lan"
           }
         },
         {

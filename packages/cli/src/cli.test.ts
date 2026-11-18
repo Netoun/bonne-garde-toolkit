@@ -851,7 +851,7 @@ describe("bg add <module>", () => {
 });
 
 describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", () => {
-  const SCRIPT = "node packages/config/scripts/gen-branding.ts";
+  const SCRIPT = "tsx packages/config/scripts/gen-branding.ts";
   const REGION = "scripts.gen:branding";
 
   async function rootScripts(target: string): Promise<Record<string, string>> {
@@ -1016,7 +1016,7 @@ describe("bg add config/branding: scripts.merge, the first tier-2 patch (060)", 
         type: "scripts.merge",
         file: "package.json",
         intent:
-          'The scripts.merge patch of config/branding makes package.json hold: scripts.gen:branding = "node packages/config/scripts/gen-branding.ts".',
+          'The scripts.merge patch of config/branding makes package.json hold: scripts.gen:branding = "tsx packages/config/scripts/gen-branding.ts".',
         reason: failed.reason,
         staged: `.bg/add/01-${id.split("/")[2]}.md`,
       },
@@ -1423,6 +1423,7 @@ describe("bg add: package.dependencies (060)", () => {
       "@types/node",
       "drizzle-kit",
       "husky",
+      "tsx",
       "typescript",
       "vite-plus",
     ]);

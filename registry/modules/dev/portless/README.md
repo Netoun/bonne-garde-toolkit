@@ -67,8 +67,8 @@ them in its environment.
 ## See the plan without starting anything
 
 ```bash
-node scripts/dev-portless.ts --dry-run          # the plan as JSON: dir, name, url, cwd, cmd, env
-node scripts/dev-portless.ts --dry-run --lan
+tsx scripts/dev-portless.ts --dry-run          # the plan as JSON: dir, name, url, cwd, cmd, env
+tsx scripts/dev-portless.ts --dry-run --lan
 ```
 
 It needs neither portless nor a proxy, and the URLs it prints are those of a proxy with its defaults
