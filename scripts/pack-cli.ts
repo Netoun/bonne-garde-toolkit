@@ -111,7 +111,7 @@ const pkg = {
 
 await writeFile(join(OUT, "package.json"), `${JSON.stringify(pkg, null, 2)}\n`);
 
-const readme = `<p align="center"><img src="https://cdn.jsdelivr.net/gh/Netoun/bonne-garde-toolkit@main/assets/logo/logo.svg" alt="Bonne Garde" width="160"></p>
+const readme = `<p align="center"><img src="https://cdn.jsdelivr.net/gh/Netoun/bonne-garde-toolkit@main/assets/logo/logo.svg" alt="Bonne Garde" width="128"></p>
 
 # bonne-garde
 

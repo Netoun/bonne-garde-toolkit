@@ -1,9 +1,4 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/logo-dark.svg">
-    <img src="assets/logo/logo.svg" alt="Bonne Garde" width="160">
-  </picture>
-</p>
+<p align="center"><img src="assets/logo/logo.svg" alt="Bonne Garde" width="128"></p>
 
 # Bonne Garde
 

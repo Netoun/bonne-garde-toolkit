@@ -2,7 +2,7 @@
 /**
  * Writes the Bonne Garde logo into assets/logo/: a sword guard (the T) whose outline draws a B in
  * its hollow and a G cut into the pommel. Every curve is a circle arc with a Fibonacci radius,
- * shown on logo-construction.svg.
+ * shown on logo-construction.svg. logo.svg is the cream mark on a sky-blue badge.
  *
  * Usage:
  *   bun run gen:logo
@@ -13,8 +13,8 @@ import { join, resolve } from "node:path";
 
 type Point = readonly [number, number];
 
-/** Gold, like the guard the CLI prints: dark enough on white, light enough on a dark page. */
-export const LOGO_GOLD = { light: "#9c7a2b", dark: "#e3bf66" } as const;
+/** Cream on sky blue: the mark sits on its own badge, so it reads on light and dark pages alike. */
+export const LOGO_COLORS = { badge: "#93bee1", mark: "#efe9dc" } as const;
 
 const add = (a: Point, b: Point): Point => [a[0] + b[0], a[1] + b[1]];
 const sub = (a: Point, b: Point): Point => [a[0] - b[0], a[1] - b[1]];
@@ -82,9 +82,11 @@ export function logoPath(): string {
 /** Every file of assets/logo/, by name. */
 export function logoFiles(): Record<string, string> {
   const path = logoPath();
-  const pad = 21;
-  const mark = (fill: string) =>
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-pad} ${-pad} ${W + 2 * pad} ${H + 2 * pad}" role="img" aria-label="Bonne Garde"><path fill="${fill}" d="${path}"/></svg>\n`;
+  // A square badge around the mark, rounded with a 110 radius, the mark centred in it.
+  const side = 500;
+  const x = (W - side) / 2;
+  const y = (H - side) / 2;
+  const badge = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x} ${y} ${side} ${side}" role="img" aria-label="Bonne Garde"><rect x="${x}" y="${y}" width="${side}" height="${side}" rx="110" fill="${LOGO_COLORS.badge}"/><path fill="${LOGO_COLORS.mark}" d="${path}"/></svg>\n`;
   const circles: [Point, number][] = [
     [E, rE],
     [F, rF],
@@ -102,14 +104,13 @@ export function logoFiles(): Record<string, string> {
     `<line x1="-40" y1="0" x2="${W + 43}" y2="0"/><line x1="-40" y1="${bar}" x2="${W + 43}" y2="${bar}"/>`;
   const construction = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-40 -40 ${W + 80} ${H + 82}">
 <rect x="-40" y="-40" width="${W + 80}" height="${H + 82}" fill="#fbfaf7"/>
-<path fill="${LOGO_GOLD.light}" fill-opacity=".9" d="${path}"/>
+<path fill="${LOGO_COLORS.badge}" d="${path}"/>
 <g fill="none" stroke="#c0392b" stroke-width=".6">${rings}</g>
 <g stroke="#2f6fb0" stroke-width=".5" stroke-dasharray="3 3">${guides}</g>
 </svg>
 `;
   return {
-    "logo.svg": mark(LOGO_GOLD.light),
-    "logo-dark.svg": mark(LOGO_GOLD.dark),
+    "logo.svg": badge,
     "logo-construction.svg": construction,
   };
 }
