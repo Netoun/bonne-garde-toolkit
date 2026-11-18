@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "vite-plus/test";
 import { unconfiguredMailer } from "./mailer";
 
 const URL_WITH_TOKEN = "http://spa.test/auth/verify-email?token=one-time-token";

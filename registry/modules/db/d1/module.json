@@ -6,7 +6,7 @@
   "title": "Cloudflare D1",
   "description": "The D1 binding of the Worker and the database handle the ORM is built on, in packages/db.",
   "peers": { "provider": ["cloudflare"], "api": ["elysia"] },
-  "checks": ["cd packages/db && bun run typecheck && bun run test"],
+  "checks": ["cd packages/db && vp run typecheck && vp run test"],
   "variants": [
     {
       "key": "cloudflare",

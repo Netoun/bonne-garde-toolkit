@@ -131,11 +131,8 @@ describe("module contract", () => {
   // template file or a command a module.json declares that reaches for Bun breaks the pnpm project,
   // and a test that does breaks both. `bun` the word, in a comment, misleads the next agent the same way.
   const MIGRATING = new Set([
-    "auth/better-auth",
-    "db/d1",
     "deploy/cloudflare-actions",
     "dev/portless",
-    "orm/drizzle",
     "provider/dockerfile",
     "storage/r2",
     "tooling/vite-plus",
@@ -1522,11 +1519,7 @@ describe("module contract", () => {
       expect(body).toMatchObject({
         name: "{{SCOPE}}/db",
         exports: { "./d1": "./src/d1.ts" },
-        scripts: {
-          typecheck: expect.any(String),
-          "typecheck:test": expect.any(String),
-          test: "bun test",
-        },
+        scripts: { typecheck: expect.any(String), test: "vp test" },
       });
       for (const map of [
         "dependencies",
@@ -1560,7 +1553,7 @@ describe("module contract", () => {
         file: "packages/db/package.json",
         scripts: {
           "db:generate": "drizzle-kit generate --config ./src/drizzle.config.ts",
-          "db:reset": "bun run src/reset.ts",
+          "db:reset": "node src/reset.ts",
           "db:studio": "drizzle-kit studio --config ./src/drizzle.config.ts",
         },
       });
@@ -1622,7 +1615,7 @@ describe("module contract", () => {
 
       for (const [path, source] of await sourcesOf()) {
         for (const name of packagesNamedBy(source)) {
-          if (!name.includes(":")) {
+          if (!name.includes(":") && !BASE_TOOLING.has(name)) {
             named.add(name);
             expect([path, declared.has(name)]).toEqual([path, true]);
           }
@@ -1711,7 +1704,10 @@ describe("module contract", () => {
       for (const [path, source] of await sourcesOf()) {
         for (const [, specifier] of source.matchAll(/from\s+"(\.[^"]*)"/g)) {
           const target = posix.normalize(posix.join(posix.dirname(path), specifier ?? ""));
-          const found = [`${target}.ts`, `${target}/index.ts`].some((file) => shipped.has(file));
+          // `reset.ts` runs on Node, which resolves no extension: it names its files in full.
+          const found = [target, `${target}.ts`, `${target}/index.ts`].some((file) =>
+            shipped.has(file),
+          );
           if (!target.startsWith("packages/db/src/") || !found) {
             unresolved.push(`${path}: ${specifier}`);
           }
@@ -2086,14 +2082,15 @@ describe("module contract", () => {
       const imported = new Set<string>();
       for (const [path, source] of await sources()) {
         for (const name of packagesImportedBy(source)) {
-          // `bun:test`, `bun:sqlite` and `node:*` are the runtime's; the project's own start with the scope.
-          if (name.includes(":") || name === "{{SCOPE}}/auth") continue;
+          // `node:*` is the runtime's, the base's tooling every project's.
+          if (name.includes(":") || name === "{{SCOPE}}/auth" || BASE_TOOLING.has(name)) continue;
           imported.add(name);
           expect([path, declared.has(name)]).toEqual([path, true]);
         }
       }
 
-      expect([...declared].filter((name) => !imported.has(name))).toEqual([]);
+      // `auth` is the CLI the scripts run, a bin that no source imports.
+      expect([...declared].filter((name) => !imported.has(name) && name !== "auth")).toEqual([]);
     });
 
     test("every dependency is an exact version, and the adapter is the one release of better-auth", async () => {
@@ -2108,7 +2105,9 @@ describe("module contract", () => {
       );
       const pkg: unknown = JSON.parse(await authText("packages/auth/package.json"));
       const generate = isRecord(pkg) && isRecord(pkg.scripts) ? pkg.scripts["auth:generate"] : "";
-      expect(generate).toContain(`bunx auth@${variant.dependencies?.["better-auth"]} generate`);
+      expect(generate).toEqual(expect.stringMatching(/^auth generate /));
+      expect(Object.keys(variant.devDependencies ?? {})).toEqual(["auth"]);
+      expect(variant.devDependencies?.auth).toBe(variant.dependencies?.["better-auth"] ?? "");
     });
 
     test("it writes only inside packages/auth, from explicit paths that exist", async () => {
@@ -2194,7 +2193,7 @@ describe("module contract", () => {
 
       expect(record.name).toBe("{{SCOPE}}/auth");
       expect(typeof scripts.typecheck).toBe("string");
-      expect(scripts.test).toBe("bun test");
+      expect(scripts.test).toBe("vp test");
       for (const map of ["dependencies", "devDependencies", "peerDependencies"]) {
         expect(map in record ? map : null).toBeNull();
       }

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "vite-plus/test";
 import pkg from "../package.json";
 
 const packageRoot = new URL("../", import.meta.url);
@@ -8,9 +8,10 @@ function scriptOf(name: "auth:generate" | "auth:secret"): string {
 }
 
 describe("auth CLI scripts", () => {
-  it("run the auth CLI at the better-auth version the package depends on", () => {
+  it("run the auth CLI, at the better-auth version the package depends on", () => {
+    expect(pkg.devDependencies.auth).toBe(pkg.dependencies["better-auth"]);
     for (const name of ["auth:generate", "auth:secret"] as const) {
-      expect(scriptOf(name)).toContain(`bunx auth@${pkg.dependencies["better-auth"]} `);
+      expect(scriptOf(name)).toMatch(/^auth /);
     }
   });
 

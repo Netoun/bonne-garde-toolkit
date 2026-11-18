@@ -1,4 +1,6 @@
-import { describe, it, expect } from "bun:test";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { describe, it, expect } from "vite-plus/test";
 import { sql } from "drizzle-orm";
 import pkg from "../package.json";
 import { account, member, organization, user } from "./schema";
@@ -83,7 +85,7 @@ describe("the seed", () => {
     expect((await call("/get-session")).status).toBe(200);
   });
 
-  // `seedAdmin` is what `bun run db:seed` runs, over the local D1; here it runs over real SQLite, with
+  // `seedAdmin` is what `vp run db:seed` runs, over the local D1; here it runs over real SQLite, with
   // the one difference that a batch is run statement by statement, since D1's is a transaction.
   describe("seedAdmin: seeding a database that already has the admin", () => {
     type TestDatabase = Awaited<ReturnType<typeof createTestAuth>>["db"];
@@ -176,6 +178,6 @@ describe("the seed", () => {
 
   it("owns db:seed and no db:reset: the reset is the ORM's, and the seed deletes nothing", async () => {
     expect(Object.keys(pkg.scripts).filter((name) => name.startsWith("db:"))).toEqual(["db:seed"]);
-    expect(await Bun.file(new URL("./seed.ts", import.meta.url)).text()).not.toContain("DELETE");
+    expect(await readFile(join(import.meta.dirname, "seed.ts"), "utf8")).not.toContain("DELETE");
   });
 });

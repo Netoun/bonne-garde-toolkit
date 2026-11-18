@@ -26,7 +26,7 @@ and the allow-list stays empty so that a project with a `db` this module has no 
 | `src/index.ts`                        | `createDB`, `DB`, `dbModule`, `dbPlugin`                                                       |
 | `src/drizzle.config.ts`               | `schema: ./src/schema/index.ts`, `out: ./migrations`, `dialect: sqlite`                        |
 | `src/testing.ts`                      | `createTestDb(schema?)`: an in-memory SQLite with the schema's tables                          |
-| `src/reset.ts`                        | `resetStatements(schema?)` and `bun run db:reset`: empties every table the barrel exports      |
+| `src/reset.ts`                        | `resetStatements(schema?)` and `vp run db:reset`: empties every table the barrel exports       |
 | `src/{client,module,testing}.test.ts` | seven tests: two against a real D1 (Miniflare), three against real SQLite, two with no binding |
 | `src/reset.test.ts`                   | nine tests: the order of the deletes, on real SQLite and on a real D1 (Miniflare)              |
 
@@ -49,7 +49,7 @@ region each, which `bg remove orm/drizzle` deletes and nothing else:
 
 The dependencies are a patch because the variant's maps reach only a `package.json` the module writes,
 and this one is db/d1's. `package.dependencies` writes each entry where the formatter sorts it, so
-`drizzle-kit` lands between db/d1's `@cloudflare/workers-types` and `miniflare` and `bun run check`
+`drizzle-kit` lands between db/d1's `@cloudflare/workers-types` and `miniflare` and `vp run check`
 has nothing to say. `drizzle-kit` is a dev dependency: `./testing` imports `drizzle-kit/api`, which a
 workspace package resolves from its own devDependencies.
 
@@ -64,8 +64,8 @@ alone exports only `./d1`. So orm wires it, with three patches on the files `api
 | `ts.addImport`         | `apps/api/src/app.ts`   | `imports[{{SCOPE}}/db]`: `dbModule`                |
 | `ts.elysiaUse`         | `apps/api/src/app.ts`   | `elysia[app].use[dbModule]`, after the last `.use` |
 
-The dependency is what lets the import resolve: Bun's isolated installs link only what a `package.json`
-declares. Like `db/d1`, orm does not peer on `api`: without `apps/api` the three fail and become pending
+The dependency is what lets the import resolve: bun's isolated installs and pnpm link only what a
+`package.json` declares. Like `db/d1`, orm does not peer on `api`: without `apps/api` the three fail and become pending
 intentions (060), not a failed install. With it, in one call or after, `bg add` of either module alone
 later skips every patch and changes nothing.
 
@@ -79,8 +79,8 @@ A module ships tables, never migrations. The legacy `0000` migration mixes the `
 The project generates its own:
 
 ```bash
-cd packages/db && bun run db:generate     # drizzle-kit: schema barrel -> migrations/0000_*.sql
-cd apps/api && bun run db:migrate:local   # wrangler d1 migrations apply DB --local
+cd packages/db && vp run db:generate     # drizzle-kit: schema barrel -> migrations/0000_*.sql
+cd apps/api && vp run db:migrate:local   # wrangler d1 migrations apply DB --local
 ```
 
 `migrations/` is where `db/d1`'s `migrations_dir` points, and `tooling/vite-plus` does not format it
@@ -94,11 +94,11 @@ export { user, session } from "@scope/auth/schema";
 export { medias } from "@scope/storage/schema";
 ```
 
-**That line resolves once `packages/db` depends on `@scope/auth`.** Bun's isolated installs give
+**That line resolves once `packages/db` depends on `@scope/auth`.** bun's isolated installs and pnpm give
 `packages/db` only what its own `package.json` declares (`tsc`: TS2307, `drizzle-kit`:
 `MODULE_NOT_FOUND` otherwise), so the module that adds the table adds that dependency to
 `packages/db/package.json` with a `package.dependencies` patch, next to the line. It makes a workspace
-cycle, since `auth` imports `createDB` from `{{SCOPE}}/db`, which Bun accepts.
+cycle, since `auth` imports `createDB` from `{{SCOPE}}/db`, which bun and pnpm accept.
 
 The barrel is empty because the one table of the legacy `db.core-schema.ts`, `medias`, has foreign
 keys onto `user` and `organization`: it belongs to `storage`, which comes after `auth`, and cannot be
@@ -107,17 +107,17 @@ Golden does exactly that with `golden_notes`.
 
 ## Resetting the database
 
-`bun run db:reset` (in `packages/db`) empties every table the schema barrel exports, in the local D1 the
+`vp run db:reset` (in `packages/db`) empties every table the schema barrel exports, in the local D1 the
 binding `DB` names in `apps/api/wrangler.jsonc`, and prints the tables it emptied. It is this module's because
 this module owns the barrel: the tables are other modules' (`auth`, `storage`) and the project's own, and the
 only thing that knows all of them is the file they are re-exported from. It reads the barrel when it runs, so a
 module added later is reset with no change here. Nothing else is touched: no migration runs, and `d1_migrations`
 is not in the barrel, so what is applied stays applied. Putting rows back is the module's: `auth`'s
-`bun run db:seed` inserts the admin, and works on a database this has emptied.
+`vp run db:seed` inserts the admin, and works on a database this has emptied.
 
 ```bash
-cd packages/db && bun run db:reset      # every table of the barrel, children before parents
-cd ../auth && bun run db:seed           # the admin, who owns a Personal organization
+cd packages/db && vp run db:reset       # every table of the barrel, children before parents
+cd ../auth && vp run db:seed            # the admin, who owns a Personal organization
 ```
 
 **The order is the foreign keys.** `resetStatements(schema?)` is one `DELETE FROM "<table>";` per table, each
@@ -130,23 +130,27 @@ Deferring the checks was the alternative, and it was tried on the local D1 that 
 foreign_keys = OFF` is not honoured: with a media that had an author and no organization, `PRAGMA foreign_keys
 = OFF; DELETE FROM "user";` still failed on the foreign key. `PRAGMA defer_foreign_keys = on` in the same
 `--command` did let the parent go first. The order was taken anyway: it needs no pragma, it is the same
-statements on D1 and on `bun:sqlite`, where the tests run them, and it fails loudly on the one schema deferral
+statements on D1 and on `node:sqlite`, where the tests run them, and it fails loudly on the one schema deferral
 would let through, a cycle. A table with a cascade needs no special case: `ON DELETE CASCADE` on
 `medias.organization_id` is why a media of an organization never stopped a reset, and the nullable `author_id`
 with no cascade is why one with no organization did.
 
-`reset.test.ts` proves it on real databases: on `bun:sqlite` with `PRAGMA foreign_keys = ON` (it is off by
-default there, so a test without it proves nothing) and on a D1 from Miniflare, where it first shows that
+`reset.test.ts` proves it on real databases: on the test database with `PRAGMA foreign_keys = ON` (it is
+already on there, as on D1; the pragma keeps the test true of any SQLite) and on a D1 from Miniflare, where it first shows that
 deleting a parent first is refused. The `./reset` export is for other modules' tests (`auth`'s seed test and
 `storage`'s run `resetStatements` over their own tables). Golden runs the script itself against a local D1
 holding a media with an author and no organization, a row in `golden_notes` and the seeded admin.
 
 ## The test database
 
-`createTestDb()` is a fresh in-memory SQLite (`bun:sqlite`) with the tables of the barrel, or of the
-schema you pass: `await createTestDb({ notes })`. The tables come from the schema through
-`drizzle-kit/api`, not from `migrations/`, so a test does not wait for `bun run db:generate`, and the
-tests that run against D1 itself use Miniflare (`client.test.ts`, `module.test.ts`). It is async where
+`createTestDb()` is a fresh in-memory D1 with the tables of the barrel, or of the schema you pass:
+`await createTestDb({ notes })`. It is D1's interface over `node:sqlite`, behind the Drizzle driver the API
+uses, `drizzle-orm/d1`: a raw read gives objects and a typed one arrays, as on D1, foreign keys are
+enforced, and a batch is one transaction. `testing.test.ts` runs the same reads, writes, foreign key and
+failed batch on it and on a D1 from Miniflare and expects the same answers. It is not Miniflare itself
+because each Miniflare is a workerd process that no test would dispose. The tables come from the schema
+through `drizzle-kit/api`, not from `migrations/`, so a test does not wait for `vp run db:generate`, and
+the tests that run against D1 itself use Miniflare (`client.test.ts`, `module.test.ts`). It is async where
 the legacy `createTestDb` was not, because `drizzle-kit/api` is.
 
 ## Not here

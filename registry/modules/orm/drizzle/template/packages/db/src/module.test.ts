@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { Miniflare } from "miniflare";
@@ -34,7 +34,7 @@ describe("dbPlugin", () => {
 });
 
 describe("dbModule", () => {
-  // No binding under `bun test`: the app still loads and answers, and the route that queries says why not.
+  // No binding under Vitest: the app still loads and answers, and the route that queries says why not.
   const app = new Elysia()
     .use(dbModule)
     .get("/ping", () => "pong")

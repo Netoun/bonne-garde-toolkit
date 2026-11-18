@@ -50,9 +50,9 @@ Everything in `packages/auth`, from explicit paths:
 | `src/*.test.ts`                     | the tests that travel, and the new ones, all against real SQLite: no mock of Drizzle or `fetch`                                 |
 
 Dependencies are exact: `better-auth` and `@better-auth/drizzle-adapter` at the same release (a
-contract test pins that, and the CLI the scripts run), `drizzle-orm`, `elysia`, and the project's
+contract test pins that, and `auth`, the CLI the scripts run, a devDependency at that release too), `drizzle-orm`, `elysia`, and the project's
 `api`, `api-runtime` and `db` as workspaces. `api` imports `auth` to mount it and `auth` imports `api`'s
-`lib/*`; `db`'s barrel re-exports `auth`'s tables. Bun accepts those workspace cycles (see Wiring).
+`lib/*`; `db`'s barrel re-exports `auth`'s tables. bun and pnpm accept those workspace cycles (see Wiring).
 
 ## `createTestAuth` for another module's tests
 
@@ -66,15 +66,15 @@ rate limit of one test is never spent by another.
 
 ## The schema is pure generator output
 
-`bun run auth:generate` (in `packages/auth`) runs the Better Auth CLI, pinned to the version the package
-depends on, on `src/auth.cli.ts`, writes `src/schema.ts`, and formats it. It runs on node through the
-CLI's shebang, on purpose: under `bunx --bun` the generator drops every `created_at` default without an
+`vp run auth:generate` (in `packages/auth`) runs the Better Auth CLI, pinned to the version the package
+depends on, on `src/auth.cli.ts`, writes `src/schema.ts`, and formats it. It runs on Node through the
+CLI's shebang, on purpose: run by Bun the generator drops every `created_at` default without an
 error (it tests `defaultValue.toString()` for `new Date()`, and Bun prints that function differently).
 A test pins the defaults. The legacy file keeps one hand edit, `organization.slug`'s `uniqueIndex`; this
 module does not, so the file has `.unique()` there, as the generator writes it. Golden runs
 `auth:generate` in the project it builds and fails unless the file comes back byte for byte.
 
-`bun run auth:secret` prints a secret for `BETTER_AUTH_SECRET`.
+`vp run auth:secret` prints a secret for `BETTER_AUTH_SECRET`.
 
 ## Environment
 
@@ -133,12 +133,12 @@ five patches on four known seams, each with the sentence a failure turns into a 
 | `ts.addNamedExport`    | `packages/db/src/schema/index.ts` | `exports[{{SCOPE}}/auth/schema]` |
 
 `.use(authModule)` lands after `.use(dbModule)`, which `orm/drizzle` put there. The export is every table
-and relation of `schema.ts` (a contract test compares the two lists), so `bun run db:generate` in
+and relation of `schema.ts` (a contract test compares the two lists), so `vp run db:generate` in
 `packages/db` writes the auth tables into the project's one migration, and `createDB` sees them.
 
 The wiring makes three workspace cycles: `api` and `auth` (the shell mounts auth, auth reads the shell's
 `lib/*`), `db` and `auth` (the barrel re-exports auth's tables, auth reads `createDB`), and so `db`, `api`,
-`auth` in a ring. Bun installs it, `tsc` and `bun test` resolve it, and golden runs all three. A module
+`auth` in a ring. bun and pnpm install it, `tsc` and Vitest resolve it, and golden runs all three. A module
 cycle would not work and there is none: `schema.ts` imports nothing of the project, and nothing of `auth`
 runs at import time.
 
@@ -148,7 +148,7 @@ a patch the catalog does not have.
 
 ## Seed
 
-`bun run db:seed` (in `packages/auth`) applies the migrations to the local D1 and inserts an admin,
+`vp run db:seed` (in `packages/auth`) applies the migrations to the local D1 and inserts an admin,
 `admin@example.local` / `password123`, verified, who owns a Personal organization. The legacy seed was
 `db.seed.ts`, in the ORM's directory, because it sat in `apps/api`; every statement of it inserts into
 `user`, `account`, `organization` or `member` and hashes a password, so it is auth's. `drizzle/seed.sql` was
@@ -156,7 +156,7 @@ referenced by nothing and is not shipped.
 
 **It deletes nothing, and `db:reset` is not auth's.** Resetting a database means emptying every table the
 schema barrel exports, the other modules' and the project's own included, in an order a foreign key accepts,
-and the barrel is `orm/drizzle`'s: its `bun run db:reset` (in `packages/db`) does that
+and the barrel is `orm/drizzle`'s: its `vp run db:reset` (in `packages/db`) does that
 ([`orm/drizzle`](../../orm/drizzle/README.md#resetting-the-database)). Auth's reset cleared auth's tables and only those,
 so it failed once a `medias` row had an author and no organization (`storage`'s `author_id` has no cascade),
 and no module could add a step to it. What it leaves behind is a database `db:seed` works on, so starting
@@ -175,7 +175,7 @@ cleared the auth tables first, which is what `db:reset` is for now.
 that builds the SQL. The tests run both against real SQLite and read the result back through Better Auth: the
 admin signs in, the wrong password is refused, a seed on a database that has the admin adds no row and answers
 `present`, and it seeds again after the ORM's `resetStatements` has emptied the auth tables. The runner only hands
-them to `bunx wrangler d1 execute DB --local` from `apps/api`: the database is addressed by its binding, as
+them to `wrangler d1 execute DB --local` from `apps/api` (the `wrangler` it depends on): the database is addressed by its binding, as
 `db/d1`'s scripts do, not by the name in `wrangler.jsonc`. Golden runs `db:seed`, puts a row in every other
 table, runs `db:reset`, runs `db:seed` again, and once more on the seeded database, where it has to say so and
 leave every table with the rows it had.

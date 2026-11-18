@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { Miniflare } from "miniflare";
 import { D1_BINDING, bindD1, readD1 } from "./d1";
 
@@ -52,7 +52,7 @@ describe("bindD1", () => {
 });
 
 describe("readD1", () => {
-  it("is the database that fails where the runtime provides no binding, as under bun test", () => {
+  it("is the database that fails where the runtime provides no binding, as under Vitest", () => {
     return readD1().then((database) => {
       expect(() => database.prepare("SELECT 1")).toThrow(`"${D1_BINDING}"`);
     });

@@ -1,10 +1,10 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "vite-plus/test";
 import { Relations, SQL, getTableColumns, getTableName, is, type Column } from "drizzle-orm";
 import { SQLiteSyncDialect, SQLiteTable } from "drizzle-orm/sqlite-core";
 import * as authSchema from "./schema";
 import { createTestAuth } from "./testing";
 
-// `schema.ts` is what `bun run auth:generate` rewrites, from the schema Better Auth resolves out of
+// `schema.ts` is what `vp run auth:generate` rewrites, from the schema Better Auth resolves out of
 // the options in `auth.config.ts`. A column that exists in the Drizzle file but not in that
 // resolved schema is silently dropped by the next regeneration, and the migration that follows
 // deletes its data.
@@ -65,9 +65,9 @@ describe("auth schema", () => {
   it("keeps the SQLite default of every date column Better Auth defaults to now", async () => {
     // The CLI emits `.default(sql\`(cast(unixepoch('subsecond') ...))\`)` only when
     // `defaultValue.toString()` contains "new Date()", and Bun prints that function as
-    // `() => new Date`. Under `bunx --bun` it drops every one of these defaults without an error,
-    // and `db:generate` then rebuilds five tables without them. The script stays on `bunx`, which
-    // honors the CLI's node shebang.
+    // `() => new Date`. Run by Bun it drops every one of these defaults without an error, and
+    // `db:generate` then rebuilds five tables without them. The script runs the CLI's bin, whose
+    // shebang is Node's.
     const { tables } = await (await createTestAuth()).auth.$context;
     const dialect = new SQLiteSyncDialect();
     const checked: string[] = [];
