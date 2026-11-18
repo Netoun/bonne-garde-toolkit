@@ -7,7 +7,7 @@ Define `templates/base`: the empty monorepo copied by `bun create bonne-garde@la
 ## Contents (MUST)
 
 - Root `package.json` with workspaces `apps/*`, `packages/*`
-- Bun package manager pin, TypeScript strict root config, `@types/node`
+- No package manager pin: `packageManager` is the project's `pm` module's ([035](./035-module-registry.md)), which `create` always adds. TypeScript strict root config, `@types/node`, `tsx`
 - Vite+ / check tooling stubs (fmt, lint, check scripts)
 - Root `dev`, `build`, `typecheck` and `test` scripts that fan out to the workspaces with `vp run -r --parallel --log labeled <task>` (each line names its workspace; `--parallel` because modules form workspace cycles, which dependency ordering refuses; `build`, `typecheck` and `test` add `--concurrency-limit 4`, since every Vitest starts its own workers, and `dev` does not, since its processes never end): Vite+'s runner reads bun and pnpm workspaces alike, skips a workspace without the task, and does not run the root's own script again
 - Husky prepare hook stub (optional if hooks dir empty)
@@ -30,5 +30,5 @@ Define `templates/base`: the empty monorepo copied by `bun create bonne-garde@la
 
 ## Acceptance
 
-- After copy + `bun install`, `bun run typecheck` and `bun run test` succeed (no-op or empty workspace ok).
+- After copy, its `pm` module and an install, `typecheck` and `test` succeed under bun and under pnpm (no-op or empty workspace ok).
 - Directory listing shows no feature source files.

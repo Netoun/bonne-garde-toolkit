@@ -48,6 +48,7 @@
  *   bun scripts/golden-project.ts
  */
 
+import { existsSync } from "node:fs";
 import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, delimiter, join, resolve } from "node:path";
@@ -122,10 +123,16 @@ export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
     apps: ["api", "spa", "ssr", "static"],
     provider: "cloudflare",
     features: ["db", "auth", "storage", "email", "deploy", "backoffice"],
+    pm: "bun",
   },
-  dockerfile: { apps: ["api", "spa"], provider: "dockerfile", features: ["email"] },
+  dockerfile: { apps: ["api", "spa"], provider: "dockerfile", features: ["email"], pm: "bun" },
   // The fronts alone (040: `--apps spa`): no api, so no Eden client and no API variable, deployed.
-  fronts: { apps: ["spa", "ssr", "static"], provider: "cloudflare", features: ["deploy"] },
+  fronts: {
+    apps: ["spa", "ssr", "static"],
+    provider: "cloudflare",
+    features: ["deploy"],
+    pm: "bun",
+  },
 };
 
 /**
@@ -138,6 +145,23 @@ export const CONFIGURATIONS: readonly Configuration[] = Object.entries(ANSWER_SE
     return { name, modules, items: items.length > 0 };
   },
 );
+
+/**
+ * The package manager of a configuration, its `pm` module's id: `create --pm` adds that module, and
+ * golden's `bg add` adds the rest.
+ */
+export function packageManagerOf(configuration: Configuration): string {
+  const [pm, ...more] = configuration.modules.filter((module) => module.startsWith("pm/"));
+  if (pm === undefined || more.length > 0) {
+    throw new Error(`the ${configuration.name} configuration has to name one pm module`);
+  }
+  return pm.slice("pm/".length);
+}
+
+/** The modules golden's `bg add` installs: all but the package manager's, which `create` added. */
+export function addedModules(configuration: Configuration): string[] {
+  return configuration.modules.filter((module) => !module.startsWith("pm/"));
+}
 
 /** The module that ships the `Dockerfile` golden builds. */
 const IMAGE_MODULE = "provider/dockerfile";
@@ -384,11 +408,16 @@ export function expectEveryAppPlanned(
 }
 
 /**
- * The workflow as installed: it parses as YAML, runs on dispatch only, has the deploy job, and every
- * `bun run <script>` it makes is a script of the project's root `package.json`, the one that deploys
- * included. `rootScripts` is what that file holds after the install, which is what the runner sees.
+ * The workflow as installed: it parses as YAML, runs on dispatch only, has the deploy job, every
+ * `vp run <script>` it makes is a script of the project's root `package.json`, the one that deploys
+ * included, and every local action it uses is one the project ships (`hasAction`; the setup is the
+ * `pm` module's). `rootScripts` is what that file holds after the install, which is what the runner sees.
  */
-export function expectWorkflow(text: string, rootScripts: readonly string[]): void {
+export function expectWorkflow(
+  text: string,
+  rootScripts: readonly string[],
+  hasAction: (path: string) => boolean,
+): void {
   let workflow: unknown;
   try {
     workflow = Bun.YAML.parse(text);
@@ -411,16 +440,28 @@ export function expectWorkflow(text: string, rootScripts: readonly string[]): vo
     throw new Error(`${DEPLOY_WORKFLOW} has no deploy job`);
   }
   for (const run of Object.values(jobs).flatMap(runsOf)) {
-    const script = /^bun run (\S+)/.exec(run)?.[1];
+    const script = /^vp run (\S+)/.exec(run)?.[1];
     if (script !== undefined && !rootScripts.includes(script)) {
       throw new Error(
-        `${DEPLOY_WORKFLOW} runs \`bun run ${script}\`, and the project's package.json has no such script`,
+        `${DEPLOY_WORKFLOW} runs \`vp run ${script}\`, and the project's package.json has no such script`,
       );
     }
   }
-  if (!runsOf(jobs.deploy).includes(`bun run ${DEPLOY_SCRIPT}`)) {
+  const local = Object.values(jobs).flatMap((job) =>
+    isRecord(job) && Array.isArray(job.steps)
+      ? job.steps.flatMap((step: unknown) =>
+          isRecord(step) && typeof step.uses === "string" && step.uses.startsWith("./")
+            ? [step.uses]
+            : [],
+        )
+      : [],
+  );
+  for (const action of local.filter((path) => !hasAction(path))) {
+    throw new Error(`${DEPLOY_WORKFLOW} uses ${action}, and the project ships no such action`);
+  }
+  if (!runsOf(jobs.deploy).includes(`vp run ${DEPLOY_SCRIPT}`)) {
     throw new Error(
-      `the deploy job of ${DEPLOY_WORKFLOW} does not run \`bun run ${DEPLOY_SCRIPT}\``,
+      `the deploy job of ${DEPLOY_WORKFLOW} does not run \`vp run ${DEPLOY_SCRIPT}\``,
     );
   }
 }
@@ -616,7 +657,10 @@ export const FEATURE_REFUSALS: readonly {
  * Modules `bg list` shows that stay out of every configuration, each with its reason. An entry for
  * a module the registry no longer lists fails the run, as for `EXCLUDED`. Empty on purpose.
  */
-export const EXCLUDED_MODULES: Readonly<Record<string, string>> = {};
+export const EXCLUDED_MODULES: Readonly<Record<string, string>> = {
+  "pm/pnpm":
+    "golden installs and runs its projects with bun: a pnpm configuration needs a golden that drives pnpm",
+};
 
 /**
  * The module ids to `bg add`, read from the `module` lines of `bg list` output
@@ -1798,7 +1842,8 @@ async function configured(
   },
 ): Promise<void> {
   const { bg, registry, configuration, first } = options;
-  const { name, modules } = configuration;
+  const { name } = configuration;
+  const modules = addedModules(configuration);
   const installed = configuration.items ? options.items : [];
   const patched = PATCHED[name] ?? {};
   const patchedItems = configuration.items ? (PATCHED_ITEMS[name] ?? {}) : {};
@@ -1807,12 +1852,14 @@ async function configured(
   const step = <T>(label: string, body: () => Promise<T>) =>
     phase(timings, `${name}: ${label}`, body);
 
-  console.log(`\ngolden: configuration ${name}: ${modules.join(" ")}`);
+  console.log(`\ngolden: configuration ${name}: ${configuration.modules.join(" ")}`);
   await step("create", () =>
     run(
       bg(
         "create",
         project,
+        "--pm",
+        packageManagerOf(configuration),
         "--yes",
         "--no-git",
         "--no-install",
@@ -2086,6 +2133,8 @@ async function refusedPeer(
       bg(
         "create",
         project,
+        "--pm",
+        "bun",
         "--yes",
         "--no-git",
         "--no-install",
@@ -2130,7 +2179,9 @@ async function deployPlanned(project: string, timings: Timing[], name: string): 
     }
     const root: unknown = JSON.parse(await Bun.file(join(project, "package.json")).text());
     const scripts = isRecord(root) && isRecord(root.scripts) ? Object.keys(root.scripts) : [];
-    expectWorkflow(await Bun.file(join(project, DEPLOY_WORKFLOW)).text(), scripts);
+    expectWorkflow(await Bun.file(join(project, DEPLOY_WORKFLOW)).text(), scripts, (action) =>
+      existsSync(join(project, action, "action.yml")),
+    );
 
     const dryRun = [BUN, "run", DEPLOY_SCRIPT, "--dry-run"];
     const plan = readDeployPlan(await capture(dryRun, project));
@@ -2476,6 +2527,8 @@ async function refusedFeature(
       bg(
         "create",
         project,
+        "--pm",
+        "bun",
         "--yes",
         "--no-git",
         "--no-install",

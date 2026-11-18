@@ -3,6 +3,12 @@
  * together is the registry's to say: a set is checked as `bg add` would plan it (`Check`), so no
  * compatibility rule lives here.
  */
+import type { PackageManager } from "./package-manager";
+
+const PM_LABELS = {
+  bun: "Bun installs the project and runs its scripts",
+  pnpm: "pnpm installs the project, Node runs its scripts",
+} as const satisfies Record<PackageManager, string>;
 
 const APP_LABELS = {
   api: "the Elysia API",
@@ -37,12 +43,13 @@ export type Choices = {
   apps: readonly App[];
   provider: Provider | null;
   features: readonly Feature[];
+  pm: PackageManager;
 };
-
-const NO_APP: Choices = { apps: [], provider: null, features: [] };
 
 /** Every module an answer can name, in the order `bg add` is given them. */
 export const CANDIDATE_MODULES = [
+  "pm/bun",
+  "pm/pnpm",
   "provider/cloudflare",
   "provider/dockerfile",
   "tooling/vite-plus",
@@ -76,15 +83,16 @@ const FEATURE_MODULES: Record<Feature, readonly string[]> = {
   backoffice: [],
 };
 
-/** 040's table: the modules and items of a set of answers. */
-export function namesFor({ apps, provider, features }: Choices): {
+/** 040's table: the modules and items of a set of answers. Every project has its package manager's. */
+export function namesFor({ apps, provider, features, pm }: Choices): {
   modules: string[];
   items: string[];
 } {
   if (apps.length === 0 || provider === null) {
-    return { modules: [], items: [] };
+    return { modules: [`pm/${pm}`], items: [] };
   }
   const named = new Set<string>([
+    `pm/${pm}`,
     `provider/${provider}`,
     "tooling/vite-plus",
     "config/branding",
@@ -217,15 +225,25 @@ async function askOne<T extends string>(
 /**
  * 040's resolution: an axis a flag gave is never asked; with no `ask` (`--yes`, or no TTY) a missing
  * axis takes its default and a refused set fails; with one, a refused set is said and its axis asked
- * again. The registry is loaded only once an app is chosen, so the base alone needs no network.
+ * again. The package manager comes first, its default the one `create` was started from
+ * (`defaultPm`). The registry's check is loaded only once an app is chosen.
  */
 export async function resolveChoices(options: {
   given: Partial<Choices>;
   ask: Ask | null;
+  defaultPm: PackageManager;
   loadCheck: () => Promise<Check>;
   say: (message: string) => void;
 }): Promise<Choices> {
-  const { given, ask, say } = options;
+  const { given, ask, defaultPm, say } = options;
+  const pm =
+    given.pm ??
+    (ask
+      ? await askOne(ask, say, "Package manager", PM_LABELS, [
+          defaultPm,
+          ...Object.keys(PM_LABELS).filter((name): name is PackageManager => name !== defaultPm),
+        ])
+      : defaultPm);
   let check: Check | undefined;
   for (;;) {
     const apps = given.apps ?? (ask ? await askList(ask, say, "app", "Apps", APP_LABELS) : []);
@@ -233,11 +251,11 @@ export async function resolveChoices(options: {
       if (given.provider !== undefined || given.features !== undefined) {
         throw new Error("--provider and --features need an app (--apps)");
       }
-      return NO_APP;
+      return { apps: [], provider: null, features: [], pm };
     }
     check ??= await options.loadCheck();
     const loaded = check;
-    const bare = (provider: Provider): Choices => ({ apps, provider, features: [] });
+    const bare = (provider: Provider): Choices => ({ apps, provider, features: [], pm });
     const candidates = given.provider ? [given.provider] : PROVIDERS;
     const providers = candidates.filter((provider) => refusal(loaded, bare(provider)) === null);
     const [firstProvider] = providers;
@@ -259,7 +277,7 @@ export async function resolveChoices(options: {
       const features =
         given.features ??
         (ask ? await askList(ask, say, "feature", "Features", FEATURE_LABELS) : []);
-      const choices: Choices = { apps, provider, features };
+      const choices: Choices = { apps, provider, features, pm };
       const message = refusal(loaded, choices);
       if (message === null) {
         return choices;

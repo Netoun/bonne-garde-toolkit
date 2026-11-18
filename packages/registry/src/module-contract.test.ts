@@ -24,6 +24,7 @@ import { resolveModulePlans, type ModuleRef } from "./module-plan";
 import { patchRegions, writePatch } from "./patch-ops";
 import { plannedPatches } from "./patch-plan";
 import { addNamedExport } from "./ts-patches";
+import { jsoncLeaves, setJsoncLeaves } from "./jsonc-merge";
 
 const ROOT = join(import.meta.dir, "../../..");
 const MODULES = join(ROOT, "registry/modules");
@@ -130,30 +131,50 @@ describe("module contract", () => {
   // A project runs on bun or on pnpm (040), and its tests run on Vitest, which is Node in both: a
   // template file or a command a module.json declares that reaches for Bun breaks the pnpm project,
   // and a test that does breaks both. `bun` the word, in a comment, misleads the next agent the same way.
-  const MIGRATING = new Set(["provider/dockerfile"]);
-
-  test("no template file and no command of a module.json reaches for Bun: a project runs on Node too", async () => {
+  // What only a Bun project installs may: `pm/bun`, a module whose `peers.pm` is bun alone, and a
+  // variant whose `match` names one of those.
+  test("no template file and no command of a module.json reaches for Bun, but what only a Bun project installs", async () => {
     // `bun.lock`, a file name, is not a command.
     const BUN = /\bBun\.|["']bun:|\bbunx?\b(?![-.])|@types\/bun/;
+    const manifests = await Promise.all(
+      (await findModuleManifests()).map(async ([category, id, path]) => ({
+        category,
+        id,
+        manifest: parseModuleManifest(JSON.parse(await readFile(path, "utf8"))),
+      })),
+    );
+    const bunOnly = new Set(
+      manifests
+        .filter(
+          ({ category, id, manifest }) =>
+            `${category}/${id}` === "pm/bun" ||
+            (manifest.peers.pm?.length === 1 && manifest.peers.pm[0] === "bun"),
+        )
+        .map(({ category, id }) => `${category}/${id}`),
+    );
+    expect([...bunOnly].sort()).toEqual(["pm/bun", "provider/dockerfile"]);
+
     const found: string[] = [];
-    for (const [category, id, path] of await findModuleManifests()) {
-      if (MIGRATING.has(`${category}/${id}`)) continue;
-      const dir = join(MODULES, category, id);
-      const manifest = parseModuleManifest(JSON.parse(await readFile(path, "utf8")));
+    for (const { category, id, manifest } of manifests) {
+      if (bunOnly.has(`${category}/${id}`)) continue;
       const commands = [
         ...(manifest.checks ?? []),
-        ...manifest.variants.flatMap((variant) =>
-          (variant.patch ?? []).flatMap((patch) =>
-            patch.type === "scripts.merge" && isRecord(patch.scripts)
-              ? Object.values(patch.scripts).filter((script) => typeof script === "string")
-              : [],
+        ...manifest.variants
+          .filter(({ match }) =>
+            Object.entries(match).every(([peer, module]) => !bunOnly.has(`${peer}/${module}`)),
+          )
+          .flatMap((variant) =>
+            (variant.patch ?? []).flatMap((patch) =>
+              patch.type === "scripts.merge" && isRecord(patch.scripts)
+                ? Object.values(patch.scripts).filter((script) => typeof script === "string")
+                : [],
+            ),
           ),
-        ),
       ];
       for (const command of commands.filter((command) => BUN.test(command))) {
         found.push(`${category}/${id} module.json: ${command}`);
       }
-      const template = join(dir, "template");
+      const template = join(MODULES, category, id, "template");
       if (!existsSync(template)) continue;
       for (const file of await readdir(template, { recursive: true, withFileTypes: true })) {
         if (!file.isFile()) continue;
@@ -165,11 +186,7 @@ describe("module contract", () => {
         }
       }
     }
-    // Two things stay Bun until the package manager is a choice of its own: the container runs the API
-    // on Bun, its `dev` is Bun's watch mode; and the deploy workflow sets Bun up and installs with it.
-    expect(
-      found.filter((line) => !line.startsWith("deploy/cloudflare-actions/template/.github/")),
-    ).toEqual(["api/elysia module.json: bun --watch src/index.ts"]);
+    expect(found).toEqual([]);
   });
 
   // tsx resolves an import the way the project's typecheck does (`moduleResolution: bundler`); `node`
@@ -207,14 +224,14 @@ describe("module contract", () => {
     expect(found).toEqual([]);
   });
 
-  test("both providers exist and peer on nothing", async () => {
+  test("both providers exist and peer on nothing but the package manager", async () => {
     const ids = new Set<string>();
     for (const [category, id, path] of await findModuleManifests()) {
       if (category !== "provider") continue;
       ids.add(id);
       const manifest = parseModuleManifest(JSON.parse(await readFile(path, "utf8")));
-      // `provider` is first in the topological order, so it has no peers by construction.
-      expect(manifest.peers).toEqual({});
+      // `pm` alone comes before `provider` in the topological order.
+      expect(Object.keys(manifest.peers).filter((peer) => peer !== "pm")).toEqual([]);
     }
 
     expect(ids).toEqual(new Set(["cloudflare", "dockerfile"]));
@@ -1864,6 +1881,7 @@ describe("module contract", () => {
         resolveModulePlans(
           catalog,
           [
+            { category: "pm", id: "bun" },
             { category: "provider", id: "dockerfile" },
             { category: "db", id: "d1" },
           ],
@@ -2290,6 +2308,7 @@ describe("module contract", () => {
           catalog,
           [
             ...stack.filter(({ category }) => category !== "provider"),
+            { category: "pm", id: "bun" },
             { category: "provider", id: "dockerfile" },
             { category: "auth", id: "better-auth" },
           ],
@@ -2673,6 +2692,7 @@ describe("module contract", () => {
           catalog,
           [
             ...stack.filter(({ category }) => category !== "provider"),
+            { category: "pm", id: "bun" },
             { category: "provider", id: "dockerfile" },
             { category: "storage", id: "r2" },
           ],
@@ -2722,7 +2742,7 @@ describe("module contract", () => {
       const providers = (await readdir(join(MODULES, "provider"))).sort();
 
       expect(manifest.category).toBe("deploy");
-      expect(manifest.peers).toEqual({ provider: ["cloudflare"] });
+      expect(manifest.peers).toEqual({ pm: [], provider: ["cloudflare"] });
       expect(providers).toContain("cloudflare");
       expect(variant.key).toBe("cloudflare");
       expect(variant.match).toEqual({ provider: "cloudflare" });
@@ -2789,8 +2809,14 @@ describe("module contract", () => {
         stepsOf(job).flatMap((step) => (typeof step.uses === "string" ? [step.uses] : [])),
       );
 
-      expect(uses.length).toBeGreaterThanOrEqual(4);
-      expect(uses.filter((action) => !/^[\w./-]+@[0-9a-f]{40}$/.test(action))).toEqual([]);
+      // The setup is the project's own action, which the `pm` module ships and pins (below).
+      expect(uses.filter((action) => action === "./.github/actions/setup")).toHaveLength(2);
+      expect(
+        uses.filter(
+          (action) =>
+            action !== "./.github/actions/setup" && !/^[\w./-]+@[0-9a-f]{40}$/.test(action),
+        ),
+      ).toEqual([]);
     });
 
     test("it names Cloudflare's two secrets and no variable of any module: the builds get the workflow's variables as JSON", async () => {
@@ -2804,7 +2830,7 @@ describe("module contract", () => {
       expect(code).not.toMatch(/\bvars\.\w/);
     });
 
-    test("every `bun run <script>` of the workflow exists in a project that has this module: the base template's, or the one it patches in", async () => {
+    test("every `vp run <script>` of the workflow exists in a project that has this module: the base template's, or the one it patches in", async () => {
       const { code, jobs } = await workflow();
       const { variant } = await deployModule();
       const base: unknown = JSON.parse(
@@ -2817,7 +2843,7 @@ describe("module contract", () => {
         ...(isRecord(base) && isRecord(base.scripts) ? Object.keys(base.scripts) : []),
         ...patched,
       ]);
-      const used = [...code.matchAll(/\brun: bun run (\S+)/g)].flatMap(([, name]) =>
+      const used = [...code.matchAll(/\brun: vp run (\S+)/g)].flatMap(([, name]) =>
         name === undefined ? [] : [name],
       );
 
@@ -2826,16 +2852,12 @@ describe("module contract", () => {
       const runs = (job: unknown): string[] =>
         stepsOf(job).flatMap((step) => (typeof step.run === "string" ? [step.run] : []));
       expect(runs(jobs.validate)).toEqual([
-        "bun install --frozen-lockfile",
-        "bun run check",
-        "bun run typecheck",
-        "bun run test",
-        "bun run deploy:cloudflare --dry-run",
+        "vp run check",
+        "vp run typecheck",
+        "vp run test",
+        "vp run deploy:cloudflare --dry-run",
       ]);
-      expect(runs(jobs.deploy)).toEqual([
-        "bun install --frozen-lockfile",
-        "bun run deploy:cloudflare",
-      ]);
+      expect(runs(jobs.deploy)).toEqual(["vp run deploy:cloudflare"]);
     });
   });
 
@@ -3270,4 +3292,82 @@ describe("a front installs without the api (040: `create --apps spa`)", () => {
       expect(Object.keys(plan.devDependencies)).toContain("@app/api");
     });
   }
+});
+
+describe("pm/bun and pm/pnpm are the package manager of the project (035, 040)", () => {
+  const PM = join(MODULES, "pm");
+  const ACTION = ".github/actions/setup/action.yml";
+
+  const pmModules = async () => {
+    const modules: { id: string; manifest: ModuleManifest; variant: ModuleVariant }[] = [];
+    for (const id of ["bun", "pnpm"]) {
+      const manifest = parseModuleManifest(
+        JSON.parse(await readFile(join(PM, id, "module.json"), "utf8")),
+      );
+      const [variant, ...others] = manifest.variants;
+      if (variant === undefined || others.length > 0) {
+        throw new Error(`pm/${id} has ${manifest.variants.length} variants, expected one`);
+      }
+      modules.push({ id, manifest, variant });
+    }
+    return modules;
+  };
+
+  test("each peers on nothing and pins its package manager in the root package.json, where the formatter keeps it", async () => {
+    const base = await readFile(join(ROOT, "templates/base/package.json"), "utf8");
+    expect(base).not.toContain("packageManager");
+
+    for (const { id, manifest, variant } of await pmModules()) {
+      expect(manifest.peers).toEqual({});
+      expect(variant.match).toEqual({});
+      expect(variant.dependencies ?? {}).toEqual({});
+      expect(variant.devDependencies ?? {}).toEqual({});
+      expect(variant.patch).toEqual([
+        {
+          type: "jsonc.merge",
+          file: "package.json",
+          value: {
+            packageManager: expect.stringMatching(new RegExp(`^${id}@\\d+\\.\\d+\\.\\d+$`)),
+          },
+        },
+      ]);
+      const [patch] = variant.patch ?? [];
+      const value = isRecord(patch?.value) ? patch.value : {};
+      const pinned = setJsoncLeaves(base, jsoncLeaves(value));
+      await expect(formatWithProjectFormatter({ "package.json": pinned })).resolves.toEqual({
+        "package.json": pinned,
+      });
+    }
+  });
+
+  test("each ships the CI setup action at the one path the deploy workflow calls", async () => {
+    for (const { id, variant } of await pmModules()) {
+      expect(variant.copy).toContain(ACTION);
+      const action = await readFile(join(PM, id, "template", ACTION), "utf8");
+      expect(action).toContain("using: composite");
+      // Vite+ and tsx run on Node whichever package manager installs the project.
+      expect(action).toContain("actions/setup-node@");
+      expect(action).toContain(`${id} install --frozen-lockfile`);
+      expect(action).toContain('"$GITHUB_PATH"');
+      // Pinned to a commit, as the repo's own workflows are.
+      const uses = [...action.matchAll(/uses: (\S+)/g)].map(([, ref]) => ref ?? "");
+      expect(uses.length).toBeGreaterThan(0);
+      expect(uses.filter((ref) => !/^[\w./-]+@[0-9a-f]{40}$/.test(ref))).toEqual([]);
+    }
+  });
+
+  test("pnpm reads the base's workspaces from pnpm-workspace.yaml, and warns on a dependency's build script instead of failing", async () => {
+    const [, pnpm] = await pmModules();
+    expect(pnpm?.variant.copy).toEqual([".github/actions/setup/action.yml", "pnpm-workspace.yaml"]);
+    const yaml: unknown = Bun.YAML.parse(
+      await readFile(join(PM, "pnpm/template/pnpm-workspace.yaml"), "utf8"),
+    );
+    const base: unknown = JSON.parse(
+      await readFile(join(ROOT, "templates/base/package.json"), "utf8"),
+    );
+    expect(yaml).toEqual({
+      packages: isRecord(base) ? base.workspaces : null,
+      strictDepBuilds: false,
+    });
+  });
 });

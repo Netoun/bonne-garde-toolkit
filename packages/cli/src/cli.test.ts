@@ -743,7 +743,14 @@ describe("bg add <module>", () => {
     await runBg(target, "add", "cloudflare", "--yes", "--no-install");
     const before = await snapshot(target);
 
-    const { stderr, code } = await runBg(target, "add", "dockerfile", "--yes", "--no-install");
+    const { stderr, code } = await runBg(
+      target,
+      "add",
+      "pm/bun",
+      "dockerfile",
+      "--yes",
+      "--no-install",
+    );
 
     expect(code).toBe(1);
     expect(stderr).toContain("provider is already filled by provider/cloudflare");
@@ -755,7 +762,14 @@ describe("bg add <module>", () => {
     const target = await freshProject("bg-cli-mod-card2-");
     const before = await snapshot(target);
 
-    const { stderr, code } = await runBg(target, "add", "cloudflare", "dockerfile", "--no-install");
+    const { stderr, code } = await runBg(
+      target,
+      "add",
+      "pm/bun",
+      "cloudflare",
+      "dockerfile",
+      "--no-install",
+    );
 
     expect(code).toBe(1);
     expect(stderr).toContain("provider admits one module");
@@ -766,12 +780,20 @@ describe("bg add <module>", () => {
     const target = await freshProject("bg-cli-mod-dry-");
     const before = await snapshot(target);
 
-    const { stdout, code } = await runBg(target, "add", "dockerfile", "--dry-run", "--yes");
+    const { stdout, code } = await runBg(
+      target,
+      "add",
+      "pm/bun",
+      "dockerfile",
+      "--dry-run",
+      "--yes",
+    );
 
     expect(code).toBe(0);
     const out = JSON.parse(stdout) as ModuleOutput;
     expect(out.dryRun).toBe(true);
     expect(out.written).toEqual([
+      ".github/actions/setup/action.yml",
       ".dockerignore",
       "Dockerfile",
       "compose.yaml",
@@ -780,7 +802,7 @@ describe("bg add <module>", () => {
       "packages/api-runtime/src/index.ts",
       "packages/api-runtime/tsconfig.json",
     ]);
-    expect(out.modules[0]?.env.map((key) => key.name)).toEqual([
+    expect(out.modules[1]?.env.map((key) => key.name)).toEqual([
       "PORT",
       "DATA_DIR",
       "APP_URL",
@@ -792,7 +814,7 @@ describe("bg add <module>", () => {
   test("renders the project's scope into the dockerfile module, and its Dockerfile builds with the root script", async () => {
     const target = await freshProject("bg-cli-mod-scope-");
 
-    await runBg(target, "add", "dockerfile", "--yes", "--no-install");
+    await runBg(target, "add", "pm/bun", "dockerfile", "--yes", "--no-install");
 
     const runtime = JSON.parse(
       await readFile(join(target, "packages/api-runtime/package.json"), "utf8"),
@@ -813,6 +835,7 @@ describe("bg add <module>", () => {
       target,
       "add",
       "utils",
+      "pm/bun",
       "dockerfile",
       "ui/shadcn",
       "--yes",
@@ -822,7 +845,11 @@ describe("bg add <module>", () => {
     expect(code).toBe(0);
     const out = JSON.parse(stdout) as ModuleOutput & { items: string[] };
     expect(out.items).toEqual(["utils"]);
-    expect(out.modules.map((m) => m.module)).toEqual(["provider/dockerfile", "ui/shadcn"]);
+    expect(out.modules.map((m) => m.module)).toEqual([
+      "pm/bun",
+      "provider/dockerfile",
+      "ui/shadcn",
+    ]);
   });
 
   test("an unknown name fails with suggestions from both catalogs", async () => {
@@ -1157,6 +1184,7 @@ describe("bg add api/elysia: a module that vendors a file and patches it (035, 0
     const first = await runBg(
       target,
       "add",
+      "pm/bun",
       "config/branding",
       `provider/${provider}`,
       "api/elysia",
@@ -1412,14 +1440,12 @@ describe("bg add: package.dependencies (060)", () => {
     // `{{SCOPE}}` is rendered in the name; the new `dependencies` map sits after `scripts`, and
     // `drizzle-kit` between `@types/node` and `husky`, which is where `vp fmt` has it.
     expect(after.dependencies).toEqual({ "@cli-app/db": "workspace:*", zod: "4.0.0" });
-    expect(Object.keys(JSON.parse(text) as object).slice(-4)).toEqual([
+    expect(Object.keys(JSON.parse(text) as object).slice(-3)).toEqual([
       "scripts",
       "dependencies",
       "devDependencies",
-      "packageManager",
     ]);
     expect(Object.keys(after.devDependencies)).toEqual([
-      "@types/bun",
       "@types/node",
       "drizzle-kit",
       "husky",
@@ -1873,7 +1899,7 @@ describe("bg create with choices (040)", () => {
     expect(await readdir(parent)).toEqual([]);
   });
 
-  test("without a TTY and without flags, creates the base alone without asking", async () => {
+  test("without a TTY and without flags, creates the base and its package manager without asking", async () => {
     const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
     dirs.push(parent);
 
@@ -1888,10 +1914,12 @@ describe("bg create with choices (040)", () => {
     );
 
     expect(code).toBe(0);
-    expect(stdout).toContain(`created ${join(parent, "app")}\n`);
+    // The base and the package manager `create` was started from, which every project has (040).
+    expect(stdout).toContain(`created ${join(parent, "app")} with bun\n`);
     const bg = JSON.parse(await readFile(join(parent, "app", "bg.json"), "utf8")) as {
-      modules: unknown;
+      modules: Record<string, { id: string }[]>;
     };
-    expect(bg.modules).toEqual({});
+    expect(Object.keys(bg.modules)).toEqual(["pm"]);
+    expect(bg.modules.pm?.map(({ id }) => id)).toEqual(["bun"]);
   });
 });

@@ -6,12 +6,13 @@ import { spawn } from "node:child_process";
  */
 export function run(
   argv: readonly [string, ...string[]],
-  options: { cwd: string; output: "inherit" | "ignore" },
+  options: { cwd: string; output: "inherit" | "ignore"; env?: NodeJS.ProcessEnv },
 ): Promise<number> {
   const [command, ...args] = argv;
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: options.cwd,
+      env: options.env ?? process.env,
       stdio: ["ignore", options.output, options.output],
     });
     child.once("error", reject);

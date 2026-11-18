@@ -295,6 +295,7 @@ describe("the golden project and modules", () => {
     const { modules } = selectModules(listing, MODULES, EXCLUDED_MODULES);
 
     expect(modules).toEqual([
+      "pm/bun",
       "provider/cloudflare",
       "tooling/vite-plus",
       "config/branding",
@@ -327,7 +328,8 @@ describe("the golden project and modules", () => {
     );
     expect(used.every((names) => names.length === 1)).toBe(true);
     expect([...new Set(used.flat())].sort()).toEqual([...providers].sort());
-    expect(Object.keys(EXCLUDED_MODULES)).toEqual([]);
+    // Until golden has a configuration it installs and runs with pnpm.
+    expect(Object.keys(EXCLUDED_MODULES)).toEqual(["pm/pnpm"]);
   });
 
   test("only the configuration with a ui module installs items, which land in packages/ui", () => {
@@ -622,7 +624,11 @@ describe("the golden project and patches", () => {
       // What `bg add` does: among the variants whose `match` the configuration satisfies, the most specific.
       const regions: Record<string, string[]> = {};
       for (const { manifest } of catalog.modules) {
-        if (!modules.includes(`${manifest.category}/${manifest.id}`)) {
+        // The package manager's module is `create --pm`'s, not golden's `bg add`'s.
+        if (
+          !modules.includes(`${manifest.category}/${manifest.id}`) ||
+          manifest.category === "pm"
+        ) {
           continue;
         }
         const satisfied = manifest.variants.filter((variant) =>
@@ -860,7 +866,7 @@ describe("the deploy phases (what golden proves of deploy/cloudflare-actions wit
     expect(plan).toHaveLength(apps.length * 2 + 1);
   });
 
-  describe("readDeployPlan (what `bun run deploy:cloudflare --dry-run` prints)", () => {
+  describe("readDeployPlan (what `vp run deploy:cloudflare --dry-run` prints)", () => {
     const printed = JSON.stringify({
       environment: "production",
       buildVars: ["VITE_API_URL"],
@@ -983,30 +989,43 @@ describe("the deploy phases (what golden proves of deploy/cloudflare-actions wit
         ),
       ).text();
     const scripts = ["check", "typecheck", "test", "deploy:cloudflare"];
+    const setup = (path: string) => path === "./.github/actions/setup";
 
-    test("passes the workflow the module ships, in a project with the scripts it runs", async () => {
+    test("passes the workflow the module ships, in a project with the scripts and the setup it runs", async () => {
       const workflow = await real();
 
-      expect(() => expectWorkflow(workflow, scripts)).not.toThrow();
+      expect(() => expectWorkflow(workflow, scripts, setup)).not.toThrow();
     });
 
     test("fails a script the project does not have, naming it", async () => {
       const workflow = await real();
 
-      expect(() => expectWorkflow(workflow, ["check", "typecheck", "deploy:cloudflare"])).toThrow(
-        /bun run test/,
+      expect(() =>
+        expectWorkflow(workflow, ["check", "typecheck", "deploy:cloudflare"], setup),
+      ).toThrow(/vp run test/);
+    });
+
+    test("fails a local action the project does not ship, which its pm module does", async () => {
+      const workflow = await real();
+
+      expect(() => expectWorkflow(workflow, scripts, () => false)).toThrow(
+        /\.\/\.github\/actions\/setup/,
       );
     });
 
     test("fails a workflow that is not YAML, one that runs on push, and one with no deploy job", async () => {
       const workflow = await real();
 
-      expect(() => expectWorkflow("jobs: [", scripts)).toThrow(/YAML/);
+      expect(() => expectWorkflow("jobs: [", scripts, setup)).toThrow(/YAML/);
       expect(() =>
-        expectWorkflow(workflow.replace("on: workflow_dispatch", "on: push"), scripts),
+        expectWorkflow(workflow.replace("on: workflow_dispatch", "on: push"), scripts, setup),
       ).toThrow(/workflow_dispatch/);
       expect(() =>
-        expectWorkflow("on: workflow_dispatch\njobs:\n  validate:\n    steps: []\n", scripts),
+        expectWorkflow(
+          "on: workflow_dispatch\njobs:\n  validate:\n    steps: []\n",
+          scripts,
+          setup,
+        ),
       ).toThrow(/deploy/);
     });
 
@@ -1015,8 +1034,9 @@ describe("the deploy phases (what golden proves of deploy/cloudflare-actions wit
 
       expect(() =>
         expectWorkflow(
-          workflow.replace("run: bun run deploy:cloudflare\n", "run: wrangler deploy\n"),
+          workflow.replace("run: vp run deploy:cloudflare\n", "run: wrangler deploy\n"),
           scripts,
+          setup,
         ),
       ).toThrow(/deploy:cloudflare/);
     });

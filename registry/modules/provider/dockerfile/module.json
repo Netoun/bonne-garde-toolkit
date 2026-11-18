@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "title": "Dockerfile",
   "description": "One Bun container serving the API and the built SPA from a single origin, with a data volume.",
-  "peers": {},
+  "peers": { "pm": ["bun"] },
   "checks": ["cd packages/api-runtime && bun run typecheck && bun run test"],
   "variants": [
     {
@@ -13,6 +13,7 @@
       "match": {},
       "workspace": { "name": "{{SCOPE}}/api-runtime", "path": "packages/api-runtime" },
       "dependencies": { "elysia": "1.4.29" },
+      "devDependencies": { "@types/bun": "1.3.14" },
       "copy": [
         "Dockerfile",
         ".dockerignore",

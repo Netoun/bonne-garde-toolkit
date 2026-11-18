@@ -18,12 +18,10 @@
     "prepare": "husky"
   },
   "devDependencies": {
-    "@types/bun": "1.3.14",
     "@types/node": "26.1.2",
     "husky": "9.1.7",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vite-plus": "0.2.8"
-  },
-  "packageManager": "bun@1.4.2"
+  }
 }

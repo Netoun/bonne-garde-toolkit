@@ -127,7 +127,8 @@ cd my-app
 bunx bg add config/branding provider/cloudflare api/elysia ui/shadcn button --source github:Netoun/bonne-garde-toolkit
 \`\`\`
 
-The CLI runs on Node 22.20+ or Bun. The project it creates uses [Bun](https://bun.sh).
+The CLI runs on Node 22.20+ or Bun. The project it creates is installed with Bun or pnpm (\`--pm\`, by default
+the one you ran \`create\` with), and runs its scripts and tests on Node.
 `;
 
 await writeFile(join(OUT, "README.md"), readme);

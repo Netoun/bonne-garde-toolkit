@@ -201,9 +201,10 @@ describe("bg add from a github source", () => {
         ...featureItems,
       ],
       ["provider/cloudflare"],
-      ["provider/dockerfile"],
+      ["pm/bun", "provider/dockerfile"],
       ["config/branding", "provider/cloudflare", "api/elysia"],
-      ["config/branding", "provider/dockerfile", "api/elysia"],
+      ["pm/bun", "config/branding", "provider/dockerfile", "api/elysia"],
+      ["pm/pnpm"],
       ["ui/shadcn"],
     ]) {
       const raw = serve();

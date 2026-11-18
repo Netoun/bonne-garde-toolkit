@@ -1,0 +1,23 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "bun",
+  "category": "pm",
+  "version": "0.1.0",
+  "title": "Bun",
+  "description": "Bun installs the project and runs its scripts: the root packageManager pin, and the action that sets the project up in CI.",
+  "peers": {},
+  "variants": [
+    {
+      "key": "default",
+      "match": {},
+      "copy": [".github/actions/setup/action.yml"],
+      "patch": [
+        {
+          "type": "jsonc.merge",
+          "file": "package.json",
+          "value": { "packageManager": "bun@1.4.2" }
+        }
+      ]
+    }
+  ]
+}

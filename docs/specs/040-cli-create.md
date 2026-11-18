@@ -25,24 +25,26 @@ Package name during monorepo development: `@bonne-garde/cli` with bins `bg` and 
 3. Validate name and target (refuse a non-empty existing dir).
 4. Copy embedded `templates/base`, rendering `{{SCOPE}}` / `{{DISPLAY_NAME}}` placeholders.
 5. Write `bg.json` (`version: 2`) with default `@bg` registry source pinned to the running CLI version.
-6. Unless no app is chosen, add the modules and items of the choices in one `bg add` call ([050](./050-cli-add.md)), without its install.
+6. Add the modules and items of the choices in one `bg add` call ([050](./050-cli-add.md)), without its install: the package manager's module at least.
 7. Optionally `git init`.
-8. Optionally `bun install`, once.
+8. Optionally install, once, with the package manager `package.json` pins (`packageManager`, its `pm` module's).
 
 ## Choices
 
 `create` asks what the project has, never which library fills a slot. Each answer names registry modules and items, and step 6 adds them through the `bg add` pipeline: they are recorded in `bg.json` like any `add`, so `doctor`, `remove` and `upgrade` cannot tell a created project from one composed by hand.
 
-| Axis     | Flag                | Values                                                   | Asked                 |
-| -------- | ------------------- | -------------------------------------------------------- | --------------------- |
-| Apps     | `--apps <a,b>`      | `api`, `spa`, `ssr`, `static`                            | Always                |
-| Provider | `--provider <name>` | `cloudflare`, `dockerfile`                               | When an app is chosen |
-| Features | `--features <a,b>`  | `db`, `auth`, `storage`, `email`, `deploy`, `backoffice` | When an app is chosen |
+| Axis            | Flag                | Values                                                   | Asked                 |
+| --------------- | ------------------- | -------------------------------------------------------- | --------------------- |
+| Package manager | `--pm <name>`       | `bun`, `pnpm`                                            | Always, first         |
+| Apps            | `--apps <a,b>`      | `api`, `spa`, `ssr`, `static`                            | Always                |
+| Provider        | `--provider <name>` | `cloudflare`, `dockerfile`                               | When an app is chosen |
+| Features        | `--features <a,b>`  | `db`, `auth`, `storage`, `email`, `deploy`, `backoffice` | When an app is chosen |
 
 What each answer names, the one table the CLI holds:
 
 | Answer                   | Names                                                                         |
 | ------------------------ | ----------------------------------------------------------------------------- |
+| the package manager      | `pm/bun` or `pm/pnpm`, in every project                                       |
 | any app                  | `provider/<provider>`, `tooling/vite-plus`, `config/branding`, `dev/portless` |
 | `spa`, `ssr` or `static` | `ui/shadcn`, and `web/spa`, `web/ssr` or `web/static`                         |
 | `api`                    | `api/elysia`                                                                  |
@@ -56,7 +58,8 @@ What each answer names, the one table the CLI holds:
 **Normative:**
 
 - Which sets are valid is the registry's to say, never a table in the CLI: the names are checked as `bg add` would plan them in an empty project (peers, cardinality, a variant for each module, the modules each item needs), reading no template file. A combination becomes valid by changing the registry alone.
-- An axis given by its flag is never asked. Under `--yes` or without a TTY, a missing axis takes its default: no app, the first provider of the table the check accepts, no feature. With no app, the project is the base alone.
+- An axis given by its flag is never asked. Under `--yes` or without a TTY, a missing axis takes its default: the package manager `create` was started from (`npm_config_user_agent`: `bun create`, `pnpm create`), bun when it is neither; no app; the first provider of the table the check accepts; no feature. With no app, the project is the base and its package manager's module, so `create` reads the registry even then.
+- The package manager is asked first, its default first in the list, so the providers offered are those the registry accepts with it (`provider/dockerfile` runs the API on Bun, and accepts only `pm/bun`).
 - On a TTY, the provider is asked among those the check accepts with the apps chosen, and Enter takes the first. Apps and features are asked as a list of numbers or names, and Enter takes none. An answer the check refuses prints its message and asks the axis again: the apps when no provider accepts them, else the features.
 - Without a TTY or under `--yes`, a refused set fails `create` with the check's message, before anything is written. `--provider` or `--features` with no app is refused.
 - A failed patch or a pending intention of the add is reported as `bg add` reports it. It does not fail `create`.
@@ -71,10 +74,11 @@ What each answer names, the one table the CLI holds:
 | Flag                  | Effect                                                                         |
 | --------------------- | ------------------------------------------------------------------------------ |
 | `--yes`               | Non-interactive: take the default for every prompt                             |
+| `--pm <name>`         | The package manager; the one `create` was started from by default, else bun    |
 | `--apps <a,b>`        | The apps ([Choices](#choices)); none by default                                |
 | `--provider <name>`   | The provider; the first one the apps allow by default                          |
 | `--features <a,b>`    | The features; none by default                                                  |
-| `--no-install`        | Skip `bun install`                                                             |
+| `--no-install`        | Skip the install                                                               |
 | `--no-git`            | Skip git init                                                                  |
 | `--scope <scope>`     | npm scope, at most 64 characters (default derived from the directory basename) |
 | `--registry <source>` | Override the default `@bg` registry source                                     |
@@ -88,7 +92,9 @@ What each answer names, the one table the CLI holds:
 
 ## Acceptance
 
-- `bg create tmp-app --yes --no-git --no-install` creates a valid empty tree with a `version: 2` `bg.json`.
+- `bg create tmp-app --yes --no-git --no-install` creates a valid tree with a `version: 2` `bg.json` that records the package manager's module alone.
+- `bg create tmp-app --pm pnpm --apps api,spa --yes` installs with pnpm, and nothing it runs needs Bun.
+- `bg create tmp-app --pm pnpm --apps api --provider dockerfile --yes` fails with the planner's message (`provider/dockerfile` accepts only `bun`), and writes nothing.
 - `bg create tmp-app --apps api,spa --features email --provider dockerfile --yes --no-git --no-install` records the modules of those answers in `bg.json`.
 - `bg create tmp-app --apps spa --yes` creates a SPA with no API: no Eden client, no API variable.
 - `bg create tmp-app --apps ssr --provider dockerfile --yes` fails with the planner's message (`web/ssr` accepts only `cloudflare`), and writes nothing.

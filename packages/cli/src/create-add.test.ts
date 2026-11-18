@@ -652,8 +652,9 @@ describe("bg create + add", () => {
         apps: ["api", "spa", "ssr", "static"],
         provider: "cloudflare",
         features: ["db", "auth", "storage", "email", "deploy", "backoffice"],
+        pm: "pnpm",
       },
-      dockerfile: { apps: ["api", "spa"], provider: "dockerfile", features: ["email"] },
+      dockerfile: { apps: ["api", "spa"], provider: "dockerfile", features: ["email"], pm: "bun" },
     };
 
     for (const [label, choices] of Object.entries(SETS)) {
@@ -710,7 +711,12 @@ describe("bg create + add", () => {
     test("a set the planner refuses fails with its message, before anything is written", async () => {
       const parent = await mkdtemp(join(tmpdir(), "bg-cli-choices-"));
       dirs.push(parent);
-      const { modules } = namesFor({ apps: ["ssr"], provider: "dockerfile", features: [] });
+      const { modules } = namesFor({
+        apps: ["ssr"],
+        provider: "dockerfile",
+        features: [],
+        pm: "bun",
+      });
 
       await expect(
         createProject({

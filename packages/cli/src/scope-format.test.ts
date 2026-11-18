@@ -20,6 +20,7 @@ import { findRepoRoot } from "./paths";
 const NAMED_SCOPES = ["@a", "@app", "@acme", "@golden-app", "@a-much-longer-company-scope"];
 /** The modules a single project holds; each other module is installed alone, as it fills a category `one`. */
 const SHARED_MODULES = [
+  "pm/bun",
   "tooling/vite-plus",
   "config/branding",
   "ui/shadcn",
@@ -40,6 +41,7 @@ const SHARED_MODULES = [
  * that is selected depends on it, so the files of the other variant need a tree of their own.
  */
 const OTHER_PROVIDER_STACK = [
+  "pm/bun",
   "config/branding",
   "ui/shadcn",
   "provider/dockerfile",
@@ -153,7 +155,11 @@ describe("scope rendering and the formatter", () => {
       const installs = [
         { suffix: "all", names: [...SHARED_MODULES, ...itemNames] },
         { suffix: "other-provider", names: OTHER_PROVIDER_STACK },
-        ...alone.map((key) => ({ suffix: key.replace("/", "-"), names: [key] })),
+        // A module alone, but for the package manager a project always has.
+        ...alone.map((key) => ({
+          suffix: key.replace("/", "-"),
+          names: key.startsWith("pm/") ? [key] : ["pm/bun", key],
+        })),
       ];
       for (const { suffix, names } of installs) {
         const { target: dir } = await createProject({

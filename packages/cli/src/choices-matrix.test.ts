@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { addItems, namesChecker } from "./add";
 import { APPS, CANDIDATE_MODULES, FEATURES, namesFor, PROVIDERS, type Choices } from "./choices";
 import { createProject } from "./create";
+import { PACKAGE_MANAGERS } from "./package-manager";
 import { findRepoRoot } from "./paths";
 
 const dirs: string[] = [];
@@ -22,8 +23,10 @@ function everyAnswerSet(): Choices[] {
   return subsets(APPS)
     .filter((apps) => apps.length > 0)
     .flatMap((apps) =>
-      PROVIDERS.flatMap((provider) =>
-        subsets(FEATURES).map((features) => ({ apps, provider, features })),
+      PACKAGE_MANAGERS.flatMap((pm) =>
+        PROVIDERS.flatMap((provider) =>
+          subsets(FEATURES).map((features) => ({ apps, provider, features, pm })),
+        ),
       ),
     );
 }

@@ -1,0 +1,8 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Some dependencies the modules bring ship an install script (esbuild, workerd, msw) that the project
+# works without. pnpm does not run one it was not told to trust; this makes it list them instead of
+# failing the install. `pnpm approve-builds` allows the ones you choose.
+strictDepBuilds: false

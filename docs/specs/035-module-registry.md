@@ -12,6 +12,7 @@ A module fills exactly one category. The category carries **cardinality** and **
 
 | id         | cardinality | home                        | Notes                                                                                                                                                           |
 | ---------- | ----------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pm`       | one         | repo                        | Package manager: installs the project and runs its scripts; owns the root `packageManager` pin, its workspace file and the CI setup action                      |
 | `provider` | one         | repo                        | Runtime and deploy target; the peer every runtime-touching category matches on; owns the runtime seam packages other categories import (`packages/api-runtime`) |
 | `tooling`  | one         | repo                        | fmt / lint / check / hooks                                                                                                                                      |
 | `config`   | one         | package `packages/config`   | Branding constants and assets every app imports; installed after `tooling`                                                                                      |
@@ -32,7 +33,8 @@ A module fills exactly one category. The category carries **cardinality** and **
 **Rules:**
 
 - Order is topological: a category appears after every category it may peer on, an optional peer a variant's `match` names included; `many` categories come last.
-- `provider` is first: it peers on nothing, and `api`, `db`, `storage`, `web` and `deploy` MUST declare
+- `pm` is first: it peers on nothing, and every project has one ([040](./040-cli-create.md)). A module peers on `pm` only where what it ships depends on the package manager.
+- `provider` is second: it peers on nothing but `pm`, and `api`, `db`, `storage`, `web` and `deploy` MUST declare
   `peers.provider` and ship one variant per provider they support. A category's `home` and
   cardinality are provider-independent; only variant payloads differ.
 - A category Note MUST NOT name a provider's technology. `D1`, `R2`, `wrangler` and `Worker`

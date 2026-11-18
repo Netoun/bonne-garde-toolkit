@@ -3,6 +3,7 @@ import { basename, join, resolve } from "node:path";
 import { createEmptyProjectManifest, DEFAULT_PLATFORM_REMOTE } from "@bonne-garde/schema";
 import { addItems, namesChecker, type AddOutcome } from "./add";
 import { defaultRegistrySource, platformPackageVersion, templateBaseDir } from "./paths";
+import { installDependencies } from "./package-manager";
 import { run } from "./run";
 
 export type CreateOptions = {
@@ -126,7 +127,7 @@ export async function createProject(options: CreateOptions): Promise<CreatedProj
   await writeFile(join(target, "bg.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 
   // One `bg add` call, so a module and the items that need it are planned together; the one
-  // `bun install` below covers what it added.
+  // install below covers what it added.
   const added =
     names.length === 0
       ? null
@@ -137,10 +138,7 @@ export async function createProject(options: CreateOptions): Promise<CreatedProj
   }
 
   if (options.install !== false) {
-    const code = await run(["bun", "install"], { cwd: target, output: "inherit" });
-    if (code !== 0) {
-      throw new Error("bun install failed");
-    }
+    await installDependencies(target);
   }
 
   return { target, added };

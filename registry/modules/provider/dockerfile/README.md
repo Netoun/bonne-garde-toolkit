@@ -6,6 +6,10 @@ account. Today the container runs and serves the API shell and the SPA, but it h
 and no object storage**, so sign-up, sign-in and media do not work — see
 [What runs, and what does not](#what-runs-and-what-does-not).
 
+It peers on `pm: ["bun"]`: the container runs the API on Bun, so a pnpm project cannot have it yet,
+and `bg create --pm pnpm --provider dockerfile` is refused with that message. The package keeps
+`@types/bun` among its devDependencies for the same reason; the base no longer has it.
+
 Harvested from `bonne-garde-keeper`, which shipped this runtime and whose design document
 (`2026-10-18-labo-49-standalone-docker`) is the source for the decisions below.
 

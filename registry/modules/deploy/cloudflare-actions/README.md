@@ -33,7 +33,7 @@ with no edit here. `bg.json`'s `apps` is not read: it stays empty after the app-
 
 | File                                | What it is                                                                                             |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `.github/workflows/deploy.yml`      | `validate`, then `deploy`; runs `workflow_dispatch` only                                               |
+| `.github/workflows/deploy.yml`      | `validate`, then `deploy`; runs `workflow_dispatch` only; sets up with the `pm` module's action        |
 | `scripts/deploy-cloudflare.ts`      | `planDeploy`, `buildVars`, `deploy` and the command, run by tsx; `jsonc-parser` reads `wrangler.jsonc` |
 | `scripts/deploy-cloudflare.test.ts` | its tests, over fixture trees in a temp directory; no test starts a process                            |
 

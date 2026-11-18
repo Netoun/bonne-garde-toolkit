@@ -7,6 +7,7 @@ import { doctorExitCode, formatDoctor, runDoctor } from "./doctor";
 import { lintIntentions } from "./intentions/lint";
 import { lintModuleIntentions } from "./intentions/lint-modules";
 import { listRegistry } from "./list";
+import { invokingPackageManager, PACKAGE_MANAGERS } from "./package-manager";
 import { recordIntentionOutcome } from "./record";
 import {
   APPS,
@@ -25,10 +26,12 @@ function usage(): string {
   return `bg — Bonne Garde CLI
 
 Usage:
-  bg create <dir> [--apps <a,b>] [--provider <name>] [--features <a,b>] [--yes] [--no-git] [--no-install]
-                 [--scope @name] [--registry <source>]
-      apps: ${APPS.join(", ")}; provider: ${PROVIDERS.join(", ")}; features: ${FEATURES.join(", ")}
-      what no flag gives is asked on a TTY without --yes; else no app, the base alone
+  bg create <dir> [--pm <name>] [--apps <a,b>] [--provider <name>] [--features <a,b>] [--yes]
+                 [--no-git] [--no-install] [--scope @name] [--registry <source>]
+      pm: ${PACKAGE_MANAGERS.join(", ")}; apps: ${APPS.join(", ")}; provider: ${PROVIDERS.join(", ")};
+      features: ${FEATURES.join(", ")}
+      what no flag gives is asked on a TTY without --yes; else the package manager create was started
+      from (bun when it is neither), and no app: the base alone
   bg list [--items | --category <category>] [--source <source>]
       with no flag: the items, then the modules as <category>/<id>; --items is the items alone
   bg search <query> [--source <source>]
@@ -134,6 +137,14 @@ export async function runCli(argv: string[]): Promise<number> {
     if (apps !== undefined) {
       given.apps = parseFlagList("--apps", apps, APPS);
     }
+    const pm = takeOption(args, "--pm");
+    if (pm !== undefined) {
+      const [one, ...more] = parseFlagList("--pm", pm, PACKAGE_MANAGERS);
+      if (one === undefined || more.length > 0) {
+        throw new Error(`--pm takes one of ${PACKAGE_MANAGERS.join(", ")}`);
+      }
+      given.pm = one;
+    }
     const provider = takeOption(args, "--provider");
     if (provider !== undefined) {
       const [one, ...more] = parseFlagList("--provider", provider, PROVIDERS);
@@ -150,7 +161,7 @@ export async function runCli(argv: string[]): Promise<number> {
     if (!name) {
       throw new Error("create requires a directory name");
     }
-    // Only on a TTY, and closed before `bun install` runs: an open interface holds stdin.
+    // Only on a TTY, and closed before the install runs: an open interface holds stdin.
     const terminal =
       !yes && process.stdin.isTTY === true
         ? createInterface({ input: process.stdin, output: process.stdout })
@@ -162,6 +173,7 @@ export async function runCli(argv: string[]): Promise<number> {
     const choices = await resolveChoices({
       given,
       ask,
+      defaultPm: invokingPackageManager() ?? "bun",
       loadCheck: () => namesChecker(source, process.cwd(), CANDIDATE_MODULES),
       say: (message) => console.error(message),
     }).finally(() => terminal?.close());
@@ -175,10 +187,11 @@ export async function runCli(argv: string[]): Promise<number> {
       names: [...modules, ...items],
     });
     console.log(
-      added === null
-        ? `created ${target}`
+      choices.provider === null
+        ? `created ${target} with ${choices.pm}`
         : `created ${target} with ${choices.apps.join(", ")} on ${choices.provider}` +
-            (choices.features.length > 0 ? `, and ${choices.features.join(", ")}` : ""),
+            (choices.features.length > 0 ? `, and ${choices.features.join(", ")}` : "") +
+            `, installed with ${choices.pm}`,
     );
     if (added !== null) {
       reportAdd(added, false);
