@@ -645,7 +645,7 @@ describe("bg add <module>", () => {
 
     // `add` prints the checks the module declares and does not run them (050 step 15).
     expect(stderr).toContain("checks were not run");
-    expect(stderr).toContain("cd packages/api-runtime && bun run typecheck && bun run test");
+    expect(stderr).toContain("cd packages/api-runtime && vp run typecheck && vp run test");
     expect(code).toBe(0);
     const out = JSON.parse(stdout) as ModuleOutput;
     expect(out.written).toEqual(CLOUDFLARE_FILES);
@@ -677,7 +677,7 @@ describe("bg add <module>", () => {
     ).toMatchObject({
       name: "@cli-app/api-runtime",
       exports: { ".": "./src/index.ts" },
-      scripts: { test: "bun test" },
+      scripts: { test: "vp test" },
       dependencies: { elysia: "1.4.29" },
       devDependencies: { "@cloudflare/workers-types": "5.20260804.1", "@types/node": "26.1.2" },
     });

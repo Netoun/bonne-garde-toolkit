@@ -28,6 +28,20 @@ import { addNamedExport } from "./ts-patches";
 const ROOT = join(import.meta.dir, "../../..");
 const MODULES = join(ROOT, "registry/modules");
 
+/**
+ * The base template's devDependencies: `vite-plus`, whose `test` entry every module's tests import,
+ * `typescript`, `@types/node`. Every project has them at its root, where a workspace package resolves
+ * them under bun as under pnpm, so a module does not declare them again.
+ */
+const BASE_PACKAGE: unknown = JSON.parse(
+  await readFile(join(ROOT, "templates/base/package.json"), "utf8"),
+);
+const BASE_TOOLING: ReadonlySet<string> = new Set(
+  isRecord(BASE_PACKAGE) && isRecord(BASE_PACKAGE.devDependencies)
+    ? Object.keys(BASE_PACKAGE.devDependencies)
+    : [],
+);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -117,13 +131,11 @@ describe("module contract", () => {
   // template file or a command a module.json declares that reaches for Bun breaks the pnpm project,
   // and a test that does breaks both. `bun` the word, in a comment, misleads the next agent the same way.
   const MIGRATING = new Set([
-    "api/elysia",
     "auth/better-auth",
     "db/d1",
     "deploy/cloudflare-actions",
     "dev/portless",
     "orm/drizzle",
-    "provider/cloudflare",
     "provider/dockerfile",
     "storage/r2",
     "tooling/vite-plus",
@@ -165,7 +177,8 @@ describe("module contract", () => {
         }
       }
     }
-    expect(found).toEqual([]);
+    // The container runs the API on Bun, the one runtime it has: its `dev` is Bun's watch mode.
+    expect(found).toEqual(["api/elysia module.json: bun --watch src/index.ts"]);
   });
 
   test("both providers exist and peer on nothing", async () => {
@@ -309,7 +322,11 @@ describe("module contract", () => {
         expect(body).toMatchObject({
           name: "{{SCOPE}}/api-runtime",
           exports: { ".": "./src/index.ts" },
-          scripts: { typecheck: expect.any(String), test: "bun test" },
+          // The container's package runs on Bun, the runtime it serves the API with.
+          scripts: {
+            typecheck: expect.any(String),
+            test: manifest.id === "dockerfile" ? "bun test" : "vp test",
+          },
         });
         for (const map of ["dependencies", "devDependencies", "peerDependencies"]) {
           expect(isRecord(body) && map in body ? `${manifest.id}: ${map}` : null).toBeNull();
@@ -944,8 +961,8 @@ describe("module contract", () => {
         ]);
         for (const [path, source] of await sources(variant.copy ?? [])) {
           for (const name of packagesImportedBy(source)) {
-            // `bun:test` and `node:*` are the runtime's; the rest has to be in a dependency map.
-            if (!name.includes(":") && !declared.has(name)) {
+            // `node:*` is the runtime's, the base's tooling every project's; the rest has to be in a dependency map.
+            if (!name.includes(":") && !declared.has(name) && !BASE_TOOLING.has(name)) {
               missing.push(`${key} ${path}: ${name}`);
             }
           }
