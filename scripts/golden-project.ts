@@ -1880,9 +1880,9 @@ export function hasPortless(configuration: Configuration): boolean {
  */
 export const PORTLESS_MIN_TESTS = 36;
 
-/** The count in the `Tests  N passed` line of the summary Vitest prints. */
+/** The count in the `Tests  N passed` line of the summary Vitest prints, colored or not. */
 export function ranTests(output: string): number {
-  const ran = /^\s*Tests\s+(\d+) passed/m.exec(output)?.[1];
+  const ran = /^\s*Tests\s+(\d+) passed/m.exec(stripVTControlCharacters(output))?.[1];
   if (ran === undefined) {
     throw new Error(`vp test printed no \`Tests N passed\` line: ${output.trim() || "(nothing)"}`);
   }

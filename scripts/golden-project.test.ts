@@ -1546,6 +1546,14 @@ describe("the launcher phase (dev/portless)", () => {
       expect(ranTests("      Tests  1 passed (1)")).toBe(1);
     });
 
+    test("reads it through the colors Vitest prints when CI forces them", () => {
+      expect(
+        ranTests(
+          "\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m36 passed\u001b[39m\u001b[22m (36)\n",
+        ),
+      ).toBe(36);
+    });
+
     test("fails when there is no such line, so a run that printed nothing is not a pass", () => {
       expect(() => ranTests("")).toThrow(/Tests/);
     });
