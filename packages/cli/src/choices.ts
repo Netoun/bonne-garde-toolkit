@@ -32,6 +32,7 @@ const FEATURE_CHOICES = [
   { value: "email", label: "Email", hint: "transactional email with Resend" },
   { value: "deploy", label: "Deploy", hint: "a GitHub Actions workflow to Cloudflare" },
   { value: "backoffice", label: "Backoffice", hint: "the SPA's signed-in area" },
+  { value: "portless", label: "Portless", hint: "a named https URL for each app in dev" },
 ] as const;
 
 export type App = (typeof APP_CHOICES)[number]["value"];
@@ -84,6 +85,7 @@ const FEATURE_MODULES: Record<Feature, readonly string[]> = {
   email: ["email/resend"],
   deploy: ["deploy/cloudflare-actions"],
   backoffice: [],
+  portless: ["dev/portless"],
 };
 
 /** 040's table: the modules and items of a set of answers. Every project has its package manager's. */
@@ -99,7 +101,6 @@ export function namesFor({ apps, provider, features, pm }: Choices): {
     `provider/${provider}`,
     "tooling/vite-plus",
     "config/branding",
-    "dev/portless",
   ]);
   for (const app of apps) {
     const front = FRONTS[app];

@@ -11,7 +11,7 @@ import {
 const FULL_CLOUDFLARE: Choices = {
   apps: ["api", "spa", "ssr", "static"],
   provider: "cloudflare",
-  features: ["db", "auth", "storage", "email", "deploy", "backoffice"],
+  features: ["db", "auth", "storage", "email", "deploy", "backoffice", "portless"],
   pm: "bun",
 };
 
@@ -56,11 +56,16 @@ describe("namesFor (040: the one table the CLI holds)", () => {
       "tooling/vite-plus",
       "config/branding",
       "api/elysia",
-      "dev/portless",
     ]);
     expect(
       namesFor({ apps: ["ssr"], provider: "cloudflare", features: [], pm: "bun" }).modules,
     ).toContain("ui/shadcn");
+  });
+
+  test("portless is a tool a project opts into: dev/portless only with the portless feature", () => {
+    const spa = { apps: ["spa"], provider: "cloudflare", pm: "bun" } as const;
+    expect(namesFor({ ...spa, features: [] }).modules).not.toContain("dev/portless");
+    expect(namesFor({ ...spa, features: ["portless"] }).modules).toContain("dev/portless");
   });
 
   test("auth brings the sign-in pages only with the spa", () => {

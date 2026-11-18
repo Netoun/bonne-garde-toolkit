@@ -128,11 +128,16 @@ export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
   cloudflare: {
     apps: ["api", "spa", "ssr", "static"],
     provider: "cloudflare",
-    features: ["db", "auth", "storage", "email", "deploy", "backoffice"],
+    features: ["db", "auth", "storage", "email", "deploy", "backoffice", "portless"],
     // The most modules, under the stricter install: pnpm links only what a package.json declares.
     pm: "pnpm",
   },
-  dockerfile: { apps: ["api", "spa"], provider: "dockerfile", features: ["email"], pm: "bun" },
+  dockerfile: {
+    apps: ["api", "spa"],
+    provider: "dockerfile",
+    features: ["email", "portless"],
+    pm: "bun",
+  },
   // The fronts alone (040: `--apps spa`): no api, so no Eden client and no API variable, deployed.
   fronts: {
     apps: ["spa", "ssr", "static"],
@@ -890,11 +895,6 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
     "web/spa": ["scripts.deploy", "scripts.dev"],
     "web/ssr": ["scripts.deploy", "scripts.dev"],
     "web/static": ["scripts.deploy", "scripts.dev"],
-    "dev/portless": [
-      "devDependencies.portless",
-      "scripts.dev:lan:portless",
-      "scripts.dev:portless",
-    ],
     "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
   },
 };
@@ -1951,9 +1951,6 @@ export function expectedPortlessApps(
   }
   if (configuration === "dockerfile") {
     return [app("api", ["tsx", "watch", "src/index.ts"]), front("spa")];
-  }
-  if (configuration === "fronts") {
-    return [front("spa"), front("ssr"), front("static")];
   }
   throw new Error(`golden does not know what the launcher plans in ${configuration}`);
 }

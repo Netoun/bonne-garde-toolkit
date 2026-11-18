@@ -762,11 +762,6 @@ describe("the golden project and patches", () => {
         "web/spa": ["scripts.deploy", "scripts.dev"],
         "web/ssr": ["scripts.deploy", "scripts.dev"],
         "web/static": ["scripts.deploy", "scripts.dev"],
-        "dev/portless": [
-          "devDependencies.portless",
-          "scripts.dev:lan:portless",
-          "scripts.dev:portless",
-        ],
         "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
       },
     });
@@ -1396,11 +1391,10 @@ describe("the launcher phase (dev/portless)", () => {
     });
   };
 
-  test("every configuration installs the launcher, and it has tests to count", () => {
+  test("the launcher is a feature a project opts into: cloudflare and dockerfile do, fronts proves a project without it, and it has tests to count", () => {
     expect(CONFIGURATIONS.filter(hasPortless).map(({ name }) => name)).toEqual([
       "cloudflare",
       "dockerfile",
-      "fronts",
     ]);
     expect(PORTLESS_MIN_TESTS).toBeGreaterThan(0);
   });

@@ -30,27 +30,28 @@ Package name during monorepo development: `@bonne-garde/cli` with the bin `bonne
 
 `create` asks what the project has, never which library fills a slot. Each answer names registry modules and items, and step 6 adds them through the `bg add` pipeline: they are recorded in `bg.json` like any `add`, so `doctor`, `remove` and `upgrade` cannot tell a created project from one composed by hand.
 
-| Axis            | Flag                | Values                                                   | Asked                 |
-| --------------- | ------------------- | -------------------------------------------------------- | --------------------- |
-| Package manager | `--pm <name>`       | `bun`, `pnpm`                                            | Always, first         |
-| Apps            | `--apps <a,b>`      | `api`, `spa`, `ssr`, `static`                            | Always                |
-| Provider        | `--provider <name>` | `cloudflare`, `dockerfile`                               | When an app is chosen |
-| Features        | `--features <a,b>`  | `db`, `auth`, `storage`, `email`, `deploy`, `backoffice` | When an app is chosen |
+| Axis            | Flag                | Values                                                               | Asked                 |
+| --------------- | ------------------- | -------------------------------------------------------------------- | --------------------- |
+| Package manager | `--pm <name>`       | `bun`, `pnpm`                                                        | Always, first         |
+| Apps            | `--apps <a,b>`      | `api`, `spa`, `ssr`, `static`                                        | Always                |
+| Provider        | `--provider <name>` | `cloudflare`, `dockerfile`                                           | When an app is chosen |
+| Features        | `--features <a,b>`  | `db`, `auth`, `storage`, `email`, `deploy`, `backoffice`, `portless` | When an app is chosen |
 
 What each answer names, the one table the CLI holds:
 
-| Answer                   | Names                                                                         |
-| ------------------------ | ----------------------------------------------------------------------------- |
-| the package manager      | `pm/bun` or `pm/pnpm`, in every project                                       |
-| any app                  | `provider/<provider>`, `tooling/vite-plus`, `config/branding`, `dev/portless` |
-| `spa`, `ssr` or `static` | `ui/shadcn`, and `web/spa`, `web/ssr` or `web/static`                         |
-| `api`                    | `api/elysia`                                                                  |
-| `db`                     | `db/d1`, `orm/drizzle`                                                        |
-| `auth`                   | `auth/better-auth`, and the item `spa-auth` with `spa`                        |
-| `storage`                | `storage/r2`                                                                  |
-| `email`                  | `email/resend`                                                                |
-| `deploy`                 | `deploy/cloudflare-actions`                                                   |
-| `backoffice`             | the item `spa-backoffice`                                                     |
+| Answer                   | Names                                                         |
+| ------------------------ | ------------------------------------------------------------- |
+| the package manager      | `pm/bun` or `pm/pnpm`, in every project                       |
+| any app                  | `provider/<provider>`, `tooling/vite-plus`, `config/branding` |
+| `spa`, `ssr` or `static` | `ui/shadcn`, and `web/spa`, `web/ssr` or `web/static`         |
+| `api`                    | `api/elysia`                                                  |
+| `db`                     | `db/d1`, `orm/drizzle`                                        |
+| `auth`                   | `auth/better-auth`, and the item `spa-auth` with `spa`        |
+| `storage`                | `storage/r2`                                                  |
+| `email`                  | `email/resend`                                                |
+| `deploy`                 | `deploy/cloudflare-actions`                                   |
+| `backoffice`             | the item `spa-backoffice`                                     |
+| `portless`               | `dev/portless`                                                |
 
 **Normative:**
 
