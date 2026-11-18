@@ -1,4 +1,4 @@
-import { describe, it, expect, spyOn, beforeEach } from "bun:test";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { createLogger } from "./logger";
 
 describe("logger", () => {
@@ -11,7 +11,7 @@ describe("logger", () => {
   });
 
   function captureConsole(method: "debug" | "info" | "warn" | "error") {
-    const spy = spyOn(console, method).mockImplementation((...args: unknown[]) => {
+    const spy = vi.spyOn(console, method).mockImplementation((...args: unknown[]) => {
       lastOutput = args[0] as string;
     });
     return spy;

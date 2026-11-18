@@ -1,6 +1,6 @@
 {
   "name": "bonne-garde-toolkit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "workspaces": [
     "packages/*"
@@ -20,7 +20,7 @@
     "knip:fix": "knip --fix --allow-remove-files",
     "test": "bun run test:platform",
     "test:platform": "bun run test:scripts && bun run --parallel --filter '@bonne-garde/*' test",
-    "test:scripts": "bun test ./scripts ./registry/modules --path-ignore-patterns 'registry/modules/{api,db,orm,auth,storage,web,email,provider/cloudflare}/**'",
+    "test:scripts": "bun test ./scripts ./registry/modules --path-ignore-patterns 'registry/modules/{api,db,orm,auth,storage,web,email,deploy,provider/cloudflare,provider/dockerfile/template}/**'",
     "verify": "bun run check && bun run knip && bun run typecheck && bun run test && bun run intentions:lint && bun run registry:build",
     "prepare": "husky",
     "bonne-garde": "bun packages/cli/src/bin.ts",

@@ -5,8 +5,10 @@ import {
   createEmptyProjectManifest,
   DEFAULT_PLATFORM_REMOTE,
 } from "@bonne-garde/schema";
+import { addItems, namesChecker, type AddOutcome } from "./add";
 import { defaultRegistrySource, platformPackageVersion, templateBaseDir } from "./paths";
-import { BUN_MISSING, bunInstall, runCommand } from "./run-command";
+import { installDependencies, missingPackageManager } from "./package-manager";
+import { runCommand } from "./run-command";
 
 export type CreateOptions = {
   name: string;
@@ -15,7 +17,14 @@ export type CreateOptions = {
   registry?: string;
   git?: boolean;
   install?: boolean;
-  yes?: boolean;
+  /** The modules and items to add (040 step 6), checked before anything is written; none by default. */
+  names?: readonly string[];
+};
+
+export type CreatedProject = {
+  target: string;
+  /** What the `bonne-garde add` of `names` did, to report as `bonne-garde add` does; `null` when there are none. */
+  added: AddOutcome | null;
 };
 
 /**
@@ -67,7 +76,7 @@ async function replaceInFile(path: string, replacements: Record<string, string>)
   await writeFile(path, content, "utf8");
 }
 
-export async function createProject(options: CreateOptions): Promise<string> {
+export async function createProject(options: CreateOptions): Promise<CreatedProject> {
   const cwd = options.cwd ?? process.cwd();
   // The project is named after the directory it lands in, never after the path that led there:
   // `bonne-garde create /tmp/work/my-app` is `my-app`, and `bonne-garde create .` is the current directory's name.
@@ -84,10 +93,18 @@ export async function createProject(options: CreateOptions): Promise<string> {
         `so that the files \`bonne-garde add\` copies stay formatted: pass a shorter one, ${cliRunner()} create ${options.name} --scope @name`,
     );
   }
+  // A `local:` path is read from where `create` runs, and recorded absolute: the project's own
+  // `bonne-garde add` reads it from the project, where a relative path would name another directory.
+  const given = options.registry ?? defaultRegistrySource();
+  const registry = given.startsWith("local:")
+    ? `local:${resolve(cwd, given.slice("local:".length))}`
+    : given;
+  const names = [...(options.names ?? [])];
+  if (names.length > 0) {
+    (await namesChecker(registry, cwd, names))(names);
+  }
   await assertEmptyTarget(target);
   await mkdir(target, { recursive: true });
-
-  const registry = options.registry ?? defaultRegistrySource();
 
   await cp(templateBaseDir(), target, { recursive: true });
 
@@ -118,16 +135,24 @@ export async function createProject(options: CreateOptions): Promise<string> {
   });
   await writeFile(join(target, "bg.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 
+  // One `bonne-garde add` call, so a module and the items that need it are planned together; the one
+  // install below covers what it added.
+  const added =
+    names.length === 0
+      ? null
+      : await addItems({ projectRoot: target, items: names, install: false });
+
   if (options.git !== false) {
     // Best effort: a project without a repository is still a project.
     await runCommand("git", ["init"], { cwd: target, stdio: "ignore" });
   }
 
   if (options.install !== false) {
-    if ((await bunInstall(target, "bun install failed")) === "bun-missing") {
-      throw new Error(BUN_MISSING);
+    const { pm, missing } = await installDependencies(target);
+    if (missing) {
+      throw new Error(missingPackageManager(pm));
     }
   }
 
-  return target;
+  return { target, added };
 }

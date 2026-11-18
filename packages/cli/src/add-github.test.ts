@@ -39,7 +39,7 @@ async function project(registry: string): Promise<string> {
     install: false,
     registry,
     scope: "@gh",
-  });
+  }).then(({ target }) => target);
 }
 
 /** Every file under `root` with its text, so two trees compare whole. */
@@ -203,9 +203,10 @@ describe("bonne-garde add from a github source", () => {
         ...featureItems,
       ],
       ["provider/cloudflare"],
-      ["provider/dockerfile"],
+      ["pm/bun", "provider/dockerfile"],
       ["config/branding", "provider/cloudflare", "api/elysia"],
-      ["config/branding", "provider/dockerfile", "api/elysia"],
+      ["pm/bun", "config/branding", "provider/dockerfile", "api/elysia"],
+      ["pm/pnpm"],
       ["ui/shadcn"],
     ]) {
       const raw = serve();

@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import { join } from "node:path";
 import { hashPassword } from "./password";
 
 export const ADMIN_EMAIL = "admin@example.local";
@@ -71,7 +73,9 @@ export function d1Rows(stdout: string): Record<string, unknown>[] {
 }
 
 /** `apps/api`, where `wrangler.jsonc` and the local D1 state are. */
-const API_DIRECTORY = new URL("../../../apps/api/", import.meta.url).pathname;
+const API_DIRECTORY = join(import.meta.dirname, "../../../apps/api");
+/** The `wrangler` `apps/api` depends on, which the package manager links into its `node_modules/.bin`. */
+const WRANGLER = join(API_DIRECTORY, "node_modules/.bin/wrangler");
 
 /**
  * What a failed `wrangler` call is reported as: the command and its exit code. The value of
@@ -88,17 +92,21 @@ export function wranglerFailure(args: string[], exitCode: number): string {
 
 /** Runs `wrangler` in `apps/api` and returns what it printed; `inherit` shows it instead, and returns "". */
 async function wrangler(args: string[], stdout: "pipe" | "inherit"): Promise<string> {
-  const wranglerProcess = Bun.spawn(["bunx", "wrangler", ...args], {
+  const child = spawn(WRANGLER, args, {
     cwd: API_DIRECTORY,
-    stdin: "ignore",
-    stdout,
-    stderr: "inherit",
-    env: { ...Bun.env, WRANGLER_SEND_METRICS: "false" },
+    stdio: ["ignore", stdout, "inherit"],
+    env: { ...process.env, WRANGLER_SEND_METRICS: "false" },
   });
-  const printed = stdout === "pipe" ? await new Response(wranglerProcess.stdout).text() : "";
-  const exitCode = await wranglerProcess.exited;
-  if (exitCode !== 0) {
-    throw new Error(wranglerFailure(args, exitCode));
+  let printed = "";
+  child.stdout?.setEncoding("utf8").on("data", (chunk: string) => {
+    printed += chunk;
+  });
+  const code = await new Promise<number | null>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", resolve);
+  });
+  if (code !== 0) {
+    throw new Error(wranglerFailure(args, code ?? 1));
   }
   return printed;
 }
@@ -118,9 +126,9 @@ const localD1: SeedDatabase = {
 };
 
 /**
- * `bun run db:seed`: applies the migrations to the local D1 the binding `DB` names in
+ * `vp run db:seed`: applies the migrations to the local D1 the binding `DB` names in
  * `apps/api/wrangler.jsonc`, then inserts the admin. It deletes nothing: on a database that already has
- * the admin it says so and exits 0, and `bun run db:reset` (the ORM's, which empties every table of the
+ * the admin it says so and exits 0, and `vp run db:reset` (the ORM's, which empties every table of the
  * schema barrel) comes first to start over.
  */
 async function main(): Promise<void> {
@@ -129,14 +137,14 @@ async function main(): Promise<void> {
     (await seedAdmin(localD1)) === "seeded"
       ? `Seeded: ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}, owner of the Personal organization\n`
       : `Already seeded: ${ADMIN_EMAIL} exists, so nothing was changed\n`;
-  await Bun.write(Bun.stdout, message);
+  process.stdout.write(message);
 }
 
 if (import.meta.main) {
   try {
     await main();
   } catch (error) {
-    await Bun.write(Bun.stderr, `${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;
   }
 }

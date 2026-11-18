@@ -99,7 +99,7 @@ Most module and feature code imports packages that exist only after install, so 
 
 - `any` — use `unknown` + type guard
 - `as` to bypass an Eden type — fix the API contract at the source
-- `npm` / `yarn` / `pnpm` / `npx` / `node` — `bun` / `bunx` only
+- `npm` / `yarn` / `pnpm` / `npx` / `node` — `bun` / `bunx` only. Exception: the tests that prove the packed CLI runs on Node drive it with `node`
 - Mock Drizzle, mock `fetch`, snapshot tests
 - CF proprietary APIs outside `DB` / `BUCKET`
 - Skip phases defined in the spec/issue

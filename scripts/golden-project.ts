@@ -50,10 +50,12 @@
  */
 
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join, relative, resolve } from "node:path";
+import { basename, delimiter, join, relative, resolve } from "node:path";
 import { stripVTControlCharacters } from "node:util";
+import { type Choices, namesFor } from "../packages/cli/src/choices";
 import { cliRunner } from "../packages/schema/src/cli-runner";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -117,47 +119,86 @@ export type Configuration = {
 };
 
 /**
- * The projects golden builds. A module that is in none of them, and not in `EXCLUDED_MODULES`, fails
- * the run, so a new module is a decision made here and not a silent gap. `provider` admits one module,
- * and a variant of `api` is selected on it, which is why each provider has a configuration.
+ * The answer sets golden builds, each as `bonne-garde create` maps it (040), so a set golden proves is one
+ * `create` produces. A module that is in none of them, and not in `EXCLUDED_MODULES`, fails the run,
+ * so a new module is a decision made here and not a silent gap. `provider` admits one module, and a
+ * variant of `api` is selected on it, which is why each provider has a set.
  */
-export const CONFIGURATIONS: readonly Configuration[] = [
-  {
-    name: "cloudflare",
-    modules: [
-      "provider/cloudflare",
-      "tooling/vite-plus",
-      "config/branding",
-      "ui/shadcn",
-      "api/elysia",
-      "db/d1",
-      "orm/drizzle",
-      "auth/better-auth",
-      "storage/r2",
-      "web/spa",
-      "web/ssr",
-      "web/static",
-      "dev/portless",
-      "email/resend",
-      "deploy/cloudflare-actions",
-    ],
-    items: true,
+export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
+  cloudflare: {
+    apps: ["api", "spa", "ssr", "static"],
+    provider: "cloudflare",
+    features: ["db", "auth", "storage", "email", "deploy", "backoffice", "portless"],
+    // The most modules, under the stricter install: pnpm links only what a package.json declares.
+    pm: "pnpm",
   },
-  {
-    name: "dockerfile",
-    modules: [
-      "provider/dockerfile",
-      "tooling/vite-plus",
-      "config/branding",
-      "ui/shadcn",
-      "api/elysia",
-      "web/spa",
-      "dev/portless",
-      "email/resend",
-    ],
-    items: false,
+  dockerfile: {
+    apps: ["api", "spa"],
+    provider: "dockerfile",
+    features: ["email", "portless"],
+    pm: "bun",
   },
-];
+  // The fronts alone (040: `--apps spa`): no api, so no Eden client and no API variable, deployed.
+  fronts: {
+    apps: ["spa", "ssr", "static"],
+    provider: "cloudflare",
+    features: ["deploy"],
+    pm: "bun",
+  },
+};
+
+/**
+ * A set with items installs every item here, not only its own: that its own build alone is
+ * `feature-contract.test.ts`'s, where an item declares every item it imports.
+ */
+export const CONFIGURATIONS: readonly Configuration[] = Object.entries(ANSWER_SETS).map(
+  ([name, choices]) => {
+    const { modules, items } = namesFor(choices);
+    return { name, modules, items: items.length > 0 };
+  },
+);
+
+/**
+ * The package manager of a configuration, its `pm` module's id: `create --pm` adds that module, and
+ * golden's `bonne-garde add` adds the rest.
+ */
+export function packageManagerOf(configuration: Configuration): string {
+  const [pm, ...more] = configuration.modules.filter((module) => module.startsWith("pm/"));
+  if (pm === undefined || more.length > 0) {
+    throw new Error(`the ${configuration.name} configuration has to name one pm module`);
+  }
+  return pm.slice("pm/".length);
+}
+
+/** The modules golden's `bonne-garde add` installs: all but the package manager's, which `create` added. */
+export function addedModules(configuration: Configuration): string[] {
+  return configuration.modules.filter((module) => !module.startsWith("pm/"));
+}
+
+/** How golden drives a project with its package manager: the install, a script, a bin the project has. */
+export type Runner = {
+  install: string[];
+  run: (script: string, ...args: string[]) => string[];
+  exec: (bin: string, ...args: string[]) => string[];
+};
+
+export function runnerOf(pm: string): Runner {
+  if (pm === "bun") {
+    return {
+      install: [BUN, "install"],
+      run: (script, ...args) => [BUN, "run", script, ...args],
+      exec: (bin, ...args) => [BUN, "x", bin, ...args],
+    };
+  }
+  if (pm === "pnpm") {
+    return {
+      install: ["pnpm", "install"],
+      run: (script, ...args) => ["pnpm", "run", script, ...args],
+      exec: (bin, ...args) => ["pnpm", "exec", bin, ...args],
+    };
+  }
+  throw new Error(`golden does not drive ${pm}`);
+}
 
 /** The module that ships the `Dockerfile` golden builds. */
 const IMAGE_MODULE = "provider/dockerfile";
@@ -286,15 +327,24 @@ export function refusesDeploy(configuration: Configuration): boolean {
  */
 export const DEPLOY_PLAN: Readonly<Record<string, readonly string[]>> = {
   cloudflare: [
-    "build apps/api: bun run build",
-    "build apps/spa: bun run build",
-    "build apps/ssr: bun run build",
-    "build apps/static: bun run build",
-    "migrate apps/api: bun run db:migrate:remote --env production",
-    "deploy apps/api: bun run deploy --env production",
-    "deploy apps/spa: bun run deploy --project-name my-app-spa --branch main",
-    "deploy apps/ssr: bun run deploy --env production",
-    "deploy apps/static: bun run deploy --project-name my-app-static --branch main",
+    "build apps/api: vp run build",
+    "build apps/spa: vp run build",
+    "build apps/ssr: vp run build",
+    "build apps/static: vp run build",
+    "migrate apps/api: vp run db:migrate:remote --env production",
+    "deploy apps/api: vp run deploy --env production",
+    "deploy apps/spa: vp run deploy --project-name my-app-spa --branch main",
+    "deploy apps/ssr: vp run deploy --env production",
+    "deploy apps/static: vp run deploy --project-name my-app-static --branch main",
+  ],
+  // No API: nothing to migrate, and each front deploys on its own.
+  fronts: [
+    "build apps/spa: vp run build",
+    "build apps/ssr: vp run build",
+    "build apps/static: vp run build",
+    "deploy apps/spa: vp run deploy --project-name my-app-spa --branch main",
+    "deploy apps/ssr: vp run deploy --env production",
+    "deploy apps/static: vp run deploy --project-name my-app-static --branch main",
   ],
 };
 
@@ -302,12 +352,14 @@ export const DEPLOY_PLAN: Readonly<Record<string, readonly string[]>> = {
  * What each app the plan builds needs of the workflow's variables, in each configuration that installs the
  * deploy module, by the directory it is built in. Written out by hand, not read from the files the script
  * reads: the SPA and the static site read `VITE_API_URL` when they build and throw at load without it; and
- * the Worker `ssr` reads `API_URL` from its wrangler config at run time and needs no build variable.
+ * the Worker `ssr` reads `API_URL` from its wrangler config at run time and needs no build variable. Fronts
+ * installed without the API have no API URL to read, so they need none.
  */
 export const DEPLOY_BUILD_NEEDS: Readonly<
   Record<string, Readonly<Record<string, readonly string[]>>>
 > = {
   cloudflare: { "apps/spa": ["VITE_API_URL"], "apps/static": ["VITE_API_URL"] },
+  fronts: {},
 };
 
 /** The plan the dry run printed: each step as `<phase> <cwd>: <command>`, the apps once each in order, the build variables it names. */
@@ -470,11 +522,16 @@ export function expectEveryAppPlanned(
 }
 
 /**
- * The workflow as installed: it parses as YAML, runs on dispatch only, has the deploy job, and every
- * `bun run <script>` it makes is a script of the project's root `package.json`, the one that deploys
- * included. `rootScripts` is what that file holds after the install, which is what the runner sees.
+ * The workflow as installed: it parses as YAML, runs on dispatch only, has the deploy job, every
+ * `vp run <script>` it makes is a script of the project's root `package.json`, the one that deploys
+ * included, and every local action it uses is one the project ships (`hasAction`; the setup is the
+ * `pm` module's). `rootScripts` is what that file holds after the install, which is what the runner sees.
  */
-export function expectWorkflow(text: string, rootScripts: readonly string[]): void {
+export function expectWorkflow(
+  text: string,
+  rootScripts: readonly string[],
+  hasAction: (path: string) => boolean,
+): void {
   let workflow: unknown;
   try {
     workflow = Bun.YAML.parse(text);
@@ -497,16 +554,28 @@ export function expectWorkflow(text: string, rootScripts: readonly string[]): vo
     throw new Error(`${DEPLOY_WORKFLOW} has no deploy job`);
   }
   for (const run of Object.values(jobs).flatMap(runsOf)) {
-    const script = /^bun run (\S+)/.exec(run)?.[1];
+    const script = /^vp run (\S+)/.exec(run)?.[1];
     if (script !== undefined && !rootScripts.includes(script)) {
       throw new Error(
-        `${DEPLOY_WORKFLOW} runs \`bun run ${script}\`, and the project's package.json has no such script`,
+        `${DEPLOY_WORKFLOW} runs \`vp run ${script}\`, and the project's package.json has no such script`,
       );
     }
   }
-  if (!runsOf(jobs.deploy).includes(`bun run ${DEPLOY_SCRIPT}`)) {
+  const local = Object.values(jobs).flatMap((job) =>
+    isRecord(job) && Array.isArray(job.steps)
+      ? job.steps.flatMap((step: unknown) =>
+          isRecord(step) && typeof step.uses === "string" && step.uses.startsWith("./")
+            ? [step.uses]
+            : [],
+        )
+      : [],
+  );
+  for (const action of local.filter((path) => !hasAction(path))) {
+    throw new Error(`${DEPLOY_WORKFLOW} uses ${action}, and the project ships no such action`);
+  }
+  if (!runsOf(jobs.deploy).includes(`vp run ${DEPLOY_SCRIPT}`)) {
     throw new Error(
-      `the deploy job of ${DEPLOY_WORKFLOW} does not run \`bun run ${DEPLOY_SCRIPT}\``,
+      `the deploy job of ${DEPLOY_WORKFLOW} does not run \`vp run ${DEPLOY_SCRIPT}\``,
     );
   }
 }
@@ -798,8 +867,8 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "scripts.db:reset",
       "scripts.db:studio",
     ],
-    "web/spa": ["scripts.deploy", "scripts.dev"],
-    "web/ssr": ["scripts.deploy", "scripts.dev"],
+    "web/spa": ["env.production.vars.API_URL", "scripts.deploy", "scripts.dev", "vars.API_URL"],
+    "web/ssr": ["env.production.vars.API_URL", "scripts.deploy", "scripts.dev", "vars.API_URL"],
     "web/static": ["scripts.deploy", "scripts.dev"],
     "dev/portless": [
       "devDependencies.portless",
@@ -809,7 +878,7 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
     // Not the import into mailer.ts: that is the intention's edit, and the file it edits is
     // region-checked by the `intent[<id>]` region `bonne-garde record` leaves.
     "email/resend": ["dependencies.@app/email"],
-    "deploy/cloudflare-actions": ["scripts.deploy:cloudflare"],
+    "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
   },
   dockerfile: {
     "config/branding": ["scripts.gen:branding"],
@@ -820,6 +889,13 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "scripts.dev:lan:portless",
       "scripts.dev:portless",
     ],
+  },
+  fronts: {
+    "config/branding": ["scripts.gen:branding"],
+    "web/spa": ["scripts.deploy", "scripts.dev"],
+    "web/ssr": ["scripts.deploy", "scripts.dev"],
+    "web/static": ["scripts.deploy", "scripts.dev"],
+    "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
   },
 };
 
@@ -1404,6 +1480,7 @@ const WIRED_TEST_FILE = "packages/auth/src/mailer.wired.test.ts";
 export const PENDING: Readonly<Record<string, readonly string[]>> = {
   cloudflare: ["email/resend/wire-email-into-auth"],
   dockerfile: [],
+  fronts: [],
 };
 
 /** The ids in the `pendingIntentions` list `bonne-garde add` prints. */
@@ -1510,7 +1587,7 @@ export function wireEmailIntoAuth(source: string, scope: string): string {
  * sends the reset one, each with a link that works), not the email package, which has tests of its own.
  */
 export function wiredTest(scope: string): string {
-  return `import { beforeEach, expect, test } from "bun:test";
+  return `import { beforeEach, expect, test } from "vite-plus/test";
 import { clearOutbox, outbox } from "${scope}/email/testing";
 import { mailer } from "./mailer";
 import { createTestAuth } from "./testing";
@@ -1744,8 +1821,7 @@ export function expectNothingToApply(stdout: string): void {
 export function testCounts(output: string): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const line of stripVTControlCharacters(output).split("\n")) {
-    const [, workspace, ran] =
-      /^(\S+):test\s*\|\s*(?:Ran |Tests\s+)(\d+) (?:tests? |passed)/.exec(line) ?? [];
+    const [, workspace, ran] = /^\[(\S+)#test\]\s+Tests\s+(\d+) passed/.exec(line) ?? [];
     if (workspace !== undefined && ran !== undefined) {
       counts[workspace] = Number(ran);
     }
@@ -1799,16 +1875,16 @@ export function hasPortless(configuration: Configuration): boolean {
 }
 
 /**
- * How many tests the launcher runs in the project (`bun test ./scripts/dev-portless.test.ts`: it is a
+ * How many tests the launcher runs in the project (`vp test scripts/dev-portless.test.ts`: it is a
  * root script, so the root `test` fan-out over workspaces never reaches it); fewer means they went.
  */
 export const PORTLESS_MIN_TESTS = 36;
 
-/** The count in the `Ran N tests across M files` line `bun test` prints on stderr. */
+/** The count in the `Tests  N passed` line of the summary Vitest prints, colored or not. */
 export function ranTests(output: string): number {
-  const ran = /Ran (\d+) tests?\b/.exec(output)?.[1];
+  const ran = /^\s*Tests\s+(\d+) passed/m.exec(stripVTControlCharacters(output))?.[1];
   if (ran === undefined) {
-    throw new Error(`bun test printed no \`Ran N tests\` line: ${output.trim() || "(nothing)"}`);
+    throw new Error(`vp test printed no \`Tests N passed\` line: ${output.trim() || "(nothing)"}`);
   }
   return Number(ran);
 }
@@ -1829,10 +1905,10 @@ export type ExpectedPortlessApp = {
  * What `scripts/dev-portless.ts --dry-run` has to plan in a configuration, written out by hand and not
  * by the launcher's own rules, for a project whose root package is `slug` and a proxy serving `tld`: the
  * apps the modules install, and for each the command that follows from its `dev` script. The Worker API
- * runs through wrangler with the free port and every sibling's URL, the Bun API reads PORT, and a front
- * runs through `bunx react-router`, which portless recognises. The fronts of the cloudflare configuration
- * each have a wrangler config, so each is told `CLOUDFLARE_INCLUDE_PROCESS_ENV`: the Cloudflare Vite plugin
- * ignores the process environment otherwise, and `ssr` would keep the `localhost` API_URL of its config.
+ * runs through wrangler with the free port and every sibling's URL, the container's API reads PORT, and a front
+ * runs `react-router dev` as it is, which portless recognises by name. The fronts of a configuration on the
+ * cloudflare provider each have a wrangler config, so each is told `CLOUDFLARE_INCLUDE_PROCESS_ENV`: the Cloudflare
+ * Vite plugin ignores the process environment otherwise, and `ssr` would keep the `localhost` API_URL of its config.
  */
 export function expectedPortlessApps(
   configuration: string,
@@ -1846,8 +1922,10 @@ export function expectedPortlessApps(
   });
   const url = (dir: string) => `https://${dir}.${slug}.${tld}`;
   const front = (dir: string): ExpectedPortlessApp => ({
-    ...app(dir, ["bunx", "react-router", "dev"]),
-    ...(configuration === "cloudflare" ? { includesProcessEnv: true as const } : {}),
+    ...app(dir, ["react-router", "dev"]),
+    ...(ANSWER_SETS[configuration]?.provider === "cloudflare"
+      ? { includesProcessEnv: true as const }
+      : {}),
   });
 
   if (configuration === "cloudflare") {
@@ -1855,7 +1933,7 @@ export function expectedPortlessApps(
       app("api", [
         "sh",
         "-c",
-        'exec bunx wrangler dev --port "$PORT" "$@"',
+        'exec wrangler dev --port "$PORT" "$@"',
         "wrangler",
         "--var",
         `API_URL:${url("api")}`,
@@ -1872,7 +1950,7 @@ export function expectedPortlessApps(
     ];
   }
   if (configuration === "dockerfile") {
-    return [app("api", ["bun", "--watch", "src/index.ts"]), front("spa")];
+    return [app("api", ["tsx", "watch", "src/index.ts"]), front("spa")];
   }
   throw new Error(`golden does not know what the launcher plans in ${configuration}`);
 }
@@ -2147,7 +2225,7 @@ async function capture(argv: string[], cwd: string, env?: Record<string, string>
   return stdout;
 }
 
-/** Both streams of a command that has to succeed: `bun test` prints its report on stderr. */
+/** Both streams of a command that has to succeed. */
 async function captureBoth(
   argv: string[],
   cwd: string,
@@ -2166,18 +2244,26 @@ async function captureBoth(
   return { stdout, stderr };
 }
 
-/** A command that has to fail, run with some variables set, and everything it printed: the deploy script logs its refusals on stdout. */
+/**
+ * A command that has to fail, run with some variables set, and everything it printed: the deploy script
+ * logs its refusals on stdout. It inherits no `VITE_*` variable: a build reads those from its
+ * environment too, so one in the shell, or in a `.env` Bun loads into golden, would satisfy the build
+ * the case means to leave without it.
+ */
 async function refused(
   argv: string[],
   cwd: string,
   env: Record<string, string>,
 ): Promise<{ code: number; output: string }> {
+  const inherited = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !name.startsWith("VITE_")),
+  );
   const proc = Bun.spawn(argv, {
     cwd,
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, ...env },
+    env: { ...inherited, ...env },
   });
   const [code, stdout, stderr] = await Promise.all([
     proc.exited,
@@ -2268,7 +2354,9 @@ async function configured(
   },
 ): Promise<void> {
   const { bonneGarde, registry, configuration, first } = options;
-  const { name, modules } = configuration;
+  const { name } = configuration;
+  const modules = addedModules(configuration);
+  const pm = runnerOf(packageManagerOf(configuration));
   const installed = configuration.items ? options.items : [];
   const patched = PATCHED[name] ?? {};
   const patchedItems = configuration.items ? (PATCHED_ITEMS[name] ?? {}) : {};
@@ -2277,12 +2365,14 @@ async function configured(
   const step = <T>(label: string, body: () => Promise<T>) =>
     phase(timings, `${name}: ${label}`, body);
 
-  console.log(`\ngolden: configuration ${name}: ${modules.join(" ")}`);
+  console.log(`\ngolden: configuration ${name}: ${configuration.modules.join(" ")}`);
   await step("create", () =>
     run(
       bonneGarde(
         "create",
         project,
+        "--pm",
+        packageManagerOf(configuration),
         "--yes",
         "--no-git",
         "--no-install",
@@ -2423,10 +2513,10 @@ async function configured(
       }
     });
   }
-  await step("install", () => run([BUN, "install"], project));
-  await step("typecheck", () => run([BUN, "run", "typecheck"], project));
+  await step("install", () => run(pm.install, project));
+  await step("typecheck", () => run(pm.run("typecheck"), project));
   await step("test", async () => {
-    const { stdout, stderr } = await captureBoth([BUN, "run", "test"], project);
+    const { stdout, stderr } = await captureBoth(pm.run("test"), project);
     const ran = testCounts(`${stdout}\n${stderr}`);
     if (hasAuth(configuration)) {
       expectRan(ran, `${SCOPE}/auth`, AUTH_MIN_TESTS);
@@ -2443,7 +2533,7 @@ async function configured(
       `golden: tests run: ${counts.map(([workspace, ran]) => `${workspace} ${ran}`).join(", ")}`,
     );
   });
-  await step("build", () => run([BUN, "run", "build"], project));
+  await step("build", () => run(pm.run("build"), project));
   // The binary favicons are the registry's bytes, and the build the SPA made serves the manifest it
   // links and the icons that manifest names, from the files the project holds.
   if (hasFavicons(configuration)) {
@@ -2479,7 +2569,7 @@ async function configured(
   // accept the edit too: that is the intention's Validation, so it is recorded now and not before.
   if (pending.length > 0) {
     await step("intentions: record", async () => {
-      await run([BUN, "run", "check"], project);
+      await run(pm.run("check"), project);
       for (const id of pending) {
         await run(bonneGarde("record", id), project);
         // The edited file is region-checked from here on: bg.json holds the intention's region on it.
@@ -2495,7 +2585,7 @@ async function configured(
   }
   await step("doctor", () => run(bonneGarde("doctor", "--strict"), project));
   if (hasDeploy(configuration)) {
-    await deployPlanned(project, timings, name);
+    await deployPlanned(project, timings, name, pm);
   }
   // The owner of the file the edit landed in, and the module that shipped the intention, asked for again:
   // the edit is the project's by now, so each has to keep it, skip its patches, stage nothing and change nothing.
@@ -2527,22 +2617,26 @@ async function configured(
     });
   }
   if (hasAuth(configuration)) {
-    await regenerated(project, timings, name);
+    await regenerated(project, timings, name, pm);
   }
   if (hasDatabase(configuration)) {
-    await migrated(project, timings, name, expectedTables(configuration));
+    await migrated(project, timings, name, pm, expectedTables(configuration));
     if (hasAuth(configuration)) {
-      await seeded(project, timings, name, configuration);
+      await seeded(project, timings, name, pm, configuration);
     }
   }
-  await step("check", () => run([BUN, "run", "check"], project));
+  await step("check", () => run(pm.run("check"), project));
   if (hasPortless(configuration)) {
-    await launched(project, timings, name);
+    await launched(project, timings, name, pm);
   }
+  // A check names the project's own bins (`vp`, `tsc`), which bun or pnpm finds the way its `run` does.
+  const bins = {
+    PATH: `${join(project, "node_modules/.bin")}${delimiter}${process.env.PATH ?? ""}`,
+  };
   for (const { module, checks } of added.filter(({ checks }) => checks.length > 0)) {
     await step(`checks:${module}`, async () => {
       for (const command of checks) {
-        await run(["sh", "-c", command], project);
+        await run(["sh", "-c", command], project, bins);
       }
     });
   }
@@ -2593,14 +2687,22 @@ async function previewed<T>(app: string, body: (origin: string) => Promise<T>): 
   }
 }
 
-async function launched(project: string, timings: Timing[], name: string): Promise<void> {
+async function launched(
+  project: string,
+  timings: Timing[],
+  name: string,
+  pm: Runner,
+): Promise<void> {
   const slug = basename(project);
   const plan = (...flags: string[]) =>
-    capture([BUN, "scripts/dev-portless.ts", "--dry-run", ...flags], project);
+    capture(pm.exec("tsx", "scripts/dev-portless.ts", "--dry-run", ...flags), project);
 
   await phase(timings, `${name}: portless tests`, async () => {
-    const { stderr } = await captureBoth([BUN, "test", "./scripts/dev-portless.test.ts"], project);
-    expectRan({ [PORTLESS_MODULE]: ranTests(stderr) }, PORTLESS_MODULE, PORTLESS_MIN_TESTS);
+    const { stdout } = await captureBoth(
+      pm.exec("vp", "test", "scripts/dev-portless.test.ts"),
+      project,
+    );
+    expectRan({ [PORTLESS_MODULE]: ranTests(stdout) }, PORTLESS_MODULE, PORTLESS_MIN_TESTS);
   });
   await phase(timings, `${name}: portless plan`, async () => {
     expectPortlessPlan(await plan(), expectedPortlessApps(name, slug, "localhost"), "localhost");
@@ -2625,6 +2727,8 @@ async function refusedPeer(
       bonneGarde(
         "create",
         project,
+        "--pm",
+        "bun",
         "--yes",
         "--no-git",
         "--no-install",
@@ -2736,7 +2840,12 @@ async function reselected(
  * `VITE_*` variable handed to the script is named in the plan and its value never printed, and the
  * plan names the variable each build needs, refusing variables that lack it.
  */
-async function deployPlanned(project: string, timings: Timing[], name: string): Promise<void> {
+async function deployPlanned(
+  project: string,
+  timings: Timing[],
+  name: string,
+  pm: Runner,
+): Promise<void> {
   await phase(timings, `${name}: deploy plan`, async () => {
     const expected = DEPLOY_PLAN[name];
     if (expected === undefined) {
@@ -2744,7 +2853,9 @@ async function deployPlanned(project: string, timings: Timing[], name: string): 
     }
     const root: unknown = JSON.parse(await Bun.file(join(project, "package.json")).text());
     const scripts = isRecord(root) && isRecord(root.scripts) ? Object.keys(root.scripts) : [];
-    expectWorkflow(await Bun.file(join(project, DEPLOY_WORKFLOW)).text(), scripts);
+    expectWorkflow(await Bun.file(join(project, DEPLOY_WORKFLOW)).text(), scripts, (action) =>
+      existsSync(join(project, action, "action.yml")),
+    );
 
     const needs = DEPLOY_BUILD_NEEDS[name];
     if (needs === undefined) {
@@ -2752,7 +2863,7 @@ async function deployPlanned(project: string, timings: Timing[], name: string): 
         `no expected build variables for the ${name} configuration (DEPLOY_BUILD_NEEDS)`,
       );
     }
-    const dryRun = [BUN, "run", DEPLOY_SCRIPT, "--dry-run"];
+    const dryRun = pm.run(DEPLOY_SCRIPT, "--dry-run");
     const printed = await capture(dryRun, project);
     const plan = readDeployPlan(printed);
     expectDeployPlan(plan.steps, expected);
@@ -2798,6 +2909,12 @@ async function deployPlanned(project: string, timings: Timing[], name: string): 
       );
     }
 
+    if (Object.keys(needs).length === 0) {
+      // No build needs a variable: a run handed none goes ahead.
+      await capture(dryRun, project, { VARS_JSON: "{}" });
+      return;
+    }
+
     // A front built without its API URL deploys and is broken: handed variables that lack what a build
     // needs (none at all, an unrelated one, an empty one), the dry run refuses. The real run does the
     // same before its first build; golden does not start it, since a regression would reach Cloudflare.
@@ -2816,11 +2933,16 @@ async function deployPlanned(project: string, timings: Timing[], name: string): 
  * formatter, has to write the schema the module shipped: byte for byte, or the module carries an edit
  * the next regeneration would drop.
  */
-async function regenerated(project: string, timings: Timing[], name: string): Promise<void> {
+async function regenerated(
+  project: string,
+  timings: Timing[],
+  name: string,
+  pm: Runner,
+): Promise<void> {
   await phase(timings, `${name}: auth generate`, async () => {
     const file = join(project, AUTH_SCHEMA_FILE);
     const shipped = await Bun.file(file).text();
-    await run([BUN, "run", "auth:generate"], join(project, "packages/auth"));
+    await run(pm.run("auth:generate"), join(project, "packages/auth"));
     expectRegenerated(shipped, await Bun.file(file).text());
   });
 }
@@ -2837,6 +2959,7 @@ async function migrated(
   project: string,
   timings: Timing[],
   name: string,
+  pm: Runner,
   tables: readonly string[],
 ): Promise<void> {
   const db = join(project, "packages/db");
@@ -2847,7 +2970,7 @@ async function migrated(
     await Bun.write(join(project, GOLDEN_SCHEMA_FILE), GOLDEN_SCHEMA);
     const barrel = join(project, GOLDEN_BARREL_FILE);
     await Bun.write(barrel, `${await Bun.file(barrel).text()}${GOLDEN_BARREL_LINE}`);
-    await run([BUN, "run", "db:generate"], db);
+    await run(pm.run("db:generate"), db);
     const directory = join(db, "migrations");
     const files = await readdir(directory);
     const [first] = files.filter((file) => file.endsWith(".sql"));
@@ -2858,11 +2981,11 @@ async function migrated(
   });
 
   await phase(timings, `${name}: db migrate`, async () => {
-    await run([BUN, "run", "db:migrate:local"], api, OFFLINE);
+    await run(pm.run("db:migrate:local"), api, OFFLINE);
     const rows = async (statement: string, column: string): Promise<string[]> =>
       d1Rows(
         await capture(
-          ["bunx", "wrangler", "d1", "execute", "DB", "--local", "--json", "--command", statement],
+          pm.exec("wrangler", "d1", "execute", "DB", "--local", "--json", "--command", statement),
           api,
           OFFLINE,
         ),
@@ -2874,7 +2997,7 @@ async function migrated(
     for (const table of tables) {
       expectMigrated(database, table, migration);
     }
-    expectNothingToApply(await capture([BUN, "run", "db:migrate:local"], api, OFFLINE));
+    expectNothingToApply(await capture(pm.run("db:migrate:local"), api, OFFLINE));
   });
 }
 
@@ -2891,6 +3014,7 @@ async function seeded(
   project: string,
   timings: Timing[],
   name: string,
+  pm: Runner,
   configuration: Configuration,
 ): Promise<void> {
   const api = join(project, "apps/api");
@@ -2899,19 +3023,19 @@ async function seeded(
   const select = async (statement: string) =>
     d1Rows(
       await capture(
-        ["bunx", "wrangler", "d1", "execute", "DB", "--local", "--json", "--command", statement],
+        pm.exec("wrangler", "d1", "execute", "DB", "--local", "--json", "--command", statement),
         api,
         OFFLINE,
       ),
     );
   const execute = (statement: string) =>
     run(
-      ["bunx", "wrangler", "d1", "execute", "DB", "--local", "--command", statement],
+      pm.exec("wrangler", "d1", "execute", "DB", "--local", "--command", statement),
       api,
       OFFLINE,
     );
   const seedAdmin = async () => {
-    await run([BUN, "run", "db:seed"], auth, OFFLINE);
+    await run(pm.run("db:seed"), auth, OFFLINE);
     expectSeeded(
       await select('SELECT email, email_verified FROM "user"'),
       await select('SELECT role FROM "member"'),
@@ -2935,7 +3059,7 @@ async function seeded(
       ...(storage ? { medias: 1 } : {}),
     });
 
-    await run([BUN, "run", "db:reset"], db, OFFLINE);
+    await run(pm.run("db:reset"), db, OFFLINE);
 
     expectRows(
       readCounts(await select(countStatement(tables))),
@@ -2948,7 +3072,7 @@ async function seeded(
   await phase(timings, `${name}: auth db:seed on a seeded database`, async () => {
     const tables = resetTables(configuration);
     const before = readCounts(await select(countStatement(tables)));
-    expectAlreadySeeded(await capture([BUN, "run", "db:seed"], auth, OFFLINE));
+    expectAlreadySeeded(await capture(pm.run("db:seed"), auth, OFFLINE));
     expectRows(readCounts(await select(countStatement(tables))), before);
   });
 }
@@ -3117,6 +3241,8 @@ async function refusedFeature(
       bonneGarde(
         "create",
         project,
+        "--pm",
+        "bun",
         "--yes",
         "--no-git",
         "--no-install",

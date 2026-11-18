@@ -1,7 +1,7 @@
 # web/spa
 
 A React Router SPA shell at `apps/spa`: Vite+, Tailwind, a root with an error boundary, the theme
-and query providers, and an Eden client for the API. It has no auth and no feature pages: those
+and query providers, and, when the project has the API, an Eden client for it. It has no auth and no feature pages: those
 arrive as items ([030](../../../../docs/specs/030-ui-registry.md)). Extracted from the legacy
 `apps/spa` ([080](../../../../docs/specs/080-existing-code-migration.md)), and it replaces the
 `spa-react-router` item.
@@ -16,19 +16,28 @@ bunx bonne-garde add web/spa
 | ---------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `provider` | any        | the SPA is deployed differently on each: a Pages config, or the container that serves `build/client`                                    |
 | `config`   | `branding` | `features/home/pages/home-page.tsx` reads `branding`, and `vite.config.ts` serves the favicons of `{{SCOPE}}/config` from the site root |
-| `api`      | `elysia`   | `lib/api.ts` types the Eden client with `type App` from `{{SCOPE}}/api/app`                                                             |
 | `ui`       | `shadcn`   | `root.tsx` imports `{{SCOPE}}/ui/globals.css`                                                                                           |
 
-One variant per provider, which list the same files except `wrangler.jsonc`, and differ in what
-`scripts.merge` (spec 060) adds to the vendored `apps/spa/package.json`:
+`api` (`elysia`) is an optional peer (035): a variant's `match` names it. With it, the variant copies
+`lib/api.ts`, which types the Eden client with `type App` from `{{SCOPE}}/api/app` and declares
+`VITE_API_URL`, and `.env.test`, which gives the tests that address; it depends on `@elysiajs/eden`
+and `{{SCOPE}}/api`, and on `cloudflare` writes `API_URL` into `wrangler.jsonc` with `jsonc.merge`.
+Without it (`bg create --apps spa`, spec 040), none of that is written.
 
-| Variant      | Extra file                | `scripts.merge` on `apps/spa/package.json`                                | Extra dependency |
-| ------------ | ------------------------- | ------------------------------------------------------------------------- | ---------------- |
-| `cloudflare` | `apps/spa/wrangler.jsonc` | `dev`: `react-router dev`, `deploy`: `wrangler pages deploy build/client` | `wrangler` (dev) |
-| `dockerfile` | none                      | `dev`: `react-router dev`                                                 | none             |
+A variant per provider, with the API, which list the same files except `wrangler.jsonc`, and differ in
+what `scripts.merge` (spec 060) adds to the vendored `apps/spa/package.json`; and on `cloudflare` one
+more per provider, `cloudflare-without-api` and `dockerfile-without-api`, matched on the provider alone:
 
-The `dockerfile` provider serves `apps/spa/build/client` from the API's origin, so this variant has
-no deploy script of its own. The package.json the module vendors carries no `dev` and no `deploy`:
+| Variant                  | Extra file                | `scripts.merge` on `apps/spa/package.json`                                | Extra dependency |
+| ------------------------ | ------------------------- | ------------------------------------------------------------------------- | ---------------- |
+| `cloudflare`             | `apps/spa/wrangler.jsonc` | `dev`: `react-router dev`, `deploy`: `wrangler pages deploy build/client` | `wrangler` (dev) |
+| `dockerfile`             | none                      | `dev`: `react-router dev`                                                 | none             |
+| `cloudflare-without-api` | `apps/spa/wrangler.jsonc` | as `cloudflare`                                                           | `wrangler` (dev) |
+| `dockerfile-without-api` | none                      | as `dockerfile`                                                           | none             |
+
+The `dockerfile` provider serves `apps/spa/build/client` from the API's origin, or alone when the
+project has no API (its container starts `packages/api-runtime/src/main.ts`, which picks), so neither
+variant has a deploy script of its own. The package.json the module vendors carries no `dev` and no `deploy`:
 a patch is computed on the template, so a script already in it would be reported `skipped` on the
 first install. The dependency maps come from the variant (spec 035), pinned exactly.
 

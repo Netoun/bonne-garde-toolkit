@@ -6,7 +6,7 @@
   "title": "Cloudflare",
   "description": "Elysia on Cloudflare Workers, deployed with wrangler.",
   "peers": {},
-  "checks": ["cd packages/api-runtime && bun run typecheck && bun run test"],
+  "checks": ["cd packages/api-runtime && vp run typecheck && vp run test"],
   "variants": [
     {
       "key": "default",

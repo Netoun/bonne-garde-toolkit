@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "vite-plus/test";
 import { extractKeyFromUrl, generateKey, publicUrlFor, R2Error, validateKey } from "./r2";
 
 const PUBLIC_URL = "https://media.example.com";

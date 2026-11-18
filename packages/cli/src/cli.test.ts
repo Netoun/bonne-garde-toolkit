@@ -1,6 +1,15 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { addItems } from "./add";
@@ -30,7 +39,7 @@ async function freshProject(prefix: string): Promise<string> {
     git: false,
     install: false,
     registry: `local:${join(repoRoot(), "registry")}`,
-  });
+  }).then(({ target }) => target);
 }
 
 /** The commands the CLI prints name the runner of the package manager that started it: npm, here. */
@@ -741,7 +750,7 @@ describe("bonne-garde add <module>", () => {
 
     // `add` prints the checks the module declares and does not run them (050 step 15).
     expect(stderr).toContain("checks were not run");
-    expect(stderr).toContain("cd packages/api-runtime && bun run typecheck && bun run test");
+    expect(stderr).toContain("cd packages/api-runtime && vp run typecheck && vp run test");
     expect(code).toBe(0);
     const out = JSON.parse(stdout) as ModuleOutput;
     expect(out.written).toEqual(CLOUDFLARE_FILES);
@@ -773,7 +782,7 @@ describe("bonne-garde add <module>", () => {
     ).toMatchObject({
       name: "@cli-app/api-runtime",
       exports: { ".": "./src/index.ts" },
-      scripts: { test: "bun test" },
+      scripts: { test: "vp test" },
       dependencies: { elysia: "1.4.29" },
       devDependencies: { "@cloudflare/workers-types": "5.20260804.1", "@types/node": "26.1.2" },
     });
@@ -788,11 +797,13 @@ describe("bonne-garde add <module>", () => {
       files: Record<string, { owner: string; sha256: string }>;
       regions: Record<string, Record<string, string>>;
     };
+    // 070: a module is recorded at the lockstep version, the running CLI package's.
+    const cli = JSON.parse(await readFile(join(import.meta.dir, "../package.json"), "utf8"));
     expect(bg.modules.provider).toEqual([
       expect.objectContaining({
         id: "cloudflare",
         variant: "default",
-        version: "0.1.0",
+        version: cli.version,
         options: {},
         patches: [],
         intentions: { applied: [], skipped: {} },
@@ -886,6 +897,7 @@ describe("bonne-garde add <module>", () => {
       "packages/api-runtime/package.json",
       "packages/api-runtime/src/index.test.ts",
       "packages/api-runtime/src/index.ts",
+      "packages/api-runtime/src/main.ts",
       "packages/api-runtime/tsconfig.json",
     ]);
     expect(out.modules[0]?.env.map((key) => key.name)).toEqual([
@@ -906,10 +918,11 @@ describe("bonne-garde add <module>", () => {
       await readFile(join(target, "packages/api-runtime/package.json"), "utf8"),
     ) as { name: string; dependencies: Record<string, string> };
     expect(runtime.name).toBe("@cli-app/api-runtime");
-    expect(runtime.dependencies).toEqual({ elysia: "1.4.29" });
+    expect(runtime.dependencies).toEqual({ elysia: "1.4.29", srvx: "1.0.8" });
     // 09 (c): a project with no SPA workspace has to build, so no `--filter '<scope>/spa'`.
     const dockerfile = await readFile(join(target, "Dockerfile"), "utf8");
-    expect(dockerfile).toContain("RUN bun run build\n");
+    // The package manager package.json pins runs the root build script.
+    expect(dockerfile).toContain('&& "${pinned%@*}" run build\n');
     expect(dockerfile).not.toContain("--filter");
     expect(dockerfile).not.toContain("{{SCOPE}}");
   });
@@ -921,6 +934,7 @@ describe("bonne-garde add <module>", () => {
       target,
       "add",
       "utils",
+      "pm/bun",
       "dockerfile",
       "ui/shadcn",
       "--yes",
@@ -930,7 +944,11 @@ describe("bonne-garde add <module>", () => {
     expect(code).toBe(0);
     const out = JSON.parse(stdout) as ModuleOutput & { items: string[] };
     expect(out.items).toEqual(["utils"]);
-    expect(out.modules.map((m) => m.module)).toEqual(["provider/dockerfile", "ui/shadcn"]);
+    expect(out.modules.map((m) => m.module)).toEqual([
+      "pm/bun",
+      "provider/dockerfile",
+      "ui/shadcn",
+    ]);
   });
 
   test("an unknown name fails with suggestions from both catalogs", async () => {
@@ -959,7 +977,7 @@ describe("bonne-garde add <module>", () => {
 });
 
 describe("bonne-garde add config/branding: scripts.merge, the first tier-2 patch (060)", () => {
-  const SCRIPT = "bun packages/config/scripts/gen-branding.ts";
+  const SCRIPT = "tsx packages/config/scripts/gen-branding.ts";
   const REGION = "scripts.gen:branding";
 
   async function rootScripts(target: string): Promise<Record<string, string>> {
@@ -1130,7 +1148,7 @@ describe("bonne-garde add config/branding: scripts.merge, the first tier-2 patch
         type: "scripts.merge",
         file: "package.json",
         intent:
-          'The scripts.merge patch of config/branding makes package.json hold: scripts.gen:branding = "bun packages/config/scripts/gen-branding.ts".',
+          'The scripts.merge patch of config/branding makes package.json hold: scripts.gen:branding = "tsx packages/config/scripts/gen-branding.ts".',
         reason: failed.reason,
         staged: `.bg/add/01-${id.split("/")[2]}.md`,
       },
@@ -1279,6 +1297,7 @@ describe("bonne-garde add api/elysia: a module that vendors a file and patches i
     const first = await runBonneGarde(
       target,
       "add",
+      "pm/bun",
       "config/branding",
       `provider/${provider}`,
       "api/elysia",
@@ -1350,7 +1369,7 @@ describe("bonne-garde add api/elysia: a module that vendors a file and patches i
     expect(api?.devDependencies).toEqual({});
     expect(api?.patches[0]?.regions).toEqual([{ region: "scripts.dev", status: "applied" }]);
     const scripts = await scriptsOf(target);
-    expect(scripts.dev).toBe("bun --watch src/index.ts");
+    expect(scripts.dev).toBe("tsx watch src/index.ts");
     expect(scripts).not.toHaveProperty("deploy");
     expect((await runBonneGarde(target, "doctor", "--strict")).code).toBe(0);
   });
@@ -1516,7 +1535,7 @@ describe("bonne-garde add: package.dependencies (060)", () => {
       git: false,
       install: false,
       registry: await wiringRegistry(),
-    });
+    }).then(({ target }) => target);
   }
 
   const REGIONS = [
@@ -1558,18 +1577,18 @@ describe("bonne-garde add: package.dependencies (060)", () => {
       devDependencies: Record<string, string>;
     };
     // `{{SCOPE}}` is rendered in the name; the new `dependencies` map sits after `scripts`, and
-    // `drizzle-kit` between `@types/bun` and `husky`, which is where `vp fmt` has it.
+    // `drizzle-kit` between `@types/node` and `husky`, which is where `vp fmt` has it.
     expect(after.dependencies).toEqual({ "@cli-app/db": "workspace:*", zod: "4.0.0" });
-    expect(Object.keys(JSON.parse(text) as object).slice(-4)).toEqual([
+    expect(Object.keys(JSON.parse(text) as object).slice(-3)).toEqual([
       "scripts",
       "dependencies",
       "devDependencies",
-      "packageManager",
     ]);
     expect(Object.keys(after.devDependencies)).toEqual([
-      "@types/bun",
+      "@types/node",
       "drizzle-kit",
       "husky",
+      "tsx",
       "typescript",
       "vite-plus",
     ]);
@@ -1948,7 +1967,7 @@ describe("bonne-garde add: the intentions a module authors (065)", () => {
       git: false,
       install: false,
       registry: await launcherRegistry(),
-    });
+    }).then(({ target }) => target);
   }
 
   test("is staged as written with the scope rendered, reported by doctor, and closed by bonne-garde record", async () => {
@@ -2168,5 +2187,174 @@ describe("bonne-garde intentions lint: the intentions modules author (065)", () 
       releases: [],
       modules: expect.any(Array),
     });
+  });
+});
+
+describe("bg create with choices (040)", () => {
+  const registry = () => `local:${join(repoRoot(), "registry")}`;
+
+  test("adds what the flags name, and reports what the add left pending as bg add does", async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
+    dirs.push(parent);
+
+    const { stdout, stderr, code } = await runBonneGarde(
+      parent,
+      "create",
+      "app",
+      "--apps",
+      "api,spa,ssr,static",
+      "--features",
+      "db,auth,storage,email,deploy,backoffice",
+      "--yes",
+      "--no-git",
+      "--no-install",
+      "--registry",
+      registry(),
+    );
+
+    expect(code).toBe(0);
+    expect(stdout).toContain(
+      `created ${join(parent, "app")} with api, spa, ssr, static on cloudflare`,
+    );
+    // --no-install: the line says what is left to do, not that it was installed.
+    expect(stdout).toContain("not installed: run `bun install` in it");
+    expect(stdout).not.toContain("installed with");
+    expect(stderr).toContain("pending intention");
+    expect(stderr).toContain("read .bg/add/session.md");
+    const bg = JSON.parse(await readFile(join(parent, "app", "bg.json"), "utf8")) as {
+      modules: Record<string, unknown>;
+    };
+    expect(Object.keys(bg.modules)).toContain("deploy");
+  });
+
+  test("takes --provider, and leaves out what no answer names", async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
+    dirs.push(parent);
+
+    const { code } = await runBonneGarde(
+      parent,
+      "create",
+      "app",
+      "--apps",
+      "api",
+      "--provider",
+      "dockerfile",
+      "--yes",
+      "--no-git",
+      "--no-install",
+      "--registry",
+      registry(),
+    );
+
+    expect(code).toBe(0);
+    const bg = JSON.parse(await readFile(join(parent, "app", "bg.json"), "utf8")) as {
+      modules: Record<string, { id: string }[]>;
+    };
+    expect(bg.modules.provider?.map(({ id }) => id)).toEqual(["dockerfile"]);
+    expect(bg.modules).not.toHaveProperty("web");
+    expect(bg.modules).not.toHaveProperty("ui");
+  });
+
+  test("refuses a set the planner refuses with its message, and writes nothing", async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
+    dirs.push(parent);
+
+    const { stderr, code } = await runBonneGarde(
+      parent,
+      "create",
+      "app",
+      "--apps",
+      "ssr",
+      "--provider",
+      "dockerfile",
+      "--yes",
+      "--registry",
+      registry(),
+    );
+
+    expect(code).toBe(1);
+    expect(stderr).toContain("web/ssr accepts only cloudflare for provider");
+    expect(await readdir(parent)).toEqual([]);
+  });
+
+  test("refuses features with no app, and an unknown value naming the flag", async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
+    dirs.push(parent);
+
+    const noApp = await runBonneGarde(parent, "create", "app", "--features", "auth", "--yes");
+    expect(noApp.code).toBe(1);
+    expect(noApp.stderr).toContain("--provider and --features need an app (--apps)");
+
+    const unknown = await runBonneGarde(parent, "create", "app", "--apps", "api,web", "--yes");
+    expect(unknown.code).toBe(1);
+    expect(unknown.stderr).toContain("--apps: unknown value web");
+    expect(await readdir(parent)).toEqual([]);
+  });
+
+  test("--help and -h print the usage and create nothing; an unknown option is refused, never taken for a directory", async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
+    dirs.push(parent);
+
+    for (const flag of ["--help", "-h"]) {
+      const help = await runBonneGarde(parent, "create", flag);
+      expect(help.code).toBe(0);
+      expect(help.stdout).toContain("bonne-garde create");
+    }
+    const unknown = await runBonneGarde(parent, "create", "--bogus", "--yes", "--no-install");
+    expect(unknown.code).toBe(1);
+    expect(unknown.stderr).toContain("create: unknown option --bogus");
+    expect(await readdir(parent)).toEqual([]);
+  });
+
+  test("reads a relative local registry from where it runs, and the project records it absolute", async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
+    dirs.push(parent);
+    const absolute = join(repoRoot(), "registry");
+
+    const { stderr, code } = await runBonneGarde(
+      parent,
+      "create",
+      "app",
+      "--apps",
+      "api",
+      "--provider",
+      "dockerfile",
+      "--yes",
+      "--no-git",
+      "--no-install",
+      "--registry",
+      `local:${relative(parent, absolute)}`,
+    );
+
+    expect(stderr).not.toContain("ENOENT");
+    expect(code).toBe(0);
+    const bg = JSON.parse(await readFile(join(parent, "app", "bg.json"), "utf8")) as {
+      registries: Record<string, string>;
+    };
+    expect(bg.registries["@bg"]).toBe(`local:${absolute}`);
+  });
+
+  test("without a TTY and without flags, creates the base and its package manager without asking", async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), "bg-cli-choices-")));
+    dirs.push(parent);
+
+    const { stdout, code } = await runBonneGarde(
+      parent,
+      "create",
+      "app",
+      "--no-git",
+      "--no-install",
+      "--registry",
+      registry(),
+    );
+
+    expect(code).toBe(0);
+    // The base and the package manager `create` was started from, which every project has (040).
+    expect(stdout).toContain(`created ${join(parent, "app")} with bun\n`);
+    const bg = JSON.parse(await readFile(join(parent, "app", "bg.json"), "utf8")) as {
+      modules: Record<string, { id: string }[]>;
+    };
+    expect(Object.keys(bg.modules)).toEqual(["pm"]);
+    expect(bg.modules.pm?.map(({ id }) => id)).toEqual(["bun"]);
   });
 });

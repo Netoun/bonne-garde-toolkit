@@ -92,7 +92,7 @@ development (see [Environment](#environment)).
 
 `my-app-media` and `api.my-app.com` are the placeholders the other modules use for the project's names
 (`bonne-garde add` renders `{{SCOPE}}` and nothing else): replace them by hand. The bucket itself is created with
-`bunx wrangler r2 bucket create <name>`; `wrangler dev` runs against a local one.
+`wrangler r2 bucket create <name>` (in `apps/api`); `wrangler dev` runs against a local one.
 
 ## Environment
 
@@ -134,7 +134,7 @@ tables. The file imports nothing of the project but that, and runs nothing when 
 `organization_id` cascades on delete; **`author_id` does not**. A media of an organization goes when the
 organization is deleted, but one with no organization (the column is nullable) stops the delete of its
 author: `DELETE FROM "user"` fails on that foreign key. This module adds no step to a reset, and needs none:
-`bun run db:reset` is `orm/drizzle`'s, it empties every table the barrel exports, and `medias` is in the barrel
+`vp run db:reset` is `orm/drizzle`'s, it empties every table the barrel exports, and `medias` is in the barrel
 because this module re-exports it, so the table is emptied before the `user` and `organization` it points at.
 `media.e2e.test.ts` runs the reset's statements over a media with an author and no organization (and one with
 both) on real SQLite with foreign keys on, and golden puts the first in the local D1 before it runs `db:reset`.
@@ -154,9 +154,9 @@ patches on four known seams, each with the sentence a failure turns into a pendi
 | `ts.addNamedExport`    | `packages/db/src/schema/index.ts` | `exports[{{SCOPE}}/storage/schema]`                                                                  |
 
 `.use(mediaModule)` lands after `.use(authModule)`. The export is `medias` and `mediasRelations` (a contract test
-compares it with `schema.ts`), so `bun run db:generate` in `packages/db` writes `medias` into the project's one
+compares it with `schema.ts`), so `vp run db:generate` in `packages/db` writes `medias` into the project's one
 migration, and `createDB` sees it. The wiring adds a `db` and `storage` workspace cycle (the barrel re-exports
-storage's table, storage reads `createDB`), like the one `auth` has; Bun, `tsc` and `bun test` resolve it.
+storage's table, storage reads `createDB`), like the one `auth` has; bun and pnpm, `tsc` and Vitest resolve it.
 
 ## Tests
 

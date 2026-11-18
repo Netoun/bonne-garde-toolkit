@@ -33,9 +33,10 @@ function useLoadApp(isPending: boolean): UseLoadAppReturn {
     previousIsPendingRef.current = isPending;
 
     if (!isPending && !hasLoadedOnceRef.current) {
-      hasLoadedOnceRef.current = true;
-
+      // Set when the timer runs, not when it is scheduled: StrictMode's cleanup clears this timer, and
+      // its second run has to schedule another.
       const contentShowTimer = setTimeout(() => {
+        hasLoadedOnceRef.current = true;
         if (!showContentRef.current) {
           showContentRef.current = true;
           handleContentShow();

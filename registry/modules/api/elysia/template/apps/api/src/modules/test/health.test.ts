@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "vite-plus/test";
 import { Elysia } from "elysia";
 import { treaty } from "@elysiajs/eden";
 

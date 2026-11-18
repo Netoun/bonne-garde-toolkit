@@ -27,16 +27,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: package.json
-      - run: bun install --frozen-lockfile
-      - run: bun run check
-      - run: bun run typecheck
-      - run: bun run test
+      # The package manager's own: the project's `pm` module ships the action.
+      - uses: ./.github/actions/setup
+      - run: vp run check
+      - run: vp run typecheck
+      - run: vp run test
       # What would be deployed, planned from the tree: a config that cannot be deployed fails here,
       # before the job that holds the secrets starts.
-      - run: bun run deploy:cloudflare --dry-run
+      - run: vp run deploy:cloudflare --dry-run
 
   deploy:
     name: Deploy to Cloudflare
@@ -49,13 +47,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: package.json
-      - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/setup
       # Builds every app, then migrates and deploys them. Which apps, and in what order, is
       # scripts/deploy-cloudflare.ts's to say: the workflow does not change when a module is added.
-      - run: bun run deploy:cloudflare
+      - run: vp run deploy:cloudflare
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

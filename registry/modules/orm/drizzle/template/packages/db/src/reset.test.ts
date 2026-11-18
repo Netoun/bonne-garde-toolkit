@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { getTableName, is, sql } from "drizzle-orm";
 import {
   integer,
@@ -99,7 +99,7 @@ describe("resetStatements", () => {
       { id: 2, parentId: 1 },
     ]);
     // Without the order it would not: this is the failure `auth`'s own reset had once a `medias` row existed.
-    expect(() => db.run(sql`DELETE FROM "users"`)).toThrow(/Failed to run the query/);
+    await expect(db.run(sql`DELETE FROM "users"`)).rejects.toThrow(/Failed query/);
     expect(await db.select().from(users)).toEqual([{ id: "u1" }]);
 
     for (const statement of resetStatements(schema)) {

@@ -11,7 +11,7 @@
     "db": ["d1"],
     "orm": ["drizzle"]
   },
-  "checks": ["cd packages/auth && bun run typecheck && bun run test"],
+  "checks": ["cd packages/auth && vp run typecheck && vp run test"],
   "variants": [
     {
       "key": "default",
@@ -26,6 +26,7 @@
         "{{SCOPE}}/api-runtime": "workspace:*",
         "{{SCOPE}}/db": "workspace:*"
       },
+      "devDependencies": { "auth": "1.6.26" },
       "copy": [
         "packages/auth/package.json",
         "packages/auth/src/auth.cli.test.ts",

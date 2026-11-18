@@ -14,11 +14,15 @@ bunx bonne-garde add web/ssr
 | ---------- | ------------ | -------------------------------------------------------------------------------------------------- |
 | `provider` | `cloudflare` | `workers/app.ts` is a Worker, `vite.config.ts` loads `@cloudflare/vite-plugin`: see below          |
 | `config`   | `branding`   | `root.tsx`, the home page and the test read `branding`; `vite.config.ts` loads its favicons plugin |
-| `api`      | `elysia`     | `lib/api.server.ts` types the Eden client with `type App` from `{{SCOPE}}/api/app`                 |
 | `ui`       | `shadcn`     | `root.tsx` imports `{{SCOPE}}/ui/globals.css`                                                      |
 
-One variant, `cloudflare`, which copies `wrangler.jsonc` and adds `dev` (`react-router dev`) and
-`deploy` (`wrangler deploy`) to the vendored `apps/ssr/package.json` with `scripts.merge` (spec 060).
+`api` (`elysia`) is an optional peer (035). The variant `cloudflare`, matched on it, copies
+`lib/api.server.ts` and its test: the Eden client typed with `type App` from `{{SCOPE}}/api/app`,
+which declares `API_URL` on `WorkerEnv`, and `jsonc.merge` writes `API_URL` into `wrangler.jsonc`.
+`cloudflare-without-api`, matched on the provider alone, writes none of that (spec 040).
+
+Both copy `wrangler.jsonc` and add `dev` (`react-router dev`) and `deploy` (`wrangler deploy`) to the
+vendored `apps/ssr/package.json` with `scripts.merge` (spec 060).
 `wrangler`, `@cloudflare/vite-plugin` and `@cloudflare/workers-types` are dev dependencies.
 
 **Why `cloudflare` only** (080, step 3): the app is a Worker, and the `dockerfile` provider has no

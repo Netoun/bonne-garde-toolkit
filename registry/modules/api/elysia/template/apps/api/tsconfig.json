@@ -3,7 +3,7 @@
   "compilerOptions": {
     "lib": ["ESNext"],
     "noUncheckedIndexedAccess": false,
-    "types": ["bun"]
+    "types": ["node"]
   },
   "include": ["src"],
   "exclude": ["src/**/*.test.ts"]

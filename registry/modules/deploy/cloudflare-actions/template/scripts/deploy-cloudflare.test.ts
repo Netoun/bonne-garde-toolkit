@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -19,7 +19,7 @@ type App = {
   /** The `wrangler.jsonc`, or none for an app that is not a Cloudflare one. */
   wrangler?: string;
   scripts?: Record<string, string>;
-  /** The body of `src/vite-env.d.ts`, which `web/spa` and `web/static` ship to type what their build reads. */
+  /** The body of `src/vite-env.d.ts`, where an app may type what its build reads. */
   viteEnv?: string;
 };
 
@@ -102,15 +102,15 @@ describe("planDeploy", () => {
     await project(FULL);
 
     expect(summary(await planDeploy(root))).toEqual([
-      "build apps/api: bun run build",
-      "build apps/spa: bun run build",
-      "build apps/ssr: bun run build",
-      "build apps/static: bun run build",
-      "migrate apps/api: bun run db:migrate:remote --env production",
-      "deploy apps/api: bun run deploy --env production",
-      "deploy apps/spa: bun run deploy --project-name my-app-spa --branch main",
-      "deploy apps/ssr: bun run deploy --env production",
-      "deploy apps/static: bun run deploy --project-name my-app-static --branch main",
+      "build apps/api: vp run build",
+      "build apps/spa: vp run build",
+      "build apps/ssr: vp run build",
+      "build apps/static: vp run build",
+      "migrate apps/api: vp run db:migrate:remote --env production",
+      "deploy apps/api: vp run deploy --env production",
+      "deploy apps/spa: vp run deploy --project-name my-app-spa --branch main",
+      "deploy apps/ssr: vp run deploy --env production",
+      "deploy apps/static: vp run deploy --project-name my-app-static --branch main",
     ]);
   });
 
@@ -134,10 +134,10 @@ describe("planDeploy", () => {
     ]);
 
     expect(summary(await planDeploy(root))).toEqual([
-      "build apps/alpha: bun run build",
-      "migrate apps/zeta: bun run db:migrate:remote --env production",
-      "deploy apps/zeta: bun run deploy --env production",
-      "deploy apps/alpha: bun run deploy --project-name alpha --branch main",
+      "build apps/alpha: vp run build",
+      "migrate apps/zeta: vp run db:migrate:remote --env production",
+      "deploy apps/zeta: vp run deploy --env production",
+      "deploy apps/alpha: vp run deploy --project-name alpha --branch main",
     ]);
   });
 
@@ -147,7 +147,7 @@ describe("planDeploy", () => {
     ]);
 
     expect(summary(await planDeploy(root))).toEqual([
-      "deploy apps/api: bun run deploy --env production",
+      "deploy apps/api: vp run deploy --env production",
     ]);
   });
 
@@ -157,7 +157,7 @@ describe("planDeploy", () => {
     const steps = await planDeploy(root);
 
     expect(steps.at(-1)?.argv).toEqual([
-      "bun",
+      "vp",
       "run",
       "deploy",
       "--project-name",
@@ -176,7 +176,7 @@ describe("planDeploy", () => {
     await write("apps/notes.txt", "a file, not an app");
 
     expect(summary(await planDeploy(root))).toEqual([
-      "deploy apps/api: bun run deploy --env production",
+      "deploy apps/api: vp run deploy --env production",
     ]);
   });
 
@@ -357,7 +357,7 @@ describe("deploy", () => {
 
     await deploy(root, CREDENTIALS, recorder().run, (line) => lines.push(line));
 
-    expect(lines.join("\n")).toContain("apps/api: bun run deploy --env production");
+    expect(lines.join("\n")).toContain("apps/api: vp run deploy --env production");
     expect(lines.join("\n")).not.toContain("token");
     expect(lines.join("\n")).not.toContain("account");
   });
@@ -395,7 +395,7 @@ describe("main", () => {
           phase: "migrate",
           app: "api",
           cwd: "apps/api",
-          argv: ["bun", "run", "db:migrate:remote", "--env", "production"],
+          argv: ["vp", "run", "db:migrate:remote", "--env", "production"],
         },
       ]),
     });
@@ -500,6 +500,16 @@ interface ImportMetaEnv {
     ]);
 
     expect(await buildNeeds(root)).toEqual({ "apps/spa": ["VITE_A", "VITE_B", "VITE_C"] });
+  });
+
+  test("reads a declaration in any source file of the app: web/spa types VITE_API_URL in src/lib/api.ts, beside the client that reads it", async () => {
+    await project([{ dir: "spa", wrangler: pages("my-app-spa"), scripts: SCRIPTS, viteEnv: "" }]);
+    await write(
+      "apps/spa/src/lib/api.ts",
+      `declare global {\n  interface ImportMetaEnv {\n    readonly VITE_API_URL: string;\n  }\n}\n`,
+    );
+
+    expect(await buildNeeds(root)).toEqual({ "apps/spa": ["VITE_API_URL"] });
   });
 
   test("an app that is not built has no need, and an app without a vite-env.d.ts none either", async () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "vite-plus/test";
 import { config, resolveAppConfig } from "./app.config";
 
 const provided = { API_URL: "https://api.example.test" };

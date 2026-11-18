@@ -80,6 +80,8 @@ import {
   MODULE_TABLES,
   MODULES,
   PATCHED,
+  packageManagerOf,
+  runnerOf,
   publishedPort,
   ranTests,
   hasFeatures,
@@ -320,6 +322,7 @@ describe("the golden project and modules", () => {
     const { modules } = selectModules(listing, MODULES, EXCLUDED_MODULES);
 
     expect(modules).toEqual([
+      "pm/pnpm",
       "provider/cloudflare",
       "tooling/vite-plus",
       "config/branding",
@@ -335,11 +338,25 @@ describe("the golden project and modules", () => {
       "dev/portless",
       "email/resend",
       "deploy/cloudflare-actions",
+      "pm/bun",
       "provider/dockerfile",
     ]);
   });
 
-  test("each configuration has one provider, and every provider the registry has is a configuration", async () => {
+  test("each package manager drives at least one configuration, the one with the most modules on pnpm", () => {
+    const managers = CONFIGURATIONS.map((configuration) => packageManagerOf(configuration));
+
+    expect([...new Set(managers)].sort()).toEqual(["bun", "pnpm"]);
+    expect(packageManagerOf(CONFIGURATIONS[0] ?? { name: "none", modules: [], items: false })).toBe(
+      "pnpm",
+    );
+    expect(runnerOf("pnpm").run("db:seed")).toEqual(["pnpm", "run", "db:seed"]);
+    expect(runnerOf("pnpm").exec("wrangler", "d1")).toEqual(["pnpm", "exec", "wrangler", "d1"]);
+    expect(runnerOf("bun").exec("tsx", "x.ts")).toEqual(["bun", "x", "tsx", "x.ts"]);
+    expect(() => runnerOf("yarn")).toThrow(/yarn/);
+  });
+
+  test("each configuration has one provider, and every provider the registry has is in one", async () => {
     const catalog = await loadLocalRegistry(
       join(resolve(import.meta.dir, ".."), "registry/registry.json"),
     );
@@ -351,7 +368,7 @@ describe("the golden project and modules", () => {
       modules.filter((name) => name.startsWith("provider/")),
     );
     expect(used.every((names) => names.length === 1)).toBe(true);
-    expect(used.flat().sort()).toEqual([...providers].sort());
+    expect([...new Set(used.flat())].sort()).toEqual([...providers].sort());
     expect(Object.keys(EXCLUDED_MODULES)).toEqual([]);
   });
 
@@ -646,7 +663,11 @@ describe("the golden project and patches", () => {
       // What `bonne-garde add` does: among the variants whose `match` the configuration satisfies, the most specific.
       const regions: Record<string, string[]> = {};
       for (const { manifest } of catalog.modules) {
-        if (!modules.includes(`${manifest.category}/${manifest.id}`)) {
+        // The package manager's module is `create --pm`'s, not golden's `bg add`'s.
+        if (
+          !modules.includes(`${manifest.category}/${manifest.id}`) ||
+          manifest.category === "pm"
+        ) {
           continue;
         }
         const satisfied = manifest.variants.filter((variant) =>
@@ -713,8 +734,8 @@ describe("the golden project and patches", () => {
           "scripts.db:reset",
           "scripts.db:studio",
         ],
-        "web/spa": ["scripts.deploy", "scripts.dev"],
-        "web/ssr": ["scripts.deploy", "scripts.dev"],
+        "web/spa": ["env.production.vars.API_URL", "scripts.deploy", "scripts.dev", "vars.API_URL"],
+        "web/ssr": ["env.production.vars.API_URL", "scripts.deploy", "scripts.dev", "vars.API_URL"],
         "web/static": ["scripts.deploy", "scripts.dev"],
         "dev/portless": [
           "devDependencies.portless",
@@ -724,7 +745,7 @@ describe("the golden project and patches", () => {
         // The import into mailer.ts is the intention's: the file an intention edits is region-checked
         // by the `intent[<id>]` region `bonne-garde record` leaves, not by a patch that imports for it.
         "email/resend": ["dependencies.@app/email"],
-        "deploy/cloudflare-actions": ["scripts.deploy:cloudflare"],
+        "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
       },
       dockerfile: {
         "config/branding": ["scripts.gen:branding"],
@@ -735,6 +756,13 @@ describe("the golden project and patches", () => {
           "scripts.dev:lan:portless",
           "scripts.dev:portless",
         ],
+      },
+      fronts: {
+        "config/branding": ["scripts.gen:branding"],
+        "web/spa": ["scripts.deploy", "scripts.dev"],
+        "web/ssr": ["scripts.deploy", "scripts.dev"],
+        "web/static": ["scripts.deploy", "scripts.dev"],
+        "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
       },
     });
   });
@@ -826,8 +854,11 @@ describe("the deploy phases (what golden proves of deploy/cloudflare-actions wit
   const cloudflare = CONFIGURATIONS.find(({ name }) => name === "cloudflare");
   const dockerfile = CONFIGURATIONS.find(({ name }) => name === "dockerfile");
 
-  test("the cloudflare configuration installs the module, and the dockerfile one has to refuse it", () => {
-    expect(CONFIGURATIONS.filter(hasDeploy).map(({ name }) => name)).toEqual(["cloudflare"]);
+  test("the cloudflare configurations install the module, and the dockerfile one has to refuse it", () => {
+    expect(CONFIGURATIONS.filter(hasDeploy).map(({ name }) => name)).toEqual([
+      "cloudflare",
+      "fronts",
+    ]);
     expect(CONFIGURATIONS.filter(refusesDeploy).map(({ name }) => name)).toEqual(["dockerfile"]);
     // Every configuration either installs it or is checked to refuse it: none is left unexamined.
     for (const configuration of CONFIGURATIONS) {
@@ -841,15 +872,15 @@ describe("the deploy phases (what golden proves of deploy/cloudflare-actions wit
       CONFIGURATIONS.filter(hasDeploy).map(({ name }) => name),
     );
     expect(DEPLOY_PLAN.cloudflare).toEqual([
-      "build apps/api: bun run build",
-      "build apps/spa: bun run build",
-      "build apps/ssr: bun run build",
-      "build apps/static: bun run build",
-      "migrate apps/api: bun run db:migrate:remote --env production",
-      "deploy apps/api: bun run deploy --env production",
-      "deploy apps/spa: bun run deploy --project-name my-app-spa --branch main",
-      "deploy apps/ssr: bun run deploy --env production",
-      "deploy apps/static: bun run deploy --project-name my-app-static --branch main",
+      "build apps/api: vp run build",
+      "build apps/spa: vp run build",
+      "build apps/ssr: vp run build",
+      "build apps/static: vp run build",
+      "migrate apps/api: vp run db:migrate:remote --env production",
+      "deploy apps/api: vp run deploy --env production",
+      "deploy apps/spa: vp run deploy --project-name my-app-spa --branch main",
+      "deploy apps/ssr: vp run deploy --env production",
+      "deploy apps/static: vp run deploy --project-name my-app-static --branch main",
     ]);
     // One build and one deploy per app module of the configuration, and a migration because it has db/d1.
     const modules = cloudflare?.modules ?? [];
@@ -868,28 +899,28 @@ describe("the deploy phases (what golden proves of deploy/cloudflare-actions wit
     expect(plan).toHaveLength(apps.length * 2 + 1);
   });
 
-  describe("readDeployPlan (what `bun run deploy:cloudflare --dry-run` prints)", () => {
+  describe("readDeployPlan (what `vp run deploy:cloudflare --dry-run` prints)", () => {
     const printed = JSON.stringify({
       environment: "production",
       buildVars: ["VITE_API_URL"],
       steps: [
-        { phase: "build", app: "api", cwd: "apps/api", argv: ["bun", "run", "build"] },
+        { phase: "build", app: "api", cwd: "apps/api", argv: ["vp", "run", "build"] },
         {
           phase: "deploy",
           app: "api",
           cwd: "apps/api",
-          argv: ["bun", "run", "deploy", "--env", "production"],
+          argv: ["vp", "run", "deploy", "--env", "production"],
         },
-        { phase: "build", app: "spa", cwd: "apps/spa", argv: ["bun", "run", "build"] },
+        { phase: "build", app: "spa", cwd: "apps/spa", argv: ["vp", "run", "build"] },
       ],
     });
 
     test("reads each step as `<phase> <cwd>: <command>`, the apps once each in order, and the variable names", () => {
       expect(readDeployPlan(printed)).toEqual({
         steps: [
-          "build apps/api: bun run build",
-          "deploy apps/api: bun run deploy --env production",
-          "build apps/spa: bun run build",
+          "build apps/api: vp run build",
+          "deploy apps/api: vp run deploy --env production",
+          "build apps/spa: vp run build",
         ],
         apps: ["apps/api", "apps/spa"],
         buildVars: ["VITE_API_URL"],
@@ -990,8 +1021,8 @@ describe("the deploy phases (what golden proves of deploy/cloudflare-actions wit
 
   describe("expectDeployPlan", () => {
     const expected = [
-      "build apps/api: bun run build",
-      "deploy apps/api: bun run deploy --env production",
+      "build apps/api: vp run build",
+      "deploy apps/api: vp run deploy --env production",
     ];
 
     test("passes the same list in the same order", () => {
@@ -1004,7 +1035,7 @@ describe("the deploy phases (what golden proves of deploy/cloudflare-actions wit
       );
       expect(() => expectDeployPlan(expected.slice(0, 1), expected)).toThrow(/step 2.*missing/s);
       expect(() =>
-        expectDeployPlan([...expected, "deploy apps/x: bun run deploy"], expected),
+        expectDeployPlan([...expected, "deploy apps/x: vp run deploy"], expected),
       ).toThrow(/step 3.*deploy apps\/x/s);
     });
   });
@@ -1072,30 +1103,43 @@ describe("the deploy phases (what golden proves of deploy/cloudflare-actions wit
         ),
       ).text();
     const scripts = ["check", "typecheck", "test", "deploy:cloudflare"];
+    const setup = (path: string) => path === "./.github/actions/setup";
 
-    test("passes the workflow the module ships, in a project with the scripts it runs", async () => {
+    test("passes the workflow the module ships, in a project with the scripts and the setup it runs", async () => {
       const workflow = await real();
 
-      expect(() => expectWorkflow(workflow, scripts)).not.toThrow();
+      expect(() => expectWorkflow(workflow, scripts, setup)).not.toThrow();
     });
 
     test("fails a script the project does not have, naming it", async () => {
       const workflow = await real();
 
-      expect(() => expectWorkflow(workflow, ["check", "typecheck", "deploy:cloudflare"])).toThrow(
-        /bun run test/,
+      expect(() =>
+        expectWorkflow(workflow, ["check", "typecheck", "deploy:cloudflare"], setup),
+      ).toThrow(/vp run test/);
+    });
+
+    test("fails a local action the project does not ship, which its pm module does", async () => {
+      const workflow = await real();
+
+      expect(() => expectWorkflow(workflow, scripts, () => false)).toThrow(
+        /\.\/\.github\/actions\/setup/,
       );
     });
 
     test("fails a workflow that is not YAML, one that runs on push, and one with no deploy job", async () => {
       const workflow = await real();
 
-      expect(() => expectWorkflow("jobs: [", scripts)).toThrow(/YAML/);
+      expect(() => expectWorkflow("jobs: [", scripts, setup)).toThrow(/YAML/);
       expect(() =>
-        expectWorkflow(workflow.replace("on: workflow_dispatch", "on: push"), scripts),
+        expectWorkflow(workflow.replace("on: workflow_dispatch", "on: push"), scripts, setup),
       ).toThrow(/workflow_dispatch/);
       expect(() =>
-        expectWorkflow("on: workflow_dispatch\njobs:\n  validate:\n    steps: []\n", scripts),
+        expectWorkflow(
+          "on: workflow_dispatch\njobs:\n  validate:\n    steps: []\n",
+          scripts,
+          setup,
+        ),
       ).toThrow(/deploy/);
     });
 
@@ -1104,8 +1148,9 @@ describe("the deploy phases (what golden proves of deploy/cloudflare-actions wit
 
       expect(() =>
         expectWorkflow(
-          workflow.replace("run: bun run deploy:cloudflare\n", "run: wrangler deploy\n"),
+          workflow.replace("run: vp run deploy:cloudflare\n", "run: wrangler deploy\n"),
           scripts,
+          setup,
         ),
       ).toThrow(/deploy:cloudflare/);
     });
@@ -1321,12 +1366,11 @@ describe("the launcher phase (dev/portless)", () => {
     "run",
     "--name",
     `${dir}.${SLUG}`,
-    "bunx",
     "react-router",
     "dev",
   ];
 
-  /** The JSON `bun scripts/dev-portless.ts --dry-run` prints, for the apps of the cloudflare configuration. */
+  /** The JSON `tsx scripts/dev-portless.ts --dry-run` prints, for the apps of the cloudflare configuration. */
   const printed = (tld: string, overrides: Record<string, Record<string, unknown>> = {}) => {
     const apiUrl = `https://api.${SLUG}.${tld}`;
     return JSON.stringify({
@@ -1347,7 +1391,7 @@ describe("the launcher phase (dev/portless)", () => {
     });
   };
 
-  test("both configurations install the launcher, and it has tests to count", () => {
+  test("the launcher is a feature a project opts into: cloudflare and dockerfile do, fronts proves a project without it, and it has tests to count", () => {
     expect(CONFIGURATIONS.filter(hasPortless).map(({ name }) => name)).toEqual([
       "cloudflare",
       "dockerfile",
@@ -1366,7 +1410,7 @@ describe("the launcher phase (dev/portless)", () => {
       `api.${SLUG}`,
       "sh",
       "-c",
-      'exec bunx wrangler dev --port "$PORT" "$@"',
+      'exec wrangler dev --port "$PORT" "$@"',
       "wrangler",
       "--var",
       `API_URL:https://api.${SLUG}.localhost`,
@@ -1380,25 +1424,17 @@ describe("the launcher phase (dev/portless)", () => {
     expect(apps.slice(1).map(({ cmd }) => cmd)).toEqual(["spa", "ssr", "static"].map(frontCommand));
   });
 
-  test("a project on the dockerfile provider plans two apps, the API as a Bun process that reads PORT", () => {
+  test("a project on the dockerfile provider plans two apps, the API as a tsx process that reads PORT", () => {
     expect(expectedPortlessApps("dockerfile", "golden-dockerfile", "localhost")).toEqual([
       {
         dir: "api",
         name: "api.golden-dockerfile",
-        cmd: [
-          "portless",
-          "run",
-          "--name",
-          "api.golden-dockerfile",
-          "bun",
-          "--watch",
-          "src/index.ts",
-        ],
+        cmd: ["portless", "run", "--name", "api.golden-dockerfile", "tsx", "watch", "src/index.ts"],
       },
       {
         dir: "spa",
         name: "spa.golden-dockerfile",
-        cmd: ["portless", "run", "--name", "spa.golden-dockerfile", "bunx", "react-router", "dev"],
+        cmd: ["portless", "run", "--name", "spa.golden-dockerfile", "react-router", "dev"],
       },
     ]);
   });
@@ -1499,13 +1535,21 @@ describe("the launcher phase (dev/portless)", () => {
   });
 
   describe("ranTests", () => {
-    test("reads the count from the line `bun test` prints on stderr", () => {
-      expect(ranTests("\n 33 pass\n 0 fail\nRan 33 tests across 1 file. [557.00ms]\n")).toBe(33);
-      expect(ranTests("Ran 1 test across 1 file.")).toBe(1);
+    test("reads the count from the summary Vitest prints", () => {
+      expect(ranTests("\n Test Files  1 passed (1)\n      Tests  33 passed (33)\n")).toBe(33);
+      expect(ranTests("      Tests  1 passed (1)")).toBe(1);
+    });
+
+    test("reads it through the colors Vitest prints when CI forces them", () => {
+      expect(
+        ranTests(
+          "\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m36 passed\u001b[39m\u001b[22m (36)\n",
+        ),
+      ).toBe(36);
     });
 
     test("fails when there is no such line, so a run that printed nothing is not a pass", () => {
-      expect(() => ranTests("")).toThrow(/Ran/);
+      expect(() => ranTests("")).toThrow(/Tests/);
     });
   });
 });
@@ -1609,13 +1653,13 @@ describe("the database phases", () => {
 });
 
 describe("testCounts", () => {
-  test("reads how many tests each workspace ran from the prefixed output of the root test script", () => {
+  test("reads how many tests each workspace ran from the labeled output of the root test script", () => {
     const output = [
-      "@app/config:test      |  6 pass",
-      "@app/config:test      | Ran 6 tests across 1 file. [5.00ms]",
-      "@app/db:test          | Ran 12 tests across 4 files. [437.00ms]",
-      "@app/ssr:test         |       Tests  4 passed (4)",
-      "bun test v1.4.2",
+      "[@app/config#test]  Test Files  1 passed (1)",
+      "[@app/config#test]       Tests  6 passed (6)",
+      "[@app/db#test]       Tests  12 passed (12)",
+      "[@app/ssr#test]       Tests  4 passed (4)",
+      "      Tests  9 passed (9)",
     ].join("\n");
 
     expect(testCounts(output)).toEqual({ "@app/config": 6, "@app/db": 12, "@app/ssr": 4 });
@@ -1624,7 +1668,7 @@ describe("testCounts", () => {
   test("reads Vitest's line when it is coloured, as it is in CI", () => {
     // The line as GitHub Actions printed it: Vitest colours its output when CI is set.
     const output =
-      "@app/spa:test         | \u001B[2m      Tests \u001B[22m \u001B[1m\u001B[32m8 passed\u001B[39m\u001B[22m\u001B[90m (8)\u001B[39m";
+      "[@app/spa#test] \u001B[2m      Tests \u001B[22m \u001B[1m\u001B[32m8 passed\u001B[39m\u001B[22m\u001B[90m (8)\u001B[39m";
 
     expect(testCounts(output)).toEqual({ "@app/spa": 8 });
   });
@@ -1871,6 +1915,7 @@ describe("the email phases", () => {
       expect(PENDING).toEqual({
         cloudflare: ["email/resend/wire-email-into-auth"],
         dockerfile: [],
+        fronts: [],
       });
       expect(Object.keys(RESOLUTIONS)).toEqual(["email/resend/wire-email-into-auth"]);
     });
@@ -2186,6 +2231,7 @@ describe("the favicons config/branding ships, binary template files", () => {
     expect(CONFIGURATIONS.filter(hasFavicons).map(({ name }) => name)).toEqual([
       "cloudflare",
       "dockerfile",
+      "fronts",
     ]);
   });
 
@@ -2361,6 +2407,7 @@ describe("every web shell serves the favicons and the manifest config/branding s
     ).toEqual({
       cloudflare: ["spa", "ssr", "static"],
       dockerfile: ["spa"],
+      fronts: ["spa", "ssr", "static"],
     });
   });
 

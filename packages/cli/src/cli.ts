@@ -1,97 +1,63 @@
+import { styleText } from "node:util";
 import { ApplyError } from "@bonne-garde/registry";
-import { cliRunner, type IntentionOutcome } from "@bonne-garde/schema";
+import { type IntentionOutcome } from "@bonne-garde/schema";
 import { addItems, searchItems, viewItem } from "./add";
-import { checksNotice } from "./checks-notice";
-import { createProject } from "./create";
+import { takeFlag, takeOption } from "./args";
+import { APPS, FEATURES, PROVIDERS } from "./choices";
+import { createCommand } from "./create-command";
 import { doctorExitCode, formatDoctor, runDoctor } from "./doctor";
 import { addNamingCommand } from "./force-command";
 import { lintIntentions } from "./intentions/lint";
 import { lintModuleIntentions } from "./intentions/lint-modules";
 import { listRegistry } from "./list";
+import { missingPackageManager, PACKAGE_MANAGERS, packageManagerOf } from "./package-manager";
 import { migrationsDir, registryDir } from "./paths";
 import { recordIntentionOutcome } from "./record";
-import { BUN_MISSING } from "./run-command";
+import { manifestMigrationNotice, reportAdd } from "./report";
+import { clack, logo, showAdd, step } from "./terminal";
 
 function usage(): string {
-  return `bonne-garde — Bonne Garde CLI
+  const section = (title: string) => styleText("bold", title);
+  return `
+${logo("compose a full-stack project from a registry of modules")}
 
-Usage:
-  bonne-garde create <dir> [--yes] [--no-git] [--no-install] [--scope @name] [--registry <source>]
+${section("Start")}
+  bonne-garde create [dir] [--pm <name>] [--apps <a,b>] [--provider <name>] [--features <a,b>]
+                           [--yes] [--no-git] [--no-install] [--scope @name] [--registry <source>]
+      asks, on a terminal, what no flag says; with --yes or no terminal it takes the defaults:
+      the package manager create was started from (bun otherwise), and no app (the base alone)
+      pm: ${PACKAGE_MANAGERS.join(", ")} · apps: ${APPS.join(", ")} · provider: ${PROVIDERS.join(", ")}
+      features: ${FEATURES.join(", ")}
+
+${section("Compose")}
+  bonne-garde add <name...> [--dry-run] [--force] [--no-install] [--yes] [--json] [--source <source>]
+      <name> is an item, a module id, or <category>/<id> (provider/cloudflare); prints a summary
+      on a terminal, and JSON to a pipe, to an agent, or with --json
   bonne-garde list [--items | --category <category>] [--source <source>]
       with no flag: the items, then the modules as <category>/<id>; --items is the items alone
   bonne-garde search <query> [--source <source>]
   bonne-garde view <item> [--source <source>]
-  bonne-garde add <name...> [--dry-run] [--force] [--no-install] [--yes] [--source <source>]
-      <name> is an item, a module id, or <category>/<id> (provider/cloudflare)
       <source> is local:<path> or github:owner/repo[@ref]; a github source reads raw.githubusercontent.com
       (set GITHUB_TOKEN to lift the rate limit); with no @ref it reads the tag v<platform.version> of bg.json
-  bonne-garde record <intention-id> [--skip "<reason>"]
+
+${section("Keep it healthy")}
   bonne-garde doctor [--json] [--strict]
+  bonne-garde record <intention-id> [--skip "<reason>"]
   bonne-garde intentions lint [--dir <migrations-dir>] [--registry <registry-dir>]
       the release migrations, and the intentions each module ships under its intent/
 `;
 }
 
-/** Spec 020: a v1 `bg.json` is rewritten as v2 on the next write, and that is stated, not silent. */
-function manifestMigrationNotice(dryRun: boolean): string {
-  const changes =
-    '"installed" becomes "items", "capabilities" is dropped, and "files" and "regions" start empty';
-  return dryRun
-    ? `bonne-garde: bg.json is version 1; a real run will rewrite it as version 2 (${changes}). Not written: --dry-run.`
-    : `bonne-garde: rewrote bg.json from version 1 to version 2 (${changes}). Files already in the project are user-owned until re-added.`;
-}
-
-function takeFlag(args: string[], name: string): boolean {
-  const index = args.indexOf(name);
-  if (index === -1) {
-    return false;
-  }
-  args.splice(index, 1);
-  return true;
-}
-
-function takeOption(args: string[], name: string): string | undefined {
-  const index = args.indexOf(name);
-  if (index === -1) {
-    return undefined;
-  }
-  const value = args[index + 1];
-  if (!value) {
-    throw new Error(`missing value for ${name}`);
-  }
-  args.splice(index, 2);
-  return value;
-}
-
 export async function runCli(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
-  if (!command || command === "-h" || command === "--help") {
+  // `--help` asks for the usage whatever the command: never a directory to create or an item to add.
+  if (!command || [command, ...rest].some((arg) => arg === "-h" || arg === "--help")) {
     console.log(usage());
     return 0;
   }
 
   if (command === "create") {
-    const args = [...rest];
-    const yes = takeFlag(args, "--yes");
-    const noGit = takeFlag(args, "--no-git");
-    const noInstall = takeFlag(args, "--no-install");
-    const scope = takeOption(args, "--scope");
-    const registry = takeOption(args, "--registry");
-    const name = args[0];
-    if (!name) {
-      throw new Error("create requires a directory name");
-    }
-    void yes;
-    const target = await createProject({
-      name,
-      scope,
-      registry,
-      git: !noGit,
-      install: !noInstall,
-      yes,
-    });
-    console.log(`created ${target}`);
-    return 0;
+    return createCommand(rest);
   }
 
   if (command === "list") {
@@ -153,66 +119,68 @@ export async function runCli(argv: string[]): Promise<number> {
         "--set is not supported yet: options resolve from their defaults, and spec 050 does not say which module a key addresses when several are named",
       );
     }
+    // JSON on stdout for an agent, a pipe, or --json; a summary for a person at a terminal.
+    const json = takeFlag(args, "--json") || process.stdout.isTTY !== true;
     if (args.length === 0) {
       throw new Error("add requires at least one item or module");
     }
-    const { plan, modulePlans, result, migratedFrom, staged, reselected, bunMissing } =
-      await addItems({
-        items: args,
-        source,
-        dryRun,
-        force,
-        install: !noInstall,
-      }).catch((error: unknown) => {
-        // `--force` does not reach a module the call plans again without naming it (050 step 7): say which call does.
-        if (error instanceof ApplyError && error.nameToForce.length > 0) {
-          const { nameToForce } = error;
-          throw new Error(
-            `${error.message}\nname ${nameToForce.join(" and ")} in the same call, so that --force reaches ${nameToForce.length === 1 ? "it" : "them"}:\n  ${addNamingCommand(rest, nameToForce)}`,
-          );
+    // `--force` does not reach a module the call plans again without naming it (050 step 7): say which call does.
+    const forceHint = (error: unknown): never => {
+      if (error instanceof ApplyError && error.nameToForce.length > 0) {
+        const { nameToForce } = error;
+        throw new Error(
+          `${error.message}\nname ${nameToForce.join(" and ")} in the same call, so that --force reaches ${nameToForce.length === 1 ? "it" : "them"}:\n  ${addNamingCommand(rest, nameToForce)}`,
+        );
+      }
+      throw error;
+    };
+    if (!json) {
+      clack.intro(styleText("inverse", " bonne-garde add "));
+      try {
+        const outcome = await step(
+          `${dryRun ? "Planning" : "Adding"} ${args.join(", ")}`,
+          () =>
+            addItems({
+              items: args,
+              source,
+              dryRun,
+              force,
+              install: !noInstall,
+              installOutput: "capture",
+            }).catch(forceHint),
+          ({ modulePlans, plan }) => {
+            const names = [
+              ...modulePlans.map(({ key }) => key),
+              ...plan.items.map(({ name }) => name),
+            ];
+            const shown =
+              names.length > 4
+                ? `${names.slice(0, 4).join(", ")} and ${names.length - 4} more`
+                : names.join(", ");
+            return `${dryRun ? "Planned" : "Added"} ${shown}`;
+          },
+        );
+        showAdd(outcome, dryRun, await packageManagerOf(process.cwd()).catch(() => null));
+        if (outcome.installMissing !== null) {
+          clack.cancel(missingPackageManager(outcome.installMissing));
+          return 1;
         }
-        throw error;
-      });
-    if (migratedFrom !== null) {
-      console.error(manifestMigrationNotice(dryRun));
+        clack.outro(dryRun ? "Nothing written: --dry-run." : "En garde.");
+        return 0;
+      } catch (error) {
+        clack.cancel(error instanceof Error ? error.message : String(error));
+        return 1;
+      }
     }
-    // 050 step 7: a module this call did not name, planned again because one it did name changes its variant.
-    for (const { ref, from, to, because } of reselected) {
-      console.error(
-        `bonne-garde: ${ref.category}/${ref.id}, installed on variant ${from}, is planned again on variant ${to}, which matches ${because.join(", ")}`,
-      );
-    }
-    for (const { path, from, by } of result.tookOver) {
-      console.error(`bonne-garde: ${path} was owned by ${from}; ${by} now owns it`);
-    }
-    // Spec 060: a failed patch never aborts the install and is never silent. It is a pending tier-3
-    // intention (050 steps 11 and 14), staged under .bg/add/ with the executor entry point.
-    const failedPatches = result.patches.filter((patch) => patch.status === "failed");
-    const stagedAt = new Map((staged?.files ?? []).map(({ id, file }) => [id, file]));
-    for (const { type, file, module, reason, intention } of failedPatches) {
-      const where = intention === undefined ? undefined : stagedAt.get(intention);
-      const resolved =
-        intention !== undefined && !result.pending.some(({ id }) => id === intention);
-      console.error(
-        `bonne-garde: PATCH FAILED ${type} on ${file} (${module}): ${reason}. ` +
-          (intention === undefined
-            ? "Make the edit by hand."
-            : resolved
-              ? `Its intention ${intention} is already recorded in bg.json.`
-              : `It is the pending intention ${intention}, ${where === undefined ? "dry run: nothing staged" : `staged in ${where}`}.`),
-      );
-    }
-    const pendingCount = result.pending.length + result.authored.length;
-    if (staged !== null) {
-      console.error(
-        `bonne-garde: ${pendingCount} pending intention${pendingCount === 1 ? "" : "s"}: ` +
-          `read ${staged.session} and follow it (spec 065), then ${cliRunner()} record <id> or ${cliRunner()} record <id> --skip "<reason>".`,
-      );
-    }
-    const notice = checksNotice(modulePlans, pendingCount);
-    if (notice !== null) {
-      console.error(notice);
-    }
+    const outcome = await addItems({
+      items: args,
+      source,
+      dryRun,
+      force,
+      install: !noInstall,
+    }).catch(forceHint);
+    const { plan, modulePlans, result, staged, reselected } = outcome;
+    const { failedPatches, stagedAt } = reportAdd(outcome, dryRun);
     console.log(
       JSON.stringify(
         {
@@ -281,8 +249,8 @@ export async function runCli(argv: string[]): Promise<number> {
         2,
       ),
     );
-    if (bunMissing) {
-      console.error(BUN_MISSING);
+    if (outcome.installMissing !== null) {
+      console.error(missingPackageManager(outcome.installMissing));
       return 1;
     }
     return 0;

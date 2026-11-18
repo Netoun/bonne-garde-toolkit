@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import { join } from "node:path";
 import { getTableName, is } from "drizzle-orm";
 import { getTableConfig, SQLiteTable } from "drizzle-orm/sqlite-core";
 import * as barrel from "./schema";
@@ -45,41 +47,45 @@ export function resetStatements(schema: Record<string, unknown> = barrel): strin
 }
 
 /** `apps/api`, where `wrangler.jsonc` and the local D1 state are. */
-const API_DIRECTORY = new URL("../../../apps/api/", import.meta.url).pathname;
+const API_DIRECTORY = join(import.meta.dirname, "../../../apps/api");
+/** The `wrangler` `apps/api` depends on, which the package manager links into its `node_modules/.bin`. */
+const WRANGLER = join(API_DIRECTORY, "node_modules/.bin/wrangler");
 
 async function wrangler(...args: string[]): Promise<void> {
-  const wranglerProcess = Bun.spawn(["bunx", "wrangler", ...args], {
+  const child = spawn(WRANGLER, args, {
     cwd: API_DIRECTORY,
-    stdin: "ignore",
-    stdout: "inherit",
-    stderr: "inherit",
-    env: { ...Bun.env, WRANGLER_SEND_METRICS: "false" },
+    stdio: ["ignore", "inherit", "inherit"],
+    env: { ...process.env, WRANGLER_SEND_METRICS: "false" },
   });
-  if ((await wranglerProcess.exited) !== 0) {
+  const code = await new Promise<number | null>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", resolve);
+  });
+  if (code !== 0) {
     throw new Error(`wrangler ${args.join(" ")} failed`);
   }
 }
 
 /**
- * `bun run db:reset`: empties every table of the schema barrel in the local D1 the binding `DB` names in
+ * `vp run db:reset`: empties every table of the schema barrel in the local D1 the binding `DB` names in
  * `apps/api/wrangler.jsonc`, whichever module owns it. It runs no migration, and the D1 migrations table
  * is not in the barrel, so what is applied stays applied. Seeding is the module's, after this.
  */
 async function main(): Promise<void> {
   const tables = resetOrder();
   if (tables.length === 0) {
-    await Bun.write(Bun.stdout, "The schema barrel exports no table: nothing to empty\n");
+    process.stdout.write("The schema barrel exports no table: nothing to empty\n");
     return;
   }
   await wrangler("d1", "execute", "DB", "--local", "--command", resetStatements().join(" "));
-  await Bun.write(Bun.stdout, `Emptied: ${tables.join(", ")}\n`);
+  process.stdout.write(`Emptied: ${tables.join(", ")}\n`);
 }
 
 if (import.meta.main) {
   try {
     await main();
   } catch (error) {
-    await Bun.write(Bun.stderr, `${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;
   }
 }

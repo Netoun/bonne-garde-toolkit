@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "vite-plus/test";
 import { Elysia } from "elysia";
 import { eq } from "drizzle-orm";
 import { authPlugin } from "./auth.module";

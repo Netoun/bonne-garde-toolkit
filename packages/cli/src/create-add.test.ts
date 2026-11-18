@@ -8,6 +8,7 @@ import { addItems, listItems } from "./add";
 import { createProject, MAX_SCOPE_LENGTH } from "./create";
 import { doctorExitCode, runDoctor } from "./doctor";
 import { findRepoRoot, templateBaseDir } from "./paths";
+import { type Choices, namesFor } from "./choices";
 
 const dirs: string[] = [];
 
@@ -28,7 +29,7 @@ describe("bonne-garde create + add", () => {
     const parent = await mkdtemp(join(tmpdir(), "bg-cli-"));
     dirs.push(parent);
 
-    const target = await createProject({
+    const { target } = await createProject({
       name: "demo-app",
       cwd: parent,
       git: false,
@@ -43,7 +44,9 @@ describe("bonne-garde create + add", () => {
     >;
     expect(bg.version).toBe(2);
     expect(bg.scope).toBe("@demo");
-    expect(bg).toMatchObject({ platform: { version: "0.1.0" } });
+    // 070: the platform version is the running CLI package's, the lockstep one.
+    const cli = JSON.parse(await readFile(join(import.meta.dir, "../package.json"), "utf8"));
+    expect(bg).toMatchObject({ platform: { version: cli.version } });
     for (const field of ["modules", "items", "files", "regions"]) {
       expect(bg[field]).toEqual({});
     }
@@ -110,7 +113,7 @@ describe("bonne-garde create + add", () => {
   test("adds the api/elysia shell on the cloudflare provider, with no --force", async () => {
     const parent = await mkdtemp(join(tmpdir(), "bg-cli-api-"));
     dirs.push(parent);
-    const target = await createProject({
+    const { target } = await createProject({
       name: "api-demo",
       cwd: parent,
       git: false,
@@ -134,7 +137,7 @@ describe("bonne-garde create + add", () => {
   test("creates the spec 010 scratch root and check tooling", async () => {
     const parent = await mkdtemp(join(tmpdir(), "bg-cli-base-"));
     dirs.push(parent);
-    const target = await createProject({
+    const { target } = await createProject({
       name: "base-demo",
       cwd: parent,
       git: false,
@@ -178,7 +181,7 @@ describe("bonne-garde create + add", () => {
   test("`bonne-garde add ui/shadcn` writes the host package, with its dependencies merged into the vendored package.json", async () => {
     const parent = await mkdtemp(join(tmpdir(), "bg-cli-ui-"));
     dirs.push(parent);
-    const target = await createProject({
+    const { target } = await createProject({
       name: "ui-demo",
       cwd: parent,
       git: false,
@@ -227,7 +230,7 @@ describe("bonne-garde create + add", () => {
     expect(doctorExitCode(await runDoctor(target), true)).toBe(0);
   });
 
-  describe("`web/spa` peers on a provider, the config, the api and the ui", () => {
+  describe("`web/spa` peers on a provider, the config and the ui, and on the api when there is one", () => {
     async function spaProject(prefix: string): Promise<string> {
       const parent = await mkdtemp(join(tmpdir(), prefix));
       dirs.push(parent);
@@ -237,7 +240,7 @@ describe("bonne-garde create + add", () => {
         git: false,
         install: false,
         registry: repoRegistry(),
-      });
+      }).then(({ target }) => target);
     }
 
     test("with its peers named in the call, it installs the variant of the provider", async () => {
@@ -255,6 +258,21 @@ describe("bonne-garde create + add", () => {
       expect(spa?.workspace).toBe("apps/spa");
     });
 
+    test("without the api it installs the variant with no Eden client", async () => {
+      const target = await spaProject("bg-cli-spa-alone-");
+
+      const { modulePlans } = await addItems({
+        projectRoot: target,
+        items: ["provider/cloudflare", "config/branding", "ui/shadcn", "web/spa"],
+        dryRun: true,
+        install: false,
+      });
+
+      const spa = modulePlans.find((plan) => plan.key === "web/spa");
+      expect(spa?.variant).toBe("cloudflare-without-api");
+      expect(spa?.files.map(({ target }) => target)).not.toContain("apps/spa/src/lib/api.ts");
+    });
+
     test("without a peer it fails before any write, naming the category and what it accepts", async () => {
       const target = await spaProject("bg-cli-spa-no-peers-");
       const before = await readFile(join(target, "bg.json"), "utf8");
@@ -265,10 +283,10 @@ describe("bonne-garde create + add", () => {
       await expect(
         addItems({
           projectRoot: target,
-          items: ["provider/cloudflare", "config/branding", "ui/shadcn", "web/spa"],
+          items: ["provider/cloudflare", "config/branding", "web/spa"],
           install: false,
         }),
-      ).rejects.toThrow("web/spa needs a module in category api (elysia) and none is installed");
+      ).rejects.toThrow("web/spa needs a module in category ui (shadcn) and none is installed");
 
       expect(await readFile(join(target, "bg.json"), "utf8")).toBe(before);
       expect((await readdir(join(target, "apps"))).filter((name) => name !== ".gitkeep")).toEqual(
@@ -292,7 +310,7 @@ describe("bonne-garde create + add", () => {
         install: false,
         registry: repoRegistry(),
         scope: "@rec",
-      });
+      }).then(({ target }) => target);
     }
 
     /** Every file under `root` -> sha256 of its bytes, `bg.json` included. */
@@ -419,7 +437,7 @@ describe("bonne-garde create + add", () => {
     async function v1Project(prefix: string): Promise<string> {
       const parent = await mkdtemp(join(tmpdir(), prefix));
       dirs.push(parent);
-      const target = await createProject({
+      const { target } = await createProject({
         name: "legacy-app",
         cwd: parent,
         git: false,
@@ -518,7 +536,7 @@ describe("bonne-garde create + add", () => {
     const elsewhere = await mkdtemp(join(tmpdir(), "bg-cli-elsewhere-"));
     dirs.push(elsewhere);
 
-    const target = await createProject({
+    const { target } = await createProject({
       name: join(parent, "my-app"),
       cwd: elsewhere,
       git: false,
@@ -545,7 +563,7 @@ describe("bonne-garde create + add", () => {
     const here = join(parent, "dot-app");
     await mkdir(here);
 
-    const target = await createProject({
+    const { target } = await createProject({
       name: ".",
       cwd: here,
       git: false,
@@ -599,7 +617,7 @@ describe("bonne-garde create + add", () => {
       dirs.push(parent);
       const scope = scopeOfLength(MAX_SCOPE_LENGTH);
 
-      const target = await createProject({
+      const { target } = await createProject({
         name: "edge",
         cwd: parent,
         scope,
@@ -628,5 +646,91 @@ describe("bonne-garde create + add", () => {
         install: false,
       }),
     ).rejects.toThrow(/not empty/);
+  });
+
+  describe("the names of the choices (040)", () => {
+    const SETS: Record<string, Choices> = {
+      cloudflare: {
+        apps: ["api", "spa", "ssr", "static"],
+        provider: "cloudflare",
+        features: ["db", "auth", "storage", "email", "deploy", "backoffice"],
+        pm: "pnpm",
+      },
+      dockerfile: { apps: ["api", "spa"], provider: "dockerfile", features: ["email"], pm: "bun" },
+    };
+
+    for (const [label, choices] of Object.entries(SETS)) {
+      test(`${label}: adds them, recorded in bg.json like any add`, async () => {
+        const parent = await mkdtemp(join(tmpdir(), "bg-cli-choices-"));
+        dirs.push(parent);
+        const { modules, items } = namesFor(choices);
+
+        const { target, added } = await createProject({
+          name: "app",
+          cwd: parent,
+          git: false,
+          install: false,
+          registry: repoRegistry(),
+          names: [...modules, ...items],
+        });
+
+        expect(added).not.toBeNull();
+        const { manifest } = readProjectManifest(
+          JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as unknown,
+        );
+        const recorded = Object.entries(manifest.modules).flatMap(([category, records]) =>
+          records.map(({ id }) => `${category}/${id}`),
+        );
+        expect(recorded.toSorted()).toEqual([...modules].toSorted());
+        for (const item of items) {
+          expect(manifest.items).toHaveProperty(item);
+        }
+      });
+    }
+
+    test("none adds nothing", async () => {
+      const parent = await mkdtemp(join(tmpdir(), "bg-cli-choices-"));
+      dirs.push(parent);
+
+      const { target, added } = await createProject({
+        name: "app",
+        cwd: parent,
+        git: false,
+        install: false,
+        registry: repoRegistry(),
+        names: [],
+      });
+
+      expect(added).toBeNull();
+      const bg = JSON.parse(await readFile(join(target, "bg.json"), "utf8")) as Record<
+        string,
+        unknown
+      >;
+      expect(bg.modules).toEqual({});
+      expect(bg.items).toEqual({});
+    });
+
+    test("a set the planner refuses fails with its message, before anything is written", async () => {
+      const parent = await mkdtemp(join(tmpdir(), "bg-cli-choices-"));
+      dirs.push(parent);
+      const { modules } = namesFor({
+        apps: ["ssr"],
+        provider: "dockerfile",
+        features: [],
+        pm: "bun",
+      });
+
+      await expect(
+        createProject({
+          name: "app",
+          cwd: parent,
+          git: false,
+          install: false,
+          registry: repoRegistry(),
+          names: modules,
+        }),
+      ).rejects.toThrow("web/ssr accepts only cloudflare for provider");
+      expect(await readdir(parent)).toEqual([]);
+    });
   });
 });

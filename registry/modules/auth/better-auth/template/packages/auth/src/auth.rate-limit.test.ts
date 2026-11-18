@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "vite-plus/test";
 import { createTestAuth } from "./testing";
 
 // Better Auth keys a rate-limit bucket on the client's address, which it reads from the headers it

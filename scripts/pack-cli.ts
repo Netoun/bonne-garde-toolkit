@@ -37,6 +37,18 @@ async function runtimeDependencies(name: string): Promise<[string, string][]> {
 
 // What the bundled workspace packages depend on is what the packed package has to declare. Read from
 // their manifests, so the pin lives in one place.
+/** The platform's one version (070: lockstep), the CLI package's: what `create` pins and the tag names. */
+const cliManifest: unknown = JSON.parse(
+  await readFile(join(ROOT, "packages/cli/package.json"), "utf8"),
+);
+const cliVersion =
+  typeof cliManifest === "object" &&
+  cliManifest !== null &&
+  "version" in cliManifest &&
+  typeof cliManifest.version === "string"
+    ? cliManifest.version
+    : "0.0.0";
+
 const dependencies = Object.fromEntries(
   (await Promise.all(["cli", "registry", "schema"].map(runtimeDependencies))).flat(),
 );
@@ -71,7 +83,7 @@ await cp(join(ROOT, "LICENSE"), join(OUT, "LICENSE"));
 
 const pkg = {
   name: "bonne-garde",
-  version: "0.1.0",
+  version: cliVersion,
   description:
     "Bonne Garde CLI — create an empty Bun/Cloudflare monorepo and add modules from a shadcn-compatible registry",
   type: "module",

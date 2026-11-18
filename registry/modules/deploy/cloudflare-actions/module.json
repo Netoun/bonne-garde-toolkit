@@ -5,8 +5,8 @@
   "version": "0.1.0",
   "title": "Cloudflare deploy workflow",
   "description": "A GitHub Actions workflow that builds, migrates and deploys every Cloudflare app of the project, planned from the tree by the script it ships.",
-  "peers": { "provider": ["cloudflare"] },
-  "checks": ["bun test scripts/deploy-cloudflare.test.ts"],
+  "peers": { "pm": [], "provider": ["cloudflare"] },
+  "checks": ["vp test scripts/deploy-cloudflare.test.ts"],
   "variants": [
     {
       "key": "cloudflare",
@@ -20,7 +20,12 @@
         {
           "type": "scripts.merge",
           "file": "package.json",
-          "scripts": { "deploy:cloudflare": "bun scripts/deploy-cloudflare.ts" }
+          "scripts": { "deploy:cloudflare": "tsx scripts/deploy-cloudflare.ts" }
+        },
+        {
+          "type": "package.dependencies",
+          "file": "package.json",
+          "devDependencies": { "jsonc-parser": "3.3.1" }
         }
       ]
     }

@@ -256,11 +256,12 @@ describe("parseModuleManifest, the fields `bonne-garde add` acts on", () => {
 });
 
 describe("the category table", () => {
-  it("puts provider first, so everything may peer on it", () => {
-    expect(MODULE_CATEGORIES[0]).toBe("provider");
+  it("puts the package manager first and the provider second, so everything may peer on them", () => {
+    expect(MODULE_CATEGORIES.slice(0, 2)).toEqual(["pm", "provider"]);
   });
 
   it("agrees with spec 035 on cardinality", () => {
+    expect(categoryCardinality("pm")).toBe("one");
     expect(categoryCardinality("provider")).toBe("one");
     expect(categoryCardinality("config")).toBe("one");
     expect(categoryCardinality("api")).toBe("one");
@@ -271,6 +272,7 @@ describe("the category table", () => {
 
   it("is spec 035's table, in its order: config right after tooling, dev last", () => {
     expect([...MODULE_CATEGORIES]).toEqual([
+      "pm",
       "provider",
       "tooling",
       "config",

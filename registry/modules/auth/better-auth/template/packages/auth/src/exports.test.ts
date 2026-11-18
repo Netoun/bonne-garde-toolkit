@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "vite-plus/test";
 // `bonne-garde add` rewrites the scope in these lines, so the formatter cannot know how wide they are.
 // oxfmt-ignore
 import { authModule, createAuth, type Auth } from "{{SCOPE}}/auth";

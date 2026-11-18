@@ -25,7 +25,9 @@ export const links: Route.LinksFunction = () => [...faviconLinks];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang={branding.lang}>
+    // The theme store sets the `dark` class before React hydrates the prerendered page, which has none:
+    // the difference is expected, on this element only.
+    <html lang={branding.lang} suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />

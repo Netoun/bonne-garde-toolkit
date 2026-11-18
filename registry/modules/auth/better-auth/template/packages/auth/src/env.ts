@@ -22,6 +22,6 @@ export function resolveAuthEnv(
   }
   throw new Error(
     "Missing required environment variables: BETTER_AUTH_SECRET. " +
-      "Please check your environment configuration. `bun run auth:secret` generates one.",
+      "Please check your environment configuration. `vp run auth:secret` generates one.",
   );
 }

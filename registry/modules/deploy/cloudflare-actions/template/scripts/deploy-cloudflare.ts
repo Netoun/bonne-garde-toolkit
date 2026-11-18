@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env tsx
 /**
  * Deploys every Cloudflare app of this project to its `production` environment, in an order that
  * cannot leave a deploy half made by a build that fails.
@@ -8,25 +8,27 @@
  * modules that installed those apps own both, so a project that adds or drops a `web` module changes
  * what this deploys without anyone editing `.github/workflows/deploy.yml`.
  *
- *   1. `bun run build` in every app that has a build script, so a broken build stops the run before
+ *   1. `vp run build` in every app that has a build script, so a broken build stops the run before
  *      anything is deployed.
  *   2. For each app, the one that owns the database first and the others by directory: its
- *      `db:migrate:remote` script if it has one, then `bun run deploy`. A Worker is deployed with
+ *      `db:migrate:remote` script if it has one, then `vp run deploy`. A Worker is deployed with
  *      `--env production`; a Pages app with `--project-name <its wrangler name> --branch main`.
  *
  * Every step runs with `CLOUDFLARE_ENV=production`. A build also gets the `VITE_*` variables of the
  * workflow's GitHub environment (`VARS_JSON`, the JSON of the `vars` context): Vite bakes them into
  * the bundle, and an app such as the SPA throws at load without its API URL. So a run is refused,
  * before any build, when an app needs a `VITE_*` variable that is not set: what an app needs is what its
- * `src/vite-env.d.ts` types, in `ImportMetaEnv`, without a `?`.
+ * sources under `src/` type, in `ImportMetaEnv`, without a `?`.
  *
  * Usage:
- *   bun run deploy:cloudflare --dry-run     # the plan as JSON: nothing runs, no credentials needed
- *   bun run deploy:cloudflare               # needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID
+ *   vp run deploy:cloudflare --dry-run      # the plan as JSON: nothing runs, no credentials needed
+ *   vp run deploy:cloudflare                # needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID
  */
 
+import { spawn } from "node:child_process";
 import { access, readdir, readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
+import { parse, type ParseError } from "jsonc-parser";
 
 /** The wrangler environment every app of the project defines and this deploys to. */
 const ENVIRONMENT = "production";
@@ -43,8 +45,8 @@ const CREDENTIALS = ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"];
 /** Vite exposes to a bundle only the variables with this prefix, so they are the only ones a build is given. */
 const BUILD_VAR_PREFIX = "VITE_";
 
-/** Where an app types the variables its build reads: the file `web/spa` and `web/static` ship, as Vite's own template does. */
-const VITE_ENV_FILE = "src/vite-env.d.ts";
+/** The TypeScript files of a source tree, where an app types the variables its build reads. */
+const TYPESCRIPT_FILE = /\.tsx?$/;
 
 export type Phase = "build" | "migrate" | "deploy";
 
@@ -108,10 +110,9 @@ async function readScripts(root: string, path: string): Promise<Record<string, u
 
 /** The part of a wrangler config the plan needs, or an error naming the file and what it lacks. */
 function readWrangler(path: string, text: string): Pick<App, "kind" | "name"> {
-  let config: unknown;
-  try {
-    config = Bun.JSONC.parse(text);
-  } catch {
+  const errors: ParseError[] = [];
+  const config: unknown = parse(text, errors, { allowTrailingComma: true });
+  if (errors.length > 0) {
     throw new Error(`${path} is not valid JSONC`);
   }
   if (!isRecord(config)) {
@@ -174,7 +175,7 @@ export async function planDeploy(root: string): Promise<Step[]> {
     phase,
     app: app.dir,
     cwd: `apps/${app.dir}`,
-    argv: ["bun", "run", ...argv],
+    argv: ["vp", "run", ...argv],
   });
 
   const builds = ordered
@@ -213,20 +214,29 @@ function requiredViteVars(source: string): string[] {
 
 /**
  * What each app the plan builds needs of the workflow's variables, read from the tree like the plan:
- * the `VITE_*` variables its `src/vite-env.d.ts` declares as always there. The modules that install an
- * app ship that file with the app's own code, so a project that adds or drops one changes what a deploy
- * asks for without anyone editing this script or the workflow.
+ * the `VITE_*` variables its sources under `src/` declare as always there. TypeScript merges every
+ * `ImportMetaEnv`, so a declaration may sit beside the code that reads it: `web/spa` types
+ * `VITE_API_URL` in `src/lib/api.ts`, which only its variants with an API ship. A project that adds or
+ * drops an app, or a module that drops a variable, changes what a deploy asks for without anyone
+ * editing this script or the workflow.
  */
 export async function buildNeeds(root: string): Promise<BuildNeeds> {
   const needs: BuildNeeds = {};
   for (const app of await findApps(root)) {
-    const file = `apps/${app.dir}/${VITE_ENV_FILE}`;
-    if (typeof app.scripts.build !== "string" || !(await exists(join(root, file)))) {
+    const src = join(root, "apps", app.dir, "src");
+    if (typeof app.scripts.build !== "string" || !(await exists(src))) {
       continue;
     }
-    const names = requiredViteVars(await readFile(join(root, file), "utf8"));
-    if (names.length > 0) {
-      needs[`apps/${app.dir}`] = names;
+    const names = new Set<string>();
+    for (const file of await readdir(src, { recursive: true })) {
+      if (TYPESCRIPT_FILE.test(file)) {
+        for (const name of requiredViteVars(await readFile(join(src, file), "utf8"))) {
+          names.add(name);
+        }
+      }
+    }
+    if (names.size > 0) {
+      needs[`apps/${app.dir}`] = [...names].sort();
     }
   }
   return needs;
@@ -312,15 +322,21 @@ export async function deploy(
   }
 }
 
-/** A runner that starts each step as a child process of the current one, in its directory under `root`. */
+/**
+ * A runner that starts each step as a child process of the current one, in its directory under `root`,
+ * with the project's bins first on PATH, as a package manager's `run` would have them.
+ */
 export function spawnRunner(root: string): Runner {
-  return async (step, env) => {
-    const child = Bun.spawn(step.argv, {
-      cwd: join(root, step.cwd),
-      env,
-      stdio: ["inherit", "inherit", "inherit"],
+  return async ({ argv: [command = "vp", ...args], cwd }, env) => {
+    const child = spawn(command, args, {
+      cwd: join(root, cwd),
+      env: { ...env, PATH: [join(root, "node_modules/.bin"), env.PATH ?? ""].join(delimiter) },
+      stdio: "inherit",
     });
-    return child.exited;
+    return new Promise<number>((done, fail) => {
+      child.once("error", fail);
+      child.once("close", (code) => done(code ?? 1));
+    });
   };
 }
 
@@ -366,7 +382,7 @@ export async function main(args: readonly string[], io: Io): Promise<number> {
 }
 
 if (import.meta.main) {
-  const root = resolve(import.meta.dir, "..");
+  const root = resolve(import.meta.dirname, "..");
   process.exit(
     await main(process.argv.slice(2), {
       root,

@@ -9,8 +9,7 @@
     "./schema": "./src/schema.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit && bun run typecheck:test",
-    "typecheck:test": "tsc --project tsconfig.test.json --noEmit",
-    "test": "bun test"
+    "typecheck": "tsc --noEmit && tsc --project tsconfig.test.json --noEmit",
+    "test": "vp test"
   }
 }

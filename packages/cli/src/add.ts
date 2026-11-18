@@ -1,6 +1,8 @@
 import { resolve } from "node:path";
+import { createEmptyProjectManifest } from "@bonne-garde/schema";
 import {
   applyInstallPlan,
+  checkModuleSet,
   classifyNames,
   loadInstalledModules,
   loadNamedModules,
@@ -14,18 +16,21 @@ import {
 } from "@bonne-garde/registry";
 import { stagePendingIntentions, type StagedAdd } from "./intentions/stage-add";
 import { defaultSource, loadManifest } from "./manifest-file";
-import { bunInstall } from "./run-command";
+import { platformPackageVersion } from "./paths";
+import { installDependencies } from "./package-manager";
 
 /**
  * How a github source is read. A caller that does not say gets GitHub raw, with `GITHUB_TOKEN` when
- * it is set; one that points `baseUrl` elsewhere (a test) is trusted with the token too, or with none.
+ * it is set, or the mirror `BONNE_GARDE_GITHUB_RAW` names (the same paths as raw.githubusercontent.com);
+ * one that points `baseUrl` elsewhere (a test) is trusted with the token too, or with none.
  */
 function githubOptions(override: GithubOptions | undefined): GithubOptions {
   if (override) {
     return override;
   }
   const token = process.env.GITHUB_TOKEN;
-  return token ? { token } : {};
+  const baseUrl = process.env.BONNE_GARDE_GITHUB_RAW;
+  return { ...(token ? { token } : {}), ...(baseUrl ? { baseUrl } : {}) };
 }
 
 export async function openCatalog(projectRoot: string, explicit?: string, github?: GithubOptions) {
@@ -86,9 +91,37 @@ export type AddOptions = {
   dryRun?: boolean;
   force?: boolean;
   install?: boolean;
+  /** The install's own output (`inherit`), or kept for its error (`capture`, under a spinner). */
+  installOutput?: "inherit" | "capture";
   /** Where a `github:` source is read from; GitHub raw unless a test says otherwise. */
   github?: GithubOptions;
 };
+
+/**
+ * Spec 040: a check that throws what `bonne-garde add` would refuse of a set of names in an empty project,
+ * reading no template file. The module manifests of `candidates` are fetched once, here: on a github
+ * source that is one request each, and none for a later check.
+ */
+export async function namesChecker(
+  source: string,
+  cwd: string,
+  candidates: readonly string[],
+  github?: GithubOptions,
+): Promise<(names: string[]) => void> {
+  const loaded = await loadRegistryFromSource(source, cwd, {
+    platformVersion: platformPackageVersion(),
+    github: githubOptions(github),
+  });
+  const catalog = await loadNamedModules(loaded, [...candidates]);
+  const empty = createEmptyProjectManifest({ scope: "@acme", registries: {} });
+  return (names) => {
+    const { items, modules } = classifyNames(catalog, names);
+    checkModuleSet(catalog, modules, empty);
+    resolveInstallPlan(catalog, items, empty, modules);
+  };
+}
+
+export type AddOutcome = Awaited<ReturnType<typeof addItems>>;
 
 export async function addItems(options: AddOptions) {
   const projectRoot = resolve(options.projectRoot ?? process.cwd());
@@ -134,13 +167,16 @@ export async function addItems(options: AddOptions) {
     (module) =>
       Object.keys(module.dependencies).length + Object.keys(module.devDependencies).length > 0,
   );
-  // No Bun to install with is not a failed add: the files are written, and what the add did is still
-  // reported. The caller says so and exits non-zero.
-  const bunMissing =
+  // No package manager to install with is not a failed add: the files are written, and what the add did
+  // is still reported. The caller says so (`missingPackageManager`) and exits non-zero.
+  const installs =
     !dryRun &&
     options.install !== false &&
-    (plan.npmDependencies.length + plan.npmDevDependencies.length > 0 || modulesNeedInstall) &&
-    (await bunInstall(projectRoot, "bun install failed after add")) === "bun-missing";
+    (plan.npmDependencies.length + plan.npmDevDependencies.length > 0 || modulesNeedInstall);
+  const installed = installs
+    ? await installDependencies(projectRoot, { output: options.installOutput ?? "inherit" })
+    : null;
+  const installMissing = installed?.missing ? installed.pm : null;
 
   // 050 step 14: what the failed patches became is staged for whoever resolves it. `.bg/` is scratch,
   // outside the all-or-nothing apply, and a dry run writes nothing.
@@ -156,5 +192,5 @@ export async function addItems(options: AddOptions) {
     ? null
     : await stagePendingIntentions(projectRoot, [...result.pending, ...result.authored], resolved);
 
-  return { plan, modulePlans, result, migratedFrom, staged, reselected, bunMissing };
+  return { plan, modulePlans, result, migratedFrom, staged, reselected, installMissing };
 }

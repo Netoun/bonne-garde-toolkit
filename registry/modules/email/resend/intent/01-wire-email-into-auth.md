@@ -45,9 +45,9 @@ Auth owns the `AuthMailer` interface and ships `mailer = unconfiguredMailer(apiL
 
 ## Validation
 
-- `cd packages/auth && bun run typecheck && bun run test`
-- `cd packages/email && bun run typecheck && bun run test`
-- `bun run check`
+- `cd packages/auth && vp run typecheck && vp run test`
+- `cd packages/email && vp run typecheck && vp run test`
+- `vp run check`
 - A test that signs a user up through `createTestAuth({ mailer })` (`{{SCOPE}}/auth/testing`) with the `mailer` of `./mailer`, and reads `outbox` from `{{SCOPE}}/email/testing`, finds one email to that user whose link carries the verification token.
 
 ## Record Result

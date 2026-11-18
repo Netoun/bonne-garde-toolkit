@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { sql } from "drizzle-orm";
 import { Miniflare } from "miniflare";
 import { createDB } from "./client";

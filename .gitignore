@@ -24,6 +24,8 @@ coverage/
 .env.local
 .env.*
 !.env*.example
+# A front's test env (localhost only), vendored by its module.
+!registry/modules/**/.env.test
 .dev.vars
 .dev.vars.*
 !.dev.vars*.example

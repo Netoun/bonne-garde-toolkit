@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "vite-plus/test";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -47,7 +47,7 @@ describe("favicons, the Vite plugin that serves a package's favicons from the si
       expect(built).toContain(name);
     }
     expect(await readFile(join(root, "dist/site.webmanifest"), "utf8")).toBe(
-      await readFile(join(import.meta.dir, "../assets/favicons/site.webmanifest"), "utf8"),
+      await readFile(join(import.meta.dirname, "../assets/favicons/site.webmanifest"), "utf8"),
     );
   });
 

@@ -13,6 +13,8 @@ const REGISTRY = `local:${join(ROOT, "registry")}`;
  * `yarn dlx bonne-garde` all run the bin with it, so spawning it here is deliberate.
  */
 const NODE = Bun.which("node");
+/** The version the package is packed at: the CLI package's (070: lockstep). */
+const VERSION: string = (await Bun.file(join(ROOT, "packages/cli/package.json")).json()).version;
 const NPM_USER_AGENT = "npm/10.9.0 node/v22.12.0 darwin arm64";
 
 async function spawn(argv: string[], cwd: string, env?: Record<string, string | undefined>) {
@@ -92,7 +94,7 @@ describe("pack-cli", () => {
     const packed = await Bun.file(join(PACKED, "package.json")).json();
 
     expect(packed.name).toBe("bonne-garde");
-    expect(packed.version).toBe("0.1.0");
+    expect(packed.version).toBe(VERSION);
     expect(packed.bin).toEqual({ "bonne-garde": "bin.js" });
     expect(packed.engines).toEqual({ node: ">=22.12.0" });
     expect(
@@ -152,6 +154,8 @@ describe("pack-cli", () => {
     // depends on what matches a glob.
     const exact = expect.stringMatching(/^\d+\.\d+\.\d+$/);
     expect(external).toEqual({
+      // The CLI's terminal view: its questions, spinners and notes.
+      "@clack/prompts": exact,
       "jsonc-parser": exact,
       picomatch: exact,
       tinyglobby: exact,
@@ -192,13 +196,47 @@ describe("pack-cli", () => {
   });
 
   test("outside the repo, create pins the platform version and the github registry of that tag", async () => {
-    const { project, stderr, code } = await createdProject("pinned-app");
+    // The tag of an unreleased version is not on GitHub yet: a mirror at the same paths serves this
+    // repository's registry under it, which is what GitHub raw will serve once the tag is pushed.
+    const mirror = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      async fetch(request) {
+        const [, owner, repo, ref, ...path] = decodeURIComponent(
+          new URL(request.url).pathname,
+        ).split("/");
+        const file = Bun.file(join(ROOT, ...path));
+        return `${owner}/${repo}@${ref}` === `Netoun/bonne-garde-toolkit@v${VERSION}` &&
+          (await file.exists())
+          ? new Response(file)
+          : new Response("404: Not Found", { status: 404 });
+      },
+    });
+    try {
+      const parent = await mkdtemp(join(tmpdir(), "bg-pack-project-"));
+      dirs.push(parent);
+      const { stderr, code } = await spawn(
+        [
+          ...(NODE === null ? ["bun"] : [NODE]),
+          join(installed, "bin.js"),
+          "create",
+          "pinned-app",
+          "--yes",
+          "--no-git",
+          "--no-install",
+        ],
+        parent,
+        { ...process.env, BONNE_GARDE_GITHUB_RAW: mirror.url.origin },
+      );
 
-    expect(stderr).toBe("");
-    expect(code).toBe(0);
-    const manifest = await Bun.file(join(project, "bg.json")).json();
-    expect(manifest.platform.version).toBe("0.1.0");
-    expect(manifest.registries["@bg"]).toBe("github:Netoun/bonne-garde-toolkit@v0.1.0");
+      expect(stderr).toBe("");
+      expect(code).toBe(0);
+      const manifest = await Bun.file(join(parent, "pinned-app", "bg.json")).json();
+      expect(manifest.platform.version).toBe(VERSION);
+      expect(manifest.registries["@bg"]).toBe(`github:Netoun/bonne-garde-toolkit@v${VERSION}`);
+    } finally {
+      await mirror.stop(true);
+    }
   });
 
   test("names, in the commands it prints, the runner of the package manager that started it", async () => {
@@ -235,7 +273,7 @@ describe("pack-cli", () => {
     }
   });
 
-  test("create without bun on PATH writes the project and says it needs Bun, from node too", async () => {
+  test("create without bun on PATH writes the project and says bun is not installed, from node too", async () => {
     if (NODE === null) {
       throw new Error("node is not on PATH");
     }
@@ -252,7 +290,9 @@ describe("pack-cli", () => {
 
     expect(code).toBe(1);
     expect(stdout).toBe("");
-    expect(stderr).toContain("needs Bun (https://bun.sh)");
+    // The project pins bun (`pm/bun`, the default without an npm user agent naming pnpm).
+    expect(stderr).toContain("bun is not installed");
+    expect(stderr).toContain("files are written");
     expect(stderr).not.toContain("ENOENT");
     expect(await Bun.file(join(parent, "no-bun-app/bg.json")).exists()).toBe(true);
   });

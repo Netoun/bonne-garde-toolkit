@@ -12,6 +12,7 @@ A module fills exactly one category. The category carries **cardinality** and **
 
 | id         | cardinality | home                        | Notes                                                                                                                                                           |
 | ---------- | ----------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pm`       | one         | repo                        | Package manager: installs the project and runs its scripts; owns the root `packageManager` pin, its workspace file and the CI setup action                      |
 | `provider` | one         | repo                        | Runtime and deploy target; the peer every runtime-touching category matches on; owns the runtime seam packages other categories import (`packages/api-runtime`) |
 | `tooling`  | one         | repo                        | fmt / lint / check / hooks                                                                                                                                      |
 | `config`   | one         | package `packages/config`   | Branding constants and assets every app imports; installed after `tooling`                                                                                      |
@@ -32,7 +33,8 @@ A module fills exactly one category. The category carries **cardinality** and **
 **Rules:**
 
 - Order is topological: a category appears after every category it may peer on, an optional peer a variant's `match` names included; `many` categories come last.
-- `provider` is first: it peers on nothing, and `api`, `db`, `storage`, `web` and `deploy` MUST declare
+- `pm` is first: it peers on nothing, and every project has one ([040](./040-cli-create.md)). A module peers on `pm` only where what it ships depends on the package manager.
+- `provider` is second: it peers on nothing but `pm`, and `api`, `db`, `storage`, `web` and `deploy` MUST declare
   `peers.provider` and ship one variant per provider they support. A category's `home` and
   cardinality are provider-independent; only variant payloads differ.
 - A category Note MUST NOT name a provider's technology. `D1`, `R2`, `wrangler` and `Worker`
@@ -82,7 +84,7 @@ registry/modules/auth/better-auth/
       "values": [true, false]
     }
   },
-  "checks": ["bun run typecheck", "bun run test"],
+  "checks": ["vp run typecheck", "vp run test"],
   "variants": [
     {
       "key": "default",
@@ -114,7 +116,7 @@ registry/modules/auth/better-auth/
 | `peers`            | Map category → allow-list of module ids. Empty array means "any module of that category"           |
 | `consumesPackages` | Workspace packages this module imports; used to validate the install graph                         |
 | `options`          | Consumer-facing toggles, resolved before variant selection and recorded in `bg.json`               |
-| `checks`           | Commands run after install to validate the added surface                                           |
+| `checks`           | Commands run after install to validate the added surface; see [Checks](#checks)                    |
 | `variants`         | Install payloads — see below                                                                       |
 
 ### Variants
@@ -128,7 +130,7 @@ The combinatorial explosion is data, not branching code. A module ships one vari
 | `workspace`                        | Workspace package to create (name + path). Derived from `home` unless overridden                                                                                                                                                            |
 | `dependencies` / `devDependencies` | Exact version maps written into the **workspace package.json** — never duplicated elsewhere                                                                                                                                                 |
 | `env`                              | Env vars merged into `.dev.vars.example` / `.env.example`. A key belongs to the module whose code reads it; a second module declaring it is a region conflict ([060](./060-patches-and-regions.md)). An existing value is never overwritten |
-| `copy`                             | Tier 1 — globs relative to `template/`, mirroring the target tree                                                                                                                                                                           |
+| `copy`                             | Tier 1 — file paths relative to `template/`, mirroring the target tree. A glob is refused: a `github:` source has no listing to expand it, and Node and Bun match dotfiles differently                                                      |
 | `patch`                            | Tier 2 — typed patches, see [060](./060-patches-and-regions.md)                                                                                                                                                                             |
 | `intent`                           | Tier 3 — intention filenames under `intent/`, see [065](./065-intentions.md)                                                                                                                                                                |
 
@@ -141,6 +143,14 @@ The combinatorial explosion is data, not branching code. A module ships one vari
 - A variant selects among files at distinct paths. A file every provider ships but that differs per provider belongs to the provider module, or to one module per implementation (`db/d1`, `db/libsql`) with a `peers.provider` allow-list.
 - A module MUST declare peers by category, never by capability string.
 - A `template/` file is **binary** when its bytes are not valid UTF-8, and text otherwise: the bytes decide, not the extension. A text file has `{{SCOPE}}` rendered; a binary file is listed in `copy` like any other and copied byte for byte, and is never rendered, formatted or patched. A `github:` source serves it as bytes.
+
+### Checks
+
+A project runs on bun or on pnpm ([040](./040-cli-create.md)), and its tests run on Vitest, which is Node under both. So what a module ships runs on Node:
+
+- A check is a shell command run at the project root with the project's `node_modules/.bin` first on `PATH`. It names no package manager: `vp run <script>`, `cd <package> && vp run <script>`, or a bin.
+- A test imports `vite-plus/test` and runs under `vp test`. A script a module adds runs as `tsx <file>.ts` (`tsx` is a devDependency of the base): it resolves imports as the project's typecheck does (`moduleResolution: bundler`), where `node` would refuse an import without its extension, the user's own included, only when the script runs.
+- No template file and no command reaches for Bun (`Bun.`, `bun:`, `bun`, `bunx`), except the files of a variant that only a Bun project installs. The contract test enforces it.
 
 ## Errors
 

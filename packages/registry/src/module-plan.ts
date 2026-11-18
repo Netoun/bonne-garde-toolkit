@@ -641,19 +641,12 @@ export function reselectedModules(
   return reselected;
 }
 
-/**
- * 050 steps 4-8 for modules, in category order (spec 035: topological, `provider` first), so a
- * peer named in the same call counts as installed. Reads the registry and the project manifest
- * and writes nothing.
- */
-export async function resolveModulePlans(
+/** 050 steps 4, 5 and 7, in category order: peers, cardinality, then a variant for each module. */
+function checkedModules(
   catalog: RegistryCatalog,
   refs: ModuleRef[],
   project: ProjectManifest,
-): Promise<ModulePlan[]> {
-  if (refs.length === 0) {
-    return [];
-  }
+): { modules: RegistryModule[]; present: Present } {
   const ordered = [...refs].sort(
     (a, b) => MODULE_CATEGORIES.indexOf(a.category) - MODULE_CATEGORIES.indexOf(b.category),
   );
@@ -672,7 +665,38 @@ export async function resolveModulePlans(
     checkPeers(manifest, present);
   }
   checkCardinality(ordered, project);
+  for (const { manifest } of modules) {
+    selectVariant(manifest, present);
+  }
+  return { modules, present };
+}
 
+/**
+ * What `resolveModulePlans` refuses about a set of modules, reading no file: a caller can refuse a
+ * set before it writes anything (040: `create` checks the answers before it copies the base).
+ */
+export function checkModuleSet(
+  catalog: RegistryCatalog,
+  refs: ModuleRef[],
+  project: ProjectManifest,
+): void {
+  checkedModules(catalog, refs, project);
+}
+
+/**
+ * 050 steps 4-8 for modules, in category order (spec 035: topological, `provider` first), so a
+ * peer named in the same call counts as installed. Reads the registry and the project manifest
+ * and writes nothing.
+ */
+export async function resolveModulePlans(
+  catalog: RegistryCatalog,
+  refs: ModuleRef[],
+  project: ProjectManifest,
+): Promise<ModulePlan[]> {
+  if (refs.length === 0) {
+    return [];
+  }
+  const { modules, present } = checkedModules(catalog, refs, project);
   const plans: ModulePlan[] = [];
   for (const module of modules) {
     plans.push(await planModule(module, present, project));

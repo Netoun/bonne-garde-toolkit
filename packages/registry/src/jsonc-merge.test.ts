@@ -167,6 +167,18 @@ describe("jsonc.merge: setJsoncLeaves (jsonc-parser modify: only the inserted by
     );
   });
 
+  test("a member written into an empty object takes the trailing comma the file uses", () => {
+    const commas = '{\n  "a": 1,\n  "env": {\n    "production": {},\n  },\n}\n';
+    const plain = '{\n  "a": 1,\n  "env": {\n    "production": {}\n  }\n}\n';
+
+    expect(setJsoncLeaves(commas, jsoncLeaves({ env: { production: { vars: { A: "1" } } } }))).toBe(
+      '{\n  "a": 1,\n  "env": {\n    "production": {\n      "vars": {\n        "A": "1",\n      },\n    },\n  },\n}\n',
+    );
+    expect(setJsoncLeaves(plain, jsoncLeaves({ env: { production: { vars: { A: "1" } } } }))).toBe(
+      '{\n  "a": 1,\n  "env": {\n    "production": {\n      "vars": {\n        "A": "1"\n      }\n    }\n  }\n}\n',
+    );
+  });
+
   test("an array of scalars is on one line when it fits in 100 columns, and one per line when it does not", () => {
     const short = setJsoncLeaves("{}\n", jsoncLeaves({ flags: ["nodejs_compat", "other"] }));
     expect(short).toBe('{\n  "flags": ["nodejs_compat", "other"]\n}\n');

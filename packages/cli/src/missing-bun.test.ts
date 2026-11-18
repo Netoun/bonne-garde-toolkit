@@ -41,14 +41,17 @@ async function runWithoutBun(cwd: string, ...args: string[]) {
   return { stdout, stderr, code };
 }
 
-/** The one line a Bonne Garde user without Bun reads: why it stopped, and what to do. Returns every line stderr has. */
+/**
+ * The one line a user without the package manager the project pins (bun here, `pm/bun`) reads: why it
+ * stopped, and what to do. Returns every line stderr has.
+ */
 function expectOneLineAboutBun(stderr: string): string[] {
   expect(stderr).not.toContain("ENOENT");
   expect(stderr).not.toContain("    at ");
   const lines = stderr.split("\n").filter((line) => line.trim() !== "");
-  const [line, ...others] = lines.filter((candidate) => candidate.includes("needs Bun"));
+  const [line, ...others] = lines.filter((candidate) => candidate.includes("bun is not installed"));
   expect(others).toEqual([]);
-  expect(line).toContain("needs Bun (https://bun.sh)");
+  expect(line).toContain("the project's package.json pins it");
   expect(line).toContain("files are written");
   expect(line).toContain("`bun install`");
   return lines;
@@ -64,6 +67,8 @@ describe("without bun on PATH", () => {
       parent,
       "create",
       "no-bun-app",
+      "--pm",
+      "bun",
       "--yes",
       "--registry",
       `local:${join(repoRoot(), "registry")}`,
@@ -97,12 +102,13 @@ describe("without bun on PATH", () => {
   test("add writes the files and still prints what it did, then says the project needs Bun and exits non-zero", async () => {
     const parent = await mkdtemp(join(tmpdir(), "bg-no-bun-add-"));
     dirs.push(parent);
-    const project = await createProject({
+    const { target: project } = await createProject({
       name: "no-bun-app",
       cwd: parent,
       git: false,
       install: false,
       registry: `local:${join(repoRoot(), "registry")}`,
+      names: ["pm/bun"],
     });
 
     const { stdout, stderr, code } = await runWithoutBun(

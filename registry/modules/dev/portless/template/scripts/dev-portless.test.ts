@@ -1,7 +1,8 @@
-import { afterAll, describe, expect, it } from "bun:test";
+import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { afterAll, describe, expect, it } from "vite-plus/test";
 import {
   defaultUrl,
   discoverApps,
@@ -14,7 +15,7 @@ import {
   type App,
 } from "./dev-portless";
 
-const SCRIPT = join(import.meta.dir, "dev-portless.ts");
+const SCRIPT = join(import.meta.dirname, "dev-portless.ts");
 const scratch: string[] = [];
 
 afterAll(() => {
@@ -36,14 +37,14 @@ function project(name: string, apps: Record<string, Record<string, string> | nul
 }
 
 const WORKER: App = { dir: "api", dev: "wrangler dev --port 5172" };
-const BUN_SERVER: App = { dir: "api", dev: "bun --watch src/index.ts" };
+const SERVER: App = { dir: "api", dev: "node --watch src/index.ts" };
 const FRONT = (dir: string): App => ({ dir, dev: "react-router dev" });
 
 describe("discoverApps", () => {
   it("lists every apps/<dir> whose package.json has a dev script, sorted by directory", () => {
     const root = project("acme", {
       spa: { dev: "react-router dev" },
-      api: { dev: "wrangler dev --port 5172", test: "bun test" },
+      api: { dev: "wrangler dev --port 5172", test: "vp test" },
       docs: { build: "vite build" },
       bare: null,
     });
@@ -174,7 +175,7 @@ describe("launchCommand", () => {
       // PORT is only known once portless runs the child, hence the shell; "$@" forwards the --var flags.
       "sh",
       "-c",
-      'exec bunx wrangler dev --port "$PORT" "$@"',
+      'exec wrangler dev --port "$PORT" "$@"',
       "wrangler",
       "--var",
       "API_URL:https://api.acme.localhost",
@@ -189,7 +190,7 @@ describe("launchCommand", () => {
     expect(launchCommand(app, "api.acme", {}).slice(4, 7)).toEqual([
       "sh",
       "-c",
-      'exec bunx wrangler dev --env staging --port "$PORT" "$@"',
+      'exec wrangler dev --env staging --port "$PORT" "$@"',
     ]);
   });
 
@@ -199,25 +200,24 @@ describe("launchCommand", () => {
     expect(command.filter((word) => word.includes("VITE_"))).toEqual([]);
   });
 
-  it("runs a front through a runner portless recognises, so it injects a free port", () => {
+  it("runs a front as it is: portless recognises react-router by name and injects a free port", () => {
     expect(launchCommand(FRONT("spa"), "spa.acme", VARS)).toEqual([
       "portless",
       "run",
       "--name",
       "spa.acme",
-      "bunx",
       "react-router",
       "dev",
     ]);
   });
 
-  it("runs a script that starts with bun as it is: the server reads the PORT portless sets", () => {
-    expect(launchCommand(BUN_SERVER, "api.acme", VARS)).toEqual([
+  it("runs any other plain command as it is: the server reads the PORT portless sets", () => {
+    expect(launchCommand(SERVER, "api.acme", VARS)).toEqual([
       "portless",
       "run",
       "--name",
       "api.acme",
-      "bun",
+      "node",
       "--watch",
       "src/index.ts",
     ]);
@@ -230,7 +230,7 @@ describe("launchCommand", () => {
         "run",
         "--name",
         "web.acme",
-        "bun",
+        "vp",
         "run",
         "dev",
       ]);
@@ -282,7 +282,7 @@ describe("planStack", () => {
         "api.acme",
         "sh",
         "-c",
-        'exec bunx wrangler dev --port "$PORT" "$@"',
+        'exec wrangler dev --port "$PORT" "$@"',
         "wrangler",
         "--var",
         "API_URL:https://api.acme.localhost",
@@ -319,13 +319,13 @@ describe("planStack", () => {
     });
   });
 
-  describe("the two apps a dockerfile project has", () => {
-    const stack = planStack({ slug: "acme", apps: [BUN_SERVER, FRONT("spa")], urlOf: url });
+  describe("a server that reads PORT and a front", () => {
+    const stack = planStack({ slug: "acme", apps: [SERVER, FRONT("spa")], urlOf: url });
 
-    it("runs the API as a Bun process that reads PORT, and the front as in any project", () => {
+    it("runs the API as a process that reads PORT, and the front as in any project", () => {
       expect(stack.map((entry) => entry.cmd)).toEqual([
-        ["portless", "run", "--name", "api.acme", "bun", "--watch", "src/index.ts"],
-        ["portless", "run", "--name", "spa.acme", "bunx", "react-router", "dev"],
+        ["portless", "run", "--name", "api.acme", "node", "--watch", "src/index.ts"],
+        ["portless", "run", "--name", "spa.acme", "react-router", "dev"],
       ]);
     });
 
@@ -371,23 +371,21 @@ describe("planStack", () => {
 
 /** Runs the launcher in `root` with no portless on the PATH: a plan has to need neither it nor a proxy. */
 async function launch(root: string, ...args: string[]) {
-  const proc = Bun.spawn([process.execPath, SCRIPT, ...args], {
+  const child = spawn(process.execPath, [SCRIPT, ...args], {
     cwd: root,
     env: { ...process.env, PATH: dirname(process.execPath) },
-    stdout: "pipe",
-    stderr: "pipe",
   });
-  const [code, stdout, stderr] = await Promise.all([
-    proc.exited,
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
+  child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+  const code = await new Promise<number | null>((done) => child.once("close", done));
   return { code, stdout, stderr };
 }
 
-describe("bun scripts/dev-portless.ts --dry-run", () => {
+describe("node scripts/dev-portless.ts --dry-run", () => {
   const apps = {
-    api: { dev: "bun --watch src/index.ts" },
+    api: { dev: "node --watch src/index.ts" },
     spa: { dev: "react-router dev" },
   };
 
@@ -405,14 +403,14 @@ describe("bun scripts/dev-portless.ts --dry-run", () => {
           name: "api.acme",
           url: "https://api.acme.localhost",
           cwd: "apps/api",
-          cmd: ["portless", "run", "--name", "api.acme", "bun", "--watch", "src/index.ts"],
+          cmd: ["portless", "run", "--name", "api.acme", "node", "--watch", "src/index.ts"],
         },
         {
           dir: "spa",
           name: "spa.acme",
           url: "https://spa.acme.localhost",
           cwd: "apps/spa",
-          cmd: ["portless", "run", "--name", "spa.acme", "bunx", "react-router", "dev"],
+          cmd: ["portless", "run", "--name", "spa.acme", "react-router", "dev"],
         },
       ],
     });
@@ -443,11 +441,11 @@ describe("bun scripts/dev-portless.ts --dry-run", () => {
   });
 });
 
-describe("bun scripts/dev-portless.ts, without portless", () => {
-  it("says to run bun install when the binary is not there", async () => {
+describe("node scripts/dev-portless.ts, without portless", () => {
+  it("says to install the dependencies when the binary is not there", async () => {
     const { code, stderr } = await launch(project("acme", { spa: { dev: "react-router dev" } }));
 
     expect(code).not.toBe(0);
-    expect(stderr).toContain("bun install");
+    expect(stderr).toContain("Install the project's dependencies");
   });
 });

@@ -10,6 +10,7 @@ import { isRepoRelative } from "./repo-path";
 
 /** Spec 035's category table, in its normative topological order. `provider` is first. */
 export const MODULE_CATEGORIES = [
+  "pm",
   "provider",
   "tooling",
   "config",
@@ -32,6 +33,7 @@ export type ModuleCategory = (typeof MODULE_CATEGORIES)[number];
 
 /** Categories that admit at most one installed module; the rest are `many`. */
 const SINGLE_CATEGORIES = new Set<ModuleCategory>([
+  "pm",
   "provider",
   "tooling",
   "config",

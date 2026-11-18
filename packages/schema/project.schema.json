@@ -78,6 +78,7 @@
       "description": "Category -> installed module records. A cardinality-one category holds at most one record; the parser enforces that, the schema cannot.",
       "propertyNames": {
         "enum": [
+          "pm",
           "provider",
           "tooling",
           "config",

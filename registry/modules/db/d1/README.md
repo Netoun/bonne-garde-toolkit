@@ -14,6 +14,7 @@ bunx bonne-garde add provider/cloudflare db/d1
 | Peer       | Allow-list   | Why                                                                              |
 | ---------- | ------------ | -------------------------------------------------------------------------------- |
 | `provider` | `cloudflare` | `src/d1.ts` imports `readRuntimeEnv` from `{{SCOPE}}/api-runtime`, which it owns |
+| `api`      | `elysia`     | its patches write the binding and the migration scripts into `apps/api`'s files  |
 
 035 asks a `db` module for one variant per provider it supports. D1 is Cloudflare's, so there is one,
 `cloudflare`, matched on `provider: cloudflare`. A project on the `dockerfile` provider is refused
@@ -23,13 +24,13 @@ bunx bonne-garde add provider/cloudflare db/d1
 
 Everything in `packages/db`, which 035 gives to `db` and `orm` together:
 
-| File                 | What it is                                                                                |
-| -------------------- | ----------------------------------------------------------------------------------------- |
-| `package.json`       | `{{SCOPE}}/db`: the `./d1` export and the `typecheck` and `test` scripts; the maps below  |
-| `tsconfig.json`      | extends the project's; `bun` types, and the Workers types through `src/d1.ts`'s reference |
-| `tsconfig.test.json` | the same, with the tests                                                                  |
-| `src/d1.ts`          | `D1_BINDING`, `bindD1(env)` and `readD1()`                                                |
-| `src/d1.test.ts`     | five tests: one against a real D1 (Miniflare), four on the path with no binding           |
+| File                 | What it is                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------ |
+| `package.json`       | `{{SCOPE}}/db`: the `./d1` export and the `typecheck` and `test` scripts; the maps below   |
+| `tsconfig.json`      | extends the project's; `node` types, and the Workers types through `src/d1.ts`'s reference |
+| `tsconfig.test.json` | the same, with the tests                                                                   |
+| `src/d1.ts`          | `D1_BINDING`, `bindD1(env)` and `readD1()`                                                 |
+| `src/d1.test.ts`     | five tests: one against a real D1 (Miniflare), four on the path with no binding            |
 
 It declares `{{SCOPE}}/api-runtime` (`workspace:*`), and `@cloudflare/workers-types` and `miniflare`
 as dev dependencies, pinned. `miniflare` runs the tests' D1: workerd with an in-memory SQLite, the
@@ -39,8 +40,8 @@ database Cloudflare runs, not a stand-in.
 
 `readD1()` gives the binding of the runtime the code runs on, read through the provider's
 `readRuntimeEnv` so that nothing here names `cloudflare:workers`. Where there is no binding, under
-`bun test` or `bun run`, it gives a database that throws on first use with a message naming `DB` and
-`bun run dev`. That is deliberate: the API shell's own tests, and every route that does not query,
+Vitest or `node`, it gives a database that throws on first use with a message naming `DB` and
+`vp run dev`. That is deliberate: the API shell's own tests, and every route that does not query,
 load and answer without a database, and the route that does says what is missing. A string that
 happens to be named `DB` in `process.env` is not taken for a binding.
 
@@ -56,11 +57,11 @@ happens to be named `DB` in `process.env` is not taken for a binding.
 Both entries have `binding: "DB"`, `database_name: "my-app-db"`, `database_id` of zeros and
 `migrations_dir: "../../packages/db/migrations"`, which is where `orm/drizzle`'s `db:generate` writes.
 Wrangler does not inherit `d1_databases` into an environment, hence two. **Replace the name and
-the id** with `bunx wrangler d1 create <name>` before a deploy; locally they only name the state under
+the id** with `wrangler d1 create <name>` (in `apps/api`) before a deploy; locally they only name the state under
 `apps/api/.wrangler`. The scripts address the database by its binding, so renaming it breaks nothing:
 
 ```bash
-cd apps/api && bun run db:migrate:local   # wrangler d1 migrations apply DB --local
+cd apps/api && vp run db:migrate:local   # wrangler d1 migrations apply DB --local
 ```
 
 Without `apps/api` (`api/elysia`), both patches fail and become pending intentions (060), not a

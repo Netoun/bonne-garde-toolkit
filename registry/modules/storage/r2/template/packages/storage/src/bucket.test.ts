@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { Miniflare } from "miniflare";
 import { R2_BINDING, bindR2, readR2 } from "./bucket";
 
@@ -41,7 +41,7 @@ describe("bindR2", () => {
 });
 
 describe("readR2", () => {
-  it("is undefined where the runtime provides no binding, as under bun test", async () => {
+  it("is undefined where the runtime provides no binding, as under Vitest", async () => {
     expect(await readR2()).toBeUndefined();
   });
 });

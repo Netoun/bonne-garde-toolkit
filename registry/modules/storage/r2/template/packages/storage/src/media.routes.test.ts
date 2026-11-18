@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { generateKey, publicUrlFor } from "./r2";
 import { TEST_PUBLIC_URL, createTestStorage, startTestBucket } from "./testing";
 

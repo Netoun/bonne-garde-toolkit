@@ -1,6 +1,12 @@
 import { treaty } from "@elysiajs/eden";
 import type { App } from "{{SCOPE}}/api/app";
 
+declare global {
+  interface ImportMetaEnv {
+    readonly VITE_API_URL: string;
+  }
+}
+
 function resolveApiUrl(): string {
   const apiUrl = import.meta.env.VITE_API_URL;
   new URL(apiUrl);

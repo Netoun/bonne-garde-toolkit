@@ -2,7 +2,7 @@
 
 ## Objective
 
-Bonne Garde is a single-repo platform that vendors a full-stack Cloudflare/Bun application stack as composable pieces:
+Bonne Garde is a single-repo platform that vendors a full-stack application stack, deployed to Cloudflare or in one container (a `provider` module each), installed with Bun or with pnpm (a `pm` module each), as composable pieces:
 
 1. an empty base monorepo;
 2. a CLI that creates projects and composes modules later;
@@ -19,7 +19,7 @@ Bonne Garde is a single-repo platform that vendors a full-stack Cloudflare/Bun a
 
 | Term             | Meaning                                                                                                                             |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| **Empty / base** | A Bun monorepo with tooling and conventions, and **zero** apps, features, or UI components                                          |
+| **Empty / base** | A monorepo with tooling and conventions, its package manager's module, and **zero** apps, features, or UI components                |
 | **Item**         | A shadcn registry entry (`registry:ui`, `registry:lib`, …). Pure file vendoring — see [030](./030-ui-registry.md)                   |
 | **Module**       | A Bonne Garde full-stack unit typed by **category**, installed into its own workspace package — see [035](./035-module-registry.md) |
 | **Category**     | The slot a module fills (`auth`, `db`, `email`, …), carrying **cardinality** and **home**                                           |
@@ -64,7 +64,7 @@ create → write bg.json → add items/modules → execute pending intents → e
 
 - MUST ship `create`, `add`, `list`, `search`, `view`, `record`, `doctor` in v1. `remove` and `replace` follow immediately — they are what `files` + `regions` were built for ([060](./060-patches-and-regions.md)) — and `upgrade` after that ([090](./090-upgrades-and-intentions.md)).
 - MUST vendor files into the consumer tree (no locked runtime).
-- MUST remain opinionated: Bun, Cloudflare, Elysia, Drizzle/D1, Better Auth, React Router.
+- MUST remain opinionated: Bun or pnpm on Node, Cloudflare or one container, Elysia, Drizzle, Better Auth, React Router. A choice is a module of a category ([035](./035-module-registry.md)), never a free-form option.
 - MUST NOT ship apps or modules inside the base template.
 - MUST NOT fork the shadcn registry schema for UI items.
 - MUST NOT express full-stack composition inside the shadcn schema — modules use the native schema of [035](./035-module-registry.md).
@@ -80,7 +80,7 @@ CLI, base template, UI registry, module registry, and migration intentions MUST 
 
 ## Out of scope (v1)
 
-- Arbitrary stack matrix
+- Arbitrary stack matrix: `create` asks which apps and features a project has, never which library fills a slot ([040](./040-cli-create.md))
 - Community marketplace / private registries
 - Composition web UI
 - Automatic silent upstream merges / diff-only upgrades

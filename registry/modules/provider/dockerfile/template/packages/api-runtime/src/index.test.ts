@@ -1,8 +1,16 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { clientIpHeaders, readRuntimeEnv, runtimeOptions, serve } from "./index";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import {
+  clientIpHeaders,
+  handler,
+  listenPort,
+  readRuntimeEnv,
+  runtimeOptions,
+  serve,
+  type IncomingRequest,
+} from "./index";
 
 let dir: string;
 
@@ -15,7 +23,7 @@ afterEach(async () => {
 });
 
 describe("runtimeOptions", () => {
-  it("keeps ahead-of-time compilation on and leaves the adapter to Elysia's Bun default", () => {
+  it("keeps ahead-of-time compilation on and leaves the adapter to Elysia's runtime default", () => {
     expect(runtimeOptions).toEqual({ aot: true });
   });
 });
@@ -158,37 +166,38 @@ describe("serve", () => {
     await writeFile(join(spaDir, "assets", "app-abc123.js"), "console.log('spa');");
   });
 
-  it("listens on the port it is given", () => {
-    expect(serve(app, { spaDir, port: 4321 }).port).toBe(4321);
-  });
-
-  it("listens on PORT, or on 5172 when it is unset", () => {
+  it("listens on the port it is given, else on PORT, else on 5172", () => {
     const previous = process.env.PORT;
     try {
+      expect(listenPort(4321)).toBe(4321);
       process.env.PORT = "4000";
-      expect(serve(app, { spaDir }).port).toBe(4000);
-
+      expect(listenPort()).toBe(4000);
       delete process.env.PORT;
-      expect(serve(app, { spaDir }).port).toBe(5172);
+      expect(listenPort()).toBe(5172);
     } finally {
       if (previous === undefined) delete process.env.PORT;
       else process.env.PORT = previous;
     }
   });
 
-  it("stops on SIGTERM, which PID 1 of a container would otherwise ignore", () => {
+  it("serves over HTTP, and stops on SIGTERM, which PID 1 of a container would otherwise ignore", async () => {
     const before = process.listenerCount("SIGTERM");
+    const servers = [await serve(app, { spaDir, port: 0 }), await serve(app, { spaDir, port: 0 })];
+    try {
+      const [first] = servers;
+      const response = await fetch(new URL("/health", first?.url));
 
-    serve(app, { spaDir });
-    serve(app, { spaDir });
-
-    // Once, however many times `serve` is called: no listener leak, no MaxListeners warning.
-    expect(process.listenerCount("SIGTERM")).toBeLessThanOrEqual(before + 1);
-    expect(process.listenerCount("SIGTERM")).toBeGreaterThan(0);
+      expect(await response.json()).toMatchObject({ status: "ok" });
+      // Once, however many times `serve` is called: no listener leak, no MaxListeners warning.
+      expect(process.listenerCount("SIGTERM")).toBeLessThanOrEqual(before + 1);
+      expect(process.listenerCount("SIGTERM")).toBeGreaterThan(0);
+    } finally {
+      await Promise.all(servers.map((server) => server.close(true)));
+    }
   });
 
   it("serves the SPA's index.html at the root", async () => {
-    const response = await serve(app, { spaDir }).fetch(new Request("http://localhost/"));
+    const response = await handler(app, { spaDir })(new Request("http://localhost/"));
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
@@ -196,7 +205,7 @@ describe("serve", () => {
   });
 
   it("serves a built asset with its content type", async () => {
-    const response = await serve(app, { spaDir }).fetch(
+    const response = await handler(app, { spaDir })(
       new Request("http://localhost/assets/app-abc123.js"),
     );
 
@@ -206,7 +215,7 @@ describe("serve", () => {
   });
 
   it("hands a path that is not a built file to the app", async () => {
-    const response = await serve(app, { spaDir }).fetch(
+    const response = await handler(app, { spaDir })(
       new Request("http://localhost/health", navigation),
     );
 
@@ -214,7 +223,7 @@ describe("serve", () => {
   });
 
   it("falls back to index.html when a browser navigates to a route only the SPA knows", async () => {
-    const response = await serve(app, { spaDir }).fetch(
+    const response = await handler(app, { spaDir })(
       new Request("http://localhost/organizations/acme/members", navigation),
     );
 
@@ -223,7 +232,7 @@ describe("serve", () => {
   });
 
   it("keeps the app's 404 for a client that did not ask for HTML", async () => {
-    const response = await serve(app, { spaDir }).fetch(
+    const response = await handler(app, { spaDir })(
       new Request("http://localhost/v1/nothing", { headers: { accept: "application/json" } }),
     );
 
@@ -232,7 +241,7 @@ describe("serve", () => {
   });
 
   it("keeps the app's 404 for a missing asset, rather than answering it with HTML", async () => {
-    const response = await serve(app, { spaDir }).fetch(
+    const response = await handler(app, { spaDir })(
       new Request("http://localhost/assets/missing.js", { headers: { accept: "*/*" } }),
     );
 
@@ -240,7 +249,7 @@ describe("serve", () => {
   });
 
   it("does not answer a write with the SPA, even from a browser", async () => {
-    const response = await serve(app, { spaDir }).fetch(
+    const response = await handler(app, { spaDir })(
       new Request("http://localhost/dashboard", { method: "POST", ...navigation }),
     );
 
@@ -251,7 +260,7 @@ describe("serve", () => {
   it("never serves a file outside the SPA directory", async () => {
     await writeFile(join(dir, "outside.txt"), "not for the web");
 
-    const response = await serve(app, { spaDir }).fetch(
+    const response = await handler(app, { spaDir })(
       new Request("http://localhost/..%2foutside.txt", navigation),
     );
 
@@ -259,14 +268,14 @@ describe("serve", () => {
   });
 
   it("hands a malformed path to the app instead of throwing", async () => {
-    const response = await serve(app, { spaDir }).fetch(new Request("http://localhost/%E0%A4%A"));
+    const response = await handler(app, { spaDir })(new Request("http://localhost/%E0%A4%A"));
 
     expect(response.status).toBe(404);
     expect(await response.text()).toBe("api: not found");
   });
 
   it("does not answer a directory with its listing or an error", async () => {
-    const response = await serve(app, { spaDir }).fetch(new Request("http://localhost/assets"));
+    const response = await handler(app, { spaDir })(new Request("http://localhost/assets"));
 
     expect(response.status).toBe(404);
     expect(await response.text()).toBe("api: not found");
@@ -275,7 +284,7 @@ describe("serve", () => {
   it("serves only the app when no SPA has been built", async () => {
     const missing = join(dir, "not-built");
 
-    const response = await serve(app, { spaDir: missing }).fetch(
+    const response = await handler(app, { spaDir: missing })(
       new Request("http://localhost/dashboard", navigation),
     );
 
@@ -289,10 +298,9 @@ describe("the client's address", () => {
   const echo = {
     fetch: (request: Request) => Response.json({ ip: request.headers.get("x-client-ip") }),
   };
-  /** What Bun hands `fetch` as its second argument: the server, which knows the socket's peer. */
-  const peer = (address: string | null) => ({
-    requestIP: () => (address === null ? null : { address, family: "IPv4", port: 40000 }),
-  });
+  /** The request as the server hands it over, from a socket whose peer is `address`. */
+  const from = (request: Request, address?: string): IncomingRequest =>
+    Object.assign(request, { ip: address });
   const addressOf = async (response: Response) => ((await response.json()) as { ip: unknown }).ip;
   const spaDir = () => join(dir, "no-spa");
 
@@ -301,9 +309,8 @@ describe("the client's address", () => {
   });
 
   it("stamps the address of the socket on the request the app sees", async () => {
-    const response = await serve(echo, { spaDir: spaDir() }).fetch(
-      new Request("http://localhost/who"),
-      peer("203.0.113.7"),
+    const response = await handler(echo, { spaDir: spaDir() })(
+      from(new Request("http://localhost/who"), "203.0.113.7"),
     );
 
     expect(await addressOf(response)).toBe("203.0.113.7");
@@ -314,8 +321,8 @@ describe("the client's address", () => {
       headers: { "x-client-ip": "198.51.100.1" },
     });
 
-    const withSocket = await serve(echo, { spaDir: spaDir() }).fetch(forged, peer("203.0.113.7"));
-    const withoutSocket = await serve(echo, { spaDir: spaDir() }).fetch(forged);
+    const withSocket = await handler(echo, { spaDir: spaDir() })(from(forged, "203.0.113.7"));
+    const withoutSocket = await handler(echo, { spaDir: spaDir() })(from(forged));
 
     expect(await addressOf(withSocket)).toBe("203.0.113.7");
     expect(await addressOf(withoutSocket)).toBeNull();
@@ -326,7 +333,7 @@ describe("the client's address", () => {
       headers: { "x-forwarded-for": "198.51.100.1" },
     });
 
-    const response = await serve(echo, { spaDir: spaDir() }).fetch(forged, peer("203.0.113.7"));
+    const response = await handler(echo, { spaDir: spaDir() })(from(forged, "203.0.113.7"));
 
     expect(await addressOf(response)).toBe("203.0.113.7");
   });
@@ -337,10 +344,10 @@ describe("the client's address", () => {
       headers: { "x-forwarded-for": "198.51.100.1, 203.0.113.9" },
     });
 
-    const response = await serve(echo, {
+    const response = await handler(echo, {
       spaDir: spaDir(),
       trustedProxyHeader: "x-forwarded-for",
-    }).fetch(behindProxy, peer("172.18.0.1"));
+    })(from(behindProxy, "172.18.0.1"));
 
     expect(await addressOf(response)).toBe("203.0.113.9");
   });
@@ -349,13 +356,15 @@ describe("the client's address", () => {
     const previous = process.env.TRUSTED_PROXY_HEADER;
     try {
       process.env.TRUSTED_PROXY_HEADER = "x-real-ip";
-      const server = serve(echo, { spaDir: spaDir() });
+      const answer = handler(echo, { spaDir: spaDir() });
 
-      const named = await server.fetch(
-        new Request("http://localhost/who", { headers: { "x-real-ip": "203.0.113.9" } }),
-        peer("172.18.0.1"),
+      const named = await answer(
+        from(
+          new Request("http://localhost/who", { headers: { "x-real-ip": "203.0.113.9" } }),
+          "172.18.0.1",
+        ),
       );
-      const absent = await server.fetch(new Request("http://localhost/who"), peer("172.18.0.1"));
+      const absent = await answer(from(new Request("http://localhost/who"), "172.18.0.1"));
 
       expect(await addressOf(named)).toBe("203.0.113.9");
       expect(await addressOf(absent)).toBe("172.18.0.1");
@@ -368,11 +377,23 @@ describe("the client's address", () => {
   it("keeps the body of a write, which stamping the header must not consume", async () => {
     const reader = { fetch: async (request: Request) => new Response(await request.text()) };
 
-    const response = await serve(reader, { spaDir: spaDir() }).fetch(
-      new Request("http://localhost/echo", { method: "POST", body: "hello" }),
-      peer("203.0.113.7"),
+    const response = await handler(reader, { spaDir: spaDir() })(
+      from(new Request("http://localhost/echo", { method: "POST", body: "hello" }), "203.0.113.7"),
     );
 
     expect(await response.text()).toBe("hello");
+  });
+
+  it("stamps the address of the socket a real request came from", async () => {
+    const server = await serve(echo, { spaDir: spaDir(), port: 0 });
+    try {
+      const response = await fetch(new URL("/who", server.url), {
+        headers: { "x-client-ip": "198.51.100.1" },
+      });
+
+      expect(await addressOf(response)).toMatch(/^(?:::1|::ffff:127\.0\.0\.1|127\.0\.0\.1)$/);
+    } finally {
+      await server.close(true);
+    }
   });
 });

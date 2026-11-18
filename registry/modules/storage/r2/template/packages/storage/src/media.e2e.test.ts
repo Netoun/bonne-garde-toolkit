@@ -1,5 +1,5 @@
 /// <reference types="@cloudflare/workers-types" />
-import { afterAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { eq, getTableName, is, sql } from "drizzle-orm";
 import { SQLiteTable } from "drizzle-orm/sqlite-core";
 // `bonne-garde add` rewrites the scope in these lines, so the formatter cannot know how wide they are.
@@ -509,7 +509,7 @@ describe("db:reset with media rows", () => {
       },
     ]);
     // What the reset has to get past: the author of a media cannot be deleted while the media is there.
-    expect(() => db.run(sql`DELETE FROM "user"`)).toThrow(/Failed to run the query/);
+    await expect(db.run(sql`DELETE FROM "user"`)).rejects.toThrow(/Failed query/);
 
     for (const statement of resetStatements(schema)) {
       await db.run(sql.raw(statement));

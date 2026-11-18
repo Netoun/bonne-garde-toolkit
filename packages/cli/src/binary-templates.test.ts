@@ -76,7 +76,7 @@ async function project(registry?: string): Promise<string> {
     install: false,
     scope: "@shop",
     registry: source,
-  });
+  }).then(({ target }) => target);
 }
 
 /** Runs the real `bonne-garde` entry in `cwd`. */

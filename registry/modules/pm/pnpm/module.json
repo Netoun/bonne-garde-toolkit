@@ -1,0 +1,23 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "pnpm",
+  "category": "pm",
+  "version": "0.1.0",
+  "title": "pnpm",
+  "description": "pnpm installs the project and Node runs its scripts: the root packageManager pin, pnpm-workspace.yaml, and the action that sets the project up in CI.",
+  "peers": {},
+  "variants": [
+    {
+      "key": "default",
+      "match": {},
+      "copy": [".github/actions/setup/action.yml", "pnpm-workspace.yaml"],
+      "patch": [
+        {
+          "type": "jsonc.merge",
+          "file": "package.json",
+          "value": { "packageManager": "pnpm@12.17.0" }
+        }
+      ]
+    }
+  ]
+}

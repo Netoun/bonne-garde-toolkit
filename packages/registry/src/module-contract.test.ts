@@ -25,10 +25,25 @@ import { resolveModulePlans, type ModuleRef } from "./module-plan";
 import { patchRegions, writePatch } from "./patch-ops";
 import { plannedPatches } from "./patch-plan";
 import { addNamedExport } from "./ts-patches";
+import { jsoncLeaves, setJsoncLeaves } from "./jsonc-merge";
 import { utf8Text } from "./utf8";
 
 const ROOT = join(import.meta.dir, "../../..");
 const MODULES = join(ROOT, "registry/modules");
+
+/**
+ * The base template's devDependencies: `vite-plus`, whose `test` entry every module's tests import,
+ * `typescript`, `@types/node`. Every project has them at its root, where a workspace package resolves
+ * them under bun as under pnpm, so a module does not declare them again.
+ */
+const BASE_PACKAGE: unknown = JSON.parse(
+  await readFile(join(ROOT, "templates/base/package.json"), "utf8"),
+);
+const BASE_TOOLING: ReadonlySet<string> = new Set(
+  isRecord(BASE_PACKAGE) && isRecord(BASE_PACKAGE.devDependencies)
+    ? Object.keys(BASE_PACKAGE.devDependencies)
+    : [],
+);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -115,14 +130,111 @@ describe("module contract", () => {
     expect(offending).toEqual([]);
   });
 
-  test("both providers exist and peer on nothing", async () => {
+  // A project runs on bun or on pnpm (040), and its tests run on Vitest, which is Node in both: a
+  // template file or a command a module.json declares that reaches for Bun breaks the pnpm project,
+  // and a test that does breaks both. `bun` the word, in a comment, misleads the next agent the same way.
+  // What only a Bun project installs may: `pm/bun`, a module whose `peers.pm` is bun alone, and a
+  // variant whose `match` names one of those.
+  test("no template file and no command of a module.json reaches for Bun, but what only a Bun project installs", async () => {
+    // `bun.lock`, a file name, is not a command. `import.meta.dir`, `.path` and `.file` are Bun's alone:
+    // Node, and so Vitest, leaves them undefined; `import.meta.dirname` and `.filename` are on both.
+    const BUN = /\bBun\.|["']bun:|\bbunx?\b(?![-.])|@types\/bun|import\.meta\.(?:dir|path|file)\b/;
+    const manifests = await Promise.all(
+      (await findModuleManifests()).map(async ([category, id, path]) => ({
+        category,
+        id,
+        manifest: parseModuleManifest(JSON.parse(await readFile(path, "utf8"))),
+      })),
+    );
+    const bunOnly = new Set(
+      manifests
+        .filter(
+          ({ category, id, manifest }) =>
+            `${category}/${id}` === "pm/bun" ||
+            (manifest.peers.pm?.length === 1 && manifest.peers.pm[0] === "bun"),
+        )
+        .map(({ category, id }) => `${category}/${id}`),
+    );
+    expect([...bunOnly].sort()).toEqual(["pm/bun"]);
+
+    const found: string[] = [];
+    for (const { category, id, manifest } of manifests) {
+      if (bunOnly.has(`${category}/${id}`)) continue;
+      const commands = [
+        ...(manifest.checks ?? []),
+        ...manifest.variants
+          .filter(({ match }) =>
+            Object.entries(match).every(([peer, module]) => !bunOnly.has(`${peer}/${module}`)),
+          )
+          .flatMap((variant) =>
+            (variant.patch ?? []).flatMap((patch) =>
+              patch.type === "scripts.merge" && isRecord(patch.scripts)
+                ? Object.values(patch.scripts).filter((script) => typeof script === "string")
+                : [],
+            ),
+          ),
+      ];
+      for (const command of commands.filter((command) => BUN.test(command))) {
+        found.push(`${category}/${id} module.json: ${command}`);
+      }
+      const template = join(MODULES, category, id, "template");
+      if (!existsSync(template)) continue;
+      for (const file of await readdir(template, { recursive: true, withFileTypes: true })) {
+        if (!file.isFile()) continue;
+        const absolute = join(file.parentPath, file.name);
+        for (const [index, line] of (await readFile(absolute, "utf8")).split("\n").entries()) {
+          if (BUN.test(line)) {
+            found.push(`${absolute.slice(MODULES.length + 1)}:${index + 1}: ${line.trim()}`);
+          }
+        }
+      }
+    }
+    expect(found).toEqual([]);
+  });
+
+  // tsx resolves an import the way the project's typecheck does (`moduleResolution: bundler`); `node`
+  // does not, and an import it cannot resolve fails only when the script runs (035).
+  test("no script a module adds runs a TypeScript file with node: tsx does", async () => {
+    const NODE_TS = /\bnode\s+(?:--\S+\s+)*\S+\.ts\b/;
+    const found: string[] = [];
+    for (const [category, id, path] of await findModuleManifests()) {
+      const manifest = parseModuleManifest(JSON.parse(await readFile(path, "utf8")));
+      const scripts = manifest.variants.flatMap((variant) =>
+        (variant.patch ?? []).flatMap((patch) =>
+          patch.type === "scripts.merge" && isRecord(patch.scripts)
+            ? Object.values(patch.scripts).filter((script) => typeof script === "string")
+            : [],
+        ),
+      );
+      const template = join(MODULES, category, id, "template");
+      if (existsSync(template)) {
+        for (const file of await readdir(template, { recursive: true, withFileTypes: true })) {
+          if (!file.isFile() || file.name !== "package.json") continue;
+          const body: unknown = JSON.parse(
+            await readFile(join(file.parentPath, file.name), "utf8"),
+          );
+          if (isRecord(body) && isRecord(body.scripts)) {
+            scripts.push(
+              ...Object.values(body.scripts).filter((script) => typeof script === "string"),
+            );
+          }
+        }
+      }
+      found.push(
+        ...scripts.filter((script) => NODE_TS.test(script)).map((s) => `${category}/${id}: ${s}`),
+      );
+    }
+    expect(found).toEqual([]);
+  });
+
+  test("both providers exist and peer on nothing but the package manager", async () => {
     const ids = new Set<string>();
     for (const [category, id, path] of await findModuleManifests()) {
       if (category !== "provider") continue;
       ids.add(id);
       const manifest = parseModuleManifest(JSON.parse(await readFile(path, "utf8")));
-      // `provider` is first in the topological order, so it has no peers by construction.
-      expect(manifest.peers).toEqual({});
+      // `pm` alone comes before `provider` in the topological order.
+      expect(Object.keys(manifest.peers).filter((peer) => peer !== "pm")).toEqual([]);
     }
 
     expect(ids).toEqual(new Set(["cloudflare", "dockerfile"]));
@@ -243,8 +355,11 @@ describe("module contract", () => {
         ]) {
           expect(variant?.copy).toContain(path);
         }
-        // Spec 035 declares a dependency once: `elysia` is the variant's, pinned the same everywhere.
-        expect(variant?.dependencies).toEqual({ elysia: "1.4.29" });
+        // Spec 035 declares a dependency once: `elysia` is the variant's, pinned the same everywhere;
+        // the container's runtime also has srvx, the server it listens with.
+        expect(variant?.dependencies).toEqual(
+          manifest.id === "dockerfile" ? { elysia: "1.4.29", srvx: "1.0.8" } : { elysia: "1.4.29" },
+        );
       }
     });
 
@@ -256,7 +371,7 @@ describe("module contract", () => {
         expect(body).toMatchObject({
           name: "{{SCOPE}}/api-runtime",
           exports: { ".": "./src/index.ts" },
-          scripts: { typecheck: expect.any(String), test: "bun test" },
+          scripts: { typecheck: expect.any(String), test: "vp test" },
         });
         for (const map of ["dependencies", "devDependencies", "peerDependencies"]) {
           expect(isRecord(body) && map in body ? `${manifest.id}: ${map}` : null).toBeNull();
@@ -290,7 +405,7 @@ describe("module contract", () => {
     const { manifest } = found;
 
     expect(manifest.peers).toEqual({});
-    expect(manifest.checks).toEqual(["bun run check"]);
+    expect(manifest.checks).toEqual(["vp run check"]);
     expect(manifest.variants).toHaveLength(1);
     const [variant] = manifest.variants;
     expect(variant?.match).toEqual({});
@@ -307,7 +422,7 @@ describe("module contract", () => {
     expect(variant?.patch ?? []).toEqual([]);
 
     expect(await readFile(join(found.dir, "template/.husky/pre-commit"), "utf8")).toBe(
-      "bunx vp staged\n",
+      "vp staged\n",
     );
   });
 
@@ -435,7 +550,7 @@ describe("module contract", () => {
         "packages/ui/src/styles/globals.css",
         "packages/ui/src/styles/themes/default.css",
       ]);
-      expect(manifest.checks).toEqual(["bun run typecheck"]);
+      expect(manifest.checks).toEqual(["vp run typecheck"]);
       expect(variant.patch ?? []).toEqual([]);
       expect(variant.intent ?? []).toEqual([]);
     });
@@ -659,7 +774,7 @@ describe("module contract", () => {
         );
 
         expect(root).toMatch(/import \{[^}]*\bbranding\b[^}]*\} from "\{\{SCOPE\}\}\/config";/);
-        expect(root).toContain("<html lang={branding.lang}>");
+        expect(root).toMatch(/<html lang=\{branding\.lang\}[\s>]/);
         expect(root).not.toMatch(/\blang="/);
       }
     });
@@ -675,7 +790,7 @@ describe("module contract", () => {
           "./vite": "./src/vite-favicons.ts",
           "./assets/*": "./assets/*",
         },
-        scripts: { typecheck: "tsc --noEmit", test: "bun test" },
+        scripts: { typecheck: "tsc --noEmit", test: "vp test" },
       });
       for (const map of [
         "dependencies",
@@ -694,11 +809,11 @@ describe("module contract", () => {
         {
           type: "scripts.merge",
           file: "package.json",
-          scripts: { "gen:branding": "bun packages/config/scripts/gen-branding.ts" },
+          scripts: { "gen:branding": "tsx packages/config/scripts/gen-branding.ts" },
         },
       ]);
       expect(variant.copy).toContain("packages/config/scripts/gen-branding.ts");
-      expect(manifest.checks).toContain("bun run gen:branding");
+      expect(manifest.checks).toContain("vp run gen:branding");
     });
 
     test("a package-homed module writes only inside its package (035 seam)", async () => {
@@ -732,7 +847,7 @@ describe("module contract", () => {
       const json = await text("packages/config/branding.json");
       const generated = await text("packages/config/src/branding.generated.ts");
 
-      // A drift here is `bun run gen:branding` rewriting a file `bg.json` recorded the sha256 of.
+      // A drift here is `vp run gen:branding` rewriting a file `bg.json` recorded the sha256 of.
       for (const scope of ["@a", "@app", "@acme", "@a-much-longer-company-scope"]) {
         const branding = assertBranding(JSON.parse(rendered(json, scope)));
         expect(branding.npmScope).toBe(scope);
@@ -763,8 +878,8 @@ describe("module contract", () => {
 
       expect(body).toMatchObject({
         extends: "../../tsconfig.json",
-        // The generator reads files and `import.meta.dir`: without the types `tsc` cannot see them.
-        compilerOptions: { types: ["bun"] },
+        // The generator reads files and `import.meta.dirname`: without the types `tsc` cannot see them.
+        compilerOptions: { types: ["node"] },
         include: ["src/**/*.ts", "scripts/**/*.ts"],
       });
     });
@@ -842,7 +957,7 @@ describe("module contract", () => {
         {
           type: "scripts.merge",
           file: "apps/api/package.json",
-          scripts: { dev: "bun --watch src/index.ts" },
+          scripts: { dev: "tsx watch src/index.ts" },
         },
       ]);
       expect(variants.get("dockerfile")?.devDependencies ?? {}).toEqual({});
@@ -920,8 +1035,8 @@ describe("module contract", () => {
         ]);
         for (const [path, source] of await sources(variant.copy ?? [])) {
           for (const name of packagesImportedBy(source)) {
-            // `bun:test` and `node:*` are the runtime's; the rest has to be in a dependency map.
-            if (!name.includes(":") && !declared.has(name)) {
+            // `node:*` is the runtime's, the base's tooling every project's; the rest has to be in a dependency map.
+            if (!name.includes(":") && !declared.has(name) && !BASE_TOOLING.has(name)) {
               missing.push(`${key} ${path}: ${name}`);
             }
           }
@@ -974,7 +1089,7 @@ describe("module contract", () => {
     });
   });
 
-  describe("web modules are the front shells of apps/<id>, one variant per provider they support (035, 080)", () => {
+  describe("web modules are the front shells of apps/<id>, a variant per provider they support, with the api and maybe without it (035, 040, 080)", () => {
     type WebModule = Awaited<ReturnType<typeof loadLocalRegistry>>["modules"][number];
     const webModules = async (): Promise<WebModule[]> => {
       const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
@@ -1009,20 +1124,25 @@ describe("module contract", () => {
           .map(async (path): Promise<[string, string]> => [path, await read(module, path)]),
       );
 
-    test("each declares the peers it imports through, and a variant for every provider it accepts", async () => {
+    test("each declares the peers it imports through, a variant with the api for every provider it accepts, and maybe one without it", async () => {
       const providers = await providerIds();
       for (const module of await webModules()) {
         const { manifest } = module;
         const key = `web/${manifest.id}`;
-        expect(Object.keys(manifest.peers)).toEqual(
-          expect.arrayContaining(["provider", "config", "api"]),
-        );
+        expect(Object.keys(manifest.peers)).toEqual(expect.arrayContaining(["provider", "config"]));
+        // The api is an optional peer (035): a front without it is a project of its own (040).
+        expect(Object.keys(manifest.peers)).not.toContain("api");
         const accepted = manifest.peers.provider ?? [];
         const expected = accepted.length > 0 ? [...accepted].sort() : providers;
-        expect(manifest.variants.map((variant) => variant.key).sort()).toEqual(expected);
+        const withApi = manifest.variants.filter(
+          (variant) => !variant.key.endsWith("-without-api"),
+        );
+        expect(withApi.map((variant) => variant.key).sort()).toEqual(expected);
         for (const variant of manifest.variants) {
+          const provider = variant.key.replace(/-without-api$/, "");
+          const match = provider === variant.key ? { provider, api: "elysia" } : { provider };
           expect(`${key} ${variant.key}: ${JSON.stringify(variant.match)}`).toBe(
-            `${key} ${variant.key}: ${JSON.stringify({ provider: variant.key })}`,
+            `${key} ${variant.key}: ${JSON.stringify(match)}`,
           );
           expect(variant.workspace).toEqual({
             name: `{{SCOPE}}/${manifest.id}`,
@@ -1058,7 +1178,13 @@ describe("module contract", () => {
             }
           }
         }
-        const declared = Object.keys(module.manifest.peers).filter((peer) => peer !== "provider");
+        // A peer a variant's `match` names is optional (035): it counts as declared for that variant.
+        const declared = new Set(
+          [
+            ...Object.keys(module.manifest.peers),
+            ...module.manifest.variants.flatMap((variant) => Object.keys(variant.match)),
+          ].filter((peer) => peer !== "provider"),
+        );
         expect([module.manifest.id, [...declared].sort()]).toEqual([
           module.manifest.id,
           [...imported].sort(),
@@ -1088,9 +1214,13 @@ describe("module contract", () => {
           );
           expect(patched).toContain("dev");
           expect(patched.filter((name) => name in scripts)).toEqual([]);
+          // Its own package.json's scripts, and the API's address in its own wrangler.jsonc.
           for (const patch of variant.patch ?? []) {
-            expect(patch.type).toBe("scripts.merge");
-            expect(patch).toMatchObject({ file: `apps/${manifest.id}/package.json` });
+            expect([patch.type, patch.file]).toEqual(
+              patch.type === "jsonc.merge"
+                ? ["jsonc.merge", `apps/${manifest.id}/wrangler.jsonc`]
+                : ["scripts.merge", `apps/${manifest.id}/package.json`],
+            );
           }
         }
       }
@@ -1098,11 +1228,13 @@ describe("module contract", () => {
 
     test("a cloudflare variant also deploys, and carries the wrangler config and wrangler", async () => {
       for (const { manifest } of await webModules()) {
-        const cloudflare = manifest.variants.find((variant) => variant.key === "cloudflare");
-        const others = manifest.variants.filter((variant) => variant.key !== "cloudflare");
-        expect(cloudflare?.copy).toContain(`apps/${manifest.id}/wrangler.jsonc`);
-        expect(Object.keys(cloudflare?.devDependencies ?? {})).toContain("wrangler");
-        for (const variant of others) {
+        const onCloudflare = (variant: (typeof manifest.variants)[number]) =>
+          variant.match.provider === "cloudflare";
+        for (const variant of manifest.variants.filter(onCloudflare)) {
+          expect(variant.copy).toContain(`apps/${manifest.id}/wrangler.jsonc`);
+          expect(Object.keys(variant.devDependencies ?? {})).toContain("wrangler");
+        }
+        for (const variant of manifest.variants.filter((variant) => !onCloudflare(variant))) {
           expect(variant.copy).not.toContain(`apps/${manifest.id}/wrangler.jsonc`);
           expect(Object.keys(variant.devDependencies ?? {})).not.toContain("wrangler");
         }
@@ -1378,13 +1510,13 @@ describe("module contract", () => {
       return all;
     };
 
-    test("db/d1 peers on the cloudflare provider and ships that one variant, which owns the workspace", async () => {
+    test("db/d1 peers on the cloudflare provider and the API it binds to, and ships that one variant, which owns the workspace", async () => {
       const { catalog, d1 } = await dbModules();
       const providers = catalog.modules
         .filter(({ manifest }) => manifest.category === "provider")
         .map(({ manifest }) => manifest.id);
 
-      expect(d1.manifest.peers).toEqual({ provider: ["cloudflare"] });
+      expect(d1.manifest.peers).toEqual({ provider: ["cloudflare"], api: ["elysia"] });
       // 035: a `db` module ships one variant per provider it supports, and the allow-list says which.
       expect(d1.manifest.variants.map((variant) => variant.key)).toEqual(
         providers.filter((id) => d1.manifest.peers.provider?.includes(id)),
@@ -1402,10 +1534,10 @@ describe("module contract", () => {
       expect(d1.variant.intent ?? []).toEqual([]);
     });
 
-    test("orm/drizzle peers on any db, has the one variant matched on d1, and writes into the package without owning it", async () => {
+    test("orm/drizzle peers on the API it wires into and any db, has the one variant matched on d1, and writes into the package without owning it", async () => {
       const { orm } = await dbModules();
 
-      expect(orm.manifest.peers).toEqual({ db: [] });
+      expect(orm.manifest.peers).toEqual({ api: ["elysia"], db: [] });
       expect(orm.manifest.variants).toHaveLength(1);
       expect(orm.variant.key).toBe("d1");
       expect(orm.variant.match).toEqual({ db: "d1" });
@@ -1464,11 +1596,7 @@ describe("module contract", () => {
       expect(body).toMatchObject({
         name: "{{SCOPE}}/db",
         exports: { "./d1": "./src/d1.ts" },
-        scripts: {
-          typecheck: expect.any(String),
-          "typecheck:test": expect.any(String),
-          test: "bun test",
-        },
+        scripts: { typecheck: expect.any(String), test: "vp test" },
       });
       for (const map of [
         "dependencies",
@@ -1502,7 +1630,7 @@ describe("module contract", () => {
         file: "packages/db/package.json",
         scripts: {
           "db:generate": "drizzle-kit generate --config ./src/drizzle.config.ts",
-          "db:reset": "bun run src/reset.ts",
+          "db:reset": "tsx src/reset.ts",
           "db:studio": "drizzle-kit studio --config ./src/drizzle.config.ts",
         },
       });
@@ -1564,7 +1692,7 @@ describe("module contract", () => {
 
       for (const [path, source] of await sourcesOf()) {
         for (const name of packagesNamedBy(source)) {
-          if (!name.includes(":")) {
+          if (!name.includes(":") && !BASE_TOOLING.has(name)) {
             named.add(name);
             expect([path, declared.has(name)]).toEqual([path, true]);
           }
@@ -1582,6 +1710,8 @@ describe("module contract", () => {
         catalog,
         [
           { category: "provider", id: "cloudflare" },
+          { category: "config", id: "branding" },
+          { category: "api", id: "elysia" },
           { category: "db", id: "d1" },
           { category: "orm", id: "drizzle" },
         ],
@@ -1613,7 +1743,7 @@ describe("module contract", () => {
       await expect(formatWithProjectFormatter({ [file]: text })).resolves.toEqual({ [file]: text });
     });
 
-    test("a peer is declared exactly when a source reaches the module's package or file", async () => {
+    test("a peer is declared exactly when a source or a patch reaches the module's package or file", async () => {
       const { catalog, d1, orm } = await dbModules();
       const provider = catalog.modules.find(
         ({ manifest }) => manifest.category === "provider" && manifest.id === "cloudflare",
@@ -1633,8 +1763,15 @@ describe("module contract", () => {
       expect(d1Imports.has("{{SCOPE}}/api-runtime")).toBe(true);
       expect(ormImports.has("./d1")).toBe(true);
       expect([...ormImports].filter((specifier) => specifier.startsWith("{{SCOPE}}/"))).toEqual([]);
-      expect(Object.keys(d1.manifest.peers)).toEqual(["provider"]);
-      expect(Object.keys(orm.manifest.peers)).toEqual(["db"]);
+      // Both patch the API shell's files: db/d1 its wrangler.jsonc and package.json, orm its app.ts.
+      const patchesApi = (patches: readonly Record<string, unknown>[] | undefined) =>
+        (patches ?? []).some(
+          ({ file }) => typeof file === "string" && file.startsWith("apps/api/"),
+        );
+      expect(patchesApi(d1.variant.patch)).toBe(true);
+      expect(patchesApi(orm.variant.patch)).toBe(true);
+      expect(Object.keys(d1.manifest.peers)).toEqual(["provider", "api"]);
+      expect(Object.keys(orm.manifest.peers)).toEqual(["api", "db"]);
     });
 
     test("no relative import leaves the package, and each one names a file a module ships", async () => {
@@ -1736,23 +1873,50 @@ describe("module contract", () => {
         [
           { category: "orm", id: "drizzle" },
           { category: "db", id: "d1" },
+          { category: "api", id: "elysia" },
+          { category: "config", id: "branding" },
           { category: "provider", id: "cloudflare" },
         ],
         project,
       );
 
-      expect(plans.map(({ key, variant }) => `${key}:${variant}`)).toEqual([
-        "provider/cloudflare:default",
-        "db/d1:cloudflare",
-        "orm/drizzle:d1",
-      ]);
+      expect(
+        plans
+          .filter(({ category }) => category === "db" || category === "orm")
+          .map(({ key, variant }) => `${key}:${variant}`),
+      ).toEqual(["db/d1:cloudflare", "orm/drizzle:d1"]);
       await expect(
-        resolveModulePlans(catalog, [{ category: "orm", id: "drizzle" }], project),
+        resolveModulePlans(catalog, [{ category: "db", id: "d1" }], project),
+      ).rejects.toThrow(
+        /db\/d1 needs a module in category provider \(cloudflare\) and none is installed/,
+      );
+      await expect(
+        resolveModulePlans(
+          catalog,
+          [
+            { category: "provider", id: "cloudflare" },
+            { category: "db", id: "d1" },
+          ],
+          project,
+        ),
+      ).rejects.toThrow(/db\/d1 needs a module in category api \(elysia\) and none is installed/);
+      await expect(
+        resolveModulePlans(
+          catalog,
+          [
+            { category: "provider", id: "cloudflare" },
+            { category: "config", id: "branding" },
+            { category: "api", id: "elysia" },
+            { category: "orm", id: "drizzle" },
+          ],
+          project,
+        ),
       ).rejects.toThrow(/orm\/drizzle needs a module in category db \(any\) and none is installed/);
       await expect(
         resolveModulePlans(
           catalog,
           [
+            { category: "pm", id: "bun" },
             { category: "provider", id: "dockerfile" },
             { category: "db", id: "d1" },
           ],
@@ -1993,14 +2157,15 @@ describe("module contract", () => {
       const imported = new Set<string>();
       for (const [path, source] of await sources()) {
         for (const name of packagesImportedBy(source)) {
-          // `bun:test`, `bun:sqlite` and `node:*` are the runtime's; the project's own start with the scope.
-          if (name.includes(":") || name === "{{SCOPE}}/auth") continue;
+          // `node:*` is the runtime's, the base's tooling every project's.
+          if (name.includes(":") || name === "{{SCOPE}}/auth" || BASE_TOOLING.has(name)) continue;
           imported.add(name);
           expect([path, declared.has(name)]).toEqual([path, true]);
         }
       }
 
-      expect([...declared].filter((name) => !imported.has(name))).toEqual([]);
+      // `auth` is the CLI the scripts run, a bin that no source imports.
+      expect([...declared].filter((name) => !imported.has(name) && name !== "auth")).toEqual([]);
     });
 
     test("every dependency is an exact version, and the adapter is the one release of better-auth", async () => {
@@ -2015,7 +2180,9 @@ describe("module contract", () => {
       );
       const pkg: unknown = JSON.parse(await authText("packages/auth/package.json"));
       const generate = isRecord(pkg) && isRecord(pkg.scripts) ? pkg.scripts["auth:generate"] : "";
-      expect(generate).toContain(`bunx auth@${variant.dependencies?.["better-auth"]} generate`);
+      expect(generate).toEqual(expect.stringMatching(/^auth generate /));
+      expect(Object.keys(variant.devDependencies ?? {})).toEqual(["auth"]);
+      expect(variant.devDependencies?.auth).toBe(variant.dependencies?.["better-auth"] ?? "");
     });
 
     test("it writes only inside packages/auth, from explicit paths that exist", async () => {
@@ -2101,7 +2268,7 @@ describe("module contract", () => {
 
       expect(record.name).toBe("{{SCOPE}}/auth");
       expect(typeof scripts.typecheck).toBe("string");
-      expect(scripts.test).toBe("bun test");
+      expect(scripts.test).toBe("vp test");
       for (const map of ["dependencies", "devDependencies", "peerDependencies"]) {
         expect(map in record ? map : null).toBeNull();
       }
@@ -2176,6 +2343,7 @@ describe("module contract", () => {
           catalog,
           [
             ...stack.filter(({ category }) => category !== "provider"),
+            { category: "pm", id: "bun" },
             { category: "provider", id: "dockerfile" },
             { category: "auth", id: "better-auth" },
           ],
@@ -2307,8 +2475,9 @@ describe("module contract", () => {
       const imported = new Set<string>();
       for (const [path, source] of await sources()) {
         for (const name of packagesNamedBy(source)) {
-          // `bun:test` and `node:*` are the runtime's; the project's own start with the scope.
-          if (name.includes(":") || name === "{{SCOPE}}/storage") continue;
+          // `node:*` is the runtime's, the base's tooling every project's.
+          if (name.includes(":") || name === "{{SCOPE}}/storage" || BASE_TOOLING.has(name))
+            continue;
           imported.add(name);
           expect([path, declared.has(name)]).toEqual([path, true]);
         }
@@ -2448,7 +2617,7 @@ describe("module contract", () => {
 
       expect(record.name).toBe("{{SCOPE}}/storage");
       expect(typeof scripts.typecheck).toBe("string");
-      expect(scripts.test).toBe("bun test");
+      expect(scripts.test).toBe("vp test");
       for (const map of ["dependencies", "devDependencies", "peerDependencies"]) {
         expect(map in record ? map : null).toBeNull();
       }
@@ -2561,6 +2730,7 @@ describe("module contract", () => {
           catalog,
           [
             ...stack.filter(({ category }) => category !== "provider"),
+            { category: "pm", id: "bun" },
             { category: "provider", id: "dockerfile" },
             { category: "storage", id: "r2" },
           ],
@@ -2610,7 +2780,7 @@ describe("module contract", () => {
       const providers = (await readdir(join(MODULES, "provider"))).sort();
 
       expect(manifest.category).toBe("deploy");
-      expect(manifest.peers).toEqual({ provider: ["cloudflare"] });
+      expect(manifest.peers).toEqual({ pm: [], provider: ["cloudflare"] });
       expect(providers).toContain("cloudflare");
       expect(variant.key).toBe("cloudflare");
       expect(variant.match).toEqual({ provider: "cloudflare" });
@@ -2625,17 +2795,22 @@ describe("module contract", () => {
         "scripts/deploy-cloudflare.ts",
         "scripts/deploy-cloudflare.test.ts",
       ]);
-      expect(manifest.checks).toEqual(["bun test scripts/deploy-cloudflare.test.ts"]);
+      expect(manifest.checks).toEqual(["vp test scripts/deploy-cloudflare.test.ts"]);
     });
 
-    test("its one patch is the root script the workflow calls, so no workflow carries a path", async () => {
+    test("its patches are the root script the workflow calls, so no workflow carries a path, and the parser it reads wrangler.jsonc with", async () => {
       const { variant } = await deployModule();
 
       expect(variant.patch).toEqual([
         {
           type: "scripts.merge",
           file: "package.json",
-          scripts: { "deploy:cloudflare": "bun scripts/deploy-cloudflare.ts" },
+          scripts: { "deploy:cloudflare": "tsx scripts/deploy-cloudflare.ts" },
+        },
+        {
+          type: "package.dependencies",
+          file: "package.json",
+          devDependencies: { "jsonc-parser": "3.3.1" },
         },
       ]);
     });
@@ -2672,8 +2847,14 @@ describe("module contract", () => {
         stepsOf(job).flatMap((step) => (typeof step.uses === "string" ? [step.uses] : [])),
       );
 
-      expect(uses.length).toBeGreaterThanOrEqual(4);
-      expect(uses.filter((action) => !/^[\w./-]+@[0-9a-f]{40}$/.test(action))).toEqual([]);
+      // The setup is the project's own action, which the `pm` module ships and pins (below).
+      expect(uses.filter((action) => action === "./.github/actions/setup")).toHaveLength(2);
+      expect(
+        uses.filter(
+          (action) =>
+            action !== "./.github/actions/setup" && !/^[\w./-]+@[0-9a-f]{40}$/.test(action),
+        ),
+      ).toEqual([]);
     });
 
     test("it names Cloudflare's two secrets and no variable of any module: the builds get the workflow's variables as JSON", async () => {
@@ -2687,7 +2868,7 @@ describe("module contract", () => {
       expect(code).not.toMatch(/\bvars\.\w/);
     });
 
-    test("every `bun run <script>` of the workflow exists in a project that has this module: the base template's, or the one it patches in", async () => {
+    test("every `vp run <script>` of the workflow exists in a project that has this module: the base template's, or the one it patches in", async () => {
       const { code, jobs } = await workflow();
       const { variant } = await deployModule();
       const base: unknown = JSON.parse(
@@ -2700,7 +2881,7 @@ describe("module contract", () => {
         ...(isRecord(base) && isRecord(base.scripts) ? Object.keys(base.scripts) : []),
         ...patched,
       ]);
-      const used = [...code.matchAll(/\brun: bun run (\S+)/g)].flatMap(([, name]) =>
+      const used = [...code.matchAll(/\brun: vp run (\S+)/g)].flatMap(([, name]) =>
         name === undefined ? [] : [name],
       );
 
@@ -2709,16 +2890,12 @@ describe("module contract", () => {
       const runs = (job: unknown): string[] =>
         stepsOf(job).flatMap((step) => (typeof step.run === "string" ? [step.run] : []));
       expect(runs(jobs.validate)).toEqual([
-        "bun install --frozen-lockfile",
-        "bun run check",
-        "bun run typecheck",
-        "bun run test",
-        "bun run deploy:cloudflare --dry-run",
+        "vp run check",
+        "vp run typecheck",
+        "vp run test",
+        "vp run deploy:cloudflare --dry-run",
       ]);
-      expect(runs(jobs.deploy)).toEqual([
-        "bun install --frozen-lockfile",
-        "bun run deploy:cloudflare",
-      ]);
+      expect(runs(jobs.deploy)).toEqual(["vp run deploy:cloudflare"]);
     });
   });
 
@@ -2929,7 +3106,7 @@ describe("module contract", () => {
 
       expect(record.name).toBe("{{SCOPE}}/email");
       expect(typeof scripts.typecheck).toBe("string");
-      expect(scripts.test).toBe("bun test");
+      expect(scripts.test).toBe("vp test");
       for (const map of ["dependencies", "devDependencies", "peerDependencies"]) {
         expect(map in record ? map : null).toBeNull();
       }
@@ -3025,18 +3202,15 @@ describe("module contract", () => {
     expect(refused).toEqual([]);
   });
 
-  test("every copy glob of every variant matches a file under template/", async () => {
+  test("every copy entry of every variant is a file under template/", async () => {
     const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
     const unmatched: string[] = [];
 
     for (const { manifest, dir } of catalog.modules) {
       for (const variant of manifest.variants) {
-        for (const glob of variant.copy ?? []) {
-          const matches = await Array.fromAsync(
-            new Bun.Glob(glob).scan({ cwd: join(dir, "template"), dot: true, onlyFiles: true }),
-          );
-          if (matches.length === 0) {
-            unmatched.push(`${manifest.category}/${manifest.id} ${variant.key}: ${glob}`);
+        for (const path of variant.copy ?? []) {
+          if (!existsSync(join(dir, "template", path))) {
+            unmatched.push(`${manifest.category}/${manifest.id} ${variant.key}: ${path}`);
           }
         }
       }
@@ -3108,5 +3282,143 @@ describe("module contract", () => {
     expect(await readFile(join(ROOT, "templates/base/AGENTS.md"), "utf8")).toContain(
       "apps/<app>/AGENTS.md",
     );
+  });
+});
+
+describe("a front installs without the api (040: `create --apps spa`)", () => {
+  const CLIENT: Record<string, readonly string[]> = {
+    spa: ["apps/spa/src/lib/api.ts", "apps/spa/.env.test"],
+    ssr: ["apps/ssr/src/lib/api.server.ts", "apps/ssr/src/lib/api.server.test.ts"],
+    static: ["apps/static/src/lib/api.ts"],
+  };
+  const SHELL: ModuleRef[] = [
+    { category: "provider", id: "cloudflare" },
+    { category: "config", id: "branding" },
+    { category: "ui", id: "shadcn" },
+  ];
+
+  async function frontPlan(id: string, withApi: boolean) {
+    const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+    const project = createEmptyProjectManifest({ scope: "@app", registries: {} });
+    const refs: ModuleRef[] = [
+      ...SHELL,
+      ...(withApi ? [{ category: "api" as const, id: "elysia" }] : []),
+      { category: "web", id },
+    ];
+    const plans = await resolveModulePlans(catalog, refs, project);
+    const plan = plans.find(({ key }) => key === `web/${id}`);
+    if (!plan) {
+      throw new Error(`web/${id} was not planned`);
+    }
+    return plan;
+  }
+
+  for (const [id, client] of Object.entries(CLIENT)) {
+    test(`web/${id} without it copies no client, declares no API variable and depends on neither eden nor the api`, async () => {
+      const plan = await frontPlan(id, false);
+
+      const targets = plan.files.map(({ target }) => target);
+      expect(client.filter((file) => targets.includes(file))).toEqual([]);
+      expect(plan.env.map(({ name }) => name).filter((name) => name.includes("API_URL"))).toEqual(
+        [],
+      );
+      const packages = [...Object.keys(plan.dependencies), ...Object.keys(plan.devDependencies)];
+      expect(packages.filter((name) => name === "@elysiajs/eden" || name === "@app/api")).toEqual(
+        [],
+      );
+      const mentions = plan.files
+        .filter(({ content }) => /API_URL|@elysiajs\/eden|@app\/api/.test(content))
+        .map(({ target }) => target);
+      expect(mentions).toEqual([]);
+      expect(JSON.stringify(plan.patches)).not.toContain("API_URL");
+    });
+
+    test(`web/${id} with it keeps the client, the API variable and both packages`, async () => {
+      const plan = await frontPlan(id, true);
+
+      const targets = plan.files.map(({ target }) => target);
+      expect(client.filter((file) => !targets.includes(file))).toEqual([]);
+      expect(plan.env.some(({ name }) => name.includes("API_URL"))).toBe(true);
+      expect(Object.keys(plan.dependencies)).toContain("@elysiajs/eden");
+      expect(Object.keys(plan.devDependencies)).toContain("@app/api");
+    });
+  }
+});
+
+describe("pm/bun and pm/pnpm are the package manager of the project (035, 040)", () => {
+  const PM = join(MODULES, "pm");
+  const ACTION = ".github/actions/setup/action.yml";
+
+  const pmModules = async () => {
+    const modules: { id: string; manifest: ModuleManifest; variant: ModuleVariant }[] = [];
+    for (const id of ["bun", "pnpm"]) {
+      const manifest = parseModuleManifest(
+        JSON.parse(await readFile(join(PM, id, "module.json"), "utf8")),
+      );
+      const [variant, ...others] = manifest.variants;
+      if (variant === undefined || others.length > 0) {
+        throw new Error(`pm/${id} has ${manifest.variants.length} variants, expected one`);
+      }
+      modules.push({ id, manifest, variant });
+    }
+    return modules;
+  };
+
+  test("each peers on nothing and pins its package manager in the root package.json, where the formatter keeps it", async () => {
+    const base = await readFile(join(ROOT, "templates/base/package.json"), "utf8");
+    expect(base).not.toContain("packageManager");
+
+    for (const { id, manifest, variant } of await pmModules()) {
+      expect(manifest.peers).toEqual({});
+      expect(variant.match).toEqual({});
+      expect(variant.dependencies ?? {}).toEqual({});
+      expect(variant.devDependencies ?? {}).toEqual({});
+      expect(variant.patch).toEqual([
+        {
+          type: "jsonc.merge",
+          file: "package.json",
+          value: {
+            packageManager: expect.stringMatching(new RegExp(`^${id}@\\d+\\.\\d+\\.\\d+$`)),
+          },
+        },
+      ]);
+      const [patch] = variant.patch ?? [];
+      const value = isRecord(patch?.value) ? patch.value : {};
+      const pinned = setJsoncLeaves(base, jsoncLeaves(value));
+      await expect(formatWithProjectFormatter({ "package.json": pinned })).resolves.toEqual({
+        "package.json": pinned,
+      });
+    }
+  });
+
+  test("each ships the CI setup action at the one path the deploy workflow calls", async () => {
+    for (const { id, variant } of await pmModules()) {
+      expect(variant.copy).toContain(ACTION);
+      const action = await readFile(join(PM, id, "template", ACTION), "utf8");
+      expect(action).toContain("using: composite");
+      // Vite+ and tsx run on Node whichever package manager installs the project.
+      expect(action).toContain("actions/setup-node@");
+      expect(action).toContain(`${id} install --frozen-lockfile`);
+      expect(action).toContain('"$GITHUB_PATH"');
+      // Pinned to a commit, as the repo's own workflows are.
+      const uses = [...action.matchAll(/uses: (\S+)/g)].map(([, ref]) => ref ?? "");
+      expect(uses.length).toBeGreaterThan(0);
+      expect(uses.filter((ref) => !/^[\w./-]+@[0-9a-f]{40}$/.test(ref))).toEqual([]);
+    }
+  });
+
+  test("pnpm reads the base's workspaces from pnpm-workspace.yaml, and warns on a dependency's build script instead of failing", async () => {
+    const [, pnpm] = await pmModules();
+    expect(pnpm?.variant.copy).toEqual([".github/actions/setup/action.yml", "pnpm-workspace.yaml"]);
+    const yaml: unknown = Bun.YAML.parse(
+      await readFile(join(PM, "pnpm/template/pnpm-workspace.yaml"), "utf8"),
+    );
+    const base: unknown = JSON.parse(
+      await readFile(join(ROOT, "templates/base/package.json"), "utf8"),
+    );
+    expect(yaml).toEqual({
+      packages: isRecord(base) ? base.workspaces : null,
+      strictDepBuilds: false,
+    });
   });
 });

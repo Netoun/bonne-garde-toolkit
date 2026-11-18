@@ -9,7 +9,7 @@
     "provider": [],
     "config": ["branding"]
   },
-  "checks": ["cd packages/email && bun run typecheck && bun run test"],
+  "checks": ["cd packages/email && vp run typecheck && vp run test"],
   "variants": [
     {
       "key": "default",

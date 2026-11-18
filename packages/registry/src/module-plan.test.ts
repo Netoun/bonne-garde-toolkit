@@ -10,6 +10,7 @@ import {
 } from "@bonne-garde/schema";
 import { loadLocalRegistry } from "./load-registry";
 import {
+  checkModuleSet,
   classifyNames,
   readAuthoredIntention,
   reselectedModules,
@@ -166,6 +167,66 @@ describe("classifyNames (050 step 3)", () => {
     expect(() => classifyNames(catalog, ["runtime/cloudflare"])).toThrow(
       /unknown category: runtime/,
     );
+  });
+});
+
+describe("checkModuleSet: what resolveModulePlans refuses, reading no file", () => {
+  const SPA: ModuleSpec = {
+    category: "web",
+    id: "spa",
+    json: {
+      peers: { provider: [] },
+      variants: [{ key: "cloudflare", match: { provider: "cloudflare" }, copy: ["apps/spa/a.ts"] }],
+    },
+  };
+
+  test("refuses a missing peer, with the planner's message", async () => {
+    const catalog = await registry([SPA]);
+
+    expect(() => checkModuleSet(catalog, [{ category: "web", id: "spa" }], project())).toThrow(
+      /web\/spa needs a module in category provider \(any\) and none is installed/,
+    );
+  });
+
+  test("refuses a set no variant matches", async () => {
+    const catalog = await registry([SPA, DOCKERFILE]);
+
+    expect(() =>
+      checkModuleSet(
+        catalog,
+        [
+          { category: "provider", id: "dockerfile" },
+          { category: "web", id: "spa" },
+        ],
+        project(),
+      ),
+    ).toThrow(/no variant of web\/spa matches/);
+  });
+
+  test("refuses two modules in a category that admits one", async () => {
+    const catalog = await registry([CLOUDFLARE, DOCKERFILE]);
+
+    expect(() =>
+      checkModuleSet(
+        catalog,
+        [
+          { category: "provider", id: "cloudflare" },
+          { category: "provider", id: "dockerfile" },
+        ],
+        project(),
+      ),
+    ).toThrow(/provider admits one module/);
+  });
+
+  test("passes a set whose files are not there, which resolveModulePlans then refuses", async () => {
+    const catalog = await registry([SPA, CLOUDFLARE]);
+    const refs = [
+      { category: "provider" as const, id: "cloudflare" },
+      { category: "web" as const, id: "spa" },
+    ];
+
+    expect(() => checkModuleSet(catalog, refs, project())).not.toThrow();
+    await expect(resolveModulePlans(catalog, refs, project())).rejects.toThrow();
   });
 });
 
@@ -508,7 +569,7 @@ describe("resolveModulePlans: an optional peer (035 Variants)", () => {
 });
 
 describe("resolveModulePlans: the plan (050 step 8)", () => {
-  test("copies every file the globs match, from template/, with dotfiles, in sorted order", async () => {
+  test("copies the files copy names, from template/, dotfiles included, in sorted order", async () => {
     const catalog = await registry([
       {
         category: "provider",
@@ -518,7 +579,12 @@ describe("resolveModulePlans: the plan (050 step 8)", () => {
             {
               key: "default",
               match: {},
-              copy: ["Dockerfile", ".dockerignore", "packages/rt/**"],
+              copy: [
+                "Dockerfile",
+                ".dockerignore",
+                "packages/rt/src/index.ts",
+                "packages/rt/src/deep/more.ts",
+              ],
             },
           ],
         },
@@ -527,7 +593,7 @@ describe("resolveModulePlans: the plan (050 step 8)", () => {
           ".dockerignore": ".git\n",
           "packages/rt/src/index.ts": "export {};\n",
           "packages/rt/src/deep/more.ts": "export {};\n",
-          "unlisted.txt": "no glob names me\n",
+          "unlisted.txt": "no entry names me\n",
         },
       },
     ]);
@@ -547,12 +613,12 @@ describe("resolveModulePlans: the plan (050 step 8)", () => {
     expect(plan?.files.find((f) => f.target === "Dockerfile")?.content).toBe("FROM bun\n");
   });
 
-  test("a file matched by two globs is planned once", async () => {
+  test("a file named twice is planned once", async () => {
     const catalog = await registry([
       {
         category: "provider",
         id: "docker",
-        json: { variants: [{ key: "default", match: {}, copy: ["a/**", "a/x.txt"] }] },
+        json: { variants: [{ key: "default", match: {}, copy: ["a/x.txt", "a/x.txt"] }] },
         template: { "a/x.txt": "x" },
       },
     ]);

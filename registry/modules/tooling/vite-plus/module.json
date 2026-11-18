@@ -6,7 +6,7 @@
   "title": "Vite+",
   "description": "Vite+ lint and fmt rules, the staged-files check and its pre-commit hook.",
   "peers": {},
-  "checks": ["bun run check"],
+  "checks": ["vp run check"],
   "variants": [
     {
       "key": "default",

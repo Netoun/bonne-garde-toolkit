@@ -14,11 +14,14 @@ bunx bonne-garde add web/static
 | ---------- | ------------ | ---------------------------------------------------------------------------------------------------------------- |
 | `provider` | `cloudflare` | see below                                                                                                        |
 | `config`   | `branding`   | the header, the footer, the home page and `root.tsx` read `branding`; `vite.config.ts` loads its favicons plugin |
-| `api`      | `elysia`     | `lib/api.ts` types the Eden client with `type App` from `{{SCOPE}}/api/app`                                      |
 | `ui`       | `shadcn`     | `app.css` imports `{{SCOPE}}/ui/globals.css`: the legacy `package.json` did not say so                           |
 
-One variant, `cloudflare`, which copies `wrangler.jsonc` and adds `dev` and `deploy` to the vendored
-`apps/static/package.json` with `scripts.merge` (spec 060), with `wrangler` as a dev dependency.
+`api` (`elysia`) is an optional peer (035). The variant `cloudflare`, matched on it, copies
+`lib/api.ts`, the Eden client typed with `type App` from `{{SCOPE}}/api/app`, which declares
+`VITE_API_URL`; `cloudflare-without-api`, matched on the provider alone, does not (spec 040).
+
+Both copy `wrangler.jsonc` and add `dev` and `deploy` to the vendored `apps/static/package.json` with
+`scripts.merge` (spec 060), with `wrangler` as a dev dependency.
 
 **Why not `dockerfile`.** The `dockerfile` provider runs one container: its `serve()` answers from
 `apps/spa/build/client` and nothing else, and the image's command starts the API alone. A static site

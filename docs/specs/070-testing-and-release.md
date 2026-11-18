@@ -13,6 +13,7 @@ Define verification and release rules for the platform.
 | CLI             | Real temp filesystem; no mocked `fetch` unless testing remote source adapters                                       |
 | E2E matrix      | create → add combinations → install → typecheck → test → check                                                      |
 | Golden projects | Generated fixtures per supported peer combination, asserted byte-for-byte                                           |
+| Create choices  | Every answer set `create` accepts is planned with no install; golden builds a set of them that covers each axis     |
 
 ### Test surfaces (normative)
 
@@ -20,6 +21,7 @@ Every test file MUST be reachable from `bun run test`. Two failure modes are for
 
 - Tests under `scripts/` MUST be run. They are outside the `packages/*` workspace glob, so the root `test` script MUST target them explicitly — a release-tooling test that never runs is worse than none.
 - A bare `bun test` at the root MUST NOT sweep `registry/` or `templates/`: those trees are **source material**, not workspaces, and their imports resolve only after install into a consumer project. They are verified through golden projects.
+- A module's tests import `vite-plus/test` and run under `vp test` in the project, which is Vitest on Node under bun and pnpm alike ([035](./035-module-registry.md#checks)). The repo's own `bun test` still runs those that import no project-only package, since Bun reads Vitest's API.
 
 ### Verification scripts
 

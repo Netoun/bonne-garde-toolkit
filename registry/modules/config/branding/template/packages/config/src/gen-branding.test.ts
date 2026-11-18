@@ -1,6 +1,6 @@
-import { describe, expect, it } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { describe, expect, it } from "vite-plus/test";
 import {
   assertBranding,
   formatEmailFrom,
@@ -109,7 +109,7 @@ describe("renderWebManifest", () => {
 });
 
 describe("the files the generator writes", () => {
-  const PACKAGE = join(import.meta.dir, "..");
+  const PACKAGE = join(import.meta.dirname, "..");
   const FAVICONS = join(PACKAGE, "assets/favicons");
   /**
    * The registry keeps a placeholder where a project has its scope, and the manifest holds none of it: any
@@ -122,7 +122,7 @@ describe("the files the generator writes", () => {
     );
   };
 
-  it("hold what it renders from branding.json: a branding.json edited without `bun run gen:branding` fails here", () => {
+  it("hold what it renders from branding.json: a branding.json edited without `vp run gen:branding` fails here", () => {
     expect(readFileSync(join(FAVICONS, "site.webmanifest"), "utf8")).toBe(
       renderWebManifest(shippedBranding()),
     );

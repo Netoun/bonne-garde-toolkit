@@ -18,7 +18,7 @@ vendored `apps/api/package.json` with `scripts.merge` (spec 060):
 | Variant      | Extra file                | `scripts.merge` on `apps/api/package.json`                     | Extra dependency |
 | ------------ | ------------------------- | -------------------------------------------------------------- | ---------------- |
 | `cloudflare` | `apps/api/wrangler.jsonc` | `dev`: `wrangler dev --port 5172`, `deploy`: `wrangler deploy` | `wrangler` (dev) |
-| `dockerfile` | none                      | `dev`: `bun --watch src/index.ts`                              | none             |
+| `dockerfile` | none                      | `dev`: `tsx watch src/index.ts`                                | none             |
 
 The package.json the module vendors carries no `dev` and no `deploy`: a patch is computed on the
 template, so a script already in it would be reported `skipped` on the first install. Both variants
@@ -33,11 +33,11 @@ Everything under `apps/api`, which is its home (035):
 - `src/app.ts`: `export const app = new Elysia(runtimeOptions)` with `cors`, `openapi` and
   `GET /health`, and `export type App`.
 - `src/lib/{app.config,env,origins,logger,eden,slug}.ts`, with the tests of the first three.
-- `src/modules/test/{health,openapi}.test.ts`, `src/app.test.ts`, `src/exports.test.ts`,
-  `src/test-setup.ts` and `bunfig.toml`, which preloads it so `NODE_ENV` is `test`.
+- `src/modules/test/{health,openapi}.test.ts`, `src/app.test.ts`, `src/exports.test.ts`. Vitest sets
+  `NODE_ENV` to `test`, which is what the config reads.
 - `package.json`, `tsconfig.json`, `tsconfig.test.json`.
 
-`bun test` in `apps/api` runs seven test files, 33 tests: the six of the legacy shell, and
+`vp test` in `apps/api` runs seven test files, 33 tests: the six of the legacy shell, and
 `exports.test.ts`, which is new. They import `{{SCOPE}}/…` packages that exist
 only in a project, so `test:scripts` skips this directory and golden is where they run.
 
@@ -70,7 +70,7 @@ are replaced by hand.
 
 - `tsconfig.json` sets `noUncheckedIndexedAccess: false`, which the project's base turns on: the
   config code was written without it (`properties[key]` in `app.config.ts`).
-- `types` is `["bun"]` only. The `cloudflare` provider's `src/index.ts` carries its own
+- `types` is `["node"]` only. The `cloudflare` provider's `src/index.ts` carries its own
   `/// <reference types="@cloudflare/workers-types" />`, so that `cloudflare:workers` resolves in
   this app's program without the app naming a provider's types.
 

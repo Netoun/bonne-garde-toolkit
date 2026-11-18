@@ -4,14 +4,14 @@ import { readRuntimeEnv } from "{{SCOPE}}/api-runtime";
 /** The `binding` of the `d1_databases` entry this module writes into the Worker's `wrangler.jsonc`. */
 export const D1_BINDING = "DB";
 
-const UNBOUND = `The D1 binding "${D1_BINDING}" is not available in this runtime. Run the API with wrangler (\`bun run dev\` in apps/api), which provides it, or hand the code a database of your own.`;
+const UNBOUND = `The D1 binding "${D1_BINDING}" is not available in this runtime. Run the API with wrangler (\`vp run dev\` in apps/api), which provides it, or hand the code a database of your own.`;
 
 function unbound(): never {
   throw new Error(UNBOUND);
 }
 
 /**
- * What stands in for the binding where the runtime has none, in a unit test or under `bun run`: a
+ * What stands in for the binding where the runtime has none, in a unit test or under `node`: a
  * database that fails with a message naming the binding the first time something uses it. The code
  * that holds it (an Elysia app, `/health` and every route that does not query) loads and answers
  * without a database, and the route that does query it says what is missing.

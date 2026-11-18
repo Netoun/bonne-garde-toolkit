@@ -4,7 +4,7 @@ import { defineConfig } from "vite-plus";
  * Root Vite+ config: the lint rules, the fmt options and the staged-files check of every workspace.
  * An app that builds with Vite keeps its own `vite.config.ts`; it does not carry lint or fmt.
  * The fmt options are the ones registry items are formatted with, so vendored files pass
- * `bun run check` as installed.
+ * `vp run check` as installed.
  */
 export default defineConfig({
   lint: {

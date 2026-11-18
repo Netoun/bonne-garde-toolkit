@@ -11,7 +11,7 @@
     "orm": ["drizzle"],
     "auth": ["better-auth"]
   },
-  "checks": ["cd packages/storage && bun run typecheck && bun run test"],
+  "checks": ["cd packages/storage && vp run typecheck && vp run test"],
   "variants": [
     {
       "key": "cloudflare",

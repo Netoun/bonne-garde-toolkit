@@ -1,11 +1,11 @@
-#!/usr/bin/env bun
+#!/usr/bin/env tsx
 /**
  * Reads packages/config/branding.json and writes what is generated from it:
  * packages/config/src/branding.generated.ts and packages/config/assets/favicons/site.webmanifest
  *
  * Usage:
- *   bun run gen:branding
- *   bun packages/config/scripts/gen-branding.ts
+ *   vp run gen:branding
+ *   tsx packages/config/scripts/gen-branding.ts
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -17,7 +17,7 @@ import {
   type Branding,
 } from "../src/gen-branding";
 
-const PACKAGE_DIR = resolve(import.meta.dir, "..");
+const PACKAGE_DIR = resolve(import.meta.dirname, "..");
 const BRANDING_JSON = join(PACKAGE_DIR, "branding.json");
 const OUTPUT = join(PACKAGE_DIR, "src/branding.generated.ts");
 const MANIFEST = join(PACKAGE_DIR, "assets/favicons/site.webmanifest");
