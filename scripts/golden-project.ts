@@ -2243,18 +2243,26 @@ async function captureBoth(
   return { stdout, stderr };
 }
 
-/** A command that has to fail, run with some variables set, and everything it printed: the deploy script logs its refusals on stdout. */
+/**
+ * A command that has to fail, run with some variables set, and everything it printed: the deploy script
+ * logs its refusals on stdout. It inherits no `VITE_*` variable: a build reads those from its
+ * environment too, so one in the shell, or in a `.env` Bun loads into golden, would satisfy the build
+ * the case means to leave without it.
+ */
 async function refused(
   argv: string[],
   cwd: string,
   env: Record<string, string>,
 ): Promise<{ code: number; output: string }> {
+  const inherited = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !name.startsWith("VITE_")),
+  );
   const proc = Bun.spawn(argv, {
     cwd,
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, ...env },
+    env: { ...inherited, ...env },
   });
   const [code, stdout, stderr] = await Promise.all([
     proc.exited,
