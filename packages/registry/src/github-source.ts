@@ -100,8 +100,8 @@ export function githubRegistry(
 }
 
 /**
- * The ref a github source is read at, decided once for the index and every file. Spec 070 pins a
- * registry to the platform tag, so a source with no `@ref` reads `v<platform.version>`: never a
+ * The ref a github source is read at, decided once for the index and every file. A registry is pinned
+ * to the platform tag, so a source with no `@ref` reads `v<platform.version>`: never a
  * branch, and never HEAD for the index and a tag for the files.
  */
 export function resolveRef(

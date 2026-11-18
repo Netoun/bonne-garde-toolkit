@@ -2,7 +2,7 @@
 
 A React Router static site at `apps/static`, built to `build/client` and deployed to Cloudflare
 Pages: a marketing front with a header, a footer and a home page. Extracted from the legacy
-`apps/static` ([080](../../../../docs/specs/080-existing-code-migration.md)).
+`apps/static`.
 
 ```bash
 bunx bonne-garde add web/static
@@ -16,12 +16,12 @@ bunx bonne-garde add web/static
 | `config`   | `branding`   | the header, the footer, the home page and `root.tsx` read `branding`; `vite.config.ts` loads its favicons plugin |
 | `ui`       | `shadcn`     | `app.css` imports `{{SCOPE}}/ui/globals.css`: the legacy `package.json` did not say so                           |
 
-`api` (`elysia`) is an optional peer (035). The variant `cloudflare`, matched on it, copies
+`api` (`elysia`) is an optional peer. The variant `cloudflare`, matched on it, copies
 `lib/api.ts`, the Eden client typed with `type App` from `{{SCOPE}}/api/app`, which declares
-`VITE_API_URL`; `cloudflare-without-api`, matched on the provider alone, does not (spec 040).
+`VITE_API_URL`; `cloudflare-without-api`, matched on the provider alone, does not.
 
 Both copy `wrangler.jsonc` and add `dev` and `deploy` to the vendored `apps/static/package.json` with
-`scripts.merge` (spec 060), with `wrangler` as a dev dependency.
+`scripts.merge`, with `wrangler` as a dev dependency.
 
 **Why not `dockerfile`.** The `dockerfile` provider runs one container: its `serve()` answers from
 `apps/spa/build/client` and nothing else, and the image's command starts the API alone. A static site
@@ -32,7 +32,7 @@ project fails naming the provider.
 
 ## What it writes
 
-Everything under `apps/static`, which is its home (035). The legacy app's 18 files are each here,
+Everything under `apps/static`, which is its home. The legacy app's 18 files are each here,
 apart from `.env.example`, which `env` replaces:
 
 - `package.json`, `tsconfig.json`, `react-router.config.ts` (`ssr: false`), `vite.config.ts`,

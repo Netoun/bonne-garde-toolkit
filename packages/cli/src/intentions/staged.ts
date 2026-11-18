@@ -15,13 +15,13 @@ export type StagedIntentions = {
 };
 
 /**
- * Where intentions wait for a human or agent (spec 065). 090 has `upgrade prepare` write numbered
- * intentions to `.bg/upgrade/`; `add` stages to `.bg/add/` (065's executor protocol). The scratch
+ * Where intentions wait for a human or agent. `upgrade prepare` is meant to write numbered
+ * intentions to `.bg/upgrade/`; `add` stages to `.bg/add/`, with the same executor protocol. The scratch
  * root is disposable, so what is read here is never a record: `bg.json` is.
  */
 const STAGING_DIRS = [".bg/add", ".bg/upgrade"] as const;
 
-/** `NN-slug.md` is an intention (065 layout); `session.md` and `blocked.md` are not. */
+/** `NN-slug.md` is an intention; `session.md` and `blocked.md` are not. */
 const STAGED_FILE_RE = /^\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
 
 function isMissing(error: unknown): boolean {

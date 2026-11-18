@@ -17,9 +17,9 @@ import {
 import type { StagedFile } from "./write-tree";
 
 /**
- * The one file every module's `env` keys are merged into. Spec 035 says `.dev.vars.example` /
- * `.env.example` and gives no rule for choosing; a fixed name keeps provider technology out of the
- * CLI (035: a category, and so the code that handles it, names no provider's tooling).
+ * The one file every module's `env` keys are merged into. A module may name `.dev.vars.example` or
+ * `.env.example`; a fixed name keeps provider technology out of the
+ * CLI.
  */
 const ENV_EXAMPLE_FILE = ".env.example";
 const ENV_KEY = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/;
@@ -85,7 +85,7 @@ export type ModuleStaging = {
   env: EnvResult | null;
   /** What each tier-2 patch did, in plan order. */
   patches: PatchReport[];
-  /** The pending intentions the failed patches became (060 "Degradation"), resolved ones included. */
+  /** The pending intentions the failed patches became, resolved ones included. */
   pending: PendingIntention[];
 };
 
@@ -187,7 +187,7 @@ async function stageEnv(
 }
 
 /**
- * 050 steps 10-11 for modules: classify every target against `files` (spec 060), then stage the
+ * 050 steps 10-11 for modules: classify every target against `files`, then stage the
  * writes. Nothing touches the disk here. A path the call cannot decide on fails for every module at
  * once, listing all of them, so one run shows everything in the way.
  *
@@ -199,10 +199,10 @@ async function stageEnv(
  * - differs otherwise (edited since, owned by another owner, or not recorded): a collision that
  *   `--force` overwrites, the module becoming the owner. 060's table is silent on a file owned by
  *   another module, so it follows the row for a file that differs from its recorded sha. `--force`
- *   reaches the modules the call names and not the ones it plans again (050 step 7): their collisions
+ *   reaches the modules the call names and not the ones it plans again: their collisions
  *   are refused, and the error says to name them.
  * - differs and carries regions of another module: rewriting would drop them, so refused, `--force`
- *   or not (060: a region owned by another module is an error always).
+ *   or not.
  * - recorded for this module, carrying recorded regions of any module, and changed since it was
  *   written: kept. Patches are computed on the file as it is, so what is classified is the regions
  *   this call writes and nothing else; `--force` overwrites a differing region, never the rest.
@@ -215,7 +215,7 @@ export async function stageModules(options: {
   plans: ModulePlan[];
   /** Target path to owner, for what the items of this call already stage. */
   claimed: Map<string, string>;
-  /** The items of this call that add dependencies (030): their patches run in the same virtual tree, after the modules'. */
+  /** The items of this call that add dependencies: their patches run in the same virtual tree, after the modules'. */
   itemPatches?: PatchOwner[];
   force: boolean;
   /** The installed modules `plans` holds because a module the call adds changes their variant, and that the call does not name. */

@@ -1,6 +1,6 @@
 import { cliRunner } from "@bonne-garde/schema";
 /**
- * `bonne-garde create` (spec 040): the answers, then the project, then its install. On a terminal it is the
+ * `bonne-garde create`: the answers, then the project, then its install. On a terminal it is the
  * logo, clack's questions, a spinner per step and the next steps; elsewhere (a pipe, an agent, CI) the
  * plain lines `report.ts` prints, which do not change with the look.
  */

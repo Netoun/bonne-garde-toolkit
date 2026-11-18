@@ -22,7 +22,7 @@ function parseCategory(value: string): ModuleCategory {
   return value;
 }
 
-/** Spec 035 order: the category table's own, then the id, so the output does not depend on the disk. */
+/** Category order (`MODULE_CATEGORIES`), then the id, so the output does not depend on the disk. */
 function inCategoryOrder(modules: RegistryModule[]): RegistryModule[] {
   return MODULE_CATEGORIES.flatMap((category) =>
     modules
@@ -32,7 +32,7 @@ function inCategoryOrder(modules: RegistryModule[]): RegistryModule[] {
 }
 
 /**
- * What `bonne-garde list` prints (spec 050): `name<TAB>type<TAB>description` for an item and
+ * What `bonne-garde list` prints: `name<TAB>type<TAB>description` for an item and
  * `<category>/<id><TAB>module<TAB>description` for a module, items first. `--items` is the items
  * alone, byte for byte what `list` printed before modules, because `scripts/golden-project.ts`
  * reads it. `notes` go to stderr.

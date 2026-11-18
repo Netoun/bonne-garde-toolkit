@@ -75,7 +75,7 @@ registry/modules    # <category>/<id>: module.json + template/
 templates/base      # the empty monorepo `create` copies
 migrations          # upgrade intentions, one folder per release
 scripts             # golden, registry build, CLI pack, doc generators
-docs/specs          # the normative specs
+docs                # concepts, guides, ADRs
 ```
 
 ## Develop
@@ -118,7 +118,7 @@ The CLI, the template, the registry and the migrations share one version. Pushin
 
 ## Docs
 
-- [Specs](./docs/specs/README.md): start with `000`, `035`, `060`, `065`
+- [Concepts](./docs/CONCEPTS.md) · [Modules](./docs/MODULES.md) · [Manifest](./docs/MANIFEST.md) · [CLI](./docs/CLI.md) · [Release](./docs/RELEASE.md) · [ADRs](./docs/adr)
 - [Architecture](./docs/ARCHITECTURE.md) · [Commands](./docs/COMMANDS.md) · [Testing](./docs/TESTING.md) · [Rules](./docs/RULES.md)
 - [Design](./docs/DESIGN.md) · [Environment](./docs/ENVIRONMENT.md) · [Agent instructions](./AGENTS.md)
 

@@ -53,7 +53,7 @@ async function place(file: StagedFile, index: number, undo: Undo[]): Promise<voi
 }
 
 /**
- * Spec 060 "Staging": writes every file or none. On any error the files already placed are put
+ * Writes every file or none. On any error the files already placed are put
  * back as they were (removed when new, rewritten when replaced), the directories this call created
  * are removed, and the error is rethrown. Callers put `bg.json` last, so a failure anywhere leaves
  * it unchanged too. It survives an error, not a kill: that needs a journal, which is not here.

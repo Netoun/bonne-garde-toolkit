@@ -20,7 +20,7 @@ export type RecordResult = {
   migratedFrom: 1 | null;
   /** Whether `.bg/` still held this intention. It is disposable, so `false` is not an error. */
   staged: boolean;
-  /** The project files that took an `intent[<id>]` region: what an applied install intention edited (060). */
+  /** The project files that took an `intent[<id>]` region: what an applied install intention edited. */
   marked: string[];
   /** The files it declares `adapt` that are not a file of the project, so took none. */
   notFiles: string[];
@@ -91,12 +91,12 @@ async function declaredAdapt(
 }
 
 /**
- * Spec 065 step 5: record one intention's outcome in `bg.json`. The CLI cannot run the intention's
+ * Record one intention's outcome in `bg.json`. The CLI cannot run the intention's
  * Validation, so recording is the caller's statement that it passed; what the CLI does check is
  * that the id is canonical and, for an install id, that its module is installed.
  *
  * An applied install intention also marks each file it declares `adapt` with an `intent[<id>]` region
- * of its module (060), so that file is checked by region and not read as another module's file the
+ * of its module, so that file is checked by region and not read as another module's file the
  * project modified. A path that is not a file of the project takes none: a region in a file that is
  * not there would be a `doctor` error.
  *

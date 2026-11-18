@@ -168,7 +168,7 @@ export function localRegistryRoot(source: string, cwd: string): string | null {
 }
 
 export type SourceOptions = {
-  /** `bg.json`'s `platform.version`: the tag a github source with no `@ref` is read at (spec 070). */
+  /** `bg.json`'s `platform.version`: the tag a github source with no `@ref` is read at. */
   platformVersion?: string | undefined;
   github?: GithubOptions | undefined;
 };

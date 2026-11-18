@@ -22,15 +22,15 @@ import { PlanError, searchCatalog } from "./resolve-plan";
 import type { RegistryCatalog, RegistryModule } from "./types";
 import { utf8Text } from "./utf8";
 
-/** A module named on the command line, once classified (050 step 3). */
+/** A module named on the command line, once classified. */
 export type ModuleRef = { category: ModuleCategory; id: string };
 
 export type PlannedFile = { target: string; content: string };
-/** A tier-1 file that is not text (035): its bytes land as they are, and no patch or placeholder touches it. */
+/** A tier-1 file that is not text: its bytes land as they are, and no patch or placeholder touches it. */
 type PlannedBinary = { target: string; bytes: Uint8Array };
 export type PlannedEnvKey = { name: string; required: boolean; example: string };
 
-/** One module's share of an install plan: everything decided before any file is looked at (050 steps 4-8). */
+/** One module's share of an install plan: everything decided before any file is looked at. */
 export type ModulePlan = {
   category: ModuleCategory;
   id: string;
@@ -46,7 +46,7 @@ export type ModulePlan = {
   env: PlannedEnvKey[];
   /** Tier 2, as declared and checked: applied in the virtual tree, after every tier-1 file is known. */
   patches: PlannedPatch[];
-  /** Tier 3, as the module ships it: pending until recorded, in the order of their `NN-` prefix (065). */
+  /** Tier 3, as the module ships it: pending until recorded, in the order of their `NN-` prefix. */
   intentions: AuthoredIntention[];
   dependencies: Record<string, string>;
   devDependencies: Record<string, string>;
@@ -256,7 +256,7 @@ function selectVariant(manifest: ModuleManifest, present: Present): ModuleVarian
 }
 
 /**
- * Tier 3 (065): the intentions the selected variant names, read from the module's `intent/`, checked
+ * Tier 3: the intentions the selected variant names, read from the module's `intent/`, checked
  * against the format (the id is the module's and the file's own) and rendered for the project's scope.
  * A file that is not there is refused, not skipped, as a patch the CLI cannot apply is: a variant is
  * never installed with part of its wiring left out in silence.
@@ -269,7 +269,7 @@ async function authoredIntentions(
   const key = keyOf(module.manifest);
   const { reader } = module;
   const authored: AuthoredIntention[] = [];
-  // The `NN-` prefix is the execution order (065), so the file names sort into it.
+  // The `NN-` prefix is the execution order, so the file names sort into it.
   for (const name of [...(variant.intent ?? [])].sort()) {
     let source: string;
     try {
@@ -302,7 +302,7 @@ async function authoredIntentions(
 }
 
 /**
- * One intention a module authors, for a project that has the module installed already (065): the
+ * One intention a module authors, for a project that has the module installed already: the
  * document of `id` among the intentions of the variant `bg.json` records, read from the registry and
  * rendered as `add` staged it. `null` when the catalog does not hold the module or the variant, or the
  * variant ships no such intention. A variant whose `intent/` is broken is refused, as planning it is.
@@ -351,7 +351,7 @@ function remoteCopyTarget(module: RegistryModule, label: string, pattern: string
 }
 
 /**
- * Tier 1: `copy` entries, relative to `template/`, which mirrors the target tree (spec 035). A file
+ * Tier 1: `copy` entries, relative to `template/`, which mirrors the target tree. A file
  * whose bytes are valid UTF-8 is text and has `{{SCOPE}}` rendered; any other is binary and is kept as it is.
  */
 async function copiedFiles(
@@ -455,7 +455,7 @@ function renderedMap(
   );
 }
 
-/** The vendored `package.json`, parsed: it must be a JSON object with no dependency map (035). */
+/** The vendored `package.json`, parsed: it must be a JSON object with no dependency map. */
 function parseVendoredPackageJson(
   key: string,
   variant: ModuleVariant,
@@ -477,7 +477,7 @@ function parseVendoredPackageJson(
   const carried = DEPENDENCY_MAPS.filter((map) => map in parsed);
   if (carried.length > 0) {
     throw new PlanError(
-      `${key} vendors ${file.target} with ${carried.join(", ")}: spec 035 keeps dependency maps out of a vendored package.json and merges the variant's. ` +
+      `${key} vendors ${file.target} with ${carried.join(", ")}: dependency maps stay out of a vendored package.json and merges the variant's. ` +
         `Move them to variant "${variant.key}" in module.json (dependencies, devDependencies) and delete them from the file`,
     );
   }
@@ -485,7 +485,7 @@ function parseVendoredPackageJson(
 }
 
 /**
- * The workspace `package.json` of a variant (spec 035, 050): the vendored one with the variant's
+ * The workspace `package.json` of a variant: the vendored one with the variant's
  * `dependencies` / `devDependencies` merged in, sorted, or, when the module vendors none, one
  * generated from the variant. `null` when the variant has no workspace and no dependency, and when
  * a vendored file has nothing to merge, which then lands as it was written.
@@ -505,7 +505,7 @@ function workspacePackageJson(
       return null;
     }
     throw new PlanError(
-      `${key} declares dependencies but no workspace package to hold them: spec 050 writes them into a package.json, so variant ${variant.key} needs a \`workspace\``,
+      `${key} declares dependencies but no workspace package to hold them: they are written into a package.json, so variant ${variant.key} needs a \`workspace\``,
     );
   }
 
@@ -673,7 +673,7 @@ function checkedModules(
 
 /**
  * What `resolveModulePlans` refuses about a set of modules, reading no file: a caller can refuse a
- * set before it writes anything (040: `create` checks the answers before it copies the base).
+ * set before it writes anything.
  */
 export function checkModuleSet(
   catalog: RegistryCatalog,
@@ -684,7 +684,7 @@ export function checkModuleSet(
 }
 
 /**
- * 050 steps 4-8 for modules, in category order (spec 035: topological, `provider` first), so a
+ * Steps 4-8 of `add` for modules, in category order (topological, `provider` first), so a
  * peer named in the same call counts as installed. Reads the registry and the project manifest
  * and writes nothing.
  */

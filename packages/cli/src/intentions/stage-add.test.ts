@@ -99,6 +99,7 @@ describe("the executor entry point (065)", () => {
 
     expect(session).toContain("propose apply or skip");
     expect(session).toContain("blocked.md");
+    expect(session).not.toContain("spec 0");
     expect(session.indexOf(`- [ ] \`.bg/add/01-patch-a.md\` — \`${ID}\``)).toBeGreaterThan(-1);
     expect(session.indexOf("01-patch-a.md")).toBeLessThan(session.indexOf("02-patch-b.md"));
   });

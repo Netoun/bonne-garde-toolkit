@@ -6,9 +6,9 @@ import type { PlannedPatch } from "./patch-plan";
 import { pendingIntention, type PendingIntention } from "./pending-intentions";
 
 /**
- * Whoever declares patches: a module, or an item that declares dependencies (030). They are applied
+ * Whoever declares patches: a module, or an item that declares dependencies. They are applied
  * the same way. What differs is a patch that cannot be: a module's becomes a pending intention
- * (060 "Degradation"), and an item has no record to keep one in (`bg.json` has intentions for
+ *, and an item has no record to keep one in (`bg.json` has intentions for
  * modules only), so it refuses the install instead.
  */
 export type PatchOwner = {
@@ -27,7 +27,7 @@ export type RegionReport = {
 };
 
 /**
- * What one tier-2 patch did (spec 060), in the detail `bonne-garde add` prints. `bg.json` keeps the first
+ * What one tier-2 patch did, in the detail `bonne-garde add` prints. `bg.json` keeps the first
  * four fields of it under the module's `patches`; the regions are in `bg.json` under `regions`.
  */
 export type PatchReport = {
@@ -37,7 +37,7 @@ export type PatchReport = {
   status: PatchStatus;
   /** Why a `failed` patch did not apply. */
   reason?: string;
-  /** The id of the pending intention a `failed` patch became (spec 060 "Degradation"). */
+  /** The id of the pending intention a `failed` patch became. */
   intention?: string;
   regions: RegionReport[];
 };
@@ -91,7 +91,7 @@ export function ownVersion(
 }
 
 /**
- * Spec 060 tier 2, in the virtual tree. `tierOne` holds what each module file of this call will
+ * Tier 2, in the virtual tree. `tierOne` holds what each module file of this call will
  * contain; a patch reads and rewrites that, or the file on disk, and a later patch on the same file
  * sees the earlier one. Nothing is written here. A patch that cannot apply is a `failed` report and
  * does not stop the rest; a conflict is not a failure of the patch but a refusal of the call, so it

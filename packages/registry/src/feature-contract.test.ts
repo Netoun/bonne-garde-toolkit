@@ -8,7 +8,7 @@ import { PlanError, resolveInstallPlan } from "./resolve-plan";
 import type { RegistryItem } from "./types";
 
 /**
- * The feature items (spec 030, 080): front-app source copied into `apps/<web>/src/features/**`,
+ * The feature items: front-app source copied into `apps/<web>/src/features/**`,
  * which the consumer owns. They are tier 1, so everything a module would say in `module.json` or a
  * patch has to hold in the files themselves, and these tests are what says it does.
  */
@@ -60,7 +60,7 @@ function splitSpec(spec: string): { name: string; version: string | null } {
 const routedBy = (fragment: string): string[] =>
   [...fragment.matchAll(/["'`](features\/[^"'`]+\.tsx?)["'`]/g)].map(([, path = ""]) => path);
 
-describe("the feature items (030)", () => {
+describe("the feature items", () => {
   test("the catalog is the legacy spa features: auth, then everything behind the sign-in", async () => {
     expect((await featureItems()).map((item) => item.name)).toEqual(["spa-auth", "spa-backoffice"]);
   });
@@ -279,7 +279,7 @@ describe("the feature items (030)", () => {
     expect(wrong).toEqual([]);
   });
 
-  describe("the npm dependencies (030): `name@version` is written into the app's package.json, a bare name is the shell's", () => {
+  describe("the npm dependencies: `name@version` is written into the app's package.json, a bare name is the shell's", () => {
     /** The packages a file imports: `@scope/name` or `name`, subpaths folded; `@acme/ui` is the UI items', `@acme/spa` the app's own. */
     const packagesOf = (text: string): string[] =>
       sorted(
@@ -395,7 +395,7 @@ describe("the feature items (030)", () => {
     });
   });
 
-  describe("the modules an item needs, in meta.needsModules (030)", () => {
+  describe("the modules an item needs, in meta.needsModules", () => {
     test("every feature item needs auth, and the web module that owns the app its files land in", async () => {
       const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
       const wrong: string[] = [];

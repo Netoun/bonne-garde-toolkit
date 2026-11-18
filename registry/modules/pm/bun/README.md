@@ -2,8 +2,8 @@
 
 Bun installs the project and runs its scripts. Every project has one `pm` module, which `bg create` adds
 from its first question (`--pm bun`, the default when `create` was not started from pnpm), so the base
-template pins no package manager ([035](../../../../docs/specs/035-module-registry.md),
-[040](../../../../docs/specs/040-cli-create.md)).
+template pins no package manager ([concepts](../../../../docs/CONCEPTS.md),
+[CLI](../../../../docs/CLI.md)).
 
 ## What it writes
 

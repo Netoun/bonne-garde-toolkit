@@ -3,9 +3,9 @@ import { itemFileTarget, PlanError } from "./resolve-plan";
 import type { RegistryItem } from "./types";
 
 /**
- * An item's npm dependencies (spec 030). An entry written `name@version` is added to the
+ * An item's npm dependencies. An entry written `name@version` is added to the
  * `package.json` of the app or package the item's files land in, as `package.dependencies` adds a
- * module's (060), so the same writer puts it where the formatter sorts it and the same regions record
+ * module's, so the same writer puts it where the formatter sorts it and the same regions record
  * it, owned by the item. A bare `name` says what the files import and is written by nobody: the
  * module that owns the package already pins it (the `ui` module installs the union of its items').
  */

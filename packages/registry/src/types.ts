@@ -15,12 +15,12 @@ export type RegistryItem = {
   dependencies?: string[];
   devDependencies?: string[];
   registryDependencies?: string[];
-  /** Free-form in the shadcn schema. The only key this platform reads is `needsModules` (030). */
+  /** Free-form in the shadcn schema. The only key this platform reads is `needsModules`. */
   meta?: Record<string, unknown>;
   files?: RegistryFile[];
 };
 
-/** A native module (spec 035) found under `modules/<category>/<id>/` of a local registry. */
+/** A native module found under `modules/<category>/<id>/` of a local registry. */
 export type RegistryModule = {
   manifest: ModuleManifest;
   /** The directory holding `module.json` and `template/`: absolute on disk, repo-relative when `reader` is set. */
