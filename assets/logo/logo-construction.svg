@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-40 -40 457 336">
-<rect x="-40" y="-40" width="457" height="336" fill="#fbfaf7"/>
-<path fill="#1c1a17" fill-opacity=".9" d="M21.00 0.00 L377.00 0.00 L356.00 34.00 L288.00 34.00 A55 55 0 0 0 233.00 89.00 A89 89 0 0 1 144.00 178.00 A21 21 0 1 0 163.69 191.70 A89 89 0 0 0 199.00 199.00 A55 55 0 1 1 144.00 144.00 A34 34 0 0 0 144.00 76.00 A21 21 0 0 0 144.00 34.00 L0.00 34.00 Z"/>
-<g fill="none" stroke="#c0392b" stroke-width=".6"><circle cx="144.00" cy="89.00" r="89"/><circle cx="288.00" cy="89.00" r="55"/><circle cx="144.00" cy="55.00" r="21"/><circle cx="144.00" cy="110.00" r="34"/><circle cx="144.00" cy="199.00" r="55"/><circle cx="199.00" cy="110.00" r="89"/><circle cx="144.00" cy="199.00" r="21"/></g>
-<g stroke="#2f6fb0" stroke-width=".5" stroke-dasharray="3 3"><line x1="144" y1="-40" x2="144" y2="296"/><line x1="-40" y1="0" x2="420" y2="0"/><line x1="-40" y1="34" x2="420" y2="34"/></g>
-</svg>
