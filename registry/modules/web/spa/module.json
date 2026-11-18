@@ -83,6 +83,7 @@
         "apps/spa/src/stores/ui.store.ts",
         "apps/spa/src/hooks/use-init-theme.ts",
         "apps/spa/src/hooks/use-load-app.ts",
+        "apps/spa/src/hooks/use-load-app.test.tsx",
         "apps/spa/src/components/app-loader.tsx",
         "apps/spa/src/components/client-only.tsx",
         "apps/spa/.env.test"
@@ -174,6 +175,7 @@
         "apps/spa/src/stores/ui.store.ts",
         "apps/spa/src/hooks/use-init-theme.ts",
         "apps/spa/src/hooks/use-load-app.ts",
+        "apps/spa/src/hooks/use-load-app.test.tsx",
         "apps/spa/src/components/app-loader.tsx",
         "apps/spa/src/components/client-only.tsx"
       ],
@@ -257,6 +259,7 @@
         "apps/spa/src/stores/ui.store.ts",
         "apps/spa/src/hooks/use-init-theme.ts",
         "apps/spa/src/hooks/use-load-app.ts",
+        "apps/spa/src/hooks/use-load-app.test.tsx",
         "apps/spa/src/components/app-loader.tsx",
         "apps/spa/src/components/client-only.tsx",
         "apps/spa/.env.test"
@@ -329,6 +332,7 @@
         "apps/spa/src/stores/ui.store.ts",
         "apps/spa/src/hooks/use-init-theme.ts",
         "apps/spa/src/hooks/use-load-app.ts",
+        "apps/spa/src/hooks/use-load-app.test.tsx",
         "apps/spa/src/components/app-loader.tsx",
         "apps/spa/src/components/client-only.tsx"
       ],

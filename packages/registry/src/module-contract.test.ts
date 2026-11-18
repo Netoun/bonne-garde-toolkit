@@ -774,7 +774,7 @@ describe("module contract", () => {
         );
 
         expect(root).toMatch(/import \{[^}]*\bbranding\b[^}]*\} from "\{\{SCOPE\}\}\/config";/);
-        expect(root).toContain("<html lang={branding.lang}>");
+        expect(root).toMatch(/<html lang=\{branding\.lang\}[\s>]/);
         expect(root).not.toMatch(/\blang="/);
       }
     });
