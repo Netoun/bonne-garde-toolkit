@@ -1,7 +1,7 @@
 import { styleText } from "node:util";
 import { ApplyError } from "@bonne-garde/registry";
 import { type IntentionOutcome } from "@bonne-garde/schema";
-import { addItems, searchItems, viewItem } from "./add";
+import { addItems, openCatalog, searchItems, viewItem } from "./add";
 import { takeFlag, takeOption } from "./args";
 import { APPS, FEATURES, PROVIDERS } from "./choices";
 import { createCommand } from "./create-command";
@@ -14,7 +14,16 @@ import { missingPackageManager, PACKAGE_MANAGERS, packageManagerOf } from "./pac
 import { migrationsDir, registryDir } from "./paths";
 import { recordIntentionOutcome } from "./record";
 import { manifestMigrationNotice, reportAdd } from "./report";
-import { clack, colorEnabled, logo, showAdd, step } from "./terminal";
+import {
+  Cancelled,
+  clack,
+  colorEnabled,
+  logo,
+  pickAddNames,
+  showAdd,
+  step,
+  terminalPrompter,
+} from "./terminal";
 
 function usage(): string {
   const section = (title: string) => styleText("bold", title);
@@ -30,9 +39,10 @@ ${section("Start")}
       features: ${FEATURES.join(", ")}
 
 ${section("Compose")}
-  bonne-garde add <name...> [--dry-run] [--force] [--no-install] [--yes] [--json] [--source <source>]
+  bonne-garde add [<name...>] [--dry-run] [--force] [--no-install] [--yes] [--json] [--source <source>]
       <name> is an item, a module id, or <category>/<id> (provider/cloudflare); prints a summary
-      on a terminal, and JSON to a pipe, to an agent, or with --json
+      on a terminal, and JSON to a pipe, to an agent, or with --json; with no name, a terminal
+      offers the registry as a checklist, and --yes, --json or no terminal refuse
   bonne-garde list [--items | --category <category>] [--source <source>]
       with no flag: the items, then the modules as <category>/<id>; --items is the items alone
   bonne-garde search <query> [--source <source>]
@@ -120,9 +130,9 @@ export async function runCli(argv: string[]): Promise<number> {
     const dryRun = takeFlag(args, "--dry-run");
     const force = takeFlag(args, "--force");
     const noInstall = takeFlag(args, "--no-install");
-    // --yes selects option defaults and never prompts. `add` has no prompt at all, so it
-    // is accepted and changes nothing: options always resolve from their defaults.
-    takeFlag(args, "--yes");
+    // --yes selects option defaults and never prompts: options always resolve from their defaults,
+    // and with no name it keeps the refusal below instead of offering the checklist.
+    const yes = takeFlag(args, "--yes");
     const source = takeOption(args, "--source");
     if (takeOption(args, "--set") !== undefined) {
       throw new Error(
@@ -131,27 +141,50 @@ export async function runCli(argv: string[]): Promise<number> {
     }
     // JSON on stdout for an agent, a pipe, or --json; a summary for a person at a terminal.
     const json = takeFlag(args, "--json") || process.stdout.isTTY !== true;
-    if (args.length === 0) {
-      throw new Error("add requires at least one item or module");
+    // With no name, a person at a terminal ticks what the registry offers; an agent or a script is refused.
+    let names = args;
+    const typed = args.length > 0;
+    if (!typed) {
+      if (yes || json || process.stdin.isTTY !== true) {
+        throw new Error("add requires at least one item or module");
+      }
+      clack.intro(styleText("inverse", " bonne-garde add "));
+      try {
+        const catalog = await openCatalog(process.cwd(), source);
+        if (catalog.reader !== undefined) {
+          clack.log.info("This source lists items only: add a module by name, <category>/<id>.");
+        }
+        names = await pickAddNames(catalog, terminalPrompter());
+      } catch (error) {
+        if (error instanceof Cancelled) {
+          clack.cancel("Cancelled: nothing was written.");
+          return 130;
+        }
+        clack.cancel(error instanceof Error ? error.message : String(error));
+        return 1;
+      }
     }
     // `--force` does not reach a module the call plans again without naming it: say which call does.
     const forceHint = (error: unknown): never => {
       if (error instanceof ApplyError && error.nameToForce.length > 0) {
         const { nameToForce } = error;
         throw new Error(
-          `${error.message}\nname ${nameToForce.join(" and ")} in the same call, so that --force reaches ${nameToForce.length === 1 ? "it" : "them"}:\n  ${addNamingCommand(rest, nameToForce)}`,
+          `${error.message}\nname ${nameToForce.join(" and ")} in the same call, so that --force reaches ${nameToForce.length === 1 ? "it" : "them"}:\n  ${addNamingCommand(typed ? rest : [...rest, ...names], nameToForce)}`,
         );
       }
       throw error;
     };
     if (!json) {
-      clack.intro(styleText("inverse", " bonne-garde add "));
+      // The checklist already opened the session.
+      if (typed) {
+        clack.intro(styleText("inverse", " bonne-garde add "));
+      }
       try {
         const outcome = await step(
-          `${dryRun ? "Planning" : "Adding"} ${args.join(", ")}`,
+          `${dryRun ? "Planning" : "Adding"} ${names.join(", ")}`,
           () =>
             addItems({
-              items: args,
+              items: names,
               source,
               dryRun,
               force,
@@ -183,7 +216,7 @@ export async function runCli(argv: string[]): Promise<number> {
       }
     }
     const outcome = await addItems({
-      items: args,
+      items: names,
       source,
       dryRun,
       force,

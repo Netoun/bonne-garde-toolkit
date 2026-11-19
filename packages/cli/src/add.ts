@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { createEmptyProjectManifest } from "@bonne-garde/schema";
+import { createEmptyProjectManifest, MODULE_CATEGORIES } from "@bonne-garde/schema";
 import {
   applyInstallPlan,
   checkModuleSet,
@@ -13,6 +13,7 @@ import {
   resolveModulePlans,
   searchCatalog,
   type GithubOptions,
+  type RegistryModule,
 } from "@bonne-garde/registry";
 import { stagePendingIntentions, type StagedAdd } from "./intentions/stage-add";
 import { defaultSource, loadManifest } from "./manifest-file";
@@ -54,6 +55,15 @@ export async function openCatalog(projectRoot: string, explicit?: string, github
     platformVersion,
     github: githubOptions(github),
   });
+}
+
+/** Category order (`MODULE_CATEGORIES`), then the id, so the output does not depend on the disk. */
+export function inCategoryOrder(modules: RegistryModule[]): RegistryModule[] {
+  return MODULE_CATEGORIES.flatMap((category) =>
+    modules
+      .filter(({ manifest }) => manifest.category === category)
+      .sort((a, b) => a.manifest.id.localeCompare(b.manifest.id)),
+  );
 }
 
 export async function listItems(projectRoot: string, source?: string, github?: GithubOptions) {

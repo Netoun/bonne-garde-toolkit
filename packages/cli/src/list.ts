@@ -1,11 +1,11 @@
-import type { GithubOptions, RegistryModule } from "@bonne-garde/registry";
+import type { GithubOptions } from "@bonne-garde/registry";
 import {
   cliRunner,
   isModuleCategory,
   MODULE_CATEGORIES,
   type ModuleCategory,
 } from "@bonne-garde/schema";
-import { openCatalog } from "./add";
+import { inCategoryOrder, openCatalog } from "./add";
 import { painter } from "./terminal";
 
 export type ListQuery = {
@@ -42,15 +42,6 @@ function parseCategory(value: string): ModuleCategory {
     throw new Error(`unknown category: ${value} (categories are ${MODULE_CATEGORIES.join(", ")})`);
   }
   return value;
-}
-
-/** Category order (`MODULE_CATEGORIES`), then the id, so the output does not depend on the disk. */
-function inCategoryOrder(modules: RegistryModule[]): RegistryModule[] {
-  return MODULE_CATEGORIES.flatMap((category) =>
-    modules
-      .filter(({ manifest }) => manifest.category === category)
-      .sort((a, b) => a.manifest.id.localeCompare(b.manifest.id)),
-  );
 }
 
 /**

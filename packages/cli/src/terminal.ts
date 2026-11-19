@@ -5,8 +5,9 @@
  */
 import { styleText } from "node:util";
 import * as clack from "@clack/prompts";
+import type { RegistryCatalog } from "@bonne-garde/registry";
 import { cliRunner } from "@bonne-garde/schema";
-import type { AddOutcome } from "./add";
+import { inCategoryOrder, type AddOutcome } from "./add";
 import type { Choice, Prompter } from "./choices";
 import { manifestMigrationNotice } from "./report";
 import type { PackageManager } from "./package-manager";
@@ -85,6 +86,36 @@ export function terminalPrompter(): Prompter {
     },
     warn: (message) => clack.log.warn(message),
   };
+}
+
+/**
+ * What `add` offers with no name, on a terminal: the items, then the modules as `<category>/<id>`
+ * in the order `list` prints them, each with its description. A source read over the network
+ * (`reader`) lists no modules, so it offers the items alone.
+ */
+export function addChoices(catalog: RegistryCatalog): Choice<string>[] {
+  const items = catalog.items.map(({ name, description }) => ({
+    value: name,
+    label: name,
+    hint: description ?? "",
+  }));
+  const modules = inCategoryOrder(catalog.modules).map(({ manifest }) => {
+    const name = `${manifest.category}/${manifest.id}`;
+    return { value: name, label: name, hint: manifest.description };
+  });
+  return [...items, ...modules];
+}
+
+/** The names a person ticks in `addChoices`; none ticked stops the command like Ctrl+C does. */
+export async function pickAddNames(
+  catalog: RegistryCatalog,
+  prompter: Prompter,
+): Promise<string[]> {
+  const names = await prompter.many("What to add", addChoices(catalog));
+  if (names.length === 0) {
+    throw new Cancelled();
+  }
+  return names;
 }
 
 /** A slow step under a spinner: its label while it runs, `done` once it has, the error if it fails. */
