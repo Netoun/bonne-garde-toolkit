@@ -2,13 +2,13 @@ import { patchRegions } from "./patch-ops";
 import type { PlannedPatch } from "./patch-plan";
 
 /**
- * Spec 060 "Degradation": a patch that cannot apply is converted into a pending tier-3 intention
- * (065), carrying the patch's intent, its target file and why it failed. This is the data; writing
+ * A patch that cannot apply is converted into a pending tier-3 intention
+ *, carrying the patch's intent, its target file and why it failed. This is the data; writing
  * it under `.bg/` is the CLI's, and recording it in `bg.json` is `bonne-garde record`'s.
  */
 
 export type PendingIntention = {
-  /** `<category>/<module-id>/<slug>` (065): `bonne-garde record` lands it in that module's record. */
+  /** `<category>/<module-id>/<slug>`: `bonne-garde record` lands it in that module's record. */
   id: string;
   /** `<category>/<module-id>` of the module whose patch failed. */
   module: string;
@@ -25,7 +25,7 @@ export type PendingIntention = {
 };
 
 /**
- * An intention a module authors under `intent/` (065), for the part of its wiring no patch of the
+ * An intention a module authors under `intent/`, for the part of its wiring no patch of the
  * catalog can express. Planned from the selected variant, so a variant that has nothing to wire
  * declares none; staged as written, with the scope rendered, and pending until `bonne-garde record` closes it.
  */

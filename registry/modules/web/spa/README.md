@@ -2,8 +2,8 @@
 
 A React Router SPA shell at `apps/spa`: Vite+, Tailwind, a root with an error boundary, the theme
 and query providers, and, when the project has the API, an Eden client for it. It has no auth and no feature pages: those
-arrive as items ([030](../../../../docs/specs/030-ui-registry.md)). Extracted from the legacy
-`apps/spa` ([080](../../../../docs/specs/080-existing-code-migration.md)), and it replaces the
+arrive as items ([items](../../../../docs/CONCEPTS.md#items)). Extracted from the legacy
+`apps/spa`, and it replaces the
 `spa-react-router` item.
 
 ```bash
@@ -18,14 +18,14 @@ bunx bonne-garde add web/spa
 | `config`   | `branding` | `features/home/pages/home-page.tsx` reads `branding`, and `vite.config.ts` serves the favicons of `{{SCOPE}}/config` from the site root |
 | `ui`       | `shadcn`   | `root.tsx` imports `{{SCOPE}}/ui/globals.css`                                                                                           |
 
-`api` (`elysia`) is an optional peer (035): a variant's `match` names it. With it, the variant copies
+`api` (`elysia`) is an optional peer: a variant's `match` names it. With it, the variant copies
 `lib/api.ts`, which types the Eden client with `type App` from `{{SCOPE}}/api/app` and declares
 `VITE_API_URL`, and `.env.test`, which gives the tests that address; it depends on `@elysiajs/eden`
 and `{{SCOPE}}/api`, and on `cloudflare` writes `API_URL` into `wrangler.jsonc` with `jsonc.merge`.
-Without it (`bg create --apps spa`, spec 040), none of that is written.
+Without it (`bg create --apps spa`), none of that is written.
 
 A variant per provider, with the API, which list the same files except `wrangler.jsonc`, and differ in
-what `scripts.merge` (spec 060) adds to the vendored `apps/spa/package.json`; and on `cloudflare` one
+what `scripts.merge` adds to the vendored `apps/spa/package.json`; and on `cloudflare` one
 more per provider, `cloudflare-without-api` and `dockerfile-without-api`, matched on the provider alone:
 
 | Variant                  | Extra file                | `scripts.merge` on `apps/spa/package.json`                                | Extra dependency |
@@ -39,11 +39,11 @@ The `dockerfile` provider serves `apps/spa/build/client` from the API's origin, 
 project has no API (its container starts `packages/api-runtime/src/main.ts`, which picks), so neither
 variant has a deploy script of its own. The package.json the module vendors carries no `dev` and no `deploy`:
 a patch is computed on the template, so a script already in it would be reported `skipped` on the
-first install. The dependency maps come from the variant (spec 035), pinned exactly.
+first install. The dependency maps come from the variant, pinned exactly.
 
 ## What it writes
 
-Everything under `apps/spa`, which is its home (035):
+Everything under `apps/spa`, which is its home:
 
 - `AGENTS.md`: the recipes a coding agent follows in this app (add a page, call the API, build UI,
   done-signal). The root `AGENTS.md` of `templates/base` sends agents to it: Claude Code does not
@@ -63,7 +63,7 @@ and `routes.test.ts`, which holds for whatever features are installed (below).
 
 ## Features declare their routes
 
-A feature item ([030](../../../../docs/specs/030-ui-registry.md)) ships `src/features/<feature>/routes.ts`: a
+A feature item ([items](../../../../docs/CONCEPTS.md#items)) ships `src/features/<feature>/routes.ts`: a
 default export of route entries (`route`, `index`, `layout` from `@react-router/dev/routes`), with
 paths relative to `src`. `src/routes.ts` globs `./features/*/routes.ts` and composes every one, so
 adding a feature adds its pages and `routes.ts` is not edited, not by the item and not by you. This is
@@ -112,4 +112,4 @@ why `routes.ts` carries no region and `bonne-garde doctor` has nothing to say ab
 installs no item, so it would not typecheck. It is `spa-auth`'s. The dependencies of those files
 (`better-auth`, `zod`, `react-hook-form`, the TanStack form, table, virtual and pacer packages, and
 `{{SCOPE}}/auth`) are the items' too: `bonne-garde add` writes each into `apps/spa/package.json`
-([030](../../../../docs/specs/030-ui-registry.md)), and this module pins none of them.
+([items](../../../../docs/CONCEPTS.md#items)), and this module pins none of them.

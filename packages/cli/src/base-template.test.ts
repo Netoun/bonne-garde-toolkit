@@ -18,7 +18,7 @@ describe("the base template and the tooling module", () => {
     expect(existsSync(join(templateBaseDir(), "vite.config.ts"))).toBe(false);
   });
 
-  test("keeps the fmt, lint and check scripts of spec 010, which run on Vite+ defaults", async () => {
+  test("keeps the fmt, lint and check scripts of the base template, which run on Vite+ defaults", async () => {
     const { scripts, devDependencies } = await basePackage();
 
     expect(scripts.fmt).toBe("vp fmt --write");

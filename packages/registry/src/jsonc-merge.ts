@@ -12,7 +12,7 @@ import { lineIndent, ownLineIndent } from "./text-layout";
 import type { RegionState } from "./region-state";
 
 /**
- * `jsonc.merge` (spec 060): deep-merges a value into a JSON or JSONC file. Every edit goes through
+ * `jsonc.merge`: deep-merges a value into a JSON or JSONC file. Every edit goes through
  * `jsonc-parser` `modify` + `applyEdits`, so comments and the file's own layout survive; what is
  * inserted is laid out like its neighbours (see `insertionAt`) and nothing touches text with a regex.
  * One region per leaf: an object is walked, anything else (an array too) is written whole.

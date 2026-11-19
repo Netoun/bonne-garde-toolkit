@@ -1,4 +1,4 @@
-/** What a file holds at one region, against what the patch that names it declares (spec 060). */
+/** What a file holds at one region, against what the patch that names it declares. */
 export type RegionState =
   | { kind: "absent" }
   | { kind: "equal" }

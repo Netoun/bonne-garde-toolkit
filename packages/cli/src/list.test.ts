@@ -47,7 +47,7 @@ async function itemLines(): Promise<string[]> {
   );
 }
 
-/** Spec 035 order: the category table's, then the id. */
+/** Category order (`MODULE_CATEGORIES`), then the id. */
 function inCategoryOrder(modules: RegistryModule[]): RegistryModule[] {
   return MODULE_CATEGORIES.flatMap((category) =>
     modules

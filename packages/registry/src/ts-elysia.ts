@@ -10,7 +10,7 @@ import { ownLineIndent, eolOf } from "./text-layout";
 import { endWithComments, parseTypeScript } from "./ts-source";
 
 /**
- * `ts.elysiaUse` (spec 060): `.use(<argument>)` in the method chain `export const <targetName> =
+ * `ts.elysiaUse`: `.use(<argument>)` in the method chain `export const <targetName> =
  * new Elysia(...)...`, after the last `.use` that leads it and before the first call that is not
  * one, which is where Elysia wants a plugin registered before the routes that depend on it. ts-morph
  * finds the node; the edit is one line of text put right after it, so every other byte stays and

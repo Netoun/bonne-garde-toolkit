@@ -93,7 +93,7 @@ function codes(report: DoctorReport, check: keyof DoctorReport["checks"]): strin
 const BUTTON = "packages/ui/src/components/button.tsx";
 
 describe("runDoctor: the report", () => {
-  test("covers the six checks of spec 050, in order, and is plain JSON", async () => {
+  test("covers the six checks, in order, and is plain JSON", async () => {
     const report = await runDoctor(await projectWithButton());
     expect(Object.keys(report.checks)).toEqual([
       "manifest",
@@ -184,7 +184,7 @@ describe("runDoctor: files", () => {
   });
 });
 
-describe("runDoctor: a file with recorded regions is checked by region, not by sha (060, Q5)", () => {
+describe("runDoctor: a file with recorded regions is checked by region, not by sha", () => {
   const SCRIPT = "tsx packages/config/scripts/gen-branding.ts";
 
   /** A project with `config/branding`, whose root package.json a patch edited. */
@@ -383,7 +383,7 @@ describe("runDoctor: a file with recorded regions is checked by region, not by s
   });
 });
 
-describe("runDoctor: an intent[<id>] region, what an applied intention left on a file it edited (060)", () => {
+describe("runDoctor: an intent[<id>] region, what an applied intention left on a file it edited", () => {
   const ID = "auth/fixture-auth/wire-auth-into-api";
   const REGION = `intent[${ID}]`;
 
@@ -600,7 +600,7 @@ describe("runDoctor: regions", () => {
     expect(codes(report, "regions")).toEqual([]);
   });
 
-  describe("a dependency an item wrote into a package.json (030, 060)", () => {
+  describe("a dependency an item wrote into a package.json", () => {
     /** `button` owns `dependencies.zod` of the root package.json, as an item that declares `zod@4.4.3` would. */
     async function itemDependencyProject(): Promise<string> {
       const root = await projectWithButton();
@@ -646,7 +646,7 @@ describe("runDoctor: regions", () => {
   });
 });
 
-describe("runDoctor: a failed patch that became a pending intention (060 Degradation)", () => {
+describe("runDoctor: a failed patch that became a pending intention", () => {
   const ID = "auth/fixture-auth/patch-ts-elysia-use-apps-api-src-app-ts-elysia-app-use-auth-module";
   const failed = {
     type: "ts.elysiaUse",

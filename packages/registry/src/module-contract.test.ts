@@ -93,7 +93,6 @@ describe("module contract", () => {
   test("every module.json parses, and its path agrees with its contents", async () => {
     const manifests = await findModuleManifests();
 
-    // Spec 035 defines the native format; the first modules written to it are the two providers.
     expect(manifests.length).toBeGreaterThan(0);
 
     for (const [categoryDir, moduleDir, path] of manifests) {
@@ -101,14 +100,14 @@ describe("module contract", () => {
 
       const manifest = parseModuleManifest(JSON.parse(await readFile(path, "utf8")));
 
-      // The path is the identity: spec 035 puts a module at registry/modules/<category>/<id>/.
+      // The path is the identity: a module lives at registry/modules/<category>/<id>/.
       expect<string>(manifest.category).toBe(categoryDir);
       expect(manifest.id).toBe(moduleDir);
     }
   });
 
   test("a module's copy globs stay out of an app's src, unless the module is that app", async () => {
-    // Spec 035, package-dedicated seam: "MUST NOT write module source directly into apps/*/src".
+    // Package-dedicated seam: a module does not write source directly into apps/*/src.
     // An app-homed module is the app it fills (`api` is `apps/api`, `web/<id>` is `apps/<id>`): its
     // source lives there, and it writes nowhere else. Every other module stays out of every app.
     const appHome = (category: string, id: string): string | null =>
@@ -130,7 +129,7 @@ describe("module contract", () => {
     expect(offending).toEqual([]);
   });
 
-  // A project runs on bun or on pnpm (040), and its tests run on Vitest, which is Node in both: a
+  // A project runs on bun or on pnpm, and its tests run on Vitest, which is Node in both: a
   // template file or a command a module.json declares that reaches for Bun breaks the pnpm project,
   // and a test that does breaks both. `bun` the word, in a comment, misleads the next agent the same way.
   // What only a Bun project installs may: `pm/bun`, a module whose `peers.pm` is bun alone, and a
@@ -193,7 +192,7 @@ describe("module contract", () => {
   });
 
   // tsx resolves an import the way the project's typecheck does (`moduleResolution: bundler`); `node`
-  // does not, and an import it cannot resolve fails only when the script runs (035).
+  // does not, and an import it cannot resolve fails only when the script runs.
   test("no script a module adds runs a TypeScript file with node: tsx does", async () => {
     const NODE_TS = /\bnode\s+(?:--\S+\s+)*\S+\.ts\b/;
     const found: string[] = [];
@@ -240,19 +239,7 @@ describe("module contract", () => {
     expect(ids).toEqual(new Set(["cloudflare", "dockerfile"]));
   });
 
-  describe("a module peers only on categories 035 lists before its own (the table is topological)", () => {
-    /** Every category 035's table lists, in the order it lists them: the table is the one place the order is written. */
-    const tableOrder = async (): Promise<string[]> => {
-      const spec = await readFile(join(ROOT, "docs/specs/035-module-registry.md"), "utf8");
-      const table = spec.slice(
-        spec.indexOf("## Categories (normative)"),
-        spec.indexOf("**Rules:**"),
-      );
-      return [...table.matchAll(/^\| `([a-z]+)`\s+\|/gm)].flatMap(([, id]) =>
-        id === undefined ? [] : [id],
-      );
-    };
-
+  describe("a module peers only on categories MODULE_CATEGORIES lists before its own (the order is topological)", () => {
     /** What a manifest peers on or matches that its own category does not come after, as `<where>: <category>`. */
     const misorderedPeers = (manifest: ModuleManifest): string[] => {
       const own = MODULE_CATEGORIES.indexOf(manifest.category);
@@ -285,10 +272,6 @@ describe("module contract", () => {
       variants: [{ key: "default", match }],
     });
 
-    test("MODULE_CATEGORIES is 035's table, row by row: the order the check below reads is the spec's", async () => {
-      expect<string[]>([...MODULE_CATEGORIES]).toEqual(await tableOrder());
-    });
-
     test("names a peers category listed after the module's own, and a variant's optional peer listed after it", () => {
       expect(misorderedPeers(manifestOf("auth", { db: [], email: [] }))).toEqual(["peers: email"]);
       expect(misorderedPeers(manifestOf("auth", { db: [] }, { email: "resend" }))).toEqual([
@@ -316,7 +299,7 @@ describe("module contract", () => {
     });
   });
 
-  describe("a provider owns packages/api-runtime whole and writes nothing under apps/ (035 provider note, seam rule)", () => {
+  describe("a provider owns packages/api-runtime whole and writes nothing under apps/", () => {
     const providers = async () => {
       const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
       return catalog.modules.filter(({ manifest }) => manifest.category === "provider");
@@ -355,7 +338,7 @@ describe("module contract", () => {
         ]) {
           expect(variant?.copy).toContain(path);
         }
-        // Spec 035 declares a dependency once: `elysia` is the variant's, pinned the same everywhere;
+        // A dependency is declared once: `elysia` is the variant's, pinned the same everywhere;
         // the container's runtime also has srvx, the server it listens with.
         expect(variant?.dependencies).toEqual(
           manifest.id === "dockerfile" ? { elysia: "1.4.29", srvx: "1.0.8" } : { elysia: "1.4.29" },
@@ -484,13 +467,13 @@ describe("module contract", () => {
     expect(ignored).toContain("bg.json");
   });
 
-  test("every dependency a variant or a package.dependencies patch declares is an exact version (035: exact version maps)", async () => {
+  test("every dependency a variant or a package.dependencies patch declares is an exact version", async () => {
     const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
     const loose: string[] = [];
 
     for (const { manifest } of catalog.modules) {
       for (const variant of manifest.variants) {
-        // A `package.dependencies` patch writes dependencies too (060): its versions are held to the same rule.
+        // A `package.dependencies` patch writes dependencies too: its versions are held to the same rule.
         const patched = (variant.patch ?? []).flatMap((patch) =>
           patch.type === "package.dependencies" ? [patch.dependencies, patch.devDependencies] : [],
         );
@@ -514,7 +497,7 @@ describe("module contract", () => {
     expect(loose).toEqual([]);
   });
 
-  describe("ui/shadcn is the host package of the UI items (030, 035)", () => {
+  describe("ui/shadcn is the host package of the UI items", () => {
     const uiModule = async () => {
       const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
       const found = catalog.modules.find(
@@ -635,7 +618,7 @@ describe("module contract", () => {
     });
   });
 
-  describe("config/branding is the branding every app imports (035, 080)", () => {
+  describe("config/branding is the branding every app imports", () => {
     const TEMPLATE = join(MODULES, "config/branding/template");
     const text = (path: string): Promise<string> => readFile(join(TEMPLATE, path), "utf8");
     const brandingModule = async () => {
@@ -816,7 +799,7 @@ describe("module contract", () => {
       expect(manifest.checks).toContain("vp run gen:branding");
     });
 
-    test("a package-homed module writes only inside its package (035 seam)", async () => {
+    test("a package-homed module writes only inside its package", async () => {
       const homes: Partial<Record<string, string>> = {
         config: "packages/config",
         db: "packages/db",
@@ -885,7 +868,7 @@ describe("module contract", () => {
     });
   });
 
-  describe("api/elysia is the API shell, one variant per provider (035, 060)", () => {
+  describe("api/elysia is the API shell, one variant per provider", () => {
     const TEMPLATE = join(MODULES, "api/elysia/template");
     const text = (path: string): Promise<string> => readFile(join(TEMPLATE, path), "utf8");
     const apiModule = async () => {
@@ -1089,7 +1072,7 @@ describe("module contract", () => {
     });
   });
 
-  describe("web modules are the front shells of apps/<id>, a variant per provider they support, with the api and maybe without it (035, 040, 080)", () => {
+  describe("web modules are the front shells of apps/<id>, a variant per provider they support, with the api and maybe without it", () => {
     type WebModule = Awaited<ReturnType<typeof loadLocalRegistry>>["modules"][number];
     const webModules = async (): Promise<WebModule[]> => {
       const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
@@ -1130,7 +1113,7 @@ describe("module contract", () => {
         const { manifest } = module;
         const key = `web/${manifest.id}`;
         expect(Object.keys(manifest.peers)).toEqual(expect.arrayContaining(["provider", "config"]));
-        // The api is an optional peer (035): a front without it is a project of its own (040).
+        // The api is an optional peer: a front without it is a project of its own.
         expect(Object.keys(manifest.peers)).not.toContain("api");
         const accepted = manifest.peers.provider ?? [];
         const expected = accepted.length > 0 ? [...accepted].sort() : providers;
@@ -1178,7 +1161,7 @@ describe("module contract", () => {
             }
           }
         }
-        // A peer a variant's `match` names is optional (035): it counts as declared for that variant.
+        // A peer a variant's `match` names is optional: it counts as declared for that variant.
         const declared = new Set(
           [
             ...Object.keys(module.manifest.peers),
@@ -1378,7 +1361,7 @@ describe("module contract", () => {
       expect(unreachable).toEqual([]);
     });
 
-    test("no template imports a UI item: a module never depends on an item (09 section 2b)", async () => {
+    test("no template imports a UI item: a module never depends on an item", async () => {
       const importing: string[] = [];
       for (const module of await webModules()) {
         for (const variant of module.manifest.variants) {
@@ -1398,7 +1381,7 @@ describe("module contract", () => {
 
     test("no import leaves the app: a relative path stays under apps/<id>, and the rest is a package", async () => {
       // The legacy fronts reached `../../testing`, `../../../packages/ui/src` and `../../../../testing`;
-      // a module's files may only reach another tree through that tree's package `exports` (035 seam).
+      // a module's files may only reach another tree through that tree's package `exports`.
       const leaving: string[] = [];
       for (const module of await webModules()) {
         const home = `apps/${module.manifest.id}`;
@@ -1449,7 +1432,7 @@ describe("module contract", () => {
     });
   });
 
-  describe("db/d1 and orm/drizzle share packages/db, and db/d1 owns the package (035, 060)", () => {
+  describe("db/d1 and orm/drizzle share packages/db, and db/d1 owns the package", () => {
     const D1 = join(MODULES, "db/d1/template");
     const ORM = join(MODULES, "orm/drizzle/template");
     const d1Text = (path: string): Promise<string> => readFile(join(D1, path), "utf8");
@@ -1578,7 +1561,7 @@ describe("module contract", () => {
       expect(await templateFiles(ORM)).toEqual([...(orm.variant.copy ?? [])].sort());
     });
 
-    test("they ship schemas, not SQL: the project generates its migrations (09 stage 4 watch)", async () => {
+    test("they ship schemas, not SQL: the project generates its migrations", async () => {
       const files = [...(await templateFiles(D1)), ...(await templateFiles(ORM))];
 
       expect(files.filter((path) => /\.sql$|(?:^|\/)migrations\//.test(path))).toEqual([]);
@@ -1665,7 +1648,7 @@ describe("module contract", () => {
       };
     };
 
-    test("orm merges only its subpaths with jsonc.merge, and its dependencies with package.dependencies (060)", async () => {
+    test("orm merges only its subpaths with jsonc.merge, and its dependencies with package.dependencies", async () => {
       const { orm } = await dbModules();
 
       // A subpath is a leaf the formatter does not move; a dependency is one it sorts, so it has its own patch.
@@ -2056,7 +2039,7 @@ describe("module contract", () => {
     });
   });
 
-  describe("auth/better-auth is packages/auth, over the installed db and orm (035)", () => {
+  describe("auth/better-auth is packages/auth, over the installed db and orm", () => {
     const AUTH = join(MODULES, "auth/better-auth/template");
     const authText = (path: string): Promise<string> => readFile(join(AUTH, path), "utf8");
     const authModule = async () => {
@@ -2196,7 +2179,7 @@ describe("module contract", () => {
       expect([...(variant.copy ?? [])].sort()).toEqual(shipped);
     });
 
-    test("it wires itself in by patches on four known seams, and by nothing else (060)", async () => {
+    test("it wires itself in by patches on four known seams, and by nothing else", async () => {
       const { variant } = await authModule();
       const patches = (variant.patch ?? []).map(({ type, file }) => `${type} ${String(file)}`);
 
@@ -2355,7 +2338,7 @@ describe("module contract", () => {
     });
   });
 
-  describe("storage/r2 is packages/storage: media over an R2 bucket, over the installed db, orm and auth (035)", () => {
+  describe("storage/r2 is packages/storage: media over an R2 bucket, over the installed db, orm and auth", () => {
     const STORAGE = join(MODULES, "storage/r2/template");
     const storageText = (path: string): Promise<string> => readFile(join(STORAGE, path), "utf8");
     const storageModule = async () => {
@@ -2530,7 +2513,7 @@ describe("module contract", () => {
       expect([...(variant.copy ?? [])].sort()).toEqual(shipped);
     });
 
-    test("it wires itself in by patches on four known seams, and by nothing else (060)", async () => {
+    test("it wires itself in by patches on four known seams, and by nothing else", async () => {
       const { variant } = await storageModule();
       const patches = (variant.patch ?? []).map(({ type, file }) => `${type} ${String(file)}`);
 
@@ -2633,7 +2616,7 @@ describe("module contract", () => {
       expect(variant.env).toEqual([{ name: "R2_PUBLIC_URL", required: true, example: "" }]);
     });
 
-    test("no provider and no api module declares R2_PUBLIC_URL: a key belongs to the module that reads it (035, 07)", async () => {
+    test("no provider and no api module declares R2_PUBLIC_URL: a key belongs to the module that reads it", async () => {
       const { catalog } = await storageModule();
       const declarers = catalog.modules
         .filter(({ manifest }) =>
@@ -2742,7 +2725,7 @@ describe("module contract", () => {
     });
   });
 
-  describe("deploy/cloudflare-actions is the project's deploy workflow, and the script that plans it from the tree (035, 060)", () => {
+  describe("deploy/cloudflare-actions is the project's deploy workflow, and the script that plans it from the tree", () => {
     const MODULE = join(MODULES, "deploy/cloudflare-actions");
     const WORKFLOW = ".github/workflows/deploy.yml";
 
@@ -2899,7 +2882,7 @@ describe("module contract", () => {
     });
   });
 
-  describe("email/resend is packages/email, and wires itself into auth by the variant the installed auth selects (035, 060, 065)", () => {
+  describe("email/resend is packages/email, and wires itself into auth by the variant the installed auth selects", () => {
     const EMAIL = join(MODULES, "email/resend/template");
     const emailText = (path: string): Promise<string> => readFile(join(EMAIL, path), "utf8");
     const emailModule = async () => {
@@ -2941,7 +2924,7 @@ describe("module contract", () => {
 
       expect(manifest.variants.map(({ key }) => key)).toEqual(["default", "better-auth"]);
       expect(standalone.match).toEqual({});
-      // Auth is an optional peer (035 Variants): a `match` names it and `peers` does not, so email
+      // Auth is an optional peer: a `match` names it and `peers` does not, so email
       // installs without it, and the variant that matches on it applies only when it is installed.
       expect(wired.match).toEqual({ auth: "better-auth" });
       expect(Object.keys(manifest.peers)).not.toContain("auth");
@@ -3159,7 +3142,7 @@ describe("module contract", () => {
     });
   });
 
-  test("an env key belongs to the one module that reads it: no two categories declare the same key (035, 060)", async () => {
+  test("an env key belongs to the one module that reads it: no two categories declare the same key", async () => {
     const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
     const declaredBy = new Map<string, Set<string>>();
 
@@ -3285,7 +3268,7 @@ describe("module contract", () => {
   });
 });
 
-describe("a front installs without the api (040: `create --apps spa`)", () => {
+describe("a front installs without the api", () => {
   const CLIENT: Record<string, readonly string[]> = {
     spa: ["apps/spa/src/lib/api.ts", "apps/spa/.env.test"],
     ssr: ["apps/ssr/src/lib/api.server.ts", "apps/ssr/src/lib/api.server.test.ts"],
@@ -3345,7 +3328,7 @@ describe("a front installs without the api (040: `create --apps spa`)", () => {
   }
 });
 
-describe("pm/bun and pm/pnpm are the package manager of the project (035, 040)", () => {
+describe("pm/bun and pm/pnpm are the package manager of the project", () => {
   const PM = join(MODULES, "pm");
   const ACTION = ".github/actions/setup/action.yml";
 

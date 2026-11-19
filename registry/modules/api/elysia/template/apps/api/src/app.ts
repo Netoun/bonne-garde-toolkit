@@ -26,7 +26,7 @@ export const app = new Elysia(runtimeOptions)
   )
   // Insertion point for the modules that plug into the API (db, auth, storage, ...). A module adds
   // one `.use(<module>)` here, after the last `.use()` above and before the routes below, through
-  // the `ts.elysiaUse` patch (spec 060) keyed on `app`: it owns `elysia[app].use[<module>]` and
+  // the `ts.elysiaUse` patch keyed on `app`: it owns `elysia[app].use[<module>]` and
   // reformats nothing. Keep `app` exported under that name, built from `new Elysia(runtimeOptions)`.
   .get("/health", () => ({ status: "ok", timestamp: Date.now() }));
 

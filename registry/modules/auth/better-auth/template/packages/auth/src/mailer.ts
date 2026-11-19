@@ -38,6 +38,6 @@ export function unconfiguredMailer(logger: Pick<AuthLogger, "warn">): AuthMailer
 /**
  * The mailer auth runs with, and the one place an `email` module wires itself in: it replaces this
  * value with an adapter that delivers an `AuthEmail` through its own package (the intention that
- * module ships, spec 065). `auth.module.ts` reads it and nothing else does.
+ * module ships). `auth.module.ts` reads it and nothing else does.
  */
 export const mailer: AuthMailer = unconfiguredMailer(apiLogger);

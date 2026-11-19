@@ -2,7 +2,7 @@
 
 A React Router SSR app at `apps/ssr`, run as a Cloudflare Worker: the Worker entry, a request context
 that carries the API URL, a server-side Eden client that forwards the request's cookie, and a home
-page. Extracted from the legacy `apps/ssr` ([080](../../../../docs/specs/080-existing-code-migration.md)).
+page. Extracted from the legacy `apps/ssr`.
 
 ```bash
 bunx bonne-garde add web/ssr
@@ -16,23 +16,23 @@ bunx bonne-garde add web/ssr
 | `config`   | `branding`   | `root.tsx`, the home page and the test read `branding`; `vite.config.ts` loads its favicons plugin |
 | `ui`       | `shadcn`     | `root.tsx` imports `{{SCOPE}}/ui/globals.css`                                                      |
 
-`api` (`elysia`) is an optional peer (035). The variant `cloudflare`, matched on it, copies
+`api` (`elysia`) is an optional peer. The variant `cloudflare`, matched on it, copies
 `lib/api.server.ts` and its test: the Eden client typed with `type App` from `{{SCOPE}}/api/app`,
 which declares `API_URL` on `WorkerEnv`, and `jsonc.merge` writes `API_URL` into `wrangler.jsonc`.
-`cloudflare-without-api`, matched on the provider alone, writes none of that (spec 040).
+`cloudflare-without-api`, matched on the provider alone, writes none of that.
 
 Both copy `wrangler.jsonc` and add `dev` (`react-router dev`) and `deploy` (`wrangler deploy`) to the
-vendored `apps/ssr/package.json` with `scripts.merge` (spec 060).
+vendored `apps/ssr/package.json` with `scripts.merge`.
 `wrangler`, `@cloudflare/vite-plugin` and `@cloudflare/workers-types` are dev dependencies.
 
-**Why `cloudflare` only** (080, step 3): the app is a Worker, and the `dockerfile` provider has no
+**Why `cloudflare` only**: the app is a Worker, and the `dockerfile` provider has no
 SSR shell. Its `serve()` answers from `apps/spa/build/client` and its image starts the API alone.
 Running this app as a second service is a new feature, and so is a second variant. `bunx bonne-garde add web/ssr`
 on a `dockerfile` project fails naming the provider.
 
 ## What it writes
 
-Everything under `apps/ssr`, which is its home (035). The legacy app's 20 files are each here, apart
+Everything under `apps/ssr`, which is its home. The legacy app's 20 files are each here, apart
 from `README.md` (placeholder text) and `.env.example`, which `env` replaces with `API_URL`:
 
 - `package.json`, `tsconfig.json`, `react-router.config.ts` (`ssr: true`), `vite.config.ts`,

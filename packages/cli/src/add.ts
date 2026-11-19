@@ -85,7 +85,7 @@ export async function viewItem(
 
 export type AddOptions = {
   projectRoot?: string;
-  /** Item names, module ids, or `<category>/<id>`: spec 050 step 3 sorts them. */
+  /** Item names, module ids, or `<category>/<id>`: step 3 of `add` sorts them. */
   items: string[];
   source?: string;
   dryRun?: boolean;
@@ -98,7 +98,7 @@ export type AddOptions = {
 };
 
 /**
- * Spec 040: a check that throws what `bonne-garde add` would refuse of a set of names in an empty project,
+ * A check that throws what `bonne-garde add` would refuse of a set of names in an empty project,
  * reading no template file. The module manifests of `candidates` are fetched once, here: on a github
  * source that is one request each, and none for a later check.
  */

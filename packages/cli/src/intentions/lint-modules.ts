@@ -135,7 +135,7 @@ async function lintModule(
         if (mode === null) {
           fail(`${where} declares neither copy nor adapt`);
         } else if (mode === "adapt" && path === null) {
-          // `bonne-garde record` marks every adapt file with a region of the intention (060), so each is named.
+          // `bonne-garde record` marks every adapt file with a region of the intention, so each is named.
           fail(`${where} declares adapt and names no path in backticks`);
         } else if (mode === "adapt" && path !== null && !isReferenceFile(path)) {
           fail(
@@ -155,7 +155,7 @@ async function lintModule(
 }
 
 /**
- * Spec 065 "Linting" for the intentions a module authors under `registry/modules/<category>/<id>/intent/`:
+ * The lint of the intentions a module authors under `registry/modules/<category>/<id>/intent/`:
  * the same parser as the staging reads them with, the rules the format gives (id, order, `requires`,
  * sections, Reference Paths) and the two ends of `module.json`'s `intent` list, so a file no variant
  * names and a name no file answers to both fail. Reports every error at once, in module order.

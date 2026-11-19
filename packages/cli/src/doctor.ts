@@ -25,11 +25,11 @@ import { readStagedIntentions } from "./intentions/staged";
 import { defaultSource } from "./manifest-file";
 
 /**
- * `bonne-garde doctor` (spec 050): what `bg.json` says against what is on disk, with no network.
+ * `bonne-garde doctor`: what `bg.json` says against what is on disk, with no network.
  *
  * Severity, one rule: an **error** is a record that contradicts the tree or itself (a recorded
  * file that is gone, an owner that is not installed, a peer category that is empty), so plain
- * `doctor` exits 1. A **warning** is divergence spec 060 says to keep and report (a file the
+ * `doctor` exits 1. A **warning** is divergence to keep and report (a file the
  * consumer edited, a patch that failed, an intention still pending), which only `--strict` fails.
  */
 
@@ -281,7 +281,7 @@ async function checkFiles(
     }
     if (Object.keys(manifest.regions[path] ?? {}).length > 0) {
       // A patch rewrote the file `bg.json` recorded the sha256 of, so the sha says nothing about an
-      // edit by the user (060 Checksums): the regions check reads what the patches wrote instead.
+      // edit by the user: the regions check reads what the patches wrote instead.
       details.byRegion.push(path);
     } else if (sha256Hex(bytes) === record.sha256) {
       details.intact += 1;
@@ -397,7 +397,7 @@ async function checkRegions(
       }
     }
 
-    // `intent[<id>]` is what an applied intention left on a file it edited (060): it names no place in
+    // `intent[<id>]` is what an applied intention left on a file it edited: it names no place in
     // the file and has no value to compare, so what is checked of it is the record in `bg.json`, and
     // the file is never read for it.
     if (exists) {
@@ -533,7 +533,7 @@ function checkPatches(manifest: ProjectManifest): CheckReport<PatchesDetails> {
           path: patch.file,
           message:
             `${key}: patch ${patch.type} on ${patch.file} failed (${patch.reason ?? "no reason recorded"}); ` +
-            "it is a pending intention (spec 060): apply it by hand, then bonne-garde record",
+            "it is a pending intention: apply it by hand, then bonne-garde record",
         });
       }
     }

@@ -5,7 +5,7 @@ A local launcher that gives every app of the project a named HTTPS URL (`https:/
 the same names are served under `.local`, so a phone on the same Wi-Fi reaches them over a trusted origin.
 It replaces the `portless` registry item, which was hard-wired to four apps (`AppKey = "api" | "spa" |
 "ssr" | "static"`); `dev` is a `many` category of the repo home, local launchers that are never on the
-runtime path ([035](../../../../docs/specs/035-module-registry.md)).
+runtime path ([concepts](../../../../docs/CONCEPTS.md)).
 
 ```bash
 bunx bonne-garde add dev/portless

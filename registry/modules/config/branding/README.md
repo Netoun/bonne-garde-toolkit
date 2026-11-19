@@ -5,7 +5,7 @@ The branding every app imports: `packages/config`, with the typed constants (`di
 `supportEmail`, `legalName`), the generator that renders them and the web manifest from
 `branding.json`, and the favicons. Extracted from this repo's legacy `packages/config`,
 root `branding.json`, `scripts/gen-branding.ts` and `assets/favicons`
-([080](../../../../docs/specs/080-existing-code-migration.md)).
+.
 
 ```bash
 bunx bonne-garde add config/branding
@@ -44,7 +44,7 @@ module cannot ship (`web` modules rewrite that import).
 
 The seven binaries (`favicon.ico`, `favicon-16x16.png`, `favicon-32x32.png`, `favicon-48x48.png`,
 `apple-touch-icon.png`, `android-chrome-192x192.png`, `android-chrome-512x512.png`) are the first binary
-template files ([035](../../../../docs/specs/035-module-registry.md)): copied byte for byte, recorded
+template files ([concepts](../../../../docs/CONCEPTS.md)): copied byte for byte, recorded
 in `bg.json` by the sha256 of their bytes, checked by `bonne-garde doctor` like any file.
 
 All three shells serve this directory from the site root, so `/site.webmanifest` and the
@@ -61,7 +61,7 @@ Vite takes one `publicDir`, so an app that owns a `public/` cannot also point it
 way out: in the client build it emits each file of the directory as an asset under its own name (a bundled
 asset would be renamed, or inlined as a `data:` URL, and a manifest names its icons by URL), and in
 development a middleware answers them at the site root. It is a plugin of this package, not three copies
-in the apps, and an app reaches it through the `./vite` export (035 seam). It imports the `Plugin` type
+in the apps, and an app reaches it through the `./vite` export. It imports the `Plugin` type
 from `vite-plus`, which is the project root's dependency, as `typescript` is.
 
 Golden proves it on every shell the configuration installs: the build holds every file of this directory
@@ -73,7 +73,7 @@ icon the page links.
 ## The root `gen:branding` script (tier 2)
 
 The module adds one script to the project's root `package.json`, the first use of the
-`scripts.merge` patch ([060](../../../../docs/specs/060-patches-and-regions.md)):
+`scripts.merge` patch ([patches](../../../../docs/MODULES.md#tier-2-patches)):
 
 ```json
 "patch": [
@@ -111,7 +111,7 @@ indentation and line endings stay). Each key is a region, recorded in `bg.json`:
 | `package.json` is missing, is not JSON, or `scripts` is not an object | `failed` with its reason; the rest of the install goes ahead                                  |
 
 **A `failed` patch is recorded and reported, not converted.** 060 turns it into a pending tier-3
-intention that the executor resolves (065). Staging intentions does not exist yet, so today the
+intention that the executor resolves. Staging intentions does not exist yet, so today the
 failure is in four places and nowhere else: the `status`/`reason` in `bg.json`, `patches[].status`
 and the top-level `failedPatches` in `bonne-garde add`'s JSON, a `bonne-garde: PATCH FAILED ...` line on stderr, and a
 `patch-failed` warning in `bonne-garde doctor` (which `--strict` turns into a failure). Making the edit by hand
@@ -121,7 +121,7 @@ is the fix until the conversion is built.
 
 ## What differs from legacy
 
-The files are the legacy files byte for byte (080: no rewrites), with `{{SCOPE}}` where the scope
+The files are the legacy files byte for byte, with `{{SCOPE}}` where the scope
 sits (`name`, `npmScope`), and two differences that follow from where a module may write:
 
 - `branding.json` and the generator live inside the package. The generator is the legacy
