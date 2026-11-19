@@ -9,15 +9,17 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@acme/ui/components/sidebar";
 
 import type { NavSection } from "../nav";
 
 export function SiteSidebar({ sections }: { sections: NavSection[] }) {
   const { pathname } = useLocation();
+  const { isMobile, setOpenMobile } = useSidebar();
 
   return (
-    <Sidebar>
+    <Sidebar className="top-14 h-[calc(100svh-3.5rem)]">
       <SidebarContent className="gap-0">
         {sections.map((section) => (
           <SidebarGroup key={section.title}>
@@ -28,7 +30,14 @@ export function SiteSidebar({ sections }: { sections: NavSection[] }) {
                   <SidebarMenuItem key={link.href}>
                     <SidebarMenuButton
                       isActive={pathname === link.href}
-                      render={<Link to={link.href} />}
+                      render={
+                        <Link
+                          to={link.href}
+                          onClick={() => {
+                            if (isMobile) setOpenMobile(false);
+                          }}
+                        />
+                      }
                     >
                       {link.title}
                     </SidebarMenuButton>

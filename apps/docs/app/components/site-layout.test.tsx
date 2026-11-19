@@ -38,5 +38,9 @@ describe("SiteLayout", () => {
         expect(screen.getByRole("link", { name: link.title })).toHaveAttribute("href", link.href);
       }
     }
+
+    const sidebar = document.querySelector('[data-slot="sidebar-container"]');
+    expect(sidebar).toHaveClass("top-14");
+    expect(sidebar).toHaveClass("h-[calc(100svh-3.5rem)]");
   });
 });
