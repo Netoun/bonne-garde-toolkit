@@ -12,7 +12,7 @@ bunx bonne-garde add provider/cloudflare db/d1 orm/drizzle
 
 `peers: { api: ["elysia"], db: [] }`: the API, whose `app.ts` and `package.json` its patches wire the
 `dbModule` into, and any `db` module, one of which has to be installed. There is one variant per db, matched
-on `db`: `d1` and `libsql`. The allow-list stays empty so that a project with a `db` this module has no variant
+on `db`: `d1`, `libsql` and `postgres`. The allow-list stays empty so that a project with a `db` this module has no variant
 for fails with "no variant matches", listing what is available.
 
 ## What it writes
@@ -49,6 +49,33 @@ the variant copies only its own plus the shared `src/drizzle.config.ts` and `src
 It patches `packages/db/package.json` with the root export `./src/libsql-index.ts`, `./schema`, `./testing`
 (`./src/libsql-testing.ts`) and the `db:generate` script only (no `db:reset`, no `db:studio`), and wires
 `dbModule` into the API with the same three patches as `d1`. `db/d1` and its files are unchanged.
+
+## The `postgres` variant
+
+With [`db/postgres`](../../db/postgres/README.md) (the `dockerfile` provider) the package runs on
+`drizzle-orm/postgres-js`, over the client `readPostgres()` returns. Same layout as `libsql`, with the barrel the
+only file shared with the other variants:
+
+| File                             | What it is                                                                                             |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `src/postgres-client.ts`         | `createDB(sql)` and `type DB`                                                                          |
+| `src/postgres-module.ts`         | `dbModule` / `dbPlugin(readDatabase, migrationsFolder?)`: applies the migrations once                  |
+| `src/postgres-index.ts`          | the same exports as `index.ts`                                                                         |
+| `src/postgres-test-db.ts`        | `createTestDb(schema?)` / `TestDb`: a fresh PGlite served over a socket, behind the postgres-js driver |
+| `src/postgres-drizzle.config.ts` | `dialect: postgresql`, `out: ./migrations`, `dbCredentials.url` from `DATABASE_URL`                    |
+| `src/postgres-*.test.ts`         | each against a real Postgres engine (PGlite over its socket), no Docker                                |
+
+The test database is `postgres-test-db.ts` and not `postgres-testing.ts`: that path is `db/postgres`'s
+(`startTestPostgres`). `createTestDb` starts a server of its own on each call and leaves it to the end of the test
+process.
+
+It patches `packages/db/package.json` with the root export `./src/postgres-index.ts`, `./schema`, `./testing`
+(`./src/postgres-test-db.ts`) and the `db:generate` script (`drizzle-kit generate --config
+./src/postgres-drizzle.config.ts`) only, and wires `dbModule` into the API with the same three patches as `d1`.
+
+`dbModule` applies the migrations on the first request, with `migrate` of `drizzle-orm/postgres-js/migrator`,
+once for requests at the same time. It skips them, and the API still answers `/health`, when `db:generate` has not
+written `migrations/meta/_journal.json` yet or when `DATABASE_URL` is unset (the first query then fails naming it).
 
 ## `packages/db` is shared, and db/d1 owns it
 

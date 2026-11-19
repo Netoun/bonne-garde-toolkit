@@ -1527,6 +1527,7 @@ describe("module contract", () => {
       expect(orm.manifest.variants.map(({ key, match }) => [key, match])).toEqual([
         ["d1", { db: "d1" }],
         ["libsql", { db: "libsql" }],
+        ["postgres", { db: "postgres" }],
       ]);
       expect(orm.variant.key).toBe("d1");
       expect(orm.variant.match).toEqual({ db: "d1" });
@@ -2292,6 +2293,160 @@ describe("module contract", () => {
         ).rejects.toThrow(
           /db\/postgres accepts only dockerfile for provider, but provider\/cloudflare is present/,
         );
+      });
+
+      describe("the postgres variant of orm/drizzle", () => {
+        const ORM_POSTGRES_FILES = [
+          "packages/db/src/postgres-client.ts",
+          "packages/db/src/postgres-client.test.ts",
+          "packages/db/src/postgres-drizzle.config.ts",
+          "packages/db/src/postgres-index.ts",
+          "packages/db/src/postgres-module.ts",
+          "packages/db/src/postgres-module.test.ts",
+          "packages/db/src/postgres-test-db.ts",
+          "packages/db/src/postgres-test-db.test.ts",
+          "packages/db/src/schema/index.ts",
+        ];
+        const ormPostgres = async () => {
+          const { catalog, postgres } = await postgresModule();
+          const orm = catalog.modules.find(
+            ({ manifest }) => manifest.category === "orm" && manifest.id === "drizzle",
+          );
+          const variant = orm?.manifest.variants.find(({ key }) => key === "postgres");
+          if (!orm || !variant) {
+            throw new Error("the postgres variant of orm/drizzle is missing");
+          }
+          return { catalog, postgres, orm, variant };
+        };
+
+        test("matches db/postgres, copies its own files beside the others, and patches like the libsql variant", async () => {
+          const { orm, variant } = await ormPostgres();
+          const libsql = orm.manifest.variants.find(({ key }) => key === "libsql");
+
+          expect(variant.match).toEqual({ db: "postgres" });
+          expect(variant.copy).toEqual(ORM_POSTGRES_FILES);
+          expect(variant.workspace).toBeUndefined();
+          expect(variant.dependencies ?? {}).toEqual({});
+          expect(variant.devDependencies ?? {}).toEqual({});
+          // Only the barrel is shared: the sqlite drizzle.config.ts is not copied, and no other path is another variant's.
+          const others = new Set(
+            orm.manifest.variants
+              .filter(({ key }) => key !== "postgres")
+              .flatMap((other) => other.copy ?? []),
+          );
+          for (const path of variant.copy ?? []) {
+            expect([path, others.has(path)]).toEqual([
+              path,
+              path === "packages/db/src/schema/index.ts",
+            ]);
+          }
+          expect(mergedInto(variant.patch, "packages/db/package.json")).toEqual({
+            exports: {
+              ".": "./src/postgres-index.ts",
+              "./schema": "./src/schema/index.ts",
+              "./testing": "./src/postgres-test-db.ts",
+            },
+          });
+          expect(variant.patch?.find((patch) => patch.type === "scripts.merge")).toEqual({
+            type: "scripts.merge",
+            file: "packages/db/package.json",
+            scripts: {
+              "db:generate": "drizzle-kit generate --config ./src/postgres-drizzle.config.ts",
+            },
+          });
+          expect(dependenciesPatch(variant.patch, "packages/db/package.json")).toEqual(
+            dependenciesPatch(libsql?.patch, "packages/db/package.json"),
+          );
+          const apiPatches = (patches: readonly { type: string; file?: unknown }[] | undefined) =>
+            (patches ?? []).filter(
+              ({ file }) => typeof file === "string" && file.startsWith("apps/api/"),
+            );
+          expect(apiPatches(variant.patch)).toEqual(apiPatches(libsql?.patch));
+          expect(apiPatches(variant.patch)).toHaveLength(3);
+          for (const target of Object.values(
+            mergedInto(variant.patch, "packages/db/package.json").exports as object,
+          )) {
+            expect(variant.copy).toContain(`packages/db/${String(target).replace("./", "")}`);
+          }
+        });
+
+        test("its sources keep the d1 names, and drizzle-kit is told the postgresql dialect", async () => {
+          const index = await ormText("packages/db/src/postgres-index.ts");
+
+          expect(index).toMatch(/export \{ createDB, type DB \} from "\.\/postgres-client"/);
+          expect(index).toMatch(/export \{ dbModule, dbPlugin \} from "\.\/postgres-module"/);
+          expect(await ormText("packages/db/src/postgres-module.ts")).toMatch(
+            /export const dbModule = /,
+          );
+          expect(await ormText("packages/db/src/postgres-test-db.ts")).toMatch(
+            /export type TestDb = /,
+          );
+          expect(await ormText("packages/db/src/postgres-drizzle.config.ts")).toContain(
+            'dialect: "postgresql"',
+          );
+        });
+
+        test("every package its sources import is declared, every one declared is imported, and every relative import is shipped", async () => {
+          const { postgres, variant } = await ormPostgres();
+          const patched = dependenciesPatch(variant.patch, "packages/db/package.json");
+          const declared = new Set([
+            ...Object.keys(postgres.variant.dependencies ?? {}),
+            ...Object.keys(postgres.variant.devDependencies ?? {}),
+            ...Object.keys(patched.dependencies),
+            ...Object.keys(patched.devDependencies),
+          ]);
+          const shipped = new Set([...(postgres.variant.copy ?? []), ...(variant.copy ?? [])]);
+          const named = new Set<string>();
+          const unresolved: string[] = [];
+          const sources: [string, string][] = [];
+          for (const path of postgres.variant.copy ?? []) {
+            if (SOURCE.test(path)) sources.push([path, code(await postgresText(path))]);
+          }
+          for (const path of variant.copy ?? []) {
+            if (SOURCE.test(path)) sources.push([path, code(await ormText(path))]);
+          }
+
+          for (const [path, source] of sources) {
+            for (const name of packagesNamedBy(source)) {
+              if (!name.includes(":") && !BASE_TOOLING.has(name)) {
+                named.add(name);
+                expect([path, declared.has(name)]).toEqual([path, true]);
+              }
+            }
+            for (const [, specifier] of source.matchAll(/from\s+"(\.[^"]*)"/g)) {
+              const target = posix.normalize(posix.join(posix.dirname(path), specifier ?? ""));
+              if (![`${target}.ts`, `${target}/index.ts`].some((file) => shipped.has(file))) {
+                unresolved.push(`${path}: ${specifier}`);
+              }
+            }
+          }
+
+          expect([...declared].filter((name) => !named.has(name))).toEqual([]);
+          expect(unresolved).toEqual([]);
+        });
+
+        test("the installed db picks the variant: postgres with db/postgres, libsql with db/libsql", async () => {
+          const { catalog } = await ormPostgres();
+          const project = createEmptyProjectManifest({ scope: "@app", registries: {} });
+          const base = [
+            { category: "config", id: "branding" },
+            { category: "api", id: "elysia" },
+            { category: "provider", id: "dockerfile" },
+          ] as const;
+          const pick = async (db: "postgres" | "libsql") =>
+            (
+              await resolveModulePlans(
+                catalog,
+                [...base, { category: "db", id: db }, { category: "orm", id: "drizzle" }],
+                project,
+              )
+            )
+              .filter(({ category }) => category === "db" || category === "orm")
+              .map(({ key, variant }) => `${key}:${variant}`);
+
+          expect(await pick("postgres")).toEqual(["db/postgres:default", "orm/drizzle:postgres"]);
+          expect(await pick("libsql")).toEqual(["db/libsql:default", "orm/drizzle:libsql"]);
+        });
       });
     });
 

@@ -134,6 +134,67 @@
           "intent": "Register dbModule on the API app after its last .use and before its routes, so every route gets db on its context."
         }
       ]
+    },
+    {
+      "key": "postgres",
+      "match": { "db": "postgres" },
+      "copy": [
+        "packages/db/src/postgres-client.ts",
+        "packages/db/src/postgres-client.test.ts",
+        "packages/db/src/postgres-drizzle.config.ts",
+        "packages/db/src/postgres-index.ts",
+        "packages/db/src/postgres-module.ts",
+        "packages/db/src/postgres-module.test.ts",
+        "packages/db/src/postgres-test-db.ts",
+        "packages/db/src/postgres-test-db.test.ts",
+        "packages/db/src/schema/index.ts"
+      ],
+      "patch": [
+        {
+          "type": "jsonc.merge",
+          "file": "packages/db/package.json",
+          "value": {
+            "exports": {
+              ".": "./src/postgres-index.ts",
+              "./schema": "./src/schema/index.ts",
+              "./testing": "./src/postgres-test-db.ts"
+            }
+          }
+        },
+        {
+          "type": "package.dependencies",
+          "file": "packages/db/package.json",
+          "dependencies": { "drizzle-orm": "0.45.2", "elysia": "1.4.29" },
+          "devDependencies": { "drizzle-kit": "0.31.10" }
+        },
+        {
+          "type": "scripts.merge",
+          "file": "packages/db/package.json",
+          "scripts": {
+            "db:generate": "drizzle-kit generate --config ./src/postgres-drizzle.config.ts"
+          }
+        },
+        {
+          "type": "package.dependencies",
+          "file": "apps/api/package.json",
+          "dependencies": { "{{SCOPE}}/db": "workspace:*" },
+          "intent": "Declare the project's db package as a dependency of the API app."
+        },
+        {
+          "type": "ts.addImport",
+          "file": "apps/api/src/app.ts",
+          "moduleSpecifier": "{{SCOPE}}/db",
+          "namedImports": ["dbModule"],
+          "intent": "Import dbModule from the project's db package in the API app."
+        },
+        {
+          "type": "ts.elysiaUse",
+          "file": "apps/api/src/app.ts",
+          "targetName": "app",
+          "argument": "dbModule",
+          "intent": "Register dbModule on the API app after its last .use and before its routes, so every route gets db on its context."
+        }
+      ]
     }
   ]
 }

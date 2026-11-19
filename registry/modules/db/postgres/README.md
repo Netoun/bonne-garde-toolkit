@@ -43,7 +43,22 @@ plugin can skip its migrations.
 The tests run on a real Postgres engine (PGlite over `PGLiteSocketServer`) with the production driver: no mock,
 no Docker. PGlite serves one connection at a time, so a client against it takes `{ max: 1 }`.
 
+## Migrations
+
+They come with [`orm/drizzle`](../../orm/drizzle/README.md) (its `postgres` variant), not from this module:
+
+```bash
+bunx bonne-garde add db/postgres orm/drizzle
+cd packages/db
+vp run db:up         # the local Postgres of compose.postgres.yaml
+vp run db:generate   # after a table is added to src/schema/index.ts: writes migrations/
+```
+
+The API applies `migrations/` itself, on its first request, so there is no migrate step to run: with
+`DATABASE_URL` pointing at a Postgres, the first request creates the tables. A project with no migration yet, or
+no `DATABASE_URL`, still starts and answers `/health`.
+
 ## Not here
 
-Migrations and the ORM come with `orm/drizzle`. `auth/better-auth` and `storage/r2` stay D1-only
+The ORM comes with `orm/drizzle`. `auth/better-auth` and `storage/r2` stay D1-only
 (`peers.db: ["d1"]`): auth on Docker is a separate decision.
