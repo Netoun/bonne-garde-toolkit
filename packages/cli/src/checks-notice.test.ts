@@ -3,7 +3,7 @@ import { checksNotice } from "./checks-notice";
 
 const api = { key: "api/elysia", checks: ["cd apps/api && bun run typecheck"] };
 
-describe("checksNotice (050 step 15)", () => {
+describe("checksNotice", () => {
   test("says nothing when no module declares a check", () => {
     expect(checksNotice([{ key: "provider/cloudflare", checks: [] }], 0)).toBeNull();
     expect(checksNotice([], 3)).toBeNull();
@@ -15,10 +15,14 @@ describe("checksNotice (050 step 15)", () => {
     expect(notice).toContain("checks withheld while 2 intentions are pending");
     expect(notice).toContain("\n  api/elysia: cd apps/api && bun run typecheck");
     expect(notice).not.toContain("were not run");
+    expect(notice).not.toContain("spec");
     expect(checksNotice([api], 1)).toContain("while 1 intention is pending");
   });
 
   test("says they were not run, with nothing pending, because add does not run them yet", () => {
-    expect(checksNotice([api], 0)).toContain("checks were not run (spec 050 step 15");
+    const notice = checksNotice([api], 0);
+
+    expect(notice).toContain("checks were not run: add does not run them yet");
+    expect(notice).not.toContain("spec");
   });
 });

@@ -4,7 +4,7 @@ import { lineIndent, ownLineIndent } from "./text-layout";
 import { jsonRegion } from "./jsonc-merge";
 
 /**
- * `scripts.merge` (spec 060): adds keys to the `scripts` object of a `package.json` without
+ * `scripts.merge`: adds keys to the `scripts` object of a `package.json` without
  * reformatting the file. Every edit goes through `jsonc-parser` `modify` + `applyEdits`, so comments,
  * trailing commas and the file's own layout survive; nothing here touches text with a regex.
  */

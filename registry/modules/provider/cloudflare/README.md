@@ -19,7 +19,7 @@ Nothing here is new work — it names what `apps/api` already does, so that the 
 
 ## Peers
 
-None. `provider` is first in spec 035's topological order: it peers on nothing, and `api`, `db`,
+None. `provider` is first in the topological order of categories: it peers on nothing, and `api`, `db`,
 `storage` and `deploy` peer on it.
 
 ## What the module writes
@@ -41,7 +41,7 @@ is where they run.
 It declares `elysia`, `@cloudflare/workers-types` and `@types/node`, pinned, in the workspace
 `package.json`.
 
-It declares no env key: a key belongs to the module that reads it (035), and nothing here reads one.
+It declares no env key: a key belongs to the module that reads it, and nothing here reads one.
 `RESEND_API_KEY` is the `email` module's.
 
 ## What it does not write

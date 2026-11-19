@@ -79,7 +79,7 @@ module does not, so the file has `.unique()` there, as the generator writes it. 
 ## Environment
 
 The module declares `BETTER_AUTH_SECRET` (`required`) and reads it through `readRuntimeEnv()`, never
-through the shell's `app.config.ts`. A key belongs to the module that reads it (035), so neither
+through the shell's `app.config.ts`. A key belongs to the module that reads it, so neither
 provider declares it.
 
 | Provider     | Where the secret comes from                                                                          |
@@ -102,7 +102,7 @@ which carries a one-time token. `requireEmailVerification` stays on, so **a user
 project with no email module cannot sign in** until one is wired in; the seeded admin is verified.
 
 The `email` module replaces the `mailer` value with an adapter over its own package, through the
-intention it ships (spec 065): auth owns the interface, never the reverse.
+intention it ships: auth owns the interface, never the reverse.
 
 ## Where it is served
 
@@ -117,9 +117,9 @@ the API does not know, `/auth/*` included, is a 404, which is what the dockerfil
 the SPA's `index.html` for a browser navigation. `auth.flow.test.ts` pins both halves.
 
 The legacy `apps/spa` still talks to the legacy `apps/api` at `/auth`; the front's `lib/auth.ts` moves
-with the feature items (09, stage 6) and takes `AUTH_BASE_PATH` then.
+with the feature items and takes `AUTH_BASE_PATH` then.
 
-## Wiring (060)
+## Wiring
 
 The module writes nothing outside `packages/auth` by copy. It reaches the rest of the project through
 five patches on four known seams, each with the sentence a failure turns into a pending intention:

@@ -2,7 +2,7 @@
 
 The host package of the UI items: `packages/ui`, with the subpath exports the items import through,
 its `tsconfig.json`, `components.json` and the Tailwind theme. Extracted from this repo's legacy
-`packages/ui`; the components themselves are items ([030](../../../../docs/specs/030-ui-registry.md)).
+`packages/ui`; the components themselves are items ([items](../../../../docs/CONCEPTS.md#items)).
 
 ```bash
 bunx bonne-garde add ui/shadcn button
@@ -23,7 +23,7 @@ needs a `ui` module, installed or named in the same call.
 | `packages/ui/src/env.d.ts`                  | an empty file, see below                                                          |
 
 The `package.json` is vendored, so it carries `exports` and `scripts` and no dependency map: the
-planner merges the variant's into it ([035](../../../../docs/specs/035-module-registry.md)).
+planner merges the variant's into it ([concepts](../../../../docs/CONCEPTS.md)).
 
 ### Exports
 

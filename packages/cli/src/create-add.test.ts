@@ -134,7 +134,7 @@ describe("bonne-garde create + add", () => {
     );
   });
 
-  test("creates the spec 010 scratch root and check tooling", async () => {
+  test("creates the .bg scratch root and check tooling", async () => {
     const parent = await mkdtemp(join(tmpdir(), "bg-cli-base-"));
     dirs.push(parent);
     const { target } = await createProject({
@@ -157,7 +157,7 @@ describe("bonne-garde create + add", () => {
       expect(pkg.scripts[script]).toStartWith("vp ");
     }
 
-    // Spec 010: typecheck and test succeed on the empty workspace.
+    // Typecheck and test succeed on the empty workspace.
     for (const script of ["typecheck", "test"]) {
       const proc = Bun.spawn(["bun", "run", script], {
         cwd: target,
@@ -648,7 +648,7 @@ describe("bonne-garde create + add", () => {
     ).rejects.toThrow(/not empty/);
   });
 
-  describe("the names of the choices (040)", () => {
+  describe("the names of the choices", () => {
     const SETS: Record<string, Choices> = {
       cloudflare: {
         apps: ["api", "spa", "ssr", "static"],

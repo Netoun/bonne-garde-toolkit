@@ -1,7 +1,7 @@
 import { Project, type Node, type SourceFile } from "ts-morph";
 
 /**
- * Reads one TypeScript file for a tier-2 patch (spec 060). The file is parsed alone, in memory: no
+ * Reads one TypeScript file for a tier-2 patch. The file is parsed alone, in memory: no
  * tsconfig, no lib files, no module resolution, no type checker. ts-morph brings the compiler it
  * parses with, so what the project has installed (TypeScript 7 here) does not matter, and a patch
  * only ever asks where a node is: it inserts text at that position and formats nothing.

@@ -23,15 +23,15 @@ export class PlanError extends Error {
 }
 
 /**
- * The text of an item's file. Items are text-only (030): the shadcn schema holds a file as a string,
+ * The text of an item's file. Items are text-only: the shadcn schema holds a file as a string,
  * and `@acme` is rewritten in it, so a file that is not valid UTF-8 is refused where it would be
- * corrupted. A binary file belongs to a module (035).
+ * corrupted. A binary file belongs to a module.
  */
 export function itemFileText(item: string, path: string, bytes: Uint8Array): string {
   const text = utf8Text(bytes);
   if (text === null) {
     throw new PlanError(
-      `item ${item} ships ${path}, which is not valid UTF-8: items are text-only (spec 030), and a binary file belongs to a module (spec 035)`,
+      `item ${item} ships ${path}, which is not valid UTF-8: items are text-only, and a binary file belongs to a module`,
     );
   }
   return text;
@@ -61,7 +61,7 @@ const needLabel = (need: Need): string =>
 const NEED_SHAPE = "a module category (auth) or <category>/<id> (web/spa)";
 
 /**
- * The modules a feature item needs (spec 030): `meta.needsModules`, each entry a category or a
+ * The modules a feature item needs: `meta.needsModules`, each entry a category or a
  * `<category>/<id>`. It carries a rule and no second naming of an edge: `registryDependencies` stays
  * the only way an item names another item, and `meta.bg` is still gone.
  */
@@ -88,7 +88,7 @@ function needsOf(item: RegistryItem): Need[] {
   });
 }
 
-/** Where an item's files land, which needs a module whether or not it says so: UI items go in `packages/ui` (030). */
+/** Where an item's files land, which needs a module whether or not it says so: UI items go in `packages/ui`. */
 const UI_HOME = { prefix: "packages/ui/", need: { category: "ui" } satisfies Need };
 
 /** What the refusal suggests for a category when the catalog lists no module of it (a github source lists none). */

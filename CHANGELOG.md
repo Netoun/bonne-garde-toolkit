@@ -1,6 +1,6 @@
 # Changelog
 
-One lockstep version for the CLI, the base template, the registry and the migration intentions ([070](./docs/specs/070-testing-and-release.md)).
+One lockstep version for the CLI, the base template, the registry and the migration intentions ([RELEASE.md](./docs/RELEASE.md)).
 
 ## 0.2.0
 

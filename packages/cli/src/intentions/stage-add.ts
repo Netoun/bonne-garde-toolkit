@@ -5,7 +5,7 @@ import { cliRunner, PROJECT_RUNNER } from "@bonne-garde/schema";
 import { readStagedIntentions } from "./staged";
 
 /**
- * Spec 050 steps 11 and 14, 065 "Executor protocol": the failed patches of an `add` are staged for
+ * The failed patches of an `add` are staged for
  * whoever resolves them, as `NN-<slug>.md` intentions plus a `session.md` that is the entry point.
  * `.bg/` is scratch and disposable, so none of it is state: `bg.json` records the failed patch with
  * the intention's id, and `bonne-garde record` closes it. Everything here is a pure function of the pending
@@ -82,7 +82,7 @@ function isAuthored(
 export function sessionDocument(entries: { id: string; file: string }[]): string {
   return `# Pending intentions
 
-\`bonne-garde add\` left ${entries.length} change${entries.length === 1 ? "" : "s"} to make by hand: a patch it could not apply to a file the project owns became an intention, or an intention a module ships covers what no patch can express. Follow the executor protocol of spec 065:
+\`bonne-garde add\` left ${entries.length} change${entries.length === 1 ? "" : "s"} to make by hand: a patch it could not apply to a file the project owns became an intention, or an intention a module ships covers what no patch can express. Follow this protocol:
 
 1. Read this checklist, then each intention below in order.
 2. For each one, propose apply or skip, citing what you see in the project, and wait for the human's confirmation before any edit or record.

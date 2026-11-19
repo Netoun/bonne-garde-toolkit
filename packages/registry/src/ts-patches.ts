@@ -10,7 +10,7 @@ import { eolOf } from "./text-layout";
 import { endWithComments, parseTypeScript } from "./ts-source";
 
 /**
- * `ts.addImport` and `ts.addNamedExport` (spec 060). ts-morph finds the node, the edit is text put
+ * `ts.addImport` and `ts.addNamedExport`. ts-morph finds the node, the edit is text put
  * at its position, so every other byte of the file stays: no printer, no `formatText`. What is
  * written is what the project's formatter writes (`tooling/vite-plus`: double quotes, semicolons,
  * trailing commas, 100 columns), so `bun run check` has nothing to say about it.

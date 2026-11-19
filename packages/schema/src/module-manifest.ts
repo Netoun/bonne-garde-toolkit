@@ -1,14 +1,14 @@
 import { isRepoRelative } from "./repo-path";
 
 /**
- * `module.json` — the native module format of spec 035.
+ * `module.json` — the native module format.
  *
  * Validation only. Selecting a variant and installing a module belong to `packages/registry`;
- * what lives here is what spec 070 requires of the contract suite: "fails if any `module.json`
- * has an unknown category or an ambiguous `match` set".
+ * what lives here is what the contract suite needs: it fails on a `module.json` with an unknown
+ * category or an ambiguous `match` set.
  */
 
-/** Spec 035's category table, in its normative topological order. `provider` is first. */
+/** The category table, in topological order. `provider` is first. */
 export const MODULE_CATEGORIES = [
   "pm",
   "provider",
@@ -57,7 +57,7 @@ export class ModuleManifestError extends Error {
   }
 }
 
-/** A consumer-facing toggle (spec 035 `options`): `default` is what `--yes` selects. */
+/** A consumer-facing toggle (`options`): `default` is what `--yes` selects. */
 export type ModuleOptionValue = string | number | boolean;
 
 export type ModuleOption = {
@@ -67,7 +67,7 @@ export type ModuleOption = {
 };
 
 /**
- * A tier-2 patch (spec 060), as declared. The catalog of types is the patch engine's, not the parser's.
+ * A tier-2 patch, as declared. The catalog of types is the patch engine's, not the parser's.
  * `intent` is the one field every type shares: the sentence a patch that fails carries into the
  * pending intention it becomes. It is optional; the engine words one when a module does not.
  */
@@ -346,7 +346,7 @@ export function parseModuleManifest(input: unknown): ModuleManifest {
     }
     seenKeys.add(variant.key);
 
-    // Spec 035: "Ties are a registry authoring error and MUST fail the contract test, not be
+    // "Ties are a registry authoring error and MUST fail the contract test, not be
     // resolved at runtime." Two variants with the same match set are that tie, statically.
     const signature = matchSignature(variant.match);
     const previous = seenMatches.get(signature);

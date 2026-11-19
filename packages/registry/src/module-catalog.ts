@@ -19,7 +19,7 @@ async function subdirectories(dir: string): Promise<string[]> {
 }
 
 /**
- * One `module.json` read from `modules/<category>/<id>/`. The path is the identity (spec 035): a
+ * One `module.json` read from `modules/<category>/<id>/`. The path is the identity: a
  * file whose category or id disagrees with the directory it sits in is refused, since
  * `bonne-garde add <category>/<id>` and the owner string in `bg.json` are both read off the path.
  */

@@ -13,7 +13,7 @@ auth, no object storage and no email: those arrive as modules of their own.
 
 One variant per provider, selected on the installed one. They list the same files, except that the
 `cloudflare` variant also copies `apps/api/wrangler.jsonc`, and they differ in what they add to the
-vendored `apps/api/package.json` with `scripts.merge` (spec 060):
+vendored `apps/api/package.json` with `scripts.merge`:
 
 | Variant      | Extra file                | `scripts.merge` on `apps/api/package.json`                     | Extra dependency |
 | ------------ | ------------------------- | -------------------------------------------------------------- | ---------------- |
@@ -27,7 +27,7 @@ version the provider does, so there is one copy of it.
 
 ## What it writes
 
-Everything under `apps/api`, which is its home (035):
+Everything under `apps/api`, which is its home:
 
 - `src/index.ts`: the thin entry, `export default serve(app)` over `{{SCOPE}}/api-runtime`.
 - `src/app.ts`: `export const app = new Elysia(runtimeOptions)` with `cors`, `openapi` and
@@ -53,7 +53,7 @@ modules import them, and the contract test pins the same two.
 ## Where a module plugs in
 
 `app.ts` has one marked place, between the last `.use()` and the routes, where a `ts.elysiaUse`
-patch (spec 060) adds `.use(<module>)` for `db`, `auth` and `storage` without reformatting the
+patch adds `.use(<module>)` for `db`, `auth` and `storage` without reformatting the
 chain. The contract test pins the name `app`, the `new Elysia(runtimeOptions)` start and the place
 of the comment. `orm/drizzle` plugs `dbModule` in there: a `package.dependencies` patch declares
 `{{SCOPE}}/db` in this app's `package.json` (the import cannot resolve without it), `ts.addImport`

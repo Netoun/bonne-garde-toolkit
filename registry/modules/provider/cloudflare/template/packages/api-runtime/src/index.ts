@@ -1,6 +1,6 @@
 /**
  * The API's provider seam. Everything in `apps/api` that depends on where it runs lives here, so a
- * provider module (`docs/specs/035-module-registry.md`) swaps this package's contents and leaves
+ * provider module swaps this package's contents and leaves
  * the app alone. This is the `cloudflare` variant: Elysia on Workers.
  *
  * The surface every variant exports:
