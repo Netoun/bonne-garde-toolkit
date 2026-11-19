@@ -5,11 +5,30 @@
  */
 import { styleText } from "node:util";
 import * as clack from "@clack/prompts";
+import type { RegistryCatalog, RegistryItem } from "@bonne-garde/registry";
 import { cliRunner } from "@bonne-garde/schema";
-import type { AddOutcome } from "./add";
+import { inCategoryOrder, type AddOutcome } from "./add";
 import type { Choice, Prompter } from "./choices";
 import { manifestMigrationNotice } from "./report";
 import type { PackageManager } from "./package-manager";
+
+/**
+ * Whether `stream` gets colour: a terminal, and `NO_COLOR` unset or empty (no-color.org). Not
+ * `styleText`'s own check: under Bun `FORCE_COLOR=1` (set by CI) paints a pipe too, and `list` is
+ * parsed by `scripts/golden-project.ts`, so a pipe must stay plain whatever the environment says.
+ */
+export function colorEnabled(
+  stream: { isTTY?: boolean } = process.stdout,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return stream.isTTY === true && (env.NO_COLOR === undefined || env.NO_COLOR === "");
+}
+
+/** `paint(format, text)` is `text` styled when `color` is on, and `text` itself when it is off. */
+export function painter(color: boolean) {
+  return (format: Parameters<typeof styleText>[0], text: string): string =>
+    color ? styleText(format, text, { validateStream: false }) : text;
+}
 
 /** Ctrl+C on a question: the command stops, and nothing was written yet. */
 export class Cancelled extends Error {
@@ -65,8 +84,147 @@ export function terminalPrompter(): Prompter {
       }
       return answer.map((value) => pick(choices, value));
     },
+    async search(message, choices) {
+      // clack narrows the list by what is typed, against each label, hint and value.
+      const answer = await clack.autocompleteMultiselect<string>({
+        message,
+        options: options(choices),
+        required: false,
+      });
+      if (clack.isCancel(answer)) {
+        throw new Cancelled();
+      }
+      return answer.map((value) => pick(choices, value));
+    },
     warn: (message) => clack.log.warn(message),
   };
+}
+
+/** A family of `add`'s menus: it opens a checklist (`choices`), or a menu of sub-families (`children`). */
+export type AddGroup = Choice<string> & ({ choices: Choice<string>[] } | { children: AddGroup[] });
+
+/**
+ * What `add` offers with no name, on a terminal, as menus: the families are the modules (opening one
+ * sub-family per category, in the order `list` prints them), the features (`registry:block` items),
+ * then one family per kind of the other items (ui, hook, lib). What changes the project comes first;
+ * the long tail of UI components comes last. Each checklist entry has a hint starting with its kind.
+ * A source read over the network (`reader`) lists no modules, so it offers the items alone.
+ */
+export function addGroups(catalog: RegistryCatalog): AddGroup[] {
+  const noun = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+  const categories: { value: string; label: string; hint: string; choices: Choice<string>[] }[] =
+    [];
+  for (const { manifest } of inCategoryOrder(catalog.modules)) {
+    let category = categories.find(({ value }) => value === manifest.category);
+    if (category === undefined) {
+      category = { value: manifest.category, label: manifest.category, hint: "", choices: [] };
+      categories.push(category);
+    }
+    const name = `${manifest.category}/${manifest.id}`;
+    category.choices.push({ value: name, label: name, hint: `module · ${manifest.description}` });
+  }
+  for (const category of categories) {
+    category.hint = noun(category.choices.length, "module");
+  }
+  const groups: AddGroup[] = [];
+  if (categories.length > 0) {
+    const count = categories.reduce((total, { choices }) => total + choices.length, 0);
+    groups.push({
+      value: "modules",
+      label: "Modules",
+      hint: noun(count, "module"),
+      children: categories,
+    });
+  }
+  const kindOf = ({ type }: RegistryItem) =>
+    type === "registry:block" ? "feature" : type.replace("registry:", "");
+  const kinds = new Map<string, Choice<string>[]>();
+  for (const item of [...catalog.items].sort(
+    (a, b) => Number(kindOf(b) === "feature") - Number(kindOf(a) === "feature"),
+  )) {
+    const kind = kindOf(item);
+    kinds.set(kind, [
+      ...(kinds.get(kind) ?? []),
+      { value: item.name, label: item.name, hint: `${kind} · ${item.description ?? ""}` },
+    ]);
+  }
+  const TITLES: Record<string, string> = {
+    feature: "Features",
+    ui: "UI components",
+    hook: "Hooks",
+    lib: "Libs",
+  };
+  for (const [kind, choices] of kinds) {
+    groups.push({
+      value: kind,
+      label: TITLES[kind] ?? `${kind}s`,
+      hint: noun(choices.length, kind),
+      choices,
+    });
+  }
+  return groups;
+}
+
+const DONE = "done";
+const BACK = "back";
+
+/**
+ * The names a person ticks, menu by menu: the families, then for the modules a sub-family (a
+ * category), then the filterable checklist of the one opened, and back, until "Done". Nothing
+ * ticked, or Ctrl+C anywhere, stops the command like Ctrl+C does.
+ */
+export async function pickAddNames(
+  catalog: RegistryCatalog,
+  prompter: Prompter,
+): Promise<string[]> {
+  const names: string[] = [];
+  const tick = async (group: AddGroup & { choices: Choice<string>[] }) => {
+    for (const name of await prompter.search(`${group.label} (type to filter)`, group.choices)) {
+      if (!names.includes(name)) {
+        names.push(name);
+      }
+    }
+  };
+  const open = async (group: AddGroup) => {
+    if ("choices" in group) {
+      return tick(group);
+    }
+    const back: Choice<string> = { value: BACK, label: "Back", hint: "to the families" };
+    for (;;) {
+      const picked = await prompter.one(
+        `${group.label}: pick a sub-family`,
+        [...group.children, back],
+        group.children[0]?.value ?? BACK,
+      );
+      const child = group.children.find(({ value }) => value === picked);
+      if (child === undefined) {
+        return;
+      }
+      await open(child);
+    }
+  };
+  const groups = addGroups(catalog);
+  for (;;) {
+    const done: Choice<string> = {
+      value: DONE,
+      label: names.length === 0 ? "Done" : `Done (${names.length} ticked)`,
+      hint: "add what is ticked",
+    };
+    const picked = await prompter.one(
+      "What to add (pick a family)",
+      [...groups, done],
+      names.length === 0 ? (groups[0]?.value ?? DONE) : DONE,
+    );
+    const group = groups.find(({ value }) => value === picked);
+    if (group === undefined) {
+      break;
+    }
+    await open(group);
+  }
+  if (names.length === 0) {
+    throw new Cancelled();
+  }
+  return names;
 }
 
 /** A slow step under a spinner: its label while it runs, `done` once it has, the error if it fails. */

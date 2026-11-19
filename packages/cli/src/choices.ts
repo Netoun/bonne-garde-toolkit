@@ -160,11 +160,13 @@ export type Check = (names: string[]) => void;
 
 /**
  * The questions `create` asks on a terminal. `one` picks a single answer, `initial` first;
- * `many` picks any number, none included; `warn` says why a set was refused before it is asked again.
+ * `many` picks any number, none included; `search` is `many` over a long list, narrowed by typing;
+ * `warn` says why a set was refused before it is asked again.
  */
 export type Prompter = {
   one<T extends string>(message: string, choices: readonly Choice<T>[], initial: T): Promise<T>;
   many<T extends string>(message: string, choices: readonly Choice<T>[]): Promise<T[]>;
+  search<T extends string>(message: string, choices: readonly Choice<T>[]): Promise<T[]>;
   warn(message: string): void;
 };
 
