@@ -11,6 +11,24 @@ import type { Choice, Prompter } from "./choices";
 import { manifestMigrationNotice } from "./report";
 import type { PackageManager } from "./package-manager";
 
+/**
+ * Whether `stream` gets colour: a terminal, and `NO_COLOR` unset or empty (no-color.org). Not
+ * `styleText`'s own check: under Bun `FORCE_COLOR=1` (set by CI) paints a pipe too, and `list` is
+ * parsed by `scripts/golden-project.ts`, so a pipe must stay plain whatever the environment says.
+ */
+export function colorEnabled(
+  stream: { isTTY?: boolean } = process.stdout,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return stream.isTTY === true && (env.NO_COLOR === undefined || env.NO_COLOR === "");
+}
+
+/** `paint(format, text)` is `text` styled when `color` is on, and `text` itself when it is off. */
+export function painter(color: boolean) {
+  return (format: Parameters<typeof styleText>[0], text: string): string =>
+    color ? styleText(format, text, { validateStream: false }) : text;
+}
+
 /** Ctrl+C on a question: the command stops, and nothing was written yet. */
 export class Cancelled extends Error {
   constructor() {

@@ -9,12 +9,12 @@ import { doctorExitCode, formatDoctor, runDoctor } from "./doctor";
 import { addNamingCommand } from "./force-command";
 import { lintIntentions } from "./intentions/lint";
 import { lintModuleIntentions } from "./intentions/lint-modules";
-import { listRegistry } from "./list";
+import { formatRows, listRegistry } from "./list";
 import { missingPackageManager, PACKAGE_MANAGERS, packageManagerOf } from "./package-manager";
 import { migrationsDir, registryDir } from "./paths";
 import { recordIntentionOutcome } from "./record";
 import { manifestMigrationNotice, reportAdd } from "./report";
-import { clack, logo, showAdd, step } from "./terminal";
+import { clack, colorEnabled, logo, showAdd, step } from "./terminal";
 
 function usage(): string {
   const section = (title: string) => styleText("bold", title);
@@ -69,7 +69,12 @@ export async function runCli(argv: string[]): Promise<number> {
     if (args.length > 0) {
       throw new Error(`list: unexpected argument: ${args.join(" ")}\n${usage()}`);
     }
-    const { lines, notes } = await listRegistry(process.cwd(), { itemsOnly, category, source });
+    const { lines, notes } = await listRegistry(process.cwd(), {
+      itemsOnly,
+      category,
+      source,
+      color: colorEnabled(),
+    });
     for (const note of notes) {
       console.error(note);
     }
@@ -87,8 +92,13 @@ export async function runCli(argv: string[]): Promise<number> {
       throw new Error("search requires a query");
     }
     const items = await searchItems(process.cwd(), query, source);
-    for (const item of items) {
-      console.log(`${item.name}\t${item.type}\t${item.description ?? ""}`);
+    const rows = items.map(({ name, type, description }) => ({
+      name,
+      type,
+      description: description ?? "",
+    }));
+    for (const line of formatRows(rows, { color: colorEnabled() })) {
+      console.log(line);
     }
     return 0;
   }
@@ -308,7 +318,9 @@ export async function runCli(argv: string[]): Promise<number> {
       throw new Error(`doctor: unexpected argument: ${args.join(" ")}\n${usage()}`);
     }
     const doctor = await runDoctor(process.cwd());
-    console.log(json ? JSON.stringify(doctor, null, 2) : formatDoctor(doctor));
+    console.log(
+      json ? JSON.stringify(doctor, null, 2) : formatDoctor(doctor, { color: colorEnabled() }),
+    );
     return doctorExitCode(doctor, strict);
   }
 

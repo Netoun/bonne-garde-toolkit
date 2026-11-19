@@ -23,6 +23,7 @@ import {
 } from "@bonne-garde/schema";
 import { readStagedIntentions } from "./intentions/staged";
 import { defaultSource } from "./manifest-file";
+import { painter } from "./terminal";
 
 /**
  * `bonne-garde doctor`: what `bg.json` says against what is on disk, with no network.
@@ -692,17 +693,21 @@ export function doctorExitCode(doctor: DoctorReport, strict: boolean): 0 | 1 {
   return doctor.status === "error" || (strict && doctor.status === "warning") ? 1 : 0;
 }
 
-export function formatDoctor(doctor: DoctorReport): string {
+export function formatDoctor(doctor: DoctorReport, { color } = { color: false }): string {
+  const paint = painter(color);
+  const statusFormat = { ok: "green", warning: "yellow", error: "red", skipped: "dim" } as const;
   const lines = ["bonne-garde doctor", ""];
   for (const [name, check] of Object.entries(doctor.checks)) {
-    lines.push(`${name.padEnd(11)} ${check.status.padEnd(8)} ${check.summary}`);
+    lines.push(
+      `${paint("bold", name.padEnd(11))} ${paint(statusFormat[check.status], check.status.padEnd(8))} ${check.summary}`,
+    );
     for (const finding of check.findings) {
-      lines.push(`    ${finding.severity} ${finding.code}: ${finding.message}`);
+      lines.push(`    ${finding.severity} ${paint("dim", finding.code)}: ${finding.message}`);
     }
     for (const note of check.notes) {
-      lines.push(`    note: ${note}`);
+      lines.push(`    ${paint("dim", `note: ${note}`)}`);
     }
   }
-  lines.push("", `result: ${doctor.status}`);
+  lines.push("", paint(statusFormat[doctor.status], `result: ${doctor.status}`));
   return lines.join("\n");
 }

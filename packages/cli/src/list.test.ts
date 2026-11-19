@@ -2,10 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { loadLocalRegistry, type RegistryModule } from "@bonne-garde/registry";
 import { serveGithubRaw, type GithubRawServer } from "@bonne-garde/registry/testing";
 import { MODULE_CATEGORIES } from "@bonne-garde/schema";
-import { listRegistry } from "./list";
+import { formatRows, listRegistry } from "./list";
 import { findRepoRoot } from "./paths";
 
 const REGISTRY_DIR = join(findRepoRoot() ?? "", "registry");
@@ -198,5 +199,54 @@ describe("bonne-garde list from a github source", () => {
 
     expect(lines).toEqual(await itemLines());
     expect(notes).toEqual([]);
+  });
+});
+
+describe("colour on a terminal", () => {
+  const rows = [
+    { name: "utils", type: "registry:lib", description: "helpers" },
+    { name: "provider/cloudflare", type: "module", description: "the cloudflare provider" },
+  ];
+
+  test("color: false is the tab lines list printed before", () => {
+    expect(formatRows(rows, { color: false })).toEqual([
+      "utils\tregistry:lib\thelpers",
+      "provider/cloudflare\tmodule\tthe cloudflare provider",
+    ]);
+  });
+
+  test("color: true aligns with spaces, names cyan and types dim", () => {
+    const lines = formatRows(rows, { color: true });
+    expect(lines.join("\n")).not.toContain("\t");
+    expect(lines[0]).toContain("\u001b[36mutils              \u001b[39m");
+    expect(lines[0]).toContain("\u001b[2mregistry:lib\u001b[22m");
+    const plain = lines.map((line) => stripVTControlCharacters(line));
+    expect(plain[0]?.indexOf("helpers")).toBe(plain[1]?.indexOf("the cloudflare"));
+  });
+
+  test("list with no flag: plain lines are unchanged, coloured ones have a heading per group", async () => {
+    const plain = await listRegistry(process.cwd(), {
+      itemsOnly: false,
+      category: undefined,
+      source: LOCAL,
+      color: false,
+    });
+    expect(plain.lines).toEqual([
+      ...(await itemLines()),
+      ...inCategoryOrder((await registry()).modules).map(moduleLine),
+    ]);
+
+    const painted = await listRegistry(process.cwd(), {
+      itemsOnly: false,
+      category: undefined,
+      source: LOCAL,
+      color: true,
+    });
+    const text = painted.lines.join("\n");
+    expect(text).not.toContain("\t");
+    expect(text).toContain("\u001b[1mItems\u001b[22m");
+    for (const { manifest } of (await registry()).modules) {
+      expect(text).toContain(`\u001b[1m${manifest.category}\u001b[22m`);
+    }
   });
 });

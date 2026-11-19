@@ -6,6 +6,7 @@ import {
   type ModuleCategory,
 } from "@bonne-garde/schema";
 import { openCatalog } from "./add";
+import { painter } from "./terminal";
 
 export type ListQuery = {
   /** `--items`: only the items, as `bonne-garde list` printed them before it knew modules. */
@@ -13,7 +14,28 @@ export type ListQuery = {
   /** `--category`: only the modules of this category. An item has none, so it is not a filter on items. */
   category: string | undefined;
   source: string | undefined;
+  /** On a terminal only (`colorEnabled`): aligned columns and headings instead of tab-separated lines. */
+  color?: boolean;
 };
+
+export type Row = { name: string; type: string; description: string };
+
+/**
+ * `list` and `search` lines. Without colour, `name<TAB>type<TAB>description`, which agents and
+ * `scripts/golden-project.ts` parse. With it, the name cyan and the type dim, aligned with spaces.
+ */
+export function formatRows(rows: readonly Row[], { color }: { color: boolean }): string[] {
+  if (!color) {
+    return rows.map(({ name, type, description }) => `${name}\t${type}\t${description}`);
+  }
+  const paint = painter(true);
+  const nameWidth = Math.max(0, ...rows.map(({ name }) => name.length));
+  const typeWidth = Math.max(0, ...rows.map(({ type }) => type.length));
+  return rows.map(({ name, type, description }) => {
+    const columns = `${paint("cyan", name.padEnd(nameWidth))}  ${paint("dim", type.padEnd(typeWidth))}`;
+    return description === "" ? columns.trimEnd() : `${columns}  ${description}`;
+  });
+}
 
 function parseCategory(value: string): ModuleCategory {
   if (!isModuleCategory(value)) {
@@ -48,18 +70,51 @@ export async function listRegistry(
   const category = query.category === undefined ? undefined : parseCategory(query.category);
   const catalog = await openCatalog(projectRoot, query.source, github);
 
-  const lines: string[] = [];
+  // Items, then each category's modules, as the groups a terminal gets a heading over.
+  const groups: { heading: string; rows: Row[] }[] = [];
   if (category === undefined) {
-    for (const item of catalog.items) {
-      lines.push(`${item.name}\t${item.type}\t${item.description ?? ""}`);
-    }
+    groups.push({
+      heading: "Items",
+      rows: catalog.items.map(({ name, type, description }) => ({
+        name,
+        type,
+        description: description ?? "",
+      })),
+    });
   }
   if (!query.itemsOnly) {
     for (const { manifest } of inCategoryOrder(catalog.modules)) {
       if (category === undefined || manifest.category === category) {
-        lines.push(`${manifest.category}/${manifest.id}\tmodule\t${manifest.description}`);
+        const row = {
+          name: `${manifest.category}/${manifest.id}`,
+          type: "module",
+          description: manifest.description,
+        };
+        const last = groups.at(-1);
+        if (last !== undefined && last.heading === manifest.category) {
+          last.rows.push(row);
+        } else {
+          groups.push({ heading: manifest.category, rows: [row] });
+        }
       }
     }
+  }
+  const color = query.color === true;
+  const formatted = formatRows(
+    groups.flatMap(({ rows }) => rows),
+    { color },
+  );
+  // Headings only with no flag: `--items` and `--category` are one group, the lines alone.
+  const headed = color && category === undefined && !query.itemsOnly;
+  const paint = painter(color);
+  const lines: string[] = [];
+  let at = 0;
+  for (const { heading, rows } of groups) {
+    if (headed) {
+      lines.push(...(lines.length > 0 ? [""] : []), paint("bold", heading));
+    }
+    lines.push(...formatted.slice(at, at + rows.length));
+    at += rows.length;
   }
 
   const notes: string[] = [];

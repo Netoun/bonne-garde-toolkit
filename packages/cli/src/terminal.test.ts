@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { nextSteps, runnableCheck } from "./terminal";
+import { colorEnabled, nextSteps, runnableCheck } from "./terminal";
 
 describe("runnableCheck", () => {
   test("runs each command but cd through the package manager, which finds the project's bins", () => {
@@ -41,5 +41,23 @@ describe("nextSteps", () => {
         ({ run }) => run,
       ),
     ).toEqual(["bun install"]);
+  });
+});
+
+describe("colorEnabled", () => {
+  const tty = { isTTY: true };
+
+  test("is on for a terminal when NO_COLOR is unset", () => {
+    expect(colorEnabled(tty, {})).toBe(true);
+  });
+
+  test("is off when NO_COLOR is set, whatever FORCE_COLOR says", () => {
+    expect(colorEnabled(tty, { NO_COLOR: "1" })).toBe(false);
+    expect(colorEnabled(tty, { NO_COLOR: "1", FORCE_COLOR: "1" })).toBe(false);
+  });
+
+  test("is off when the stream is not a terminal, whatever FORCE_COLOR says", () => {
+    expect(colorEnabled({ isTTY: false }, { FORCE_COLOR: "1" })).toBe(false);
+    expect(colorEnabled({}, { FORCE_COLOR: "1" })).toBe(false);
   });
 });

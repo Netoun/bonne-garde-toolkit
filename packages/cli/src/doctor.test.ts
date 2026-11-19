@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import {
   parseProjectManifest,
   readProjectManifest,
@@ -947,5 +948,52 @@ describe("formatDoctor", () => {
     }
     expect(text).toContain(BUTTON);
     expect(text).toContain("file-modified");
+  });
+
+  describe("with a hand-built report", () => {
+    const check = (status: "ok" | "warning" | "error" | "skipped", extra = {}) => ({
+      status,
+      summary: `${status} summary`,
+      details: null,
+      findings: [],
+      notes: [],
+      ...extra,
+    });
+    const report = {
+      status: "error",
+      checks: {
+        manifest: check("ok"),
+        files: check("error", {
+          findings: [{ severity: "error", code: "file-missing", message: "gone" }],
+          notes: ["a note"],
+        }),
+        regions: check("warning"),
+        patches: check("skipped"),
+        intentions: check("ok"),
+        peers: check("ok"),
+      },
+    } as unknown as DoctorReport;
+
+    test("color: false is the plain text, with no escape code", () => {
+      const text = formatDoctor(report, { color: false });
+      expect(text).toBe(formatDoctor(report));
+      expect(text).not.toContain("\u001b");
+      expect(text).toContain(`manifest    ok       ok summary`);
+      expect(text).toContain("    error file-missing: gone");
+      expect(text).toContain("    note: a note");
+      expect(text.endsWith("result: error")).toBe(true);
+    });
+
+    test("color: true paints ok green, error red, warning yellow, skipped dim, and keeps the words", () => {
+      const text = formatDoctor(report, { color: true });
+      expect(text).toContain("\u001b[32mok      \u001b[39m");
+      expect(text).toContain("\u001b[31merror   \u001b[39m");
+      expect(text).toContain("\u001b[33mwarning \u001b[39m");
+      expect(text).toContain("\u001b[2mskipped \u001b[22m");
+      expect(text).toContain("\u001b[1mmanifest   \u001b[22m");
+      expect(text).toContain("\u001b[31mresult: error\u001b[39m");
+      // Once the codes are gone it is the plain text.
+      expect(stripVTControlCharacters(text)).toBe(formatDoctor(report));
+    });
   });
 });
