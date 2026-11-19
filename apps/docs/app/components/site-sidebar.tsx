@@ -30,6 +30,7 @@ export function SiteSidebar({ sections }: { sections: NavSection[] }) {
                   <SidebarMenuItem key={link.href}>
                     <SidebarMenuButton
                       isActive={pathname === link.href}
+                      className="h-auto min-h-9 py-1.5 text-sm"
                       render={
                         <Link
                           to={link.href}

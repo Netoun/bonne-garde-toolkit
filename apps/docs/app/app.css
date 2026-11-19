@@ -27,3 +27,56 @@ html.dark .shiki span {
   font-weight: var(--shiki-dark-font-weight) !important;
   text-decoration: var(--shiki-dark-text-decoration) !important;
 }
+
+/* Markdown pages (guides, ADRs): Tailwind's preflight strips every element, restore a reading style. */
+@layer components {
+  .prose-docs h1 {
+    @apply text-3xl font-bold tracking-tight;
+  }
+  .prose-docs h2 {
+    @apply mt-8 border-b pb-2 text-2xl font-semibold tracking-tight;
+  }
+  .prose-docs h3 {
+    @apply mt-6 text-xl font-semibold tracking-tight;
+  }
+  .prose-docs h4,
+  .prose-docs h5,
+  .prose-docs h6 {
+    @apply mt-4 font-semibold;
+  }
+  .prose-docs p,
+  .prose-docs li {
+    @apply leading-7;
+  }
+  .prose-docs ul {
+    @apply list-disc pl-6;
+  }
+  .prose-docs ol {
+    @apply list-decimal pl-6;
+  }
+  .prose-docs li > ul,
+  .prose-docs li > ol {
+    @apply mt-1;
+  }
+  .prose-docs a {
+    @apply font-medium text-primary underline underline-offset-4;
+  }
+  .prose-docs blockquote {
+    @apply border-l-4 pl-4 text-muted-foreground italic;
+  }
+  .prose-docs hr {
+    @apply my-6;
+  }
+  .prose-docs code:not(.shiki code) {
+    @apply rounded bg-muted px-1.5 py-0.5 font-mono text-sm;
+  }
+  .prose-docs table {
+    @apply block w-full overflow-x-auto text-sm;
+  }
+  .prose-docs th {
+    @apply border bg-muted px-3 py-2 text-left font-semibold;
+  }
+  .prose-docs td {
+    @apply border px-3 py-2 align-top;
+  }
+}
