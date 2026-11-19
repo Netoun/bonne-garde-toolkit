@@ -46,8 +46,12 @@ const OTHER_PROVIDER_STACK = [
   "ui/shadcn",
   "provider/dockerfile",
   "api/elysia",
+  "db/libsql",
+  "orm/drizzle",
   "web/spa",
 ];
+/** What needs that provider's tree: `db/libsql` peers on `dockerfile`, so it is never installed alone. */
+const OTHER_PROVIDER_ONLY = ["db/libsql"];
 
 const dirs: string[] = [];
 
@@ -134,7 +138,9 @@ describe("scope rendering and the formatter", () => {
       (key) => !keys.includes(key),
     );
     expect(unknown).toEqual([]);
-    const alone = keys.filter((key) => !SHARED_MODULES.includes(key));
+    const alone = keys.filter(
+      (key) => !SHARED_MODULES.includes(key) && !OTHER_PROVIDER_ONLY.includes(key),
+    );
 
     // One tree for the whole matrix, so that `vp fmt` runs once. Its root carries what the
     // `tooling/vite-plus` module installs, which is the fmt config a consumer's check reads.

@@ -1534,11 +1534,14 @@ describe("module contract", () => {
       expect(d1.variant.intent ?? []).toEqual([]);
     });
 
-    test("orm/drizzle peers on the API it wires into and any db, has the one variant matched on d1, and writes into the package without owning it", async () => {
+    test("orm/drizzle peers on the API it wires into and any db, has a variant per db (d1 first), and writes into the package without owning it", async () => {
       const { orm } = await dbModules();
 
       expect(orm.manifest.peers).toEqual({ api: ["elysia"], db: [] });
-      expect(orm.manifest.variants).toHaveLength(1);
+      expect(orm.manifest.variants.map(({ key, match }) => [key, match])).toEqual([
+        ["d1", { db: "d1" }],
+        ["libsql", { db: "libsql" }],
+      ]);
       expect(orm.variant.key).toBe("d1");
       expect(orm.variant.match).toEqual({ db: "d1" });
       // The package.json and its workspace are db/d1's: two claimants for one file are refused.
@@ -1575,7 +1578,8 @@ describe("module contract", () => {
       }
       // Nothing in a template that no variant copies.
       expect(await templateFiles(D1)).toEqual([...(d1.variant.copy ?? [])].sort());
-      expect(await templateFiles(ORM)).toEqual([...(orm.variant.copy ?? [])].sort());
+      const every = orm.manifest.variants.flatMap((variant) => variant.copy ?? []);
+      expect(await templateFiles(ORM)).toEqual([...new Set(every)].sort());
     });
 
     test("they ship schemas, not SQL: the project generates its migrations (09 stage 4 watch)", async () => {
@@ -1947,6 +1951,258 @@ describe("module contract", () => {
         { type: "ts.addImport", moduleSpecifier: "{{SCOPE}}/db", namedImports: ["dbModule"] },
         { type: "ts.elysiaUse", targetName: "app", argument: "dbModule" },
       ]);
+    });
+
+    describe("db/libsql and the libsql variant of orm/drizzle: the same package on a SQLite file", () => {
+      const LIBSQL = join(MODULES, "db/libsql/template");
+      const libsqlText = (path: string): Promise<string> => readFile(join(LIBSQL, path), "utf8");
+      const libsqlModules = async () => {
+        const { catalog, d1, orm } = await dbModules();
+        const libsql = catalog.modules.find(
+          ({ manifest }) => manifest.category === "db" && manifest.id === "libsql",
+        );
+        const variant = orm.manifest.variants.find(({ key }) => key === "libsql");
+        const [own] = libsql?.manifest.variants ?? [];
+        if (!libsql || !own || !variant) {
+          throw new Error("db/libsql or the libsql variant of orm/drizzle is missing");
+        }
+        return { catalog, d1, orm, libsql: { ...libsql, variant: own }, variant };
+      };
+      const ORM_LIBSQL_FILES = [
+        "packages/db/src/drizzle.config.ts",
+        "packages/db/src/libsql-client.ts",
+        "packages/db/src/libsql-client.test.ts",
+        "packages/db/src/libsql-index.ts",
+        "packages/db/src/libsql-module.ts",
+        "packages/db/src/libsql-module.test.ts",
+        "packages/db/src/libsql-testing.ts",
+        "packages/db/src/libsql-testing.test.ts",
+        "packages/db/src/schema/index.ts",
+      ];
+
+      test("db/libsql peers on the dockerfile provider and the API, ships one default variant that owns the workspace, and declares no env", async () => {
+        const { libsql } = await libsqlModules();
+
+        expect(libsql.manifest.peers).toEqual({ provider: ["dockerfile"], api: ["elysia"] });
+        expect(libsql.manifest.variants).toHaveLength(1);
+        expect(libsql.variant.key).toBe("default");
+        expect(libsql.variant.match).toEqual({});
+        expect(libsql.variant.workspace).toEqual({ name: "{{SCOPE}}/db", path: "packages/db" });
+        expect(libsql.variant.dependencies).toEqual({
+          "@libsql/client": expect.stringMatching(/^\d+\.\d+\.\d+$/),
+          "{{SCOPE}}/api-runtime": "workspace:*",
+        });
+        expect(libsql.variant.devDependencies ?? {}).toEqual({});
+        expect(libsql.variant.copy).toEqual([
+          "packages/db/package.json",
+          "packages/db/tsconfig.json",
+          "packages/db/src/libsql.ts",
+          "packages/db/src/libsql.test.ts",
+        ]);
+        // DATA_DIR is provider/dockerfile's: a second declaration is a region conflict (035).
+        expect(libsql.variant.env ?? []).toEqual([]);
+        expect(libsql.variant.intent ?? []).toEqual([]);
+      });
+
+      test("its template is exactly what it copies, and reaches for neither Cloudflare nor wrangler", async () => {
+        const { libsql } = await libsqlModules();
+
+        expect(await templateFiles(LIBSQL)).toEqual([...(libsql.variant.copy ?? [])].sort());
+        for (const path of libsql.variant.copy ?? []) {
+          expect([path, /cloudflare|wrangler/i.test(await libsqlText(path))]).toEqual([
+            path,
+            false,
+          ]);
+        }
+      });
+
+      test("its package.json exports ./libsql, runs typecheck and test, holds no dependency map, and its tsconfig keeps the tests", async () => {
+        const body: unknown = JSON.parse(await libsqlText("packages/db/package.json"));
+
+        expect(body).toMatchObject({
+          name: "{{SCOPE}}/db",
+          exports: { "./libsql": "./src/libsql.ts" },
+          scripts: { typecheck: "tsc --noEmit", test: "vp test" },
+        });
+        for (const map of ["dependencies", "devDependencies", "peerDependencies"]) {
+          expect(isRecord(body) && map in body ? map : null).toBeNull();
+        }
+        // No tsconfig.test.json is shipped, so the one tsconfig is what typechecks the tests.
+        expect(await libsqlText("packages/db/tsconfig.json")).not.toContain("exclude");
+      });
+
+      test("the libsql variant sits beside the d1 one: its own files, the shared config and barrel, and the same API wiring", async () => {
+        const { orm, variant } = await libsqlModules();
+
+        expect(variant.copy).toEqual(ORM_LIBSQL_FILES);
+        expect(variant.workspace).toBeUndefined();
+        expect(variant.dependencies ?? {}).toEqual({});
+        expect(variant.devDependencies ?? {}).toEqual({});
+        expect(variant.intent ?? []).toEqual([]);
+        // Every path but the two shared files is a path the d1 variant does not write.
+        const shared = new Set([
+          "packages/db/src/drizzle.config.ts",
+          "packages/db/src/schema/index.ts",
+        ]);
+        const others = new Set(orm.variant.copy);
+        for (const path of variant.copy ?? []) {
+          expect([path, shared.has(path) === others.has(path)]).toEqual([path, true]);
+        }
+        expect(mergedInto(variant.patch, "packages/db/package.json")).toEqual({
+          exports: {
+            ".": "./src/libsql-index.ts",
+            "./schema": "./src/schema/index.ts",
+            "./testing": "./src/libsql-testing.ts",
+          },
+        });
+        expect(variant.patch?.find((patch) => patch.type === "scripts.merge")).toEqual({
+          type: "scripts.merge",
+          file: "packages/db/package.json",
+          scripts: { "db:generate": "drizzle-kit generate --config ./src/drizzle.config.ts" },
+        });
+        expect(dependenciesPatch(variant.patch, "packages/db/package.json")).toEqual({
+          dependencies: { "drizzle-orm": "0.45.2", elysia: "1.4.29" },
+          devDependencies: { "drizzle-kit": "0.31.10" },
+        });
+        const apiPatches = (patches: readonly { type: string; file?: unknown }[] | undefined) =>
+          (patches ?? []).filter(
+            ({ file }) => typeof file === "string" && file.startsWith("apps/api/"),
+          );
+        expect(apiPatches(variant.patch)).toEqual(apiPatches(orm.variant.patch));
+        expect(apiPatches(variant.patch)).toHaveLength(3);
+        for (const target of Object.values(
+          mergedInto(variant.patch, "packages/db/package.json").exports as object,
+        )) {
+          expect(variant.copy).toContain(`packages/db/${String(target).replace("./", "")}`);
+        }
+      });
+
+      test("the libsql sources keep the d1 names: dbModule, dbPlugin, createDB, DB, createTestDb, TestDb", async () => {
+        const index = await ormText("packages/db/src/libsql-index.ts");
+        const d1Index = await ormText("packages/db/src/index.ts");
+
+        expect(index).toMatch(/export \{ createDB, type DB \} from "\.\/libsql-client"/);
+        expect(index).toMatch(/export \{ dbModule, dbPlugin \} from "\.\/libsql-module"/);
+        expect(d1Index.split("\n").length).toBe(index.split("\n").length);
+        expect(await ormText("packages/db/src/libsql-module.ts")).toMatch(
+          /export const dbModule = /,
+        );
+        expect(await ormText("packages/db/src/libsql-testing.ts")).toMatch(/export type TestDb = /);
+      });
+
+      test("every package the libsql sources import is declared, every one declared is imported, and every relative import is shipped", async () => {
+        const { libsql, variant } = await libsqlModules();
+        const declared = new Set([
+          ...Object.keys(libsql.variant.dependencies ?? {}),
+          ...Object.keys(dependenciesPatch(variant.patch, "packages/db/package.json").dependencies),
+          ...Object.keys(
+            dependenciesPatch(variant.patch, "packages/db/package.json").devDependencies,
+          ),
+        ]);
+        const shipped = new Set([...(libsql.variant.copy ?? []), ...(variant.copy ?? [])]);
+        const named = new Set<string>();
+        const unresolved: string[] = [];
+        const sources: [string, string][] = [];
+        for (const path of libsql.variant.copy ?? []) {
+          if (SOURCE.test(path)) sources.push([path, code(await libsqlText(path))]);
+        }
+        for (const path of variant.copy ?? []) {
+          if (SOURCE.test(path)) sources.push([path, code(await ormText(path))]);
+        }
+
+        for (const [path, source] of sources) {
+          for (const name of packagesNamedBy(source)) {
+            if (!name.includes(":") && !BASE_TOOLING.has(name)) {
+              named.add(name);
+              expect([path, declared.has(name)]).toEqual([path, true]);
+            }
+          }
+          for (const [, specifier] of source.matchAll(/from\s+"(\.[^"]*)"/g)) {
+            const target = posix.normalize(posix.join(posix.dirname(path), specifier ?? ""));
+            if (![`${target}.ts`, `${target}/index.ts`].some((file) => shipped.has(file))) {
+              unresolved.push(`${path}: ${specifier}`);
+            }
+          }
+        }
+
+        expect([...declared].filter((name) => !named.has(name))).toEqual([]);
+        expect(unresolved).toEqual([]);
+      });
+
+      test("the installed provider picks the db module, and the db picks the orm variant; the other pairs are refused", async () => {
+        const { catalog } = await libsqlModules();
+        const project = createEmptyProjectManifest({ scope: "@app", registries: {} });
+        const base = [
+          { category: "config", id: "branding" },
+          { category: "api", id: "elysia" },
+        ] as const;
+
+        const plans = await resolveModulePlans(
+          catalog,
+          [
+            ...base,
+            { category: "provider", id: "dockerfile" },
+            { category: "db", id: "libsql" },
+            { category: "orm", id: "drizzle" },
+          ],
+          project,
+        );
+        expect(
+          plans
+            .filter(({ category }) => category === "db" || category === "orm")
+            .map(({ key, variant }) => `${key}:${variant}`),
+        ).toEqual(["db/libsql:default", "orm/drizzle:libsql"]);
+
+        await expect(
+          resolveModulePlans(
+            catalog,
+            [...base, { category: "provider", id: "cloudflare" }, { category: "db", id: "libsql" }],
+            project,
+          ),
+        ).rejects.toThrow(
+          /db\/libsql accepts only dockerfile for provider, but provider\/cloudflare is present/,
+        );
+      });
+
+      test("package.json as the project gets it, db/libsql's entries and orm's in one file, is what the formatter writes", async () => {
+        const { catalog } = await libsqlModules();
+        const project = createEmptyProjectManifest({ scope: "@app", registries: {} });
+        const plans = await resolveModulePlans(
+          catalog,
+          [
+            { category: "provider", id: "dockerfile" },
+            { category: "config", id: "branding" },
+            { category: "api", id: "elysia" },
+            { category: "db", id: "libsql" },
+            { category: "orm", id: "drizzle" },
+          ],
+          project,
+        );
+        const file = "packages/db/package.json";
+        let text =
+          plans.find(({ key }) => key === "db/libsql")?.files.find((f) => f.target === file)
+            ?.content ?? "";
+        for (const patch of plans.find(({ key }) => key === "orm/drizzle")?.patches ?? []) {
+          if (patch.file === file) {
+            text = writePatch(
+              text,
+              patch,
+              new Set(patchRegions(patch).map(({ region }) => region)),
+            );
+          }
+        }
+
+        const body: unknown = JSON.parse(text);
+        expect(
+          isRecord(body) && isRecord(body.dependencies) ? Object.keys(body.dependencies) : [],
+        ).toEqual(["@app/api-runtime", "@libsql/client", "drizzle-orm", "elysia"]);
+        expect(
+          isRecord(body) && isRecord(body.devDependencies) ? Object.keys(body.devDependencies) : [],
+        ).toEqual(["drizzle-kit"]);
+        await expect(formatWithProjectFormatter({ [file]: text })).resolves.toEqual({
+          [file]: text,
+        });
+      });
     });
 
     describe("installed over the API shell, in one call or each module alone", () => {

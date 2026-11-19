@@ -1,0 +1,27 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "libsql",
+  "category": "db",
+  "version": "0.1.0",
+  "title": "libSQL (SQLite file)",
+  "description": "A SQLite file under DATA_DIR, opened once per process through libsql, in packages/db: the database of the dockerfile provider.",
+  "peers": { "provider": ["dockerfile"], "api": ["elysia"] },
+  "checks": ["cd packages/db && vp run typecheck && vp run test"],
+  "variants": [
+    {
+      "key": "default",
+      "match": {},
+      "workspace": { "name": "{{SCOPE}}/db", "path": "packages/db" },
+      "dependencies": {
+        "@libsql/client": "0.18.0",
+        "{{SCOPE}}/api-runtime": "workspace:*"
+      },
+      "copy": [
+        "packages/db/package.json",
+        "packages/db/tsconfig.json",
+        "packages/db/src/libsql.ts",
+        "packages/db/src/libsql.test.ts"
+      ]
+    }
+  ]
+}

@@ -319,8 +319,10 @@ describe("the golden project and modules", () => {
       .map(({ manifest }) => `${manifest.category}/${manifest.id}\tmodule\t${manifest.description}`)
       .join("\n");
 
-    const { modules } = selectModules(listing, MODULES, EXCLUDED_MODULES);
+    const { modules, excluded } = selectModules(listing, MODULES, EXCLUDED_MODULES);
 
+    expect(excluded.map(({ name }) => name)).toEqual(["db/libsql"]);
+    expect(excluded[0]?.reason).toContain("next stage");
     expect(modules).toEqual([
       "pm/pnpm",
       "provider/cloudflare",
@@ -369,7 +371,8 @@ describe("the golden project and modules", () => {
     );
     expect(used.every((names) => names.length === 1)).toBe(true);
     expect([...new Set(used.flat())].sort()).toEqual([...providers].sort());
-    expect(Object.keys(EXCLUDED_MODULES)).toEqual([]);
+    // `db/libsql` waits for `create` to map the db feature by provider; the next stage removes it.
+    expect(Object.keys(EXCLUDED_MODULES)).toEqual(["db/libsql"]);
   });
 
   test("only the configuration with a ui module installs items, which land in packages/ui", () => {

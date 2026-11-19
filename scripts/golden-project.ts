@@ -769,9 +769,12 @@ export const FEATURE_REFUSALS: readonly {
 
 /**
  * Modules `bonne-garde list` shows that stay out of every configuration, each with its reason. An entry for
- * a module the registry no longer lists fails the run, as for `EXCLUDED`. Empty on purpose.
+ * a module the registry no longer lists fails the run, as for `EXCLUDED`.
  */
-export const EXCLUDED_MODULES: Readonly<Record<string, string>> = {};
+export const EXCLUDED_MODULES: Readonly<Record<string, string>> = {
+  "db/libsql":
+    "installed by the dockerfile configuration once create maps the db feature by provider (next stage)",
+};
 
 /**
  * The module ids to `bonne-garde add`, read from the `module` lines of `bonne-garde list` output
