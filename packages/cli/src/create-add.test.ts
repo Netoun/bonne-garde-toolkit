@@ -147,6 +147,7 @@ describe("bonne-garde create + add", () => {
 
     const gitignore = (await readFile(join(target, ".gitignore"), "utf8")).split("\n");
     expect(gitignore).toContain(".bg/");
+    expect(gitignore).toContain(".data/");
     expect(gitignore).not.toContain("bg.upgrade/");
     expect(gitignore).not.toContain(".acme-init.json");
 
