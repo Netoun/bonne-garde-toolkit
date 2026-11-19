@@ -18,8 +18,6 @@
         "clsx",
         "lucide-react",
         "motion",
-        "react-markdown",
-        "remark-gfm",
         "shiki",
         "tailwind-merge",
         "vaul",
