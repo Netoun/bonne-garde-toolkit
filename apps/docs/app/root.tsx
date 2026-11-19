@@ -1,6 +1,9 @@
-import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
+import { Links, Meta, Outlet, Scripts, ScrollRestoration, useLoaderData } from "react-router";
 
 import appCss from "./app.css?url";
+import { SiteLayout } from "./components/site-layout";
+import { docsThemeInitScript } from "./components/theme-toggle";
+import { listNav, type NavSection } from "./nav";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -9,6 +12,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>Bonne Garde</title>
+        <script dangerouslySetInnerHTML={{ __html: docsThemeInitScript() }} />
         <link rel="stylesheet" href={appCss} />
         <Meta />
         <Links />
@@ -22,6 +26,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
+export async function loader() {
+  const sections = await listNav();
+  return { sections };
+}
+
 export default function App() {
-  return <Outlet />;
+  const { sections } = useLoaderData<{ sections: NavSection[] }>();
+  return (
+    <SiteLayout sections={sections}>
+      <Outlet />
+    </SiteLayout>
+  );
 }
