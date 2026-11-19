@@ -71,6 +71,45 @@ async function rootScripts(target: string): Promise<string[]> {
     : [];
 }
 
+/**
+ * Whether the terminal branch asked a question, so the answers are worth a recap and a confirmation:
+ * a prompter exists and the directory or an axis it can ask came from it, not from a flag.
+ */
+export function shouldRecap(options: {
+  prompted: boolean;
+  nameGiven: boolean;
+  given: Partial<Choices>;
+}): boolean {
+  const { prompted, nameGiven, given } = options;
+  if (!prompted) {
+    return false;
+  }
+  if (!nameGiven || given.pm === undefined || given.apps === undefined) {
+    return true;
+  }
+  // Apps came from a flag: provider and features are asked only when there is an app to run them.
+  return given.apps.length > 0 && (given.provider === undefined || given.features === undefined);
+}
+
+/** The answers as the recap note shows them: label dim, value cyan, aligned. */
+export function recapLines(dir: string, choices: Choices): string[] {
+  const rows: [string, string][] = [
+    ["Directory", dir],
+    ["Package manager", choices.pm],
+    ["Apps", choices.apps.length > 0 ? choices.apps.join(", ") : "none, the base alone"],
+  ];
+  if (choices.provider !== null) {
+    rows.push(
+      ["Provider", choices.provider],
+      ["Features", choices.features.length > 0 ? choices.features.join(", ") : "none"],
+    );
+  }
+  const width = Math.max(...rows.map(([label]) => label.length));
+  return rows.map(
+    ([label, value]) => `${styleText("dim", label.padEnd(width))}   ${styleText("cyan", value)}`,
+  );
+}
+
 export async function createCommand(rest: readonly string[]): Promise<number> {
   const args = [...rest];
   const yes = takeFlag(args, "--yes");
@@ -171,6 +210,13 @@ export async function createCommand(rest: readonly string[]): Promise<number> {
           () => `Registry read (${shownSource(source)})`,
         ),
     });
+    if (shouldRecap({ prompted: prompter !== null, nameGiven: args[0] !== undefined, given })) {
+      clack.note(recapLines(projectName, choices).join("\n"), "Your project");
+      const go = await clack.confirm({ message: "Create it?" });
+      if (clack.isCancel(go) || !go) {
+        throw new Cancelled();
+      }
+    }
     const { target, added } = await step(
       `Creating ${projectName}`,
       () => create(projectName, choices),
