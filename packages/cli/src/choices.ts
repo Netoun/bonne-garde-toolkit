@@ -26,7 +26,7 @@ const PROVIDER_CHOICES = [
 ] as const;
 
 const FEATURE_CHOICES = [
-  { value: "db", label: "Database", hint: "D1 with Drizzle" },
+  { value: "db", label: "Database", hint: "Drizzle on D1, or on an SQLite file with Docker" },
   { value: "auth", label: "Auth", hint: "Better Auth, organizations, the SPA's sign-in pages" },
   { value: "storage", label: "Storage", hint: "media uploads on R2" },
   { value: "email", label: "Email", hint: "transactional email with Resend" },
@@ -61,6 +61,7 @@ export const CANDIDATE_MODULES = [
   "ui/shadcn",
   "api/elysia",
   "db/d1",
+  "db/libsql",
   "orm/drizzle",
   "auth/better-auth",
   "storage/r2",
@@ -79,7 +80,7 @@ const FRONTS: Partial<Record<App, string>> = {
 };
 
 const FEATURE_MODULES: Record<Feature, readonly string[]> = {
-  db: ["db/d1", "orm/drizzle"],
+  db: ["orm/drizzle"],
   auth: ["auth/better-auth"],
   storage: ["storage/r2"],
   email: ["email/resend"],
@@ -87,6 +88,9 @@ const FEATURE_MODULES: Record<Feature, readonly string[]> = {
   backoffice: [],
   portless: ["dev/portless"],
 };
+
+/** The `db` feature's database module: provider technology lives in the provider's modules. */
+const DB_MODULES: Record<Provider, string> = { cloudflare: "db/d1", dockerfile: "db/libsql" };
 
 /** 040's table: the modules and items of a set of answers. Every project has its package manager's. */
 export function namesFor({ apps, provider, features, pm }: Choices): {
@@ -112,6 +116,9 @@ export function namesFor({ apps, provider, features, pm }: Choices): {
     }
   }
   for (const feature of features) {
+    if (feature === "db") {
+      named.add(DB_MODULES[provider]);
+    }
     for (const module of FEATURE_MODULES[feature]) {
       named.add(module);
     }

@@ -22,6 +22,7 @@ import {
   manifestIconPaths,
   AUTH_TABLES,
   buildsImage,
+  ANSWER_SETS,
   CONFIGURATIONS,
   type Configuration,
   countStatement,
@@ -85,6 +86,7 @@ import {
   publishedPort,
   ranTests,
   hasFeatures,
+  hasSqliteFile,
   readAddedItems,
   readAddedModules,
   readKept,
@@ -99,6 +101,7 @@ import {
   selectModules,
   spaMinTests,
   SPA_FEATURE_MIN_TESTS,
+  SQLITE_FILE,
   SPA_SHELL_MIN_TESTS,
   STORAGE_MIN_TESTS,
   testCounts,
@@ -197,6 +200,14 @@ describe("the golden project", () => {
         )
         .map((item) => item.name),
     ).toEqual([...FEATURE_ITEMS]);
+  });
+
+  test("the dockerfile configuration has the db feature, and its database is libsql", () => {
+    expect(ANSWER_SETS.dockerfile?.features).toContain("db");
+    const dockerfile = CONFIGURATIONS.find(({ name }) => name === "dockerfile");
+    expect(dockerfile?.modules).toContain("db/libsql");
+    expect(dockerfile?.modules).toContain("orm/drizzle");
+    expect(dockerfile?.modules).not.toContain("db/d1");
   });
 
   test("a configuration has features when it installs the items and has the auth module they need", () => {
@@ -319,8 +330,9 @@ describe("the golden project and modules", () => {
       .map(({ manifest }) => `${manifest.category}/${manifest.id}\tmodule\t${manifest.description}`)
       .join("\n");
 
-    const { modules } = selectModules(listing, MODULES, EXCLUDED_MODULES);
+    const { modules, excluded } = selectModules(listing, MODULES, EXCLUDED_MODULES);
 
+    expect(excluded).toEqual([]);
     expect(modules).toEqual([
       "pm/pnpm",
       "provider/cloudflare",
@@ -340,6 +352,7 @@ describe("the golden project and modules", () => {
       "deploy/cloudflare-actions",
       "pm/bun",
       "provider/dockerfile",
+      "db/libsql",
     ]);
   });
 
@@ -369,6 +382,7 @@ describe("the golden project and modules", () => {
     );
     expect(used.every((names) => names.length === 1)).toBe(true);
     expect([...new Set(used.flat())].sort()).toEqual([...providers].sort());
+    // `create` maps the db feature by provider, so the dockerfile configuration installs `db/libsql`.
     expect(Object.keys(EXCLUDED_MODULES)).toEqual([]);
   });
 
@@ -750,6 +764,18 @@ describe("the golden project and patches", () => {
       dockerfile: {
         "config/branding": ["scripts.gen:branding"],
         "api/elysia": ["scripts.dev"],
+        "orm/drizzle": [
+          "dependencies.@app/db",
+          "dependencies.drizzle-orm",
+          "dependencies.elysia",
+          "devDependencies.drizzle-kit",
+          "elysia[app].use[dbModule]",
+          'exports."."',
+          'exports."./schema"',
+          'exports."./testing"',
+          "imports[@app/db]",
+          "scripts.db:generate",
+        ],
         "web/spa": ["scripts.dev"],
         "dev/portless": [
           "devDependencies.portless",
@@ -839,6 +865,13 @@ describe("expectRegionsRecorded (bg.json carries what `bonne-garde add` reported
 
   test("fails on a bg.json that is not an object with regions", () => {
     expect(() => expectRegionsRecorded("nope", added)).toThrow(/regions/);
+  });
+});
+
+describe("hasSqliteFile (the container's volume holds the database file once the first request has been served)", () => {
+  test("is the dockerfile configuration and no other", () => {
+    expect(CONFIGURATIONS.filter(hasSqliteFile).map(({ name }) => name)).toEqual(["dockerfile"]);
+    expect(SQLITE_FILE).toBe("/data/db.sqlite");
   });
 });
 
@@ -1555,14 +1588,20 @@ describe("the launcher phase (dev/portless)", () => {
 });
 
 describe("the database phases", () => {
-  test("a configuration has a database to generate and migrate when it installs the orm module", () => {
-    expect(hasDatabase({ name: "a", modules: ["api/elysia", "orm/drizzle"], items: false })).toBe(
-      true,
-    );
+  test("a configuration has a D1 to generate and migrate when it installs the orm module over db/d1", () => {
+    const d1 = ["api/elysia", "db/d1", "orm/drizzle"];
+    expect(hasDatabase({ name: "a", modules: d1, items: false })).toBe(true);
     expect(hasDatabase({ name: "b", modules: ["api/elysia", "db/d1"], items: false })).toBe(false);
+    expect(
+      hasDatabase({
+        name: "c",
+        modules: ["api/elysia", "db/libsql", "orm/drizzle"],
+        items: false,
+      }),
+    ).toBe(false);
   });
 
-  test("only the cloudflare configuration has one: db/d1 peers on that provider, and no dockerfile database exists", () => {
+  test("only the cloudflare configuration has a D1 to migrate: the dockerfile one has libsql, which the phases do not drive", () => {
     expect(CONFIGURATIONS.filter(hasDatabase).map(({ name }) => name)).toEqual(["cloudflare"]);
     expect(CONFIGURATIONS.find(({ name }) => name === "dockerfile")?.modules).not.toContain(
       "db/d1",

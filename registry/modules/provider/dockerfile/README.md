@@ -2,8 +2,8 @@
 
 One container. The API, on Node, listens on `PORT` and serves the built SPA from the same origin; a
 single `/data` volume is meant to hold the database, media and generated secrets. No Cloudflare
-account. Today the container runs and serves the API shell and the SPA, but it has **no database
-and no object storage**, so sign-up, sign-in and media do not work — see
+account. Today the container runs and serves the API shell and the SPA, but it has **no object
+storage** and `auth` has no database to run on, so sign-up, sign-in and media do not work — see
 [What runs, and what does not](#what-runs-and-what-does-not).
 
 It peers on no package manager: the image installs the project with the one `package.json` pins
@@ -25,7 +25,7 @@ Harvested from `bonne-garde-keeper`, which shipped this runtime and whose design
 | Origins         | One `APP_URL`, which fills the `SPA_URL` / `SSR_URL` / `API_URL` triple  | done, with one caveat |
 | Secrets         | `BETTER_AUTH_SECRET` generated into `DATA_DIR` on first start when unset | done, `auth` reads it |
 | Deploy          | `docker build` and `compose.yaml`                                        | done                  |
-| Database        | SQLite file under `DATA_DIR`, through `drizzle-orm/libsql`               | **not done**          |
+| Database        | SQLite file under `DATA_DIR`, through `drizzle-orm/libsql`               | done, `db/libsql`     |
 | Object storage  | Local filesystem under `DATA_DIR`                                        | **not done**          |
 
 The caveat on origins is in the list of what does not work: the URLs agree, the paths do not.

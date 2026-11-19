@@ -11,10 +11,9 @@ bunx bonne-garde add provider/cloudflare db/d1 orm/drizzle
 ## Peers and variant
 
 `peers: { api: ["elysia"], db: [] }`: the API, whose `app.ts` and `package.json` its patches wire the
-`dbModule` into, and any `db` module, one of which has to be installed. The one variant, `d1`, is
-matched on `db: d1`; a `libsql` database would bring a variant of its own, with `drizzle-orm/libsql`,
-and the allow-list stays empty so that a project with a `db` this module has no variant for fails with
-"no variant matches", listing what is available.
+`dbModule` into, and any `db` module, one of which has to be installed. There is one variant per db, matched
+on `db`: `d1` and `libsql`. The allow-list stays empty so that a project with a `db` this module has no variant
+for fails with "no variant matches", listing what is available.
 
 ## What it writes
 
@@ -32,6 +31,24 @@ and the allow-list stays empty so that a project with a `db` this module has no 
 
 `dbModule` reads the binding through `db/d1`'s `readD1()` for each request, and derives `db` for the
 routes registered after it. With no binding it still loads: see `db/d1`.
+
+## The `libsql` variant
+
+With [`db/libsql`](../../db/libsql/README.md) (the `dockerfile` provider) the same package runs on
+`drizzle-orm/libsql`. A module has one `template/`, so its files sit beside the D1 ones at distinct paths, and
+the variant copies only its own plus the shared `src/drizzle.config.ts` and `src/schema/index.ts`:
+
+| File                    | What it is                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------------- |
+| `src/libsql-client.ts`  | `createDB(client)` and `type DB`                                                      |
+| `src/libsql-module.ts`  | `dbModule` / `dbPlugin(readDatabase, migrationsFolder?)`: applies the migrations once |
+| `src/libsql-index.ts`   | the same exports as `index.ts`                                                        |
+| `src/libsql-testing.ts` | `createTestDb(schema?)` / `TestDb` over a libsql `:memory:` client                    |
+| `src/libsql-*.test.ts`  | each against a real libsql database                                                   |
+
+It patches `packages/db/package.json` with the root export `./src/libsql-index.ts`, `./schema`, `./testing`
+(`./src/libsql-testing.ts`) and the `db:generate` script only (no `db:reset`, no `db:studio`), and wires
+`dbModule` into the API with the same three patches as `d1`. `db/d1` and its files are unchanged.
 
 ## `packages/db` is shared, and db/d1 owns it
 

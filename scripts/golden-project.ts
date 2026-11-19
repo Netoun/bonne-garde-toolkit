@@ -135,7 +135,7 @@ export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
   dockerfile: {
     apps: ["api", "spa"],
     provider: "dockerfile",
-    features: ["email", "portless"],
+    features: ["db", "email", "portless"],
     pm: "bun",
   },
   // The fronts alone: no api, so no Eden client and no API variable, deployed.
@@ -211,9 +211,23 @@ export function buildsImage(configuration: Configuration): boolean {
 /** The module that turns a schema into migrations, so that there is a database to generate and migrate. */
 const ORM_MODULE = "orm/drizzle";
 
-/** Whether the configuration has an `orm`, so golden adds a table, generates its migration and applies it to a local D1. */
+/** The database of the cloudflare provider, the one `wrangler` keeps locally. */
+const D1_MODULE = "db/d1";
+
+/** The database of the dockerfile provider: an SQLite file under the container's `DATA_DIR`. */
+const LIBSQL_MODULE = "db/libsql";
+
+/** Where the container's volume holds the database, once the API has opened it. */
+export const SQLITE_FILE = "/data/db.sqlite";
+
+/** Whether the configuration has an `orm` over D1, so golden adds a table, generates its migration and applies it to a local D1. */
 export function hasDatabase(configuration: Configuration): boolean {
-  return configuration.modules.includes(ORM_MODULE);
+  return configuration.modules.includes(ORM_MODULE) && configuration.modules.includes(D1_MODULE);
+}
+
+/** Whether the image opens an SQLite file, which golden looks for in the container's volume. */
+export function hasSqliteFile(configuration: Configuration): boolean {
+  return buildsImage(configuration) && configuration.modules.includes(LIBSQL_MODULE);
 }
 
 /** The module whose schema is what `auth:generate` writes, and the file that holds it. */
@@ -769,7 +783,7 @@ export const FEATURE_REFUSALS: readonly {
 
 /**
  * Modules `bonne-garde list` shows that stay out of every configuration, each with its reason. An entry for
- * a module the registry no longer lists fails the run, as for `EXCLUDED`. Empty on purpose.
+ * a module the registry no longer lists fails the run, as for `EXCLUDED`.
  */
 export const EXCLUDED_MODULES: Readonly<Record<string, string>> = {};
 
@@ -883,6 +897,18 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
   dockerfile: {
     "config/branding": ["scripts.gen:branding"],
     "api/elysia": ["scripts.dev"],
+    "orm/drizzle": [
+      "dependencies.@app/db",
+      "dependencies.drizzle-orm",
+      "dependencies.elysia",
+      "devDependencies.drizzle-kit",
+      "elysia[app].use[dbModule]",
+      'exports."."',
+      'exports."./schema"',
+      'exports."./testing"',
+      "imports[@app/db]",
+      "scripts.db:generate",
+    ],
     "web/spa": ["scripts.dev"],
     "dev/portless": [
       "devDependencies.portless",
@@ -2641,7 +2667,7 @@ async function configured(
     });
   }
   if (buildsImage(configuration)) {
-    await imaged(project, timings, name);
+    await imaged(project, timings, name, hasSqliteFile(configuration));
   }
 }
 
@@ -3083,7 +3109,12 @@ async function seeded(
  * and removed by that name, the container first since it holds the image and the volume. Nothing
  * else on the machine is touched: no prune, no cache clear.
  */
-async function imaged(project: string, timings: Timing[], name: string): Promise<void> {
+async function imaged(
+  project: string,
+  timings: Timing[],
+  name: string,
+  sqlite: boolean,
+): Promise<void> {
   const label = `${name}: docker`;
   const probe =
     Bun.which("docker") === null ? null : await attempt(["docker", "info"], project, 20_000);
@@ -3107,7 +3138,7 @@ async function imaged(project: string, timings: Timing[], name: string): Promise
     );
     await phase(timings, `${label} run`, async () => {
       try {
-        await answers(project, docker);
+        await answers(project, docker, sqlite);
       } catch (error) {
         console.log(`\ngolden: last lines of the container ${docker}`);
         await run(["docker", "logs", "--tail", "40", docker], project).catch(() => undefined);
@@ -3130,7 +3161,7 @@ async function imaged(project: string, timings: Timing[], name: string): Promise
 }
 
 /** Starts the container, waits for `/health`, and checks what it serves: the API, the SPA, a hashed asset, a client route. */
-async function answers(project: string, docker: string): Promise<void> {
+async function answers(project: string, docker: string, sqlite: boolean): Promise<void> {
   await run(
     [
       "docker",
@@ -3187,6 +3218,10 @@ async function answers(project: string, docker: string): Promise<void> {
   expectServed(`GET ${route} (Accept: text/html)`, client, 200, "text/html");
   if (client.body !== home.body) {
     throw new Error(`GET ${route} (Accept: text/html) answered something other than GET /`);
+  }
+  // The API opened its database on the first request: the volume holds the SQLite file.
+  if (sqlite) {
+    await run(["docker", "exec", docker, "test", "-f", SQLITE_FILE], project);
   }
 }
 

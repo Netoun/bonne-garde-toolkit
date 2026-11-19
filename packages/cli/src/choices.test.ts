@@ -68,6 +68,18 @@ describe("namesFor (040: the one table the CLI holds)", () => {
     expect(namesFor({ ...spa, features: ["portless"] }).modules).toContain("dev/portless");
   });
 
+  test("db names the database of the provider: d1 on cloudflare, libsql on dockerfile, drizzle on both", () => {
+    const api = { apps: ["api"], features: ["db"], pm: "bun" } as const;
+    const dockerfile = namesFor({ ...api, provider: "dockerfile" }).modules;
+    expect(dockerfile).toContain("db/libsql");
+    expect(dockerfile).toContain("orm/drizzle");
+    expect(dockerfile).not.toContain("db/d1");
+    const cloudflare = namesFor({ ...api, provider: "cloudflare" }).modules;
+    expect(cloudflare).toContain("db/d1");
+    expect(cloudflare).toContain("orm/drizzle");
+    expect(cloudflare).not.toContain("db/libsql");
+  });
+
   test("auth brings the sign-in pages only with the spa", () => {
     expect(
       namesFor({ apps: ["api"], provider: "cloudflare", features: ["db", "auth"], pm: "bun" })

@@ -73,6 +73,67 @@
           "intent": "Register dbModule on the API app after its last .use and before its routes, so every route gets db on its context."
         }
       ]
+    },
+    {
+      "key": "libsql",
+      "match": { "db": "libsql" },
+      "copy": [
+        "packages/db/src/drizzle.config.ts",
+        "packages/db/src/libsql-client.ts",
+        "packages/db/src/libsql-client.test.ts",
+        "packages/db/src/libsql-index.ts",
+        "packages/db/src/libsql-module.ts",
+        "packages/db/src/libsql-module.test.ts",
+        "packages/db/src/libsql-testing.ts",
+        "packages/db/src/libsql-testing.test.ts",
+        "packages/db/src/schema/index.ts"
+      ],
+      "patch": [
+        {
+          "type": "jsonc.merge",
+          "file": "packages/db/package.json",
+          "value": {
+            "exports": {
+              ".": "./src/libsql-index.ts",
+              "./schema": "./src/schema/index.ts",
+              "./testing": "./src/libsql-testing.ts"
+            }
+          }
+        },
+        {
+          "type": "package.dependencies",
+          "file": "packages/db/package.json",
+          "dependencies": { "drizzle-orm": "0.45.2", "elysia": "1.4.29" },
+          "devDependencies": { "drizzle-kit": "0.31.10" }
+        },
+        {
+          "type": "scripts.merge",
+          "file": "packages/db/package.json",
+          "scripts": {
+            "db:generate": "drizzle-kit generate --config ./src/drizzle.config.ts"
+          }
+        },
+        {
+          "type": "package.dependencies",
+          "file": "apps/api/package.json",
+          "dependencies": { "{{SCOPE}}/db": "workspace:*" },
+          "intent": "Declare the project's db package as a dependency of the API app."
+        },
+        {
+          "type": "ts.addImport",
+          "file": "apps/api/src/app.ts",
+          "moduleSpecifier": "{{SCOPE}}/db",
+          "namedImports": ["dbModule"],
+          "intent": "Import dbModule from the project's db package in the API app."
+        },
+        {
+          "type": "ts.elysiaUse",
+          "file": "apps/api/src/app.ts",
+          "targetName": "app",
+          "argument": "dbModule",
+          "intent": "Register dbModule on the API app after its last .use and before its routes, so every route gets db on its context."
+        }
+      ]
     }
   ]
 }
