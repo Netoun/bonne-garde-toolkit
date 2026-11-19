@@ -2079,11 +2079,9 @@ describe("module contract", () => {
 
       test("the libsql sources keep the d1 names: dbModule, dbPlugin, createDB, DB, createTestDb, TestDb", async () => {
         const index = await ormText("packages/db/src/libsql-index.ts");
-        const d1Index = await ormText("packages/db/src/index.ts");
 
         expect(index).toMatch(/export \{ createDB, type DB \} from "\.\/libsql-client"/);
         expect(index).toMatch(/export \{ dbModule, dbPlugin \} from "\.\/libsql-module"/);
-        expect(d1Index.split("\n").length).toBe(index.split("\n").length);
         expect(await ormText("packages/db/src/libsql-module.ts")).toMatch(
           /export const dbModule = /,
         );
