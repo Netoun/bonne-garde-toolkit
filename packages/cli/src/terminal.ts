@@ -100,33 +100,127 @@ export function terminalPrompter(): Prompter {
   };
 }
 
+/** A family of `add`'s menus: it opens a checklist (`choices`), or a menu of sub-families (`children`). */
+export type AddGroup = Choice<string> & ({ choices: Choice<string>[] } | { children: AddGroup[] });
+
 /**
- * What `add` offers with no name, on a terminal: the modules as `<category>/<id>` in the order
- * `list` prints them, then the features (`registry:block` items), then the other items (ui, hooks,
- * libs), each hint starting with its kind. What changes the project comes first; the long tail of
- * UI components comes last. A source read over the network (`reader`) lists no modules, so it
- * offers the items alone.
+ * What `add` offers with no name, on a terminal, as menus: the families are the modules (opening one
+ * sub-family per category, in the order `list` prints them), the features (`registry:block` items),
+ * then one family per kind of the other items (ui, hook, lib). What changes the project comes first;
+ * the long tail of UI components comes last. Each checklist entry has a hint starting with its kind.
+ * A source read over the network (`reader`) lists no modules, so it offers the items alone.
  */
-export function addChoices(catalog: RegistryCatalog): Choice<string>[] {
-  const modules = inCategoryOrder(catalog.modules).map(({ manifest }) => {
+export function addGroups(catalog: RegistryCatalog): AddGroup[] {
+  const noun = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+  const categories: { value: string; label: string; hint: string; choices: Choice<string>[] }[] =
+    [];
+  for (const { manifest } of inCategoryOrder(catalog.modules)) {
+    let category = categories.find(({ value }) => value === manifest.category);
+    if (category === undefined) {
+      category = { value: manifest.category, label: manifest.category, hint: "", choices: [] };
+      categories.push(category);
+    }
     const name = `${manifest.category}/${manifest.id}`;
-    return { value: name, label: name, hint: `module · ${manifest.description}` };
-  });
-  const item = ({ name, type, description }: RegistryItem): Choice<string> => {
-    const kind = type === "registry:block" ? "feature" : type.replace("registry:", "");
-    return { value: name, label: name, hint: `${kind} · ${description ?? ""}` };
+    category.choices.push({ value: name, label: name, hint: `module · ${manifest.description}` });
+  }
+  for (const category of categories) {
+    category.hint = noun(category.choices.length, "module");
+  }
+  const groups: AddGroup[] = [];
+  if (categories.length > 0) {
+    const count = categories.reduce((total, { choices }) => total + choices.length, 0);
+    groups.push({
+      value: "modules",
+      label: "Modules",
+      hint: noun(count, "module"),
+      children: categories,
+    });
+  }
+  const kindOf = ({ type }: RegistryItem) =>
+    type === "registry:block" ? "feature" : type.replace("registry:", "");
+  const kinds = new Map<string, Choice<string>[]>();
+  for (const item of [...catalog.items].sort(
+    (a, b) => Number(kindOf(b) === "feature") - Number(kindOf(a) === "feature"),
+  )) {
+    const kind = kindOf(item);
+    kinds.set(kind, [
+      ...(kinds.get(kind) ?? []),
+      { value: item.name, label: item.name, hint: `${kind} · ${item.description ?? ""}` },
+    ]);
+  }
+  const TITLES: Record<string, string> = {
+    feature: "Features",
+    ui: "UI components",
+    hook: "Hooks",
+    lib: "Libs",
   };
-  const features = catalog.items.filter(({ type }) => type === "registry:block");
-  const others = catalog.items.filter(({ type }) => type !== "registry:block");
-  return [...modules, ...features.map(item), ...others.map(item)];
+  for (const [kind, choices] of kinds) {
+    groups.push({
+      value: kind,
+      label: TITLES[kind] ?? `${kind}s`,
+      hint: noun(choices.length, kind),
+      choices,
+    });
+  }
+  return groups;
 }
 
-/** The names a person ticks in `addChoices`; none ticked stops the command like Ctrl+C does. */
+const DONE = "done";
+const BACK = "back";
+
+/**
+ * The names a person ticks, menu by menu: the families, then for the modules a sub-family (a
+ * category), then the filterable checklist of the one opened, and back, until "Done". Nothing
+ * ticked, or Ctrl+C anywhere, stops the command like Ctrl+C does.
+ */
 export async function pickAddNames(
   catalog: RegistryCatalog,
   prompter: Prompter,
 ): Promise<string[]> {
-  const names = await prompter.search("What to add (type to filter)", addChoices(catalog));
+  const names: string[] = [];
+  const tick = async (group: AddGroup & { choices: Choice<string>[] }) => {
+    for (const name of await prompter.search(`${group.label} (type to filter)`, group.choices)) {
+      if (!names.includes(name)) {
+        names.push(name);
+      }
+    }
+  };
+  const open = async (group: AddGroup) => {
+    if ("choices" in group) {
+      return tick(group);
+    }
+    const back: Choice<string> = { value: BACK, label: "Back", hint: "to the families" };
+    for (;;) {
+      const picked = await prompter.one(
+        `${group.label}: pick a sub-family`,
+        [...group.children, back],
+        group.children[0]?.value ?? BACK,
+      );
+      const child = group.children.find(({ value }) => value === picked);
+      if (child === undefined) {
+        return;
+      }
+      await open(child);
+    }
+  };
+  const groups = addGroups(catalog);
+  for (;;) {
+    const done: Choice<string> = {
+      value: DONE,
+      label: names.length === 0 ? "Done" : `Done (${names.length} ticked)`,
+      hint: "add what is ticked",
+    };
+    const picked = await prompter.one(
+      "What to add (pick a family)",
+      [...groups, done],
+      names.length === 0 ? (groups[0]?.value ?? DONE) : DONE,
+    );
+    const group = groups.find(({ value }) => value === picked);
+    if (group === undefined) {
+      break;
+    }
+    await open(group);
+  }
   if (names.length === 0) {
     throw new Cancelled();
   }

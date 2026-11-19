@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { loadLocalRegistry, type RegistryCatalog } from "@bonne-garde/registry";
+import { loadLocalRegistry } from "@bonne-garde/registry";
 import { MODULE_CATEGORIES } from "@bonne-garde/schema";
 import type { Choice, Prompter } from "./choices";
 import { findRepoRoot } from "./paths";
 import {
-  addChoices,
+  addGroups,
+  type AddGroup,
   Cancelled,
   colorEnabled,
   nextSteps,
@@ -76,55 +77,66 @@ describe("colorEnabled", () => {
 
 const REGISTRY_JSON = join(findRepoRoot() ?? "", "registry", "registry.json");
 
-/** A prompter that answers `search` with the values it is told to pick, and records what it was shown. */
-function picking(values: string[]) {
-  const shown: { message: string; choices: readonly Choice<string>[] }[] = [];
+/**
+ * A prompter that walks `add`'s menus: `one` answers from `menus` in order ("done" once they run
+ * out), `search` from `ticks` in order. Records what was shown.
+ */
+function walking(menus: string[], ticks: string[][]) {
+  const asked: { message: string; choices: readonly Choice<string>[]; initial: string }[] = [];
+  const lists: { message: string; choices: readonly Choice<string>[] }[] = [];
   const prompter: Prompter = {
-    one: () => Promise.reject(new Error("add asks no single answer")),
-    many: () => Promise.reject(new Error("add asks through the filterable list")),
+    one: (message, choices, initial) => {
+      asked.push({ message, choices, initial });
+      return Promise.resolve((menus.shift() ?? "done") as never);
+    },
+    many: () => Promise.reject(new Error("add asks through the menus")),
     search: (message, choices) => {
-      shown.push({ message, choices });
-      return Promise.resolve(values as never);
+      lists.push({ message, choices });
+      return Promise.resolve((ticks.shift() ?? []) as never);
     },
     warn: () => undefined,
   };
-  return { prompter, shown };
+  return { prompter, asked, lists };
 }
 
-describe("addChoices", () => {
-  test("lists the modules in category order, then the features, then the other items, each hint starting with its kind", async () => {
+describe("addGroups", () => {
+  test("opens with the modules (a sub-family per category, in order), then the features, then each other kind, every hint starting with its kind", async () => {
     const catalog = await loadLocalRegistry(REGISTRY_JSON);
-    const choices = addChoices(catalog);
-    const modules = choices.slice(0, catalog.modules.length);
-    const categories = modules.map(({ value }) =>
-      MODULE_CATEGORIES.indexOf(value.split("/")[0] as never),
+    const groups = addGroups(catalog);
+    const [modules, ...rest] = groups;
+    expect(modules?.value).toBe("modules");
+    const categories =
+      "children" in (modules ?? {}) ? (modules as { children: AddGroup[] }).children : [];
+    const order = categories.map(({ value }) => MODULE_CATEGORIES.indexOf(value as never));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(rest[0]?.value).toBe("feature");
+    expect(rest.map(({ label }) => label).slice(0, 2)).toEqual(["Features", expect.any(String)]);
+    expect(rest.at(-1)?.value).not.toBe("feature");
+    const checklists = (groups: AddGroup[]) =>
+      groups.flatMap((group) => ("choices" in group ? [group] : []));
+    const moduleLists = checklists(categories);
+    const itemLists = checklists(rest);
+    // Every module and item is in exactly one checklist, none lost or repeated.
+    expect(
+      [...moduleLists, ...itemLists]
+        .flatMap(({ choices }) => choices.map(({ value }) => value))
+        .sort(),
+    ).toEqual(
+      [
+        ...catalog.modules.map(({ manifest }) => `${manifest.category}/${manifest.id}`),
+        ...catalog.items.map(({ name }) => name),
+      ].sort(),
     );
-    expect(categories.every((index) => index >= 0)).toBe(true);
-    expect(categories).toEqual([...categories].sort((a, b) => a - b));
-    const features = catalog.items.filter(({ type }) => type === "registry:block");
-    const others = catalog.items.filter(({ type }) => type !== "registry:block");
-    expect(features.length).toBeGreaterThan(0);
-    expect(choices.slice(modules.length).map(({ value }) => value)).toEqual(
-      [...features, ...others].map(({ name }) => name),
-    );
-    for (const { value, label, hint } of choices) {
-      expect(label).toBe(value);
-      const module = catalog.modules.find(
-        ({ manifest }) => `${manifest.category}/${manifest.id}` === value,
-      );
-      const item = catalog.items.find(({ name }) => name === value);
-      if (module) {
-        expect(hint).toBe(`module · ${module.manifest.description}`);
-      } else if (item?.type === "registry:block") {
-        expect(hint).toBe(`feature · ${item.description ?? ""}`);
-      } else {
-        expect(hint).toMatch(/^(ui|hook|lib|component|page|file) · /);
-      }
+    for (const { choices } of moduleLists) {
+      expect(choices.every(({ hint }) => hint.startsWith("module · "))).toBe(true);
     }
-    expect(choices.find(({ value }) => value === "spa-auth")?.hint).toStartWith("feature · ");
-    expect(choices.find(({ value }) => value === "provider/cloudflare")?.hint).toStartWith(
-      "module · ",
-    );
+    for (const { value, choices } of itemLists) {
+      expect(choices.every(({ hint }) => hint.startsWith(`${value} · `))).toBe(true);
+    }
+    const lists = itemLists;
+    const features = lists.find(({ value }) => value === "feature");
+    expect(features?.choices.map(({ value }) => value)).toContain("spa-auth");
   });
 
   test("offers the items alone when the source cannot list modules (a reader is set)", async () => {
@@ -134,27 +146,52 @@ describe("addChoices", () => {
       read: () => Promise.resolve(""),
       readBytes: () => Promise.resolve(new Uint8Array()),
     };
-    const remote: RegistryCatalog = { ...catalog, modules: [], reader };
-    const choices = addChoices(remote);
-    expect(choices.map(({ value }) => value).sort()).toEqual(
-      catalog.items.map(({ name }) => name).sort(),
-    );
-    expect(choices[0]?.value).toBe("spa-auth");
+    const groups = addGroups({ ...catalog, modules: [], reader });
+    expect(groups[0]?.value).toBe("feature");
+    expect(
+      groups
+        .flatMap((group) => ("choices" in group ? group.choices.map(({ value }) => value) : []))
+        .sort(),
+    ).toEqual(catalog.items.map(({ name }) => name).sort());
   });
 });
 
 describe("pickAddNames", () => {
-  test("returns the names the person picked, in the order add receives them", async () => {
+  test("opens a family, a sub-family, filters in the checklist, and comes back to the menus until done", async () => {
     const catalog = await loadLocalRegistry(REGISTRY_JSON);
-    const { prompter, shown } = picking(["spa-auth", "provider/cloudflare"]);
+    const { prompter, asked, lists } = walking(
+      ["feature", "modules", "provider", "back"],
+      [["spa-auth"], ["provider/cloudflare"]],
+    );
     expect(await pickAddNames(catalog, prompter)).toEqual(["spa-auth", "provider/cloudflare"]);
-    expect(shown).toHaveLength(1);
-    expect(shown[0]?.message).toBe("What to add (type to filter)");
-    expect(shown[0]?.choices).toEqual(addChoices(catalog));
+    expect(asked.map(({ message }) => message)).toEqual([
+      "What to add (pick a family)",
+      "What to add (pick a family)",
+      "Modules: pick a sub-family",
+      "Modules: pick a sub-family",
+      "What to add (pick a family)",
+    ]);
+    expect(asked[0]?.initial).toBe("modules");
+    expect(asked[1]?.initial).toBe("done");
+    expect(asked[4]?.choices.at(-1)?.label).toBe("Done (2 ticked)");
+    expect(asked[2]?.choices.at(-1)?.value).toBe("back");
+    expect(lists.map(({ message }) => message)).toEqual([
+      "Features (type to filter)",
+      "provider (type to filter)",
+    ]);
   });
 
-  test("an empty pick is a cancellation: nothing is added", async () => {
+  test("a name ticked twice is returned once", async () => {
     const catalog = await loadLocalRegistry(REGISTRY_JSON);
-    await expect(pickAddNames(catalog, picking([]).prompter)).rejects.toBeInstanceOf(Cancelled);
+    const { prompter } = walking(["feature", "feature"], [["spa-auth"], ["spa-auth"]]);
+    expect(await pickAddNames(catalog, prompter)).toEqual(["spa-auth"]);
+  });
+
+  test("done with nothing ticked is a cancellation: nothing is added", async () => {
+    const catalog = await loadLocalRegistry(REGISTRY_JSON);
+    await expect(pickAddNames(catalog, walking([], []).prompter)).rejects.toBeInstanceOf(Cancelled);
+    await expect(pickAddNames(catalog, walking(["feature"], [[]]).prompter)).rejects.toBeInstanceOf(
+      Cancelled,
+    );
   });
 });
