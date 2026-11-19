@@ -25,6 +25,8 @@ The published package is `bonne-garde`: one JavaScript bundle that runs on Node 
 
 Each answer names registry content, held in one table in the CLI (`packages/cli/src/choices.ts`): the package manager names `pm/bun` or `pm/pnpm`; any app names `provider/<provider>`, `tooling/vite-plus`, `config/branding`; `spa`, `ssr`, `static` name `ui/shadcn` and `web/<app>`; `api` names `api/elysia`; `db` names `db/d1` on `cloudflare` and `db/libsql` on `dockerfile`, plus `orm/drizzle`; `auth` names `auth/better-auth` (and the item `spa-auth` with `spa`); `storage` names `storage/r2`; `email` names `email/resend`; `deploy` names `deploy/cloudflare-actions`; `backoffice` names the item `spa-backoffice`; `portless` names `dev/portless`.
 
+`create` does not offer Postgres: a `dockerfile` project reaches it with `bonne-garde add db/postgres orm/drizzle` (the `db` feature stays `db/libsql`, and a project has one `db` module).
+
 - Which sets are valid is the registry's to say, never a table in the CLI: names are checked as `add` would plan them in an empty project (peers, cardinality, a variant per module, the modules each item needs). A combination becomes valid by changing the registry alone.
 - A flag answers its axis, which is then not asked. Under `--yes` or with no TTY a missing axis takes its default. `--provider` or `--features` with no app is refused.
 - On a TTY the questions are menus (the package manager first, then apps, provider, features; the directory when none is given); an answer the check refuses is asked again; Ctrl+C stops before anything is written, exit 130. Without a TTY on stdout, `create` prints plain lines (`created <target> with …`, then what is left to do, on stderr).

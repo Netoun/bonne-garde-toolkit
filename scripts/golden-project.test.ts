@@ -87,6 +87,14 @@ import {
   ranTests,
   hasFeatures,
   hasSqliteFile,
+  hasPostgres,
+  providerOf,
+  readPostgresService,
+  postgresUrl,
+  expectPostgresMigrated,
+  goldenSchema,
+  GOLDEN_PG_SCHEMA,
+  GOLDEN_SCHEMA,
   readAddedItems,
   readAddedModules,
   readKept,
@@ -208,6 +216,21 @@ describe("the golden project", () => {
     expect(dockerfile?.modules).toContain("db/libsql");
     expect(dockerfile?.modules).toContain("orm/drizzle");
     expect(dockerfile?.modules).not.toContain("db/d1");
+  });
+
+  test("the dockerfile-postgres configuration is create without the db feature, then add db/postgres orm/drizzle", () => {
+    expect(ANSWER_SETS["dockerfile-postgres"]?.features).not.toContain("db");
+    const postgres = CONFIGURATIONS.find(({ name }) => name === "dockerfile-postgres");
+    expect(postgres?.modules).toContain("db/postgres");
+    expect(postgres?.modules).toContain("orm/drizzle");
+    expect(postgres?.modules).not.toContain("db/libsql");
+    expect(postgres?.modules).not.toContain("db/d1");
+    expect(postgres?.modules.slice(-2)).toEqual(["db/postgres", "orm/drizzle"]);
+    // What `create` maps for the dockerfile answers minus the db feature, in the dockerfile one's order.
+    const dockerfile = CONFIGURATIONS.find(({ name }) => name === "dockerfile");
+    expect(postgres?.modules.slice(0, -2)).toEqual(
+      (dockerfile?.modules ?? []).filter((name) => name !== "db/libsql" && name !== "orm/drizzle"),
+    );
   });
 
   test("a configuration has features when it installs the items and has the auth module they need", () => {
@@ -332,12 +355,7 @@ describe("the golden project and modules", () => {
 
     const { modules, excluded } = selectModules(listing, MODULES, EXCLUDED_MODULES);
 
-    expect(excluded).toEqual([
-      {
-        name: "db/postgres",
-        reason: expect.stringContaining("dockerfile-postgres configuration"),
-      },
-    ]);
+    expect(excluded).toEqual([]);
     expect(modules).toEqual([
       "pm/pnpm",
       "provider/cloudflare",
@@ -358,6 +376,7 @@ describe("the golden project and modules", () => {
       "pm/bun",
       "provider/dockerfile",
       "db/libsql",
+      "db/postgres",
     ]);
   });
 
@@ -388,7 +407,7 @@ describe("the golden project and modules", () => {
     expect(used.every((names) => names.length === 1)).toBe(true);
     expect([...new Set(used.flat())].sort()).toEqual([...providers].sort());
     // `create` maps the db feature by provider, so the dockerfile configuration installs `db/libsql`.
-    expect(Object.keys(EXCLUDED_MODULES)).toEqual(["db/postgres"]);
+    expect(EXCLUDED_MODULES).toEqual({});
   });
 
   test("only the configuration with a ui module installs items, which land in packages/ui", () => {
@@ -795,6 +814,28 @@ describe("the golden project and patches", () => {
         "web/static": ["scripts.deploy", "scripts.dev"],
         "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
       },
+      "dockerfile-postgres": {
+        "config/branding": ["scripts.gen:branding"],
+        "api/elysia": ["scripts.dev"],
+        "orm/drizzle": [
+          "dependencies.@app/db",
+          "dependencies.drizzle-orm",
+          "dependencies.elysia",
+          "devDependencies.drizzle-kit",
+          "elysia[app].use[dbModule]",
+          'exports."."',
+          'exports."./schema"',
+          'exports."./testing"',
+          "imports[@app/db]",
+          "scripts.db:generate",
+        ],
+        "web/spa": ["scripts.dev"],
+        "dev/portless": [
+          "devDependencies.portless",
+          "scripts.dev:lan:portless",
+          "scripts.dev:portless",
+        ],
+      },
     });
   });
 });
@@ -880,11 +921,110 @@ describe("hasSqliteFile (the container's volume holds the database file once the
   });
 });
 
+describe("providerOf (the launcher plans what the provider runs, not what the configuration is called)", () => {
+  test("is the id of the configuration's provider module", () => {
+    expect(Object.fromEntries(CONFIGURATIONS.map((c) => [c.name, providerOf(c)]))).toEqual({
+      cloudflare: "cloudflare",
+      dockerfile: "dockerfile",
+      fronts: "cloudflare",
+      "dockerfile-postgres": "dockerfile",
+    });
+  });
+});
+
+describe("hasPostgres (golden starts a Postgres beside the container and reads it back)", () => {
+  test("is the dockerfile-postgres configuration and no other", () => {
+    expect(CONFIGURATIONS.filter(hasPostgres).map(({ name }) => name)).toEqual([
+      "dockerfile-postgres",
+    ]);
+  });
+
+  test("has a database to generate for, which the D1 phases do not cover", () => {
+    const postgres = CONFIGURATIONS.find(hasPostgres);
+    expect(postgres === undefined ? true : hasDatabase(postgres)).toBe(false);
+    expect(postgres === undefined ? [] : expectedTables(postgres)).toEqual([GOLDEN_TABLE]);
+  });
+});
+
+describe("the Postgres of the compose file", () => {
+  const compose = `# comment
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: app
+    ports:
+      - "127.0.0.1:5432:5432"
+`;
+
+  test("readPostgresService reads the image and the credentials the file names", () => {
+    expect(readPostgresService(compose)).toEqual({
+      image: "postgres:17-alpine",
+      user: "postgres",
+      password: "secret",
+      database: "app",
+    });
+  });
+
+  test("readPostgresService fails on a file with no postgres service or a missing credential", () => {
+    expect(() => readPostgresService("services:\n  app:\n    image: x\n")).toThrow(/postgres/);
+    expect(() => readPostgresService("services:\n  postgres:\n    image: postgres:17\n")).toThrow(
+      /POSTGRES_USER/,
+    );
+    expect(() => readPostgresService("nope")).toThrow(/postgres/);
+  });
+
+  test("postgresUrl points at a host on the docker network, on the port Postgres listens on", () => {
+    const service = readPostgresService(compose);
+    expect(postgresUrl(service, "bg-golden-1-postgres")).toBe(
+      "postgres://postgres:secret@bg-golden-1-postgres:5432/app",
+    );
+  });
+});
+
+describe("goldenSchema (the table golden adds is written in the dialect of the configuration's ORM)", () => {
+  test("is a pgTable for Postgres and the SQLite one otherwise", () => {
+    const [cloudflare] = CONFIGURATIONS;
+    const postgres = CONFIGURATIONS.find(hasPostgres);
+    expect(goldenSchema(cloudflare as Configuration)).toBe(GOLDEN_SCHEMA);
+    expect(goldenSchema(postgres as Configuration)).toBe(GOLDEN_PG_SCHEMA);
+    expect(GOLDEN_PG_SCHEMA).toContain('from "drizzle-orm/pg-core"');
+    expect(GOLDEN_PG_SCHEMA).toContain(`pgTable("${GOLDEN_TABLE}"`);
+    expect(GOLDEN_PG_SCHEMA).toContain("export const goldenNotes");
+  });
+});
+
+describe("expectPostgresMigrated (what psql finds in the Postgres the container migrated)", () => {
+  test("passes on the table and one recorded migration", () => {
+    expect(() =>
+      expectPostgresMigrated({ table: "1\n", migrations: "1\n" }, "golden_notes"),
+    ).not.toThrow();
+  });
+
+  test("fails naming the table when it is missing", () => {
+    expect(() =>
+      expectPostgresMigrated({ table: "0\n", migrations: "1\n" }, "golden_notes"),
+    ).toThrow(/golden_notes/);
+  });
+
+  test("fails when the migration was not recorded once", () => {
+    expect(() =>
+      expectPostgresMigrated({ table: "1\n", migrations: "0\n" }, "golden_notes"),
+    ).toThrow(/__drizzle_migrations/);
+    expect(() =>
+      expectPostgresMigrated({ table: "1\n", migrations: "2\n" }, "golden_notes"),
+    ).toThrow(/__drizzle_migrations/);
+    expect(() => expectPostgresMigrated({ table: "", migrations: "" }, "golden_notes")).toThrow();
+  });
+});
+
 describe("buildsImage (golden builds the image of the configuration that ships a Dockerfile)", () => {
   test("is the dockerfile configuration and no other", () => {
     expect(
       CONFIGURATIONS.filter((configuration) => buildsImage(configuration)).map(({ name }) => name),
-    ).toEqual(["dockerfile"]);
+    ).toEqual(["dockerfile", "dockerfile-postgres"]);
   });
 });
 
@@ -897,7 +1037,10 @@ describe("the deploy phases (what golden proves of deploy/cloudflare-actions wit
       "cloudflare",
       "fronts",
     ]);
-    expect(CONFIGURATIONS.filter(refusesDeploy).map(({ name }) => name)).toEqual(["dockerfile"]);
+    expect(CONFIGURATIONS.filter(refusesDeploy).map(({ name }) => name)).toEqual([
+      "dockerfile",
+      "dockerfile-postgres",
+    ]);
     // Every configuration either installs it or is checked to refuse it: none is left unexamined.
     for (const configuration of CONFIGURATIONS) {
       expect(hasDeploy(configuration) !== refusesDeploy(configuration)).toBe(true);
@@ -1433,6 +1576,7 @@ describe("the launcher phase (dev/portless)", () => {
     expect(CONFIGURATIONS.filter(hasPortless).map(({ name }) => name)).toEqual([
       "cloudflare",
       "dockerfile",
+      "dockerfile-postgres",
     ]);
     expect(PORTLESS_MIN_TESTS).toBeGreaterThan(0);
   });
@@ -1629,6 +1773,11 @@ describe("the database phases", () => {
 
     test("fails when nothing was generated: an empty schema writes no migration", () => {
       expect(() => expectGenerated(["meta"], sql, "golden_notes")).toThrow(/no migration/);
+    });
+
+    test("accepts the double-quoted table of a Postgres migration", () => {
+      const pg = 'CREATE TABLE "golden_notes" (\n\t"id" serial PRIMARY KEY NOT NULL\n);\n';
+      expect(expectGenerated(["0000_x.sql", "meta"], pg, "golden_notes")).toBe("0000_x.sql");
     });
 
     test("fails when the migration does not create the table", () => {
@@ -1904,6 +2053,7 @@ describe("the email phases", () => {
     expect(CONFIGURATIONS.filter(hasEmail).map(({ name }) => name)).toEqual([
       "cloudflare",
       "dockerfile",
+      "dockerfile-postgres",
     ]);
     expect(hasEmail({ name: "a", modules: ["api/elysia"], items: false })).toBe(false);
     // The dockerfile project has no db, so no auth: email installs there on its own, and cleanly.
@@ -1959,6 +2109,7 @@ describe("the email phases", () => {
       expect(PENDING).toEqual({
         cloudflare: ["email/resend/wire-email-into-auth"],
         dockerfile: [],
+        "dockerfile-postgres": [],
         fronts: [],
       });
       expect(Object.keys(RESOLUTIONS)).toEqual(["email/resend/wire-email-into-auth"]);
@@ -2276,6 +2427,7 @@ describe("the favicons config/branding ships, binary template files", () => {
       "cloudflare",
       "dockerfile",
       "fronts",
+      "dockerfile-postgres",
     ]);
   });
 
@@ -2452,6 +2604,7 @@ describe("every web shell serves the favicons and the manifest config/branding s
       cloudflare: ["spa", "ssr", "static"],
       dockerfile: ["spa"],
       fronts: ["spa", "ssr", "static"],
+      "dockerfile-postgres": ["spa"],
     });
   });
 

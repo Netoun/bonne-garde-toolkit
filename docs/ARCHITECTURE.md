@@ -41,6 +41,8 @@ Bonne Garde is a Bun monorepo of a CLI, the registry it installs from and the ba
 
 Everything below describes the code the registry ships into a generated project (`apps/api` from `api/elysia`, `apps/spa` from `web/spa`, ...), not this repository's tree.
 
+On the `dockerfile` provider the `db` feature of `create` gives `db/libsql`, an SQLite file in the container's volume. A project that wants Postgres (`DATABASE_URL`, `compose.postgres.yaml` for a local one) gets it with `bonne-garde add db/postgres orm/drizzle`, not from `create`, which never asks which library fills a slot. `bun run golden` builds that project as the `dockerfile-postgres` configuration and migrates a real Postgres in docker.
+
 ## Communication
 
 All front apps communicate with the API via **Eden Treaty**, a type-safe HTTP client inferred directly from Elysia types:
