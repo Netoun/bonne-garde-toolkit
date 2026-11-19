@@ -18,7 +18,7 @@ registry/modules/auth/better-auth/
 {
   "id": "better-auth",
   "category": "auth",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "title": "Better Auth",
   "description": "Session auth with email/password and verification.",
   "peers": { "db": ["d1"], "orm": ["drizzle"] },
