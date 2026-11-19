@@ -4,7 +4,7 @@ import { isRepoRelative } from "./repo-path";
 /** This repo's slug — written to a new project's `platform.remote`, and the registry source once published. */
 export const DEFAULT_PLATFORM_REMOTE = "github:Netoun/bonne-garde-toolkit";
 
-/** An item from a shadcn-style registry (spec 030), recorded under `items`. */
+/** An item from a shadcn-style registry, recorded under `items`. */
 export type ItemRecord = {
   source: string;
   version: string;
@@ -32,8 +32,8 @@ export type AppRecord = {
 export type PatchStatus = "applied" | "skipped" | "failed";
 
 /**
- * Outcome of one tier-2 patch (spec 060). `reason` is required when `status` is `failed`, and
- * `intention` then names the pending intention the failure became (spec 065): `bonne-garde doctor` reads it
+ * Outcome of one tier-2 patch. `reason` is required when `status` is `failed`, and
+ * `intention` then names the pending intention the failure became: `bonne-garde doctor` reads it
  * back from here, since `.bg/` is disposable.
  */
 export type PatchOutcome = {
@@ -50,7 +50,7 @@ export type ModuleIntentions = {
   skipped: Record<string, string>;
 };
 
-/** An installed native module (spec 035), recorded under `modules[<category>]`. */
+/** An installed native module, recorded under `modules[<category>]`. */
 export type ModuleRecord = {
   id: string;
   variant: string;
@@ -99,7 +99,7 @@ const SCOPE_RE = /^@[a-z0-9-]+$/;
 const PLATFORM_VERSION_RE = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 /** Canonical platform intention ids: `vX.Y.Z/slug`. */
 const PLATFORM_INTENTION_ID_RE = /^v\d+\.\d+\.\d+\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
-/** Canonical module intention ids: `<category>/<module-id>/<slug>` (spec 065). */
+/** Canonical module intention ids: `<category>/<module-id>/<slug>`. */
 const MODULE_INTENTION_ID_RE =
   /^[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SHA256_RE = /^[0-9a-f]{64}$/;
@@ -457,7 +457,7 @@ export function parseProjectManifest(input: unknown): ProjectManifest {
 }
 
 /**
- * Spec 020 "Migration from v1": `installed` becomes `items`, `capabilities` is dropped, and `files`
+ * `installed` becomes `items`, `capabilities` is dropped, and `files`
  * / `regions` start empty — pre-v2 files are user-owned until re-added. Every v1 `installed` entry
  * was written by the item engine, so none of them is a module record.
  */
@@ -486,7 +486,7 @@ function migrateV1(input: Record<string, unknown>): ProjectManifest {
 
 /**
  * Reads a `bg.json` of any supported version as a v2 manifest. `migratedFrom` tells the caller the
- * file was v1, so the CLI can state the rewrite instead of doing it silently (spec 020). Unknown
+ * file was v1, so the CLI can state the rewrite instead of doing it silently. Unknown
  * versions fail closed.
  */
 export function readProjectManifest(input: unknown): ProjectManifestRead {
@@ -502,7 +502,7 @@ export type IntentionOutcome =
       status: "applied";
       /**
        * Repo-relative files an install intention edited (its `adapt` Reference Paths): each takes an
-       * `intent[<id>]` region owned by the intention's module (060). A release intention has no module
+       * `intent[<id>]` region owned by the intention's module. A release intention has no module
        * to own one, so it records none.
        */
       adapted?: readonly string[];
@@ -512,7 +512,7 @@ export type IntentionOutcome =
 const INTENT_REGION_RE = /^intent\[([^\]]+)\]$/;
 
 /**
- * The region an applied install intention takes on a file it edited (060): `intent[<id>]`, owned by
+ * The region an applied install intention takes on a file it edited: `intent[<id>]`, owned by
  * the intention's module. It names no place in the file and has no value to compare, so what is
  * checked of it is that `bg.json` records the intention as applied.
  */
@@ -579,7 +579,7 @@ function withOutcome(
 }
 
 /**
- * Spec 065 "Recording": the outcome of one intention lands where its id says it belongs. A release
+ * The outcome of one intention lands where its id says it belongs. A release
  * id (`vX.Y.Z/slug`) goes to `platform.intentions`; an install id (`<category>/<module-id>/<slug>`)
  * goes to that module's record, which must exist. Returns a new manifest; nothing is written here,
  * and whether the intention's Validation passed is the caller's to have established.

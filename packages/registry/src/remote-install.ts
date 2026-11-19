@@ -8,7 +8,7 @@ import type { RegistryCatalog, RegistryModule } from "./types";
 
 const MODULE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-/** What a name on the command line may be as a module (spec 050 step 3): `<category>/<id>`, or a bare id in any category. */
+/** What a name on the command line may be as a module (step 3 of `add`): `<category>/<id>`, or a bare id in any category. */
 function moduleRefsFor(name: string): ModuleRef[] {
   const [first, second, ...more] = name.split("/");
   if (first === undefined || more.length > 0) {
@@ -62,7 +62,7 @@ export async function loadNamedModules(
 
 /**
  * The installed modules that a catalog read over the network does not hold yet. Selecting a variant
- * again (050 step 7) needs each installed module's `module.json`, which `loadNamedModules` fetched only
+ * again needs each installed module's `module.json`, which `loadNamedModules` fetched only
  * for the names a command gave, so a call that adds a module asks for the others here and a call that adds
  * none never does. A module the registry no longer has is left out. A local catalog is returned as it is.
  */

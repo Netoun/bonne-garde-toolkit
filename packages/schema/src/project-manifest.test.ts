@@ -117,7 +117,7 @@ describe("parseProjectManifest (v2)", () => {
       sha256: SHA,
     });
     expect(parseProjectManifest(JSON.parse(JSON.stringify(manifest)))).toEqual(manifest);
-    // `$schema` leads the serialised form, as in spec 020's example.
+    // `$schema` leads the serialised form, as in the documented example.
     expect(Object.keys(manifest)[0]).toBe("$schema");
   });
 

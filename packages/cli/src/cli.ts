@@ -110,13 +110,13 @@ export async function runCli(argv: string[]): Promise<number> {
     const dryRun = takeFlag(args, "--dry-run");
     const force = takeFlag(args, "--force");
     const noInstall = takeFlag(args, "--no-install");
-    // Spec 050: --yes selects option defaults and never prompts. `add` has no prompt at all, so it
+    // --yes selects option defaults and never prompts. `add` has no prompt at all, so it
     // is accepted and changes nothing: options always resolve from their defaults.
     takeFlag(args, "--yes");
     const source = takeOption(args, "--source");
     if (takeOption(args, "--set") !== undefined) {
       throw new Error(
-        "--set is not supported yet: options resolve from their defaults, and spec 050 does not say which module a key addresses when several are named",
+        "--set is not supported yet: options resolve from their defaults, and it is not defined which module a key addresses when several are named",
       );
     }
     // JSON on stdout for an agent, a pipe, or --json; a summary for a person at a terminal.
@@ -124,7 +124,7 @@ export async function runCli(argv: string[]): Promise<number> {
     if (args.length === 0) {
       throw new Error("add requires at least one item or module");
     }
-    // `--force` does not reach a module the call plans again without naming it (050 step 7): say which call does.
+    // `--force` does not reach a module the call plans again without naming it: say which call does.
     const forceHint = (error: unknown): never => {
       if (error instanceof ApplyError && error.nameToForce.length > 0) {
         const { nameToForce } = error;
@@ -186,11 +186,11 @@ export async function runCli(argv: string[]): Promise<number> {
         {
           dryRun,
           items: plan.items.map((i) => i.name),
-          // The dependencies an item adds to the package.json its files land in (030): a patch each, owned by the item.
+          // The dependencies an item adds to the package.json its files land in: a patch each, owned by the item.
           itemPatches: result.patches
             .filter((patch) => plan.items.some((item) => item.name === patch.module))
             .map(({ module, ...patch }) => ({ item: module, ...patch })),
-          // Modules of `modules` that this call did not name, planned again on another variant (050 step 7).
+          // Modules of `modules` that this call did not name, planned again on another variant.
           reselected: reselected.map(({ ref, ...variants }) => ({
             module: `${ref.category}/${ref.id}`,
             ...variants,
@@ -257,9 +257,7 @@ export async function runCli(argv: string[]): Promise<number> {
   }
 
   if (command === "remove" || command === "replace") {
-    throw new Error(
-      `bonne-garde ${command} is not supported yet: spec 050 "remove and replace" is not implemented`,
-    );
+    throw new Error(`bonne-garde ${command} is not supported yet`);
   }
 
   if (command === "record") {
@@ -330,7 +328,7 @@ export async function runCli(argv: string[]): Promise<number> {
     if (!registry) {
       throw new Error("registry directory not found (pass --registry)");
     }
-    // One linter for both producers (065): the release migrations, then the intentions of modules.
+    // One linter for both producers: the release migrations, then the intentions of modules.
     const result = await lintIntentions(dir);
     const modules = await lintModuleIntentions(registry);
     console.log(

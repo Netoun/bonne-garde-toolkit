@@ -16,7 +16,7 @@
 
 ## Project overview
 
-Bonne Garde is a shadcn-inspired toolkit: an empty base template, a CLI (`bonne-garde`) that installs registry content into it, and the registry of UI items, feature items and full-stack modules. Normative specs live in [`docs/specs/`](./docs/specs/README.md). The legacy monorepo (`apps/*`, `packages/{ui,emails,config,api-runtime}`) was dissolved into the registry and is no longer in-tree; [`docs/plans/2026-10-sync/09-dissolution.md`](./docs/plans/2026-10-sync/09-dissolution.md) records where each piece went.
+Bonne Garde is a shadcn-inspired toolkit: an empty base template, a CLI (`bonne-garde`) that installs registry content into it, and the registry of UI items, feature items and full-stack modules. The platform's concepts, module format and CLI behaviour are in [`docs/`](./docs/CONCEPTS.md), and the decisions behind them in [`docs/adr/`](./docs/adr). The legacy monorepo (`apps/*`, `packages/{ui,emails,config,api-runtime}`) was dissolved into the registry and is no longer in-tree. The git history records where each piece went.
 
 | Layer                     | Choice                                                                                                          |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -52,7 +52,7 @@ bonne-garde-toolkit/
 ├── registry/           # ui/, features/, modules/<category>/<id>
 ├── templates/base      # empty monorepo template
 ├── scripts/            # golden, registry build, pack, doc generators
-├── docs/               # specs/ (normative), plans/ (history)
+├── docs/               # concepts, guides, adr/ (decisions)
 └── migrations/         # per-release upgrade intentions
 ```
 
@@ -87,7 +87,7 @@ Most module and feature code imports packages that exist only after install, so 
 
 ### Do
 
-- **Read before writing**: this file → task/spec → existing code
+- **Read before writing**: this file → task → existing code
 - **Strict TDD**: red → green → refactor ([`docs/TESTING.md`](./docs/TESTING.md))
 - **Eden Treaty** for all front → API calls — never raw `fetch`
 - **shadcn via CLI**: `bunx shadcn@latest add <component>` — never copy by hand
@@ -102,7 +102,7 @@ Most module and feature code imports packages that exist only after install, so 
 - `npm` / `yarn` / `pnpm` / `npx` / `node` — `bun` / `bunx` only. Exception: the tests that prove the packed CLI runs on Node drive it with `node`
 - Mock Drizzle, mock `fetch`, snapshot tests
 - CF proprietary APIs outside `DB` / `BUCKET`
-- Skip phases defined in the spec/issue
+- Skip phases defined in the issue
 - `--no-verify`, `reset --hard`, `push --force` without explicit request
 
 ### Clean code filter (before and after each write)
@@ -135,13 +135,19 @@ Before considering a task done:
 
 Do **not** preload everything. Open only what the current task needs:
 
-| Need                                              | File                                                                                                                   |
-| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Detailed clean-code / types / product conventions | [`docs/RULES.md`](./docs/RULES.md)                                                                                     |
-| Test patterns                                     | [`docs/TESTING.md`](./docs/TESTING.md)                                                                                 |
-| All scripts                                       | [`docs/COMMANDS.md`](./docs/COMMANDS.md)                                                                               |
-| System architecture                               | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)                                                                       |
-| Design system                                     | [`docs/DESIGN.md`](./docs/DESIGN.md)                                                                                   |
-| Environment variables                             | [`docs/ENVIRONMENT.md`](./docs/ENVIRONMENT.md)                                                                         |
-| How agent files are wired across tools            | [`docs/AGENTING.md`](./docs/AGENTING.md)                                                                               |
-| Elysia routes, validation, plugins, Eden          | [Official Elysia skill](./.claude/skills/elysiajs/SKILL.md) — follow repo conventions when its generic examples differ |
+| Need                                               | File                                                                                                                   |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Detailed clean-code / types / product conventions  | [`docs/RULES.md`](./docs/RULES.md)                                                                                     |
+| Test patterns                                      | [`docs/TESTING.md`](./docs/TESTING.md)                                                                                 |
+| Vocabulary, tiers, categories, items               | [`docs/CONCEPTS.md`](./docs/CONCEPTS.md)                                                                               |
+| Writing a module (`module.json`, patches, intents) | [`docs/MODULES.md`](./docs/MODULES.md)                                                                                 |
+| `bg.json`, regions, checksums, conflict policy     | [`docs/MANIFEST.md`](./docs/MANIFEST.md)                                                                               |
+| What `create`, `add`, `doctor` do                  | [`docs/CLI.md`](./docs/CLI.md)                                                                                         |
+| Release, publish, upgrades                         | [`docs/RELEASE.md`](./docs/RELEASE.md)                                                                                 |
+| Why the platform is built this way                 | [`docs/adr/`](./docs/adr)                                                                                              |
+| All scripts                                        | [`docs/COMMANDS.md`](./docs/COMMANDS.md)                                                                               |
+| System architecture                                | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)                                                                       |
+| Design system                                      | [`docs/DESIGN.md`](./docs/DESIGN.md)                                                                                   |
+| Environment variables                              | [`docs/ENVIRONMENT.md`](./docs/ENVIRONMENT.md)                                                                         |
+| How agent files are wired across tools             | [`docs/AGENTING.md`](./docs/AGENTING.md)                                                                               |
+| Elysia routes, validation, plugins, Eden           | [Official Elysia skill](./.claude/skills/elysiajs/SKILL.md) — follow repo conventions when its generic examples differ |

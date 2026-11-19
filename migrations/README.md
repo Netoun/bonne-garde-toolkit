@@ -1,6 +1,6 @@
 # Migration intentions
 
-Per-release upgrade intentions for consumer projects (see [`docs/specs/090-upgrades-and-intentions.md`](../docs/specs/090-upgrades-and-intentions.md)).
+Per-release upgrade intentions for consumer projects (see [`docs/RELEASE.md`](../docs/RELEASE.md)).
 
 Layout:
 

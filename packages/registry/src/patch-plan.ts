@@ -3,7 +3,7 @@ import { DEPENDENCY_MAPS, type DependencyMap } from "./package-dependencies";
 import { PlanError } from "./resolve-plan";
 
 /**
- * Tier-2 patches as a variant declares them (spec 060), checked. Each type is applied by this CLI
+ * Tier-2 patches as a variant declares them, checked. Each type is applied by this CLI
  * or refused at planning time, never skipped: the catalog is closed, and a variant is never
  * installed with a patch it could not apply. Every type also takes an optional `intent`: the
  * sentence a failed patch carries into the pending intention it becomes.

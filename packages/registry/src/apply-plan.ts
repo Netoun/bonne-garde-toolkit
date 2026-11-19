@@ -28,7 +28,7 @@ export type ApplyOptions = {
   sourceLabel: string;
   /** Overwrites what is in the way of the items and the modules named in the call, not of `reselected` ones. */
   force?: boolean;
-  /** The entries of `modules` that the call plans again without naming them (050 step 7). */
+  /** The entries of `modules` that the call plans again without naming them. */
   reselected?: Reselected[];
   dryRun?: boolean;
   now?: () => string;
@@ -37,7 +37,7 @@ export type ApplyOptions = {
 export type ApplyResult = {
   written: string[];
   skippedIdentical: string[];
-  /** Files left as the project has them: they carry recorded regions (060), so only the regions were classified. */
+  /** Files left as the project has them: they carry recorded regions, so only the regions were classified. */
   kept: string[];
   manifest: ProjectManifest;
   /** Files whose recorded owner a module changed: replaced under `--force`, or re-created after a deletion. */
@@ -47,12 +47,12 @@ export type ApplyResult = {
   /** What each tier-2 patch did: `applied`, `skipped` or `failed` with its reason, and per region. */
   patches: PatchReport[];
   /**
-   * The failed patches as pending tier-3 intentions (060 "Degradation", 050 step 11), minus the ones
+   * The failed patches as pending tier-3 intentions, minus the ones
    * `bg.json` already records as applied or skipped. Staging them under `.bg/` is the caller's.
    */
   pending: PendingIntention[];
   /**
-   * The intentions the installed modules author (065), minus the ones `bg.json` already records as
+   * The intentions the installed modules author, minus the ones `bg.json` already records as
    * applied or skipped. They are pending from the day the module is added, so nothing in the tree
    * says they are: staging them is the caller's, and `bonne-garde record` is what closes them.
    */
@@ -97,7 +97,7 @@ function recordedPatches(
 }
 
 /**
- * Spec 020 "Module record". Re-adding the module that already fills a category replaces its record
+ * Re-adding the module that already fills a category replaces its record
  * rather than appending a second, and keeps the intentions recorded for it. `version` is the
  * platform version, as an item's is.
  */

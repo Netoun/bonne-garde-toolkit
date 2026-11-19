@@ -4,7 +4,7 @@ import { jsonRegion } from "./jsonc-merge";
 import { lineIndent, ownLineIndent } from "./text-layout";
 
 /**
- * `package.dependencies` (spec 060): adds entries to the `dependencies` and `devDependencies` of a
+ * `package.dependencies`: adds entries to the `dependencies` and `devDependencies` of a
  * `package.json`, each where the project's formatter (`sortPackageJson`) sorts it, so the file is
  * what `vp fmt` writes right after the patch and `bun run check` has nothing to say. Every edit goes
  * through `jsonc-parser`, so comments and the file's own layout survive. A region is one entry,

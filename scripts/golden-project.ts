@@ -119,7 +119,7 @@ export type Configuration = {
 };
 
 /**
- * The answer sets golden builds, each as `bonne-garde create` maps it (040), so a set golden proves is one
+ * The answer sets golden builds, each as `bonne-garde create` maps it, so a set golden proves is one
  * `create` produces. A module that is in none of them, and not in `EXCLUDED_MODULES`, fails the run,
  * so a new module is a decision made here and not a silent gap. `provider` admits one module, and a
  * variant of `api` is selected on it, which is why each provider has a set.
@@ -138,7 +138,7 @@ export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
     features: ["email", "portless"],
     pm: "bun",
   },
-  // The fronts alone (040: `--apps spa`): no api, so no Eden client and no API variable, deployed.
+  // The fronts alone: no api, so no Eden client and no API variable, deployed.
   fronts: {
     apps: ["spa", "ssr", "static"],
     provider: "cloudflare",
@@ -280,7 +280,7 @@ export function expectSeeded(
 
 /**
  * What a project needs for `auth/better-auth` but its ORM. Adding auth to it is refused, and the
- * message names the missing peer's category (035 and 050 acceptance), before anything is written.
+ * message names the missing peer's category, before anything is written.
  */
 export const WITHOUT_ORM: readonly string[] = [
   "provider/cloudflare",
@@ -580,7 +580,7 @@ export function expectWorkflow(
   }
 }
 
-/** `bonne-garde add` of a module on a provider it does not accept fails and names the provider that is installed (035: a peer outside the allow-list). */
+/** `bonne-garde add` of a module on a provider it does not accept fails and names the provider that is installed. */
 export function expectProviderRefusal(
   attempt: Attempt,
   module: string,
@@ -724,7 +724,7 @@ const REFUSED_ITEM = "button";
 const REFUSED_MODULE = "ui/shadcn";
 
 /**
- * The feature items (030, 080): front-app source in `apps/spa/src/features`, which need the modules
+ * The feature items: front-app source in `apps/spa/src/features`, which need the modules
  * their `meta.needsModules` names. A test pins this list to the registry's.
  */
 export const FEATURE_ITEMS: readonly string[] = ["spa-auth", "spa-backoffice"];
@@ -903,7 +903,7 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
 };
 
 /**
- * The patches the feature items make (030, 060): the `name@version` dependencies each writes into the
+ * The patches the feature items make: the `name@version` dependencies each writes into the
  * package.json of the app its files land in, one region each, owned by the item. A bare name is not one.
  * Golden checks that `bonne-garde add` reports exactly these as `applied` and, run again, as `skipped`.
  */
@@ -928,7 +928,7 @@ export const PATCHED_ITEMS: Readonly<Record<string, Readonly<Record<string, read
     dockerfile: {},
   };
 
-/** One patch of a module, as `bonne-garde add` prints it (spec 060): its outcome and, per region, what it did. */
+/** One patch of a module, as `bonne-garde add` prints it: its outcome and, per region, what it did. */
 export type AddedPatch = {
   type: string;
   file: string;
@@ -937,7 +937,7 @@ export type AddedPatch = {
   regions: { region: string; status: string }[];
 };
 
-/** A module `bonne-garde add` reported, with the commands it declares to validate itself (spec 050 step 15) and its patches. */
+/** A module `bonne-garde add` reported, with the commands it declares to validate itself and its patches. */
 export type AddedModule = { module: string; checks: string[]; patches: AddedPatch[] };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1021,7 +1021,7 @@ export function readAddedModules(stdout: string, expected: readonly string[]): A
 }
 
 /**
- * The dependencies the items added, in the `itemPatches` `bonne-garde add` prints (030), shaped as the modules' are
+ * The dependencies the items added, in the `itemPatches` `bonne-garde add` prints, shaped as the modules' are
  * (an item is the owner of its regions) so `expectPatches` and `expectRegionsRecorded` read both alike.
  */
 export function readAddedItems(stdout: string): AddedModule[] {
@@ -1046,7 +1046,7 @@ export function readAddedItems(stdout: string): AddedModule[] {
 }
 
 /**
- * Spec 060: a failed patch is never silent, and a re-add finds every region present and equal.
+ * A failed patch is never silent, and a re-add finds every region present and equal.
  * Checks every patch `bonne-garde add` reported against `status`, and the regions of each module against
  * `expected`, which is where golden says which modules patch what.
  */
@@ -1176,7 +1176,7 @@ const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes)
 export const FAVICONS_DIR = "packages/config/assets/favicons";
 
 /**
- * The favicons that are binary template files (035): the first the registry ships. `favicon.svg` and
+ * The favicons that are binary template files: the first the registry ships. `favicon.svg` and
  * `site.webmanifest` are text, and the project holds those like any other file.
  */
 export const BINARY_FAVICONS = [
@@ -1475,7 +1475,7 @@ export const MAILER_FILE = "packages/auth/src/mailer.ts";
 const WIRED_TEST_FILE = "packages/auth/src/mailer.wired.test.ts";
 
 /**
- * The intentions `bonne-garde add` leaves pending (050 step 14, 065), per configuration: what the variants it
+ * The intentions `bonne-garde add` leaves pending, per configuration: what the variants it
  * selects ship. Golden resolves each the way an executor would, and a configuration that gains one is a
  * decision made here. The dockerfile project has no auth, so email selects the variant that wires nothing
  * and nothing is pending: it installs cleanly and `doctor --strict` is green as it is.
@@ -1514,7 +1514,7 @@ export function expectPending(reported: readonly string[], expected: readonly st
   }
 }
 
-/** A module `bonne-garde add` planned again though the command did not name it (050 step 7): the variant it left and the one it took. */
+/** A module `bonne-garde add` planned again though the command did not name it: the variant it left and the one it took. */
 export type Reselected = { module: string; from: string; to: string };
 
 /** The modules in the `reselected` list `bonne-garde add` prints. */
@@ -1556,7 +1556,7 @@ export function expectReselected(
 }
 
 /**
- * The other order (050 step 7, 035): email installed first, so on the variant that wires nothing, then
+ * The other order: email installed first, so on the variant that wires nothing, then
  * auth, whose install has to plan email again on the variant that matches it. The configurations
  * install auth first, which is the order 035 gives, so this has a project of its own.
  */
@@ -1644,7 +1644,7 @@ test("a password reset request is sent the reset email, with the page that takes
 }
 
 /**
- * How golden resolves an intention the way an executor does (065): applies the edit its document
+ * How golden resolves an intention the way an executor does: applies the edit its document
  * describes, and adds the test its Validation names. Recording it is the caller's, once the project's
  * typecheck and tests, which run that test, have passed.
  */
@@ -1682,7 +1682,7 @@ function resolution(id: string): Resolution {
   return found;
 }
 
-/** The region `bonne-garde record` leaves on a file an intention edited (060): `intent[<id>]`, spelled out here as a consumer reads it. */
+/** The region `bonne-garde record` leaves on a file an intention edited: `intent[<id>]`, spelled out here as a consumer reads it. */
 export function intentRegion(id: string): string {
   return `intent[${id}]`;
 }
@@ -2074,7 +2074,7 @@ export type Attempt = { code: number; stderr: string };
 
 /**
  * An item that lands in `packages/ui` is refused until a `ui` module is named, and one that lands in an
- * app's `features` folder until an `auth` module is (030). Golden tries each with the packed CLI in a
+ * app's `features` folder until an `auth` module is. Golden tries each with the packed CLI in a
  * project that has none, before installing anything: the refusal has to carry the command that fixes
  * it, every missing module in it, as an agent running `bonne-garde add` reads it and nothing else.
  */
@@ -2506,7 +2506,7 @@ async function configured(
       }
     });
   }
-  // What an executor does with each pending intention (065), once every install is known to be stable:
+  // What an executor does with each pending intention, once every install is known to be stable:
   // the edit its document describes, and the test its Validation names. Recording waits for that
   // Validation, which is the project's own typecheck, tests and check below.
   if (pending.length > 0) {
@@ -3227,7 +3227,7 @@ if (import.meta.main) {
 }
 
 /**
- * A feature item in a project that has every module it needs but one (030): refused, the one named in a
+ * A feature item in a project that has every module it needs but one: refused, the one named in a
  * command that fixes it, and nothing written. The packed CLI is what answers, as a consumer's agent reads it.
  */
 async function refusedFeature(

@@ -260,7 +260,7 @@ describe("the category table", () => {
     expect(MODULE_CATEGORIES.slice(0, 2)).toEqual(["pm", "provider"]);
   });
 
-  it("agrees with spec 035 on cardinality", () => {
+  it("gives each category its cardinality", () => {
     expect(categoryCardinality("pm")).toBe("one");
     expect(categoryCardinality("provider")).toBe("one");
     expect(categoryCardinality("config")).toBe("one");
@@ -270,7 +270,7 @@ describe("the category table", () => {
     expect(categoryCardinality("dev")).toBe("many");
   });
 
-  it("is spec 035's table, in its order: config right after tooling, dev last", () => {
+  it("is in topological order: config right after tooling, dev last", () => {
     expect([...MODULE_CATEGORIES]).toEqual([
       "pm",
       "provider",

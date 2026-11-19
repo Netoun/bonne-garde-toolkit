@@ -1,5 +1,5 @@
 /**
- * Spec 040: what `create` asks, and the registry names each answer stands for. Which answers go
+ * What `create` asks, and the registry names each answer stands for. Which answers go
  * together is the registry's to say: a set is checked as `bonne-garde add` would plan it (`Check`), so no
  * compatibility rule lives here.
  */
@@ -152,7 +152,7 @@ export function parseFlagList<T extends string>(
 export type Check = (names: string[]) => void;
 
 /**
- * The questions `create` asks on a terminal (spec 040). `one` picks a single answer, `initial` first;
+ * The questions `create` asks on a terminal. `one` picks a single answer, `initial` first;
  * `many` picks any number, none included; `warn` says why a set was refused before it is asked again.
  */
 export type Prompter = {

@@ -42,7 +42,7 @@ The root `vite.config.ts` stops that, which is part of why the module exists.
 The lint rules, the plugins, the `es2022` and `node` env, the fmt options and `staged` are the root
 config's, unchanged. Four things differ:
 
-- **Added:** `.bg/`, the scratch root of the intentions ([065](../../../../docs/specs/065-intentions.md)),
+- **Added:** `.bg/`, the scratch root of the intentions ([intentions](../../../../docs/MODULES.md#tier-3-intentions)),
   in both ignore lists. The base template's stub carried it; the root config has no use for it.
 - **Added:** `packages/db/migrations/` in the fmt ignore list. `orm/drizzle`'s `bun run db:generate`
   writes `meta/_journal.json` and a snapshot there in drizzle-kit's own layout, and rewrites them on every
@@ -55,7 +55,7 @@ config's, unchanged. Four things differ:
   by the next one, and `bun run check` would fail from the first intention a project records until
   someone formatted the file again.
 - **Re-keyed:** the three `lint.overrides`. The root config names the legacy apps; this one names the
-  homes [035](../../../../docs/specs/035-module-registry.md) fixes, because that is where generated
+  homes [concepts](../../../../docs/CONCEPTS.md) fixes, because that is where generated
   code lands whatever the app ids are.
 
 | Override                         | Files                           | What it does                                                         |
@@ -83,5 +83,5 @@ with the `react` plugin; its files have no JSX, so the rules have nothing to rep
 
 - `knip` and its `knip.jsonc` wait for the first patch type (`scripts.merge`): a root `package.json`
   edit is a patch, and `add` refuses patches today.
-- It does not run the gate on `bonne-garde add`: spec 050 step 15 is not implemented, so `checks` is printed.
+- It does not run the gate on `bonne-garde add`: `add` does not run `checks` yet, so it prints them.
   `bun run golden` runs it.

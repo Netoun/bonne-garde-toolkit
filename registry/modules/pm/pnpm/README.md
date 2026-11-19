@@ -2,8 +2,8 @@
 
 pnpm installs the project, and Node runs everything: scripts (`tsx`), tests (`vp test`), Vite+. Every
 project has one `pm` module, which `bg create` adds from its first question (`--pm pnpm`, the default when
-`create` was started from pnpm) ([035](../../../../docs/specs/035-module-registry.md),
-[040](../../../../docs/specs/040-cli-create.md)).
+`create` was started from pnpm) ([concepts](../../../../docs/CONCEPTS.md),
+[CLI](../../../../docs/CLI.md)).
 
 ## What it writes
 

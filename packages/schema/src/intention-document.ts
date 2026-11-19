@@ -1,7 +1,7 @@
 import { isRepoRelative } from "./repo-path";
 
 /**
- * The intention document of spec 065: frontmatter, then sections. The parser is shared by every
+ * The intention document: frontmatter, then sections. The parser is shared by every
  * reader of one: the registry that plans a module's `intent/`, the CLI that stages, lints and records it.
  */
 
@@ -72,7 +72,7 @@ export type ModuleIntention = {
 };
 
 /**
- * Reads an intention a module authors under `intent/` (065, "Layout" and "Frontmatter"): the id is
+ * Reads an intention a module authors under `intent/`: the id is
  * `<category>/<module-id>/<slug>`, the slug being the file's own, the kind is `install` and the
  * domain is the module's category. Throws an `Error` naming the file on the first rule it breaks.
  * `moduleKey` is `<category>/<module-id>`.
@@ -152,7 +152,7 @@ export function sectionBody(source: string, name: string): string | null {
   return (end === -1 ? rest : rest.slice(0, end)).join("\n");
 }
 
-/** One bullet of Reference Paths (065): how the executor takes the path, and the path. A part the line lacks is `null`. */
+/** One bullet of Reference Paths: how the executor takes the path, and the path. A part the line lacks is `null`. */
 export type ReferencePath = { mode: "copy" | "adapt" | null; path: string | null };
 
 const REFERENCE_MODES: readonly string[] = ["copy", "adapt"];
@@ -192,7 +192,7 @@ export function isReferenceFile(path: string): boolean {
 
 /**
  * The files the intention declares `adapt`: the project files it edits, in the order written, once
- * each. `bonne-garde record` marks each of them as edited by the intention (060). A path that is not one file
+ * each. `bonne-garde record` marks each of them as edited by the intention. A path that is not one file
  * (a glob, a parent directory) is left out here, and is `intentions lint`'s to report.
  */
 export function adaptedPaths(source: string): string[] {

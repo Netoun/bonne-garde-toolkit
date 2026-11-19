@@ -14,7 +14,7 @@ import {
 } from "./ts-patches";
 
 /**
- * What the engine asks of every tier-2 patch type (spec 060), so that the conflict table lives in
+ * What the engine asks of every tier-2 patch type, so that the conflict table lives in
  * one place (`stagePatches`) and `doctor` reads every kind of region the same way. A patch names
  * regions; against a file's text each one is absent, equal to what the patch declares, or something
  * else; and a chosen subset of them can be written. The closed catalog is a `switch` per function, with no

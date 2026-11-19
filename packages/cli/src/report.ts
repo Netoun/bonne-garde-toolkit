@@ -2,7 +2,7 @@ import { cliRunner } from "@bonne-garde/schema";
 import { type AddOutcome } from "./add";
 import { checksNotice } from "./checks-notice";
 
-/** Spec 020: a v1 `bg.json` is rewritten as v2 on the next write, and that is stated, not silent. */
+/** A v1 `bg.json` is rewritten as v2 on the next write, and that is stated, not silent. */
 export function manifestMigrationNotice(dryRun: boolean): string {
   const changes =
     '"installed" becomes "items", "capabilities" is dropped, and "files" and "regions" start empty';
@@ -12,9 +12,8 @@ export function manifestMigrationNotice(dryRun: boolean): string {
 }
 
 /**
- * What an add left to the user, on stderr: `bonne-garde add`, and `bonne-garde create` for its template's add. Spec 060:
- * a failed patch never aborts the install and is never silent. It is a pending tier-3 intention
- * (050 steps 11 and 14), staged under .bg/add/ with the executor entry point.
+ * What an add left to the user, on stderr: `bonne-garde add`, and `bonne-garde create` for its template's add. A failed patch never aborts the install and is never silent. It is a pending tier-3 intention
+ *, staged under .bg/add/ with the executor entry point.
  */
 export function reportAdd(
   { modulePlans, result, migratedFrom, staged, reselected }: AddOutcome,
@@ -50,7 +49,7 @@ export function reportAdd(
   if (staged !== null) {
     console.error(
       `bonne-garde: ${pendingCount} pending intention${pendingCount === 1 ? "" : "s"}: ` +
-        `read ${staged.session} and follow it (spec 065), then ${cliRunner()} record <id> or ${cliRunner()} record <id> --skip "<reason>".`,
+        `read ${staged.session} and follow it, then ${cliRunner()} record <id> or ${cliRunner()} record <id> --skip "<reason>".`,
     );
   }
   const notice = checksNotice(modulePlans, pendingCount);
