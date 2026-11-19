@@ -2306,6 +2306,7 @@ describe("module contract", () => {
           "packages/db/src/postgres-test-db.ts",
           "packages/db/src/postgres-test-db.test.ts",
           "packages/db/src/schema/index.ts",
+          "packages/db/vite.config.ts",
         ];
         const ormPostgres = async () => {
           const { catalog, postgres } = await postgresModule();

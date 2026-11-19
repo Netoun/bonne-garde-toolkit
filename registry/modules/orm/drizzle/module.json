@@ -147,7 +147,8 @@
         "packages/db/src/postgres-module.test.ts",
         "packages/db/src/postgres-test-db.ts",
         "packages/db/src/postgres-test-db.test.ts",
-        "packages/db/src/schema/index.ts"
+        "packages/db/src/schema/index.ts",
+        "packages/db/vite.config.ts"
       ],
       "patch": [
         {

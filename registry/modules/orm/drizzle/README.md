@@ -63,11 +63,20 @@ only file shared with the other variants:
 | `src/postgres-index.ts`          | the same exports as `index.ts`                                                                         |
 | `src/postgres-test-db.ts`        | `createTestDb(schema?)` / `TestDb`: a fresh PGlite served over a socket, behind the postgres-js driver |
 | `src/postgres-drizzle.config.ts` | `dialect: postgresql`, `out: ./migrations`, `dbCredentials.url` from `DATABASE_URL`                    |
+| `vite.config.ts`                 | `testTimeout` and `hookTimeout`: 30 s, for the tests that start a PGlite                               |
 | `src/postgres-*.test.ts`         | each against a real Postgres engine (PGlite over its socket), no Docker                                |
 
 The test database is `postgres-test-db.ts` and not `postgres-testing.ts`: that path is `db/postgres`'s
-(`startTestPostgres`). `createTestDb` starts a server of its own on each call and leaves it to the end of the test
-process.
+(`startTestPostgres`).
+
+`createTestDb` starts a PGlite of its own on each call, about 150 MB and 0.7 s, and the first one of a process
+compiles its WebAssembly, which takes several seconds when the packages test in parallel. So:
+
+- `await db.$client.end()` closes the connection and also stops the server and the database: call it in an
+  `afterEach` or an `afterAll`, or a suite that calls `createTestDb` in every test grows to gigabytes.
+- The variant ships `packages/db/vite.config.ts` with `testTimeout` and `hookTimeout` at 30 s for the tests of
+  this package. A test in another package (`apps/api`) that calls `createTestDb` needs the same in its own
+  config, or a timeout on that test: the default 5 s is too short for the first call.
 
 It patches `packages/db/package.json` with the root export `./src/postgres-index.ts`, `./schema`, `./testing`
 (`./src/postgres-test-db.ts`) and the `db:generate` script (`drizzle-kit generate --config
