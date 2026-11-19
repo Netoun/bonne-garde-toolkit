@@ -29,7 +29,7 @@ Each answer names registry content, held in one table in the CLI (`packages/cli/
 
 - Which sets are valid is the registry's to say, never a table in the CLI: names are checked as `add` would plan them in an empty project (peers, cardinality, a variant per module, the modules each item needs). A combination becomes valid by changing the registry alone.
 - A flag answers its axis, which is then not asked. Under `--yes` or with no TTY a missing axis takes its default. `--provider` or `--features` with no app is refused.
-- On a TTY the questions are menus (the package manager first, then apps, provider, features; the directory when none is given); an answer the check refuses is asked again; Ctrl+C stops before anything is written, exit 130. Without a TTY on stdout, `create` prints plain lines (`created <target> with …`, then what is left to do, on stderr).
+- On a TTY the questions are menus (the package manager first, then apps, provider, features; the directory when none is given); an answer the check refuses is asked again; once something was asked, a recap of the answers (`Your project`) and `Create it?` come before anything is written, and `--yes`, no TTY on stdin, or flags for every answer skip both; Ctrl+C or no at the confirmation stops before anything is written, exit 130. Without a TTY on stdout, `create` prints plain lines (`created <target> with …`, then what is left to do, on stderr).
 - A failed patch or a pending intention of the add is reported as `add` reports it; it does not fail `create`.
 - Every prompt has an equivalent flag, and `--yes` resolves them all. A flag accepted but ignored is a defect.
 
