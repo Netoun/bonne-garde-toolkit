@@ -11,34 +11,34 @@
 
 `bonne-garde-toolkit` · From root
 
-| Script | Command |
-|--------|---------|
-| `bonne-garde` | `bun packages/cli/src/bin.ts` |
-| `check` | `vp check` |
-| `check:platform` | `vp check packages/cli packages/registry packages/schema scripts` |
-| `docs:build` | `bun run --filter @bonne-garde/docs build` |
-| `fmt` | `vp fmt --write` |
-| `fmt:check` | `vp fmt --check` |
-| `gen:architecture` | `bun scripts/gen-architecture.ts` |
-| `gen:commands` | `bun scripts/gen-commands.ts` |
-| `gen:playground` | `bun scripts/gen-playground.ts` |
-| `golden` | `bun scripts/golden-project.ts` |
-| `intentions:lint` | `bun packages/cli/src/bin.ts intentions lint` |
-| `knip` | `knip` |
-| `knip:fix` | `knip --fix --allow-remove-files` |
-| `lint` | `vp lint` |
-| `lint:fix` | `vp lint --fix` |
-| `pack:cli` | `bun scripts/pack-cli.ts` |
-| `prepare` | `husky` |
-| `publish:cli:dry` | `bun scripts/pack-cli.ts && bun pm pack --cwd dist/npm/bonne-garde` |
-| `registry:build` | `bun scripts/build-registry.ts` |
-| `test` | `bun run test:platform` |
-| `test:platform` | `bun run test:scripts && bun run --parallel --filter '@bonne-garde/*' test` |
-| `test:scripts` | `bun test ./scripts ./registry/modules --path-ignore-patterns 'registry/modules/{api,db,orm,auth,storage,web,email,deploy,provider/cloudflare,provider/dockerfile/template}/**'` |
-| `typecheck` | `bun run typecheck:platform` |
-| `typecheck:platform` | `bun run typecheck:scripts && bun run --parallel --filter '@bonne-garde/*' typecheck` |
-| `typecheck:scripts` | `tsc --project scripts/tsconfig.json --noEmit` |
-| `verify` | `bun run check && bun run knip && bun run typecheck && bun run test && bun run intentions:lint && bun run registry:build && bun run docs:build` |
+| Script               | Command                                                                                                                                                                          |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bonne-garde`        | `bun packages/cli/src/bin.ts`                                                                                                                                                    |
+| `check`              | `vp check`                                                                                                                                                                       |
+| `check:platform`     | `vp check packages/cli packages/registry packages/schema scripts`                                                                                                                |
+| `docs:build`         | `bun run --filter @bonne-garde/docs build`                                                                                                                                       |
+| `fmt`                | `vp fmt --write`                                                                                                                                                                 |
+| `fmt:check`          | `vp fmt --check`                                                                                                                                                                 |
+| `gen:architecture`   | `bun scripts/gen-architecture.ts`                                                                                                                                                |
+| `gen:commands`       | `bun scripts/gen-commands.ts`                                                                                                                                                    |
+| `gen:playground`     | `bun scripts/gen-playground.ts`                                                                                                                                                  |
+| `golden`             | `bun scripts/golden-project.ts`                                                                                                                                                  |
+| `intentions:lint`    | `bun packages/cli/src/bin.ts intentions lint`                                                                                                                                    |
+| `knip`               | `knip`                                                                                                                                                                           |
+| `knip:fix`           | `knip --fix --allow-remove-files`                                                                                                                                                |
+| `lint`               | `vp lint`                                                                                                                                                                        |
+| `lint:fix`           | `vp lint --fix`                                                                                                                                                                  |
+| `pack:cli`           | `bun scripts/pack-cli.ts`                                                                                                                                                        |
+| `prepare`            | `husky`                                                                                                                                                                          |
+| `publish:cli:dry`    | `bun scripts/pack-cli.ts && bun pm pack --cwd dist/npm/bonne-garde`                                                                                                              |
+| `registry:build`     | `bun scripts/build-registry.ts`                                                                                                                                                  |
+| `test`               | `bun run test:platform`                                                                                                                                                          |
+| `test:platform`      | `bun run test:scripts && bun run --parallel --filter '@bonne-garde/*' test`                                                                                                      |
+| `test:scripts`       | `bun test ./scripts ./registry/modules --path-ignore-patterns 'registry/modules/{api,db,orm,auth,storage,web,email,deploy,provider/cloudflare,provider/dockerfile/template}/**'` |
+| `typecheck`          | `bun run typecheck:platform`                                                                                                                                                     |
+| `typecheck:platform` | `bun run typecheck:scripts && bun run --parallel --filter '@bonne-garde/*' typecheck`                                                                                            |
+| `typecheck:scripts`  | `tsc --project scripts/tsconfig.json --noEmit`                                                                                                                                   |
+| `verify`             | `bun run check && bun run knip && bun run typecheck && bun run test && bun run intentions:lint && bun run registry:build && bun run docs:build`                                  |
 
 ---
 
@@ -46,12 +46,12 @@
 
 `@bonne-garde/cli` · From root: `bun run --filter @bonne-garde/cli <script>` · or from `packages/cli/`: `bun run <script>`
 
-| Script | Command |
-|--------|---------|
-| `pack` | `bun ../../scripts/pack-cli.ts` |
-| `start` | `bun run src/bin.ts` |
-| `test` | `bun test` |
-| `typecheck` | `tsc --noEmit` |
+| Script      | Command                         |
+| ----------- | ------------------------------- |
+| `pack`      | `bun ../../scripts/pack-cli.ts` |
+| `start`     | `bun run src/bin.ts`            |
+| `test`      | `bun test`                      |
+| `typecheck` | `tsc --noEmit`                  |
 
 ---
 
@@ -59,9 +59,9 @@
 
 `@bonne-garde/registry` · From root: `bun run --filter @bonne-garde/registry <script>` · or from `packages/registry/`: `bun run <script>`
 
-| Script | Command |
-|--------|---------|
-| `test` | `bun test` |
+| Script      | Command        |
+| ----------- | -------------- |
+| `test`      | `bun test`     |
 | `typecheck` | `tsc --noEmit` |
 
 ---
@@ -70,8 +70,7 @@
 
 `@bonne-garde/schema` · From root: `bun run --filter @bonne-garde/schema <script>` · or from `packages/schema/`: `bun run <script>`
 
-| Script | Command |
-|--------|---------|
-| `test` | `bun test` |
+| Script      | Command        |
+| ----------- | -------------- |
+| `test`      | `bun test`     |
 | `typecheck` | `tsc --noEmit` |
-
