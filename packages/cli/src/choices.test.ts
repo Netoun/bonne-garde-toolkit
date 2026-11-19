@@ -147,6 +147,7 @@ function scripted(...answers: (string | string[])[]) {
         .filter(({ value }) => Array.isArray(answer) && answer.includes(value))
         .map(({ value }) => value);
     },
+    search: () => Promise.reject(new Error("create asks no filterable list")),
     warn: (message) => said.push(message),
   };
   return { asked, said, prompter };

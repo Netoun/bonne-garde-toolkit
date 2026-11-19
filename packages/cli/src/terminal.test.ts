@@ -76,12 +76,13 @@ describe("colorEnabled", () => {
 
 const REGISTRY_JSON = join(findRepoRoot() ?? "", "registry", "registry.json");
 
-/** A prompter that answers `many` with the values it is told to pick, and records what it was shown. */
+/** A prompter that answers `search` with the values it is told to pick, and records what it was shown. */
 function picking(values: string[]) {
   const shown: { message: string; choices: readonly Choice<string>[] }[] = [];
   const prompter: Prompter = {
     one: () => Promise.reject(new Error("add asks no single answer")),
-    many: (message, choices) => {
+    many: () => Promise.reject(new Error("add asks through the filterable list")),
+    search: (message, choices) => {
       shown.push({ message, choices });
       return Promise.resolve(values as never);
     },
@@ -91,27 +92,39 @@ function picking(values: string[]) {
 }
 
 describe("addChoices", () => {
-  test("lists the items, then the modules as <category>/<id> in category order, with descriptions as hints", async () => {
+  test("lists the modules in category order, then the features, then the other items, each hint starting with its kind", async () => {
     const catalog = await loadLocalRegistry(REGISTRY_JSON);
     const choices = addChoices(catalog);
-    const items = catalog.items.map(({ name }) => name);
-    expect(choices.slice(0, items.length).map(({ value }) => value)).toEqual(items);
-    const modules = choices.slice(items.length);
-    expect(modules.length).toBe(catalog.modules.length);
+    const modules = choices.slice(0, catalog.modules.length);
     const categories = modules.map(({ value }) =>
       MODULE_CATEGORIES.indexOf(value.split("/")[0] as never),
     );
     expect(categories.every((index) => index >= 0)).toBe(true);
     expect(categories).toEqual([...categories].sort((a, b) => a - b));
+    const features = catalog.items.filter(({ type }) => type === "registry:block");
+    const others = catalog.items.filter(({ type }) => type !== "registry:block");
+    expect(features.length).toBeGreaterThan(0);
+    expect(choices.slice(modules.length).map(({ value }) => value)).toEqual(
+      [...features, ...others].map(({ name }) => name),
+    );
     for (const { value, label, hint } of choices) {
       expect(label).toBe(value);
       const module = catalog.modules.find(
         ({ manifest }) => `${manifest.category}/${manifest.id}` === value,
       );
       const item = catalog.items.find(({ name }) => name === value);
-      expect(hint).toBe(module?.manifest.description ?? item?.description ?? "");
+      if (module) {
+        expect(hint).toBe(`module · ${module.manifest.description}`);
+      } else if (item?.type === "registry:block") {
+        expect(hint).toBe(`feature · ${item.description ?? ""}`);
+      } else {
+        expect(hint).toMatch(/^(ui|hook|lib|component|page|file) · /);
+      }
     }
-    expect(choices.find(({ value }) => value === "provider/cloudflare")?.hint).not.toBe("");
+    expect(choices.find(({ value }) => value === "spa-auth")?.hint).toStartWith("feature · ");
+    expect(choices.find(({ value }) => value === "provider/cloudflare")?.hint).toStartWith(
+      "module · ",
+    );
   });
 
   test("offers the items alone when the source cannot list modules (a reader is set)", async () => {
@@ -122,9 +135,11 @@ describe("addChoices", () => {
       readBytes: () => Promise.resolve(new Uint8Array()),
     };
     const remote: RegistryCatalog = { ...catalog, modules: [], reader };
-    expect(addChoices(remote).map(({ value }) => value)).toEqual(
-      catalog.items.map(({ name }) => name),
+    const choices = addChoices(remote);
+    expect(choices.map(({ value }) => value).sort()).toEqual(
+      catalog.items.map(({ name }) => name).sort(),
     );
+    expect(choices[0]?.value).toBe("spa-auth");
   });
 });
 
@@ -134,6 +149,7 @@ describe("pickAddNames", () => {
     const { prompter, shown } = picking(["spa-auth", "provider/cloudflare"]);
     expect(await pickAddNames(catalog, prompter)).toEqual(["spa-auth", "provider/cloudflare"]);
     expect(shown).toHaveLength(1);
+    expect(shown[0]?.message).toBe("What to add (type to filter)");
     expect(shown[0]?.choices).toEqual(addChoices(catalog));
   });
 

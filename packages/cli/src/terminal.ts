@@ -5,7 +5,7 @@
  */
 import { styleText } from "node:util";
 import * as clack from "@clack/prompts";
-import type { RegistryCatalog } from "@bonne-garde/registry";
+import type { RegistryCatalog, RegistryItem } from "@bonne-garde/registry";
 import { cliRunner } from "@bonne-garde/schema";
 import { inCategoryOrder, type AddOutcome } from "./add";
 import type { Choice, Prompter } from "./choices";
@@ -84,26 +84,41 @@ export function terminalPrompter(): Prompter {
       }
       return answer.map((value) => pick(choices, value));
     },
+    async search(message, choices) {
+      // clack narrows the list by what is typed, against each label, hint and value.
+      const answer = await clack.autocompleteMultiselect<string>({
+        message,
+        options: options(choices),
+        required: false,
+      });
+      if (clack.isCancel(answer)) {
+        throw new Cancelled();
+      }
+      return answer.map((value) => pick(choices, value));
+    },
     warn: (message) => clack.log.warn(message),
   };
 }
 
 /**
- * What `add` offers with no name, on a terminal: the items, then the modules as `<category>/<id>`
- * in the order `list` prints them, each with its description. A source read over the network
- * (`reader`) lists no modules, so it offers the items alone.
+ * What `add` offers with no name, on a terminal: the modules as `<category>/<id>` in the order
+ * `list` prints them, then the features (`registry:block` items), then the other items (ui, hooks,
+ * libs), each hint starting with its kind. What changes the project comes first; the long tail of
+ * UI components comes last. A source read over the network (`reader`) lists no modules, so it
+ * offers the items alone.
  */
 export function addChoices(catalog: RegistryCatalog): Choice<string>[] {
-  const items = catalog.items.map(({ name, description }) => ({
-    value: name,
-    label: name,
-    hint: description ?? "",
-  }));
   const modules = inCategoryOrder(catalog.modules).map(({ manifest }) => {
     const name = `${manifest.category}/${manifest.id}`;
-    return { value: name, label: name, hint: manifest.description };
+    return { value: name, label: name, hint: `module · ${manifest.description}` };
   });
-  return [...items, ...modules];
+  const item = ({ name, type, description }: RegistryItem): Choice<string> => {
+    const kind = type === "registry:block" ? "feature" : type.replace("registry:", "");
+    return { value: name, label: name, hint: `${kind} · ${description ?? ""}` };
+  };
+  const features = catalog.items.filter(({ type }) => type === "registry:block");
+  const others = catalog.items.filter(({ type }) => type !== "registry:block");
+  return [...modules, ...features.map(item), ...others.map(item)];
 }
 
 /** The names a person ticks in `addChoices`; none ticked stops the command like Ctrl+C does. */
@@ -111,7 +126,7 @@ export async function pickAddNames(
   catalog: RegistryCatalog,
   prompter: Prompter,
 ): Promise<string[]> {
-  const names = await prompter.many("What to add", addChoices(catalog));
+  const names = await prompter.search("What to add (type to filter)", addChoices(catalog));
   if (names.length === 0) {
     throw new Cancelled();
   }
