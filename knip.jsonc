@@ -6,6 +6,7 @@
       "project": ["scripts/**/*.ts"],
     },
     "apps/docs": {
+      "entry": ["app/demos/*.tsx"],
       // Installed once so the later tickets never touch package.json or bun.lock: the registry/ui
       // files import their own dependencies (resolved from apps/docs by vite.config.ts), and the
       // guide, code and module pages use the rest.

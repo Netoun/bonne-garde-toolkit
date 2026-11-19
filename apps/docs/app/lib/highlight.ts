@@ -5,10 +5,11 @@ let highlighter: Highlighter | undefined;
 
 async function getHighlighter(): Promise<Highlighter> {
   if (!highlighter) {
+    const useJsEngine = import.meta.env.VITEST || typeof window === "undefined";
     highlighter = await createHighlighter({
       themes: ["github-light", "github-dark"],
-      langs: ["bash", "shell", "sh", "typescript", "tsx", "json", "diff"],
-      ...(import.meta.env.VITEST ? { engine: createJavaScriptRegexEngine() } : {}),
+      langs: ["bash", "shell", "sh", "typescript", "tsx", "json", "diff", "text"],
+      ...(useJsEngine ? { engine: createJavaScriptRegexEngine() } : {}),
     });
   }
   return highlighter;
