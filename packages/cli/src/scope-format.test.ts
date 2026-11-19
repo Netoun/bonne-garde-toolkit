@@ -50,8 +50,12 @@ const OTHER_PROVIDER_STACK = [
   "orm/drizzle",
   "web/spa",
 ];
-/** What needs that provider's tree: `db/libsql` peers on `dockerfile`, so it is never installed alone. */
-const OTHER_PROVIDER_ONLY = ["db/libsql"];
+/** The same stack on a Postgres: `db/postgres` is the one `db`, so it takes the place of `db/libsql` (and of the ORM, which has no postgres variant yet). */
+const OTHER_PROVIDER_POSTGRES_STACK = OTHER_PROVIDER_STACK.flatMap((key) =>
+  key === "db/libsql" ? ["db/postgres"] : key === "orm/drizzle" ? [] : [key],
+);
+/** What needs that provider's tree: `db/libsql` and `db/postgres` peer on `dockerfile`, so they are never installed alone. */
+const OTHER_PROVIDER_ONLY = ["db/libsql", "db/postgres"];
 
 const dirs: string[] = [];
 
@@ -161,6 +165,7 @@ describe("scope rendering and the formatter", () => {
       const installs = [
         { suffix: "all", names: [...SHARED_MODULES, ...itemNames] },
         { suffix: "other-provider", names: OTHER_PROVIDER_STACK },
+        { suffix: "other-provider-postgres", names: OTHER_PROVIDER_POSTGRES_STACK },
         // A module alone, but for the package manager a project always has.
         ...alone.map((key) => ({
           suffix: key.replace("/", "-"),

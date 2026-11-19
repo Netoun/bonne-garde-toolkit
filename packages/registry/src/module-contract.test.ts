@@ -807,6 +807,8 @@ describe("module contract", () => {
         ui: "packages/ui",
       };
       const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+      // db/postgres ships its dev compose file at the project root, where `docker compose` finds it.
+      const ROOT_FILES = new Set(["db/postgres: compose.postgres.yaml"]);
       const outside: string[] = [];
 
       for (const { manifest } of catalog.modules) {
@@ -816,8 +818,9 @@ describe("module contract", () => {
         }
         for (const variant of manifest.variants) {
           for (const path of variant.copy ?? []) {
-            if (!path.startsWith(`${home}/`)) {
-              outside.push(`${manifest.category}/${manifest.id}: ${path}`);
+            const entry = `${manifest.category}/${manifest.id}: ${path}`;
+            if (!path.startsWith(`${home}/`) && !ROOT_FILES.has(entry)) {
+              outside.push(entry);
             }
           }
         }
@@ -1524,6 +1527,7 @@ describe("module contract", () => {
       expect(orm.manifest.variants.map(({ key, match }) => [key, match])).toEqual([
         ["d1", { db: "d1" }],
         ["libsql", { db: "libsql" }],
+        ["postgres", { db: "postgres" }],
       ]);
       expect(orm.variant.key).toBe("d1");
       expect(orm.variant.match).toEqual({ db: "d1" });
@@ -2182,6 +2186,267 @@ describe("module contract", () => {
         ).toEqual(["drizzle-kit"]);
         await expect(formatWithProjectFormatter({ [file]: text })).resolves.toEqual({
           [file]: text,
+        });
+      });
+    });
+
+    describe("db/postgres: the same package on a Postgres over DATABASE_URL, with a dev compose file", () => {
+      const POSTGRES = join(MODULES, "db/postgres/template");
+      const postgresText = (path: string): Promise<string> =>
+        readFile(join(POSTGRES, path), "utf8");
+      const postgresModule = async () => {
+        const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+        const postgres = catalog.modules.find(
+          ({ manifest }) => manifest.category === "db" && manifest.id === "postgres",
+        );
+        const [variant] = postgres?.manifest.variants ?? [];
+        if (!postgres || !variant) {
+          throw new Error("db/postgres is missing or has no variant");
+        }
+        return { catalog, postgres: { ...postgres, variant } };
+      };
+
+      test("peers on the dockerfile provider and the API, ships one default variant that owns the workspace, and declares DATABASE_URL", async () => {
+        const { postgres } = await postgresModule();
+
+        expect(postgres.manifest.peers).toEqual({ provider: ["dockerfile"], api: ["elysia"] });
+        expect(postgres.manifest.variants).toHaveLength(1);
+        expect(postgres.variant.key).toBe("default");
+        expect(postgres.variant.match).toEqual({});
+        expect(postgres.variant.workspace).toEqual({ name: "{{SCOPE}}/db", path: "packages/db" });
+        const exact = expect.stringMatching(/^\d+\.\d+\.\d+$/);
+        expect(postgres.variant.dependencies).toEqual({
+          postgres: exact,
+          "{{SCOPE}}/api-runtime": "workspace:*",
+        });
+        expect(postgres.variant.devDependencies).toEqual({
+          "@electric-sql/pglite": exact,
+          "@electric-sql/pglite-socket": exact,
+        });
+        expect(postgres.variant.env).toEqual([
+          {
+            name: "DATABASE_URL",
+            required: true,
+            example: "postgres://postgres:postgres@localhost:5432/app",
+          },
+        ]);
+        expect(postgres.variant.intent ?? []).toEqual([]);
+      });
+
+      test("its template is exactly what it copies, and reaches for neither Cloudflare, wrangler nor Bun", async () => {
+        const { postgres } = await postgresModule();
+
+        expect(await templateFiles(POSTGRES)).toEqual([...(postgres.variant.copy ?? [])].sort());
+        for (const path of postgres.variant.copy ?? []) {
+          expect([
+            path,
+            /cloudflare|wrangler|Bun\.|bun:|bunx/i.test(await postgresText(path)),
+          ]).toEqual([path, false]);
+        }
+      });
+
+      test("its package.json exports ./postgres, runs typecheck, test and the compose file, and holds no dependency map", async () => {
+        const body: unknown = JSON.parse(await postgresText("packages/db/package.json"));
+
+        expect(body).toMatchObject({
+          name: "{{SCOPE}}/db",
+          exports: { "./postgres": "./src/postgres.ts" },
+          scripts: {
+            typecheck: "tsc --noEmit",
+            test: "vp test",
+            "db:up": "docker compose -f ../../compose.postgres.yaml up -d --wait",
+            "db:down": "docker compose -f ../../compose.postgres.yaml down",
+          },
+        });
+        for (const map of ["dependencies", "devDependencies", "peerDependencies"]) {
+          expect(isRecord(body) && map in body ? map : null).toBeNull();
+        }
+      });
+
+      test("compose.postgres.yaml is one pinned postgres service matching the example URL, local only, with a healthcheck", async () => {
+        const compose = await postgresText("compose.postgres.yaml");
+
+        expect(compose).toContain("image: postgres:17-alpine");
+        expect(compose).toContain('"127.0.0.1:5432:5432"');
+        expect(compose).toContain("POSTGRES_USER: postgres");
+        expect(compose).toContain("POSTGRES_PASSWORD: postgres");
+        expect(compose).toContain("POSTGRES_DB: app");
+        expect(compose).toContain("pg_isready");
+        expect(compose.match(/^ {2}\w[\w-]*:$/gm)).toEqual(["  postgres:", "  postgres-data:"]);
+      });
+
+      test("a project on the cloudflare provider is refused, naming the provider", async () => {
+        const { catalog } = await postgresModule();
+        const project = createEmptyProjectManifest({ scope: "@app", registries: {} });
+
+        await expect(
+          resolveModulePlans(
+            catalog,
+            [
+              { category: "config", id: "branding" },
+              { category: "api", id: "elysia" },
+              { category: "provider", id: "cloudflare" },
+              { category: "db", id: "postgres" },
+            ],
+            project,
+          ),
+        ).rejects.toThrow(
+          /db\/postgres accepts only dockerfile for provider, but provider\/cloudflare is present/,
+        );
+      });
+
+      describe("the postgres variant of orm/drizzle", () => {
+        const ORM_POSTGRES_FILES = [
+          "packages/db/src/postgres-client.ts",
+          "packages/db/src/postgres-client.test.ts",
+          "packages/db/src/postgres-drizzle.config.ts",
+          "packages/db/src/postgres-index.ts",
+          "packages/db/src/postgres-module.ts",
+          "packages/db/src/postgres-module.test.ts",
+          "packages/db/src/postgres-test-db.ts",
+          "packages/db/src/postgres-test-db.test.ts",
+          "packages/db/src/schema/index.ts",
+          "packages/db/vite.config.ts",
+        ];
+        const ormPostgres = async () => {
+          const { catalog, postgres } = await postgresModule();
+          const orm = catalog.modules.find(
+            ({ manifest }) => manifest.category === "orm" && manifest.id === "drizzle",
+          );
+          const variant = orm?.manifest.variants.find(({ key }) => key === "postgres");
+          if (!orm || !variant) {
+            throw new Error("the postgres variant of orm/drizzle is missing");
+          }
+          return { catalog, postgres, orm, variant };
+        };
+
+        test("matches db/postgres, copies its own files beside the others, and patches like the libsql variant", async () => {
+          const { orm, variant } = await ormPostgres();
+          const libsql = orm.manifest.variants.find(({ key }) => key === "libsql");
+
+          expect(variant.match).toEqual({ db: "postgres" });
+          expect(variant.copy).toEqual(ORM_POSTGRES_FILES);
+          expect(variant.workspace).toBeUndefined();
+          expect(variant.dependencies ?? {}).toEqual({});
+          expect(variant.devDependencies ?? {}).toEqual({});
+          // Only the barrel is shared: the sqlite drizzle.config.ts is not copied, and no other path is another variant's.
+          const others = new Set(
+            orm.manifest.variants
+              .filter(({ key }) => key !== "postgres")
+              .flatMap((other) => other.copy ?? []),
+          );
+          for (const path of variant.copy ?? []) {
+            expect([path, others.has(path)]).toEqual([
+              path,
+              path === "packages/db/src/schema/index.ts",
+            ]);
+          }
+          expect(mergedInto(variant.patch, "packages/db/package.json")).toEqual({
+            exports: {
+              ".": "./src/postgres-index.ts",
+              "./schema": "./src/schema/index.ts",
+              "./testing": "./src/postgres-test-db.ts",
+            },
+          });
+          expect(variant.patch?.find((patch) => patch.type === "scripts.merge")).toEqual({
+            type: "scripts.merge",
+            file: "packages/db/package.json",
+            scripts: {
+              "db:generate": "drizzle-kit generate --config ./src/postgres-drizzle.config.ts",
+            },
+          });
+          expect(dependenciesPatch(variant.patch, "packages/db/package.json")).toEqual(
+            dependenciesPatch(libsql?.patch, "packages/db/package.json"),
+          );
+          const apiPatches = (patches: readonly { type: string; file?: unknown }[] | undefined) =>
+            (patches ?? []).filter(
+              ({ file }) => typeof file === "string" && file.startsWith("apps/api/"),
+            );
+          expect(apiPatches(variant.patch)).toEqual(apiPatches(libsql?.patch));
+          expect(apiPatches(variant.patch)).toHaveLength(3);
+          for (const target of Object.values(
+            mergedInto(variant.patch, "packages/db/package.json").exports as object,
+          )) {
+            expect(variant.copy).toContain(`packages/db/${String(target).replace("./", "")}`);
+          }
+        });
+
+        test("its sources keep the d1 names, and drizzle-kit is told the postgresql dialect", async () => {
+          const index = await ormText("packages/db/src/postgres-index.ts");
+
+          expect(index).toMatch(/export \{ createDB, type DB \} from "\.\/postgres-client"/);
+          expect(index).toMatch(/export \{ dbModule, dbPlugin \} from "\.\/postgres-module"/);
+          expect(await ormText("packages/db/src/postgres-module.ts")).toMatch(
+            /export const dbModule = /,
+          );
+          expect(await ormText("packages/db/src/postgres-test-db.ts")).toMatch(
+            /export type TestDb = /,
+          );
+          expect(await ormText("packages/db/src/postgres-drizzle.config.ts")).toContain(
+            'dialect: "postgresql"',
+          );
+        });
+
+        test("every package its sources import is declared, every one declared is imported, and every relative import is shipped", async () => {
+          const { postgres, variant } = await ormPostgres();
+          const patched = dependenciesPatch(variant.patch, "packages/db/package.json");
+          const declared = new Set([
+            ...Object.keys(postgres.variant.dependencies ?? {}),
+            ...Object.keys(postgres.variant.devDependencies ?? {}),
+            ...Object.keys(patched.dependencies),
+            ...Object.keys(patched.devDependencies),
+          ]);
+          const shipped = new Set([...(postgres.variant.copy ?? []), ...(variant.copy ?? [])]);
+          const named = new Set<string>();
+          const unresolved: string[] = [];
+          const sources: [string, string][] = [];
+          for (const path of postgres.variant.copy ?? []) {
+            if (SOURCE.test(path)) sources.push([path, code(await postgresText(path))]);
+          }
+          for (const path of variant.copy ?? []) {
+            if (SOURCE.test(path)) sources.push([path, code(await ormText(path))]);
+          }
+
+          for (const [path, source] of sources) {
+            for (const name of packagesNamedBy(source)) {
+              if (!name.includes(":") && !BASE_TOOLING.has(name)) {
+                named.add(name);
+                expect([path, declared.has(name)]).toEqual([path, true]);
+              }
+            }
+            for (const [, specifier] of source.matchAll(/from\s+"(\.[^"]*)"/g)) {
+              const target = posix.normalize(posix.join(posix.dirname(path), specifier ?? ""));
+              if (![`${target}.ts`, `${target}/index.ts`].some((file) => shipped.has(file))) {
+                unresolved.push(`${path}: ${specifier}`);
+              }
+            }
+          }
+
+          expect([...declared].filter((name) => !named.has(name))).toEqual([]);
+          expect(unresolved).toEqual([]);
+        });
+
+        test("the installed db picks the variant: postgres with db/postgres, libsql with db/libsql", async () => {
+          const { catalog } = await ormPostgres();
+          const project = createEmptyProjectManifest({ scope: "@app", registries: {} });
+          const base = [
+            { category: "config", id: "branding" },
+            { category: "api", id: "elysia" },
+            { category: "provider", id: "dockerfile" },
+          ] as const;
+          const pick = async (db: "postgres" | "libsql") =>
+            (
+              await resolveModulePlans(
+                catalog,
+                [...base, { category: "db", id: db }, { category: "orm", id: "drizzle" }],
+                project,
+              )
+            )
+              .filter(({ category }) => category === "db" || category === "orm")
+              .map(({ key, variant }) => `${key}:${variant}`);
+
+          expect(await pick("postgres")).toEqual(["db/postgres:default", "orm/drizzle:postgres"]);
+          expect(await pick("libsql")).toEqual(["db/libsql:default", "orm/drizzle:libsql"]);
         });
       });
     });

@@ -23,6 +23,8 @@
  *     module refused, naming the provider, in the configuration on the other one
  *   → bun run check → the `checks` of every installed module
  *   → for the configuration that ships a Dockerfile, docker build, docker run, and the container's answers
+ *   → for the one on Postgres: a Postgres of the image `compose.postgres.yaml` names beside the container, which
+ *     migrates it on its first request, and `psql` finding `golden_notes` and one recorded migration
  *
  * A configuration is a set of modules that fit in one project. `provider` admits one module and the
  * `api` module ships a variant per provider, so each provider is a configuration of its own: the
@@ -32,7 +34,8 @@
  * The image phases need a docker daemon. With no `docker` on PATH, or none that answers `docker info`,
  * golden says so, in the timing table too, and still exits 0: every other failure of them fails the run.
  * CI sets `GOLDEN_REQUIRE_DOCKER=1`, under which an unavailable docker fails the run instead.
- * What they create is named `bg-golden-<pid>` (image, container, volume) and removed by that name.
+ * What they create is named `bg-golden-<pid>` (image, container, volume, network, and the Postgres container
+ * and volume) and removed by that name.
  *
  * Any non-zero exit fails the run and names the phase. It needs a real `bun install` against npm,
  * so it is not part of `verify`; CI runs it as its own step.
@@ -120,9 +123,11 @@ export type Configuration = {
 
 /**
  * The answer sets golden builds, each as `bonne-garde create` maps it, so a set golden proves is one
- * `create` produces. A module that is in none of them, and not in `EXCLUDED_MODULES`, fails the run,
- * so a new module is a decision made here and not a silent gap. `provider` admits one module, and a
- * variant of `api` is selected on it, which is why each provider has a set.
+ * `create` produces, but `dockerfile-postgres`: `create` never offers Postgres, so that one is `create`
+ * for the answers below, then `bonne-garde add` of `ADDED_AFTER_CREATE`. A module that is in none of
+ * them, and not in `EXCLUDED_MODULES`, fails the run, so a new module is a decision made here and not
+ * a silent gap. `provider` admits one module, and a variant of `api` is selected on it, which is why
+ * each provider has a set.
  */
 export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
   cloudflare: {
@@ -145,6 +150,18 @@ export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
     features: ["deploy"],
     pm: "bun",
   },
+  // The dockerfile answers without the db feature: Postgres is added after, `create` does not offer it.
+  "dockerfile-postgres": {
+    apps: ["api", "spa"],
+    provider: "dockerfile",
+    features: ["email", "portless"],
+    pm: "bun",
+  },
+};
+
+/** The modules `bonne-garde add` installs after what `create` produced for the set, in that order. */
+export const ADDED_AFTER_CREATE: Readonly<Record<string, readonly string[]>> = {
+  "dockerfile-postgres": ["db/postgres", "orm/drizzle"],
 };
 
 /**
@@ -154,7 +171,11 @@ export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
 export const CONFIGURATIONS: readonly Configuration[] = Object.entries(ANSWER_SETS).map(
   ([name, choices]) => {
     const { modules, items } = namesFor(choices);
-    return { name, modules, items: items.length > 0 };
+    return {
+      name,
+      modules: [...modules, ...(ADDED_AFTER_CREATE[name] ?? [])],
+      items: items.length > 0,
+    };
   },
 );
 
@@ -200,6 +221,17 @@ export function runnerOf(pm: string): Runner {
   throw new Error(`golden does not drive ${pm}`);
 }
 
+/** The id of the configuration's provider module (`dockerfile`), which several configurations can share. */
+export function providerOf(configuration: Configuration): string {
+  const [provider, ...more] = configuration.modules.filter((module) =>
+    module.startsWith("provider/"),
+  );
+  if (provider === undefined || more.length > 0) {
+    throw new Error(`the ${configuration.name} configuration has to name one provider module`);
+  }
+  return provider.slice("provider/".length);
+}
+
 /** The module that ships the `Dockerfile` golden builds. */
 const IMAGE_MODULE = "provider/dockerfile";
 
@@ -217,6 +249,9 @@ const D1_MODULE = "db/d1";
 /** The database of the dockerfile provider: an SQLite file under the container's `DATA_DIR`. */
 const LIBSQL_MODULE = "db/libsql";
 
+/** The database of the dockerfile provider on Postgres: `DATABASE_URL`, and a dev compose file. */
+const POSTGRES_MODULE = "db/postgres";
+
 /** Where the container's volume holds the database, once the API has opened it. */
 export const SQLITE_FILE = "/data/db.sqlite";
 
@@ -228,6 +263,52 @@ export function hasDatabase(configuration: Configuration): boolean {
 /** Whether the image opens an SQLite file, which golden looks for in the container's volume. */
 export function hasSqliteFile(configuration: Configuration): boolean {
   return buildsImage(configuration) && configuration.modules.includes(LIBSQL_MODULE);
+}
+
+/**
+ * Whether the image talks to a Postgres, which golden starts beside it, generating a migration first
+ * (the D1 phases are not run) and finding what the container's first request migrated.
+ */
+export function hasPostgres(configuration: Configuration): boolean {
+  return (
+    buildsImage(configuration) &&
+    configuration.modules.includes(POSTGRES_MODULE) &&
+    configuration.modules.includes(ORM_MODULE)
+  );
+}
+
+/** The file `db/postgres` writes at the project's root: the local Postgres golden starts the same one of. */
+export const POSTGRES_COMPOSE_FILE = "compose.postgres.yaml";
+
+/** What golden needs of the compose file's `postgres` service to start the same Postgres. */
+export type PostgresService = { image: string; user: string; password: string; database: string };
+
+/** The image and credentials of the `postgres` service of `compose.postgres.yaml`. */
+export function readPostgresService(compose: string): PostgresService {
+  const parsed: unknown = Bun.YAML.parse(compose);
+  const service = isRecord(parsed) && isRecord(parsed.services) ? parsed.services.postgres : null;
+  if (!isRecord(service) || typeof service.image !== "string") {
+    throw new Error(`${POSTGRES_COMPOSE_FILE} has no postgres service with an image`);
+  }
+  const environment = isRecord(service.environment) ? service.environment : {};
+  const read = (key: string): string => {
+    const value = environment[key];
+    if (typeof value !== "string") {
+      throw new Error(`the postgres service of ${POSTGRES_COMPOSE_FILE} sets no ${key}`);
+    }
+    return value;
+  };
+  return {
+    image: service.image,
+    user: read("POSTGRES_USER"),
+    password: read("POSTGRES_PASSWORD"),
+    database: read("POSTGRES_DB"),
+  };
+}
+
+/** The `DATABASE_URL` of a container on the docker network of `host`'s Postgres. */
+export function postgresUrl(service: PostgresService, host: string): string {
+  return `postgres://${service.user}:${service.password}@${host}:5432/${service.database}`;
 }
 
 /** The module whose schema is what `auth:generate` writes, and the file that holds it. */
@@ -632,6 +713,20 @@ export const goldenNotes = sqliteTable("${GOLDEN_TABLE}", {
 });
 `;
 
+/** The same table for Postgres: the pg-core dialect of the `postgres` variant of `orm/drizzle`. */
+export const GOLDEN_PG_SCHEMA = `import { pgTable, serial, text } from "drizzle-orm/pg-core";
+
+export const goldenNotes = pgTable("${GOLDEN_TABLE}", {
+  id: serial("id").primaryKey(),
+  body: text("body").notNull(),
+});
+`;
+
+/** The table golden adds, in the dialect of the configuration's database. */
+export function goldenSchema(configuration: Configuration): string {
+  return hasPostgres(configuration) ? GOLDEN_PG_SCHEMA : GOLDEN_SCHEMA;
+}
+
 /**
  * The tables a module adds to the schema barrel, which `db:generate` has to write into the migration
  * and D1 has to hold once it is applied. Auth's are read back by the seed phase, which clears and
@@ -895,6 +990,28 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
     "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
   },
   dockerfile: {
+    "config/branding": ["scripts.gen:branding"],
+    "api/elysia": ["scripts.dev"],
+    "orm/drizzle": [
+      "dependencies.@app/db",
+      "dependencies.drizzle-orm",
+      "dependencies.elysia",
+      "devDependencies.drizzle-kit",
+      "elysia[app].use[dbModule]",
+      'exports."."',
+      'exports."./schema"',
+      'exports."./testing"',
+      "imports[@app/db]",
+      "scripts.db:generate",
+    ],
+    "web/spa": ["scripts.dev"],
+    "dev/portless": [
+      "devDependencies.portless",
+      "scripts.dev:lan:portless",
+      "scripts.dev:portless",
+    ],
+  },
+  "dockerfile-postgres": {
     "config/branding": ["scripts.gen:branding"],
     "api/elysia": ["scripts.dev"],
     "orm/drizzle": [
@@ -1506,6 +1623,7 @@ const WIRED_TEST_FILE = "packages/auth/src/mailer.wired.test.ts";
 export const PENDING: Readonly<Record<string, readonly string[]>> = {
   cloudflare: ["email/resend/wire-email-into-auth"],
   dockerfile: [],
+  "dockerfile-postgres": [],
   fronts: [],
 };
 
@@ -1791,7 +1909,8 @@ export function expectGenerated(files: readonly string[], sql: string, table: st
   if (others.length > 0) {
     throw new Error(`db:generate left ${migrations.join(", ")}: expected one migration`);
   }
-  if (!sql.includes(`CREATE TABLE \`${table}\``)) {
+  // SQLite quotes with backticks, Postgres with double quotes.
+  if (![`\`${table}\``, `"${table}"`].some((quoted) => sql.includes(`CREATE TABLE ${quoted}`))) {
     throw new Error(`${migration} does not create ${table}:\n${sql}`);
   }
   return migration;
@@ -1827,6 +1946,24 @@ export function expectMigrated(database: MigratedDatabase, table: string, migrat
   }
   if (!database.tables.includes(table)) {
     throw new Error(`${migration} was recorded as applied, but D1 has no table ${table}`);
+  }
+}
+
+/**
+ * What `psql` printed in the Postgres the container migrated: the count of tables named `table` and the count
+ * of rows in `drizzle.__drizzle_migrations`. The table has to be there and the one migration recorded once.
+ */
+export function expectPostgresMigrated(
+  found: { table: string; migrations: string },
+  table: string,
+): void {
+  if (found.migrations.trim() !== "1") {
+    throw new Error(
+      `drizzle.__drizzle_migrations holds ${found.migrations.trim() || "no count"} rows, expected 1: the migration was not applied once`,
+    );
+  }
+  if (found.table.trim() !== "1") {
+    throw new Error(`the migration was recorded as applied, but Postgres has no table ${table}`);
   }
 }
 
@@ -2646,14 +2783,17 @@ async function configured(
     await regenerated(project, timings, name, pm);
   }
   if (hasDatabase(configuration)) {
-    await migrated(project, timings, name, pm, expectedTables(configuration));
+    await migrated(project, timings, name, pm, configuration);
     if (hasAuth(configuration)) {
       await seeded(project, timings, name, pm, configuration);
     }
+  } else if (hasPostgres(configuration)) {
+    // Only the migration: the container applies it to a real Postgres, in the docker phase below.
+    await generated(project, timings, name, pm, configuration);
   }
   await step("check", () => run(pm.run("check"), project));
   if (hasPortless(configuration)) {
-    await launched(project, timings, name, pm);
+    await launched(project, timings, configuration, pm);
   }
   // A check names the project's own bins (`vp`, `tsc`), which bun or pnpm finds the way its `run` does.
   const bins = {
@@ -2667,7 +2807,7 @@ async function configured(
     });
   }
   if (buildsImage(configuration)) {
-    await imaged(project, timings, name, hasSqliteFile(configuration));
+    await imaged(project, timings, configuration);
   }
 }
 
@@ -2716,9 +2856,11 @@ async function previewed<T>(app: string, body: (origin: string) => Promise<T>): 
 async function launched(
   project: string,
   timings: Timing[],
-  name: string,
+  configuration: Configuration,
   pm: Runner,
 ): Promise<void> {
+  const { name } = configuration;
+  const provider = providerOf(configuration);
   const slug = basename(project);
   const plan = (...flags: string[]) =>
     capture(pm.exec("tsx", "scripts/dev-portless.ts", "--dry-run", ...flags), project);
@@ -2731,8 +2873,12 @@ async function launched(
     expectRan({ [PORTLESS_MODULE]: ranTests(stdout) }, PORTLESS_MODULE, PORTLESS_MIN_TESTS);
   });
   await phase(timings, `${name}: portless plan`, async () => {
-    expectPortlessPlan(await plan(), expectedPortlessApps(name, slug, "localhost"), "localhost");
-    expectPortlessPlan(await plan("--lan"), expectedPortlessApps(name, slug, "local"), "local");
+    expectPortlessPlan(
+      await plan(),
+      expectedPortlessApps(provider, slug, "localhost"),
+      "localhost",
+    );
+    expectPortlessPlan(await plan("--lan"), expectedPortlessApps(provider, slug, "local"), "local");
   });
 }
 
@@ -2974,8 +3120,38 @@ async function regenerated(
 }
 
 /**
- * The database of a project with an `orm`: a table added to the schema barrel, `bun run db:generate`
- * writing its migration, `bun run db:migrate:local` applying it to the local D1 `wrangler` keeps under
+ * A table added to the schema barrel and `bun run db:generate` writing its migration: what the image
+ * of a configuration with a database carries, and what D1 or Postgres is migrated with. Returns the
+ * migration's file name. It runs after `doctor`, which would report the barrel as edited.
+ */
+async function generated(
+  project: string,
+  timings: Timing[],
+  name: string,
+  pm: Runner,
+  configuration: Configuration,
+): Promise<string> {
+  const db = join(project, "packages/db");
+  let migration = "";
+  await phase(timings, `${name}: db generate`, async () => {
+    await Bun.write(join(project, GOLDEN_SCHEMA_FILE), goldenSchema(configuration));
+    const barrel = join(project, GOLDEN_BARREL_FILE);
+    await Bun.write(barrel, `${await Bun.file(barrel).text()}${GOLDEN_BARREL_LINE}`);
+    await run(pm.run("db:generate"), db);
+    const directory = join(db, "migrations");
+    const files = await readdir(directory);
+    const [first] = files.filter((file) => file.endsWith(".sql"));
+    const sql = first === undefined ? "" : await Bun.file(join(directory, first)).text();
+    for (const table of expectedTables(configuration)) {
+      migration = expectGenerated(files, sql, table);
+    }
+  });
+  return migration;
+}
+
+/**
+ * The database of a project with an `orm` over D1: its migration generated, `bun run db:migrate:local`
+ * applying it to the local D1 `wrangler` keeps under
  * `apps/api/.wrangler` (no network, no Cloudflare account, the placeholder `database_id` of the
  * module), and the database read back: the table is there and the migration is the one D1 recorded.
  * It runs after `doctor`, which would report the barrel as edited, and before `check`, which has to
@@ -2986,25 +3162,11 @@ async function migrated(
   timings: Timing[],
   name: string,
   pm: Runner,
-  tables: readonly string[],
+  configuration: Configuration,
 ): Promise<void> {
-  const db = join(project, "packages/db");
   const api = join(project, "apps/api");
-  let migration = "";
-
-  await phase(timings, `${name}: db generate`, async () => {
-    await Bun.write(join(project, GOLDEN_SCHEMA_FILE), GOLDEN_SCHEMA);
-    const barrel = join(project, GOLDEN_BARREL_FILE);
-    await Bun.write(barrel, `${await Bun.file(barrel).text()}${GOLDEN_BARREL_LINE}`);
-    await run(pm.run("db:generate"), db);
-    const directory = join(db, "migrations");
-    const files = await readdir(directory);
-    const [first] = files.filter((file) => file.endsWith(".sql"));
-    const sql = first === undefined ? "" : await Bun.file(join(directory, first)).text();
-    for (const table of tables) {
-      migration = expectGenerated(files, sql, table);
-    }
-  });
+  const tables = expectedTables(configuration);
+  const migration = await generated(project, timings, name, pm, configuration);
 
   await phase(timings, `${name}: db migrate`, async () => {
     await run(pm.run("db:migrate:local"), api, OFFLINE);
@@ -3104,17 +3266,68 @@ async function seeded(
 }
 
 /**
+ * The Postgres golden starts beside the container: the image and credentials of the project's
+ * `compose.postgres.yaml`, on the docker network `bg-golden-<pid>`, which the app container joins.
+ */
+type PostgresContainer = { service: PostgresService; container: string };
+
+/** Starts the Postgres on `network` and waits until it takes connections over TCP (its init server does not). */
+async function startedPostgres(
+  project: string,
+  network: string,
+  { service, container }: PostgresContainer,
+): Promise<void> {
+  await run(["docker", "network", "create", network], project);
+  await run(
+    [
+      "docker",
+      "run",
+      "-d",
+      "--name",
+      container,
+      "--network",
+      network,
+      "-v",
+      `${container}:/var/lib/postgresql/data`,
+      "-e",
+      `POSTGRES_USER=${service.user}`,
+      "-e",
+      `POSTGRES_PASSWORD=${service.password}`,
+      "-e",
+      `POSTGRES_DB=${service.database}`,
+      service.image,
+    ],
+    project,
+  );
+  const ready = await until(
+    async () =>
+      (
+        await attempt(
+          ["docker", "exec", container, "pg_isready", "-h", "127.0.0.1", "-U", service.user],
+          project,
+          5000,
+        )
+      ).code === 0,
+    { timeoutMs: 60_000, intervalMs: 500 },
+  );
+  if (!ready) {
+    throw new Error(`the Postgres ${container} did not take connections within 60 s`);
+  }
+}
+
+/**
  * The image of a project that ships a Dockerfile: built, run on a host port docker picks, asked for
- * what a deployed container answers, then removed. Everything it creates is named `bg-golden-<pid>`
- * and removed by that name, the container first since it holds the image and the volume. Nothing
- * else on the machine is touched: no prune, no cache clear.
+ * what a deployed container answers, then removed. A configuration on Postgres starts one beside it.
+ * Everything it creates is named `bg-golden-<pid>` and removed by that name, the containers first
+ * since they hold the image, the volumes and the network. Nothing else on the machine is touched: no
+ * prune, no cache clear.
  */
 async function imaged(
   project: string,
   timings: Timing[],
-  name: string,
-  sqlite: boolean,
+  configuration: Configuration,
 ): Promise<void> {
+  const { name } = configuration;
   const label = `${name}: docker`;
   const probe =
     Bun.which("docker") === null ? null : await attempt(["docker", "info"], project, 20_000);
@@ -3132,36 +3345,64 @@ async function imaged(
   }
 
   const docker = dockerName(process.pid);
+  const postgres: PostgresContainer | null = hasPostgres(configuration)
+    ? {
+        service: readPostgresService(await Bun.file(join(project, POSTGRES_COMPOSE_FILE)).text()),
+        container: `${docker}-postgres`,
+      }
+    : null;
   try {
     await phase(timings, `${label} build`, () =>
       run(["docker", "build", "-t", docker, "."], project),
     );
     await phase(timings, `${label} run`, async () => {
       try {
-        await answers(project, docker, sqlite);
+        if (postgres !== null) {
+          await startedPostgres(project, docker, postgres);
+        }
+        await answers(project, docker, { sqlite: hasSqliteFile(configuration), postgres });
       } catch (error) {
-        console.log(`\ngolden: last lines of the container ${docker}`);
-        await run(["docker", "logs", "--tail", "40", docker], project).catch(() => undefined);
+        for (const container of [docker, postgres?.container ?? null]) {
+          if (container !== null) {
+            console.log(`\ngolden: last lines of the container ${container}`);
+            await run(["docker", "logs", "--tail", "40", container], project).catch(
+              () => undefined,
+            );
+          }
+        }
         throw error;
       }
     });
   } finally {
-    for (const [kind, argv] of [
-      ["container", ["docker", "rm", "-f", docker]],
-      ["volume", ["docker", "volume", "rm", docker]],
-      ["image", ["docker", "image", "rm", docker]],
-    ] as const) {
-      const { code, stderr } = await attempt([...argv], project);
+    const removals: [string, string[]][] = [["container", ["rm", "-f", docker]]];
+    if (postgres !== null) {
+      removals.push(
+        ["container", ["rm", "-f", postgres.container]],
+        ["volume", ["volume", "rm", postgres.container]],
+      );
+    }
+    removals.push(
+      ["volume", ["volume", "rm", docker]],
+      ["network", ["network", "rm", docker]],
+      ["image", ["image", "rm", docker]],
+    );
+    for (const [kind, argv] of removals) {
+      const { code, stderr } = await attempt(["docker", ...argv], project);
       // Nothing to remove when the build or the run failed before it existed.
-      if (code !== 0 && !/no such/i.test(stderr)) {
-        console.warn(`golden: could not remove the ${kind} ${docker}: ${stderr.trim()}`);
+      if (code !== 0 && !/no such|not found/i.test(stderr)) {
+        console.warn(`golden: could not remove the ${kind} ${argv.at(-1)}: ${stderr.trim()}`);
       }
     }
   }
 }
 
 /** Starts the container, waits for `/health`, and checks what it serves: the API, the SPA, a hashed asset, a client route. */
-async function answers(project: string, docker: string, sqlite: boolean): Promise<void> {
+async function answers(
+  project: string,
+  docker: string,
+  database: { sqlite: boolean; postgres: PostgresContainer | null },
+): Promise<void> {
+  const { sqlite, postgres } = database;
   await run(
     [
       "docker",
@@ -3171,6 +3412,14 @@ async function answers(project: string, docker: string, sqlite: boolean): Promis
       docker,
       "-v",
       `${docker}:/data`,
+      ...(postgres === null
+        ? []
+        : [
+            "--network",
+            docker,
+            "-e",
+            `DATABASE_URL=${postgresUrl(postgres.service, postgres.container)}`,
+          ]),
       "-p",
       `127.0.0.1::${CONTAINER_PORT}`,
       docker,
@@ -3222,6 +3471,37 @@ async function answers(project: string, docker: string, sqlite: boolean): Promis
   // The API opened its database on the first request: the volume holds the SQLite file.
   if (sqlite) {
     await run(["docker", "exec", docker, "test", "-f", SQLITE_FILE], project);
+  }
+  // `/health` came after the db plugin, so the first one migrated the Postgres: ask psql, inside it.
+  if (postgres !== null) {
+    const { service, container } = postgres;
+    const psql = async (query: string) =>
+      capture(
+        [
+          "docker",
+          "exec",
+          container,
+          "psql",
+          "-U",
+          service.user,
+          "-d",
+          service.database,
+          "-tA",
+          "-c",
+          query,
+        ],
+        project,
+      );
+    expectPostgresMigrated(
+      {
+        table: await psql(
+          `SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '${GOLDEN_TABLE}'`,
+        ),
+        migrations: await psql("SELECT count(*) FROM drizzle.__drizzle_migrations"),
+      },
+      GOLDEN_TABLE,
+    );
+    console.log(`golden: Postgres holds ${GOLDEN_TABLE} and one recorded migration`);
   }
 }
 

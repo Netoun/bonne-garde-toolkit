@@ -6,7 +6,7 @@
 
 ## Overview
 
-Bonne Garde is a Bun monorepo of a CLI, the registry it installs from and the base template it copies: 3 packages, 19 modules in 14 categories, 34 items.
+Bonne Garde is a Bun monorepo of a CLI, the registry it installs from and the base template it copies: 3 packages, 20 modules in 14 categories, 34 items.
 
 ### Packages
 
@@ -23,7 +23,7 @@ Bonne Garde is a Bun monorepo of a CLI, the registry it installs from and the ba
 | `registry/modules/api`      | `elysia`                          |
 | `registry/modules/auth`     | `better-auth`                     |
 | `registry/modules/config`   | `branding`                        |
-| `registry/modules/db`       | `d1`, `libsql`                    |
+| `registry/modules/db`       | `d1`, `libsql`, `postgres`        |
 | `registry/modules/deploy`   | `cloudflare-actions`              |
 | `registry/modules/dev`      | `portless`                        |
 | `registry/modules/email`    | `resend`                          |
@@ -40,6 +40,8 @@ Bonne Garde is a Bun monorepo of a CLI, the registry it installs from and the ba
 <!-- GEN:END -->
 
 Everything below describes the code the registry ships into a generated project (`apps/api` from `api/elysia`, `apps/spa` from `web/spa`, ...), not this repository's tree.
+
+On the `dockerfile` provider the `db` feature of `create` gives `db/libsql`, an SQLite file in the container's volume. A project that wants Postgres (`DATABASE_URL`, `compose.postgres.yaml` for a local one) gets it with `bonne-garde add db/postgres orm/drizzle`, not from `create`, which never asks which library fills a slot. `bun run golden` builds that project as the `dockerfile-postgres` configuration and migrates a real Postgres in docker.
 
 ## Communication
 
