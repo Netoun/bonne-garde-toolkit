@@ -16,7 +16,7 @@
 
 ## Project overview
 
-Bonne Garde is a shadcn-inspired toolkit: an empty base template, a CLI (`bonne-garde`) that installs registry content into it, and the registry of UI items, feature items and full-stack modules. Normative specs live in [`docs/specs/`](./docs/specs/README.md). The legacy monorepo (`apps/*`, `packages/{ui,emails,config,api-runtime}`) was dissolved into the registry and is no longer in-tree; [`docs/plans/2026-10-sync/09-dissolution.md`](./docs/plans/2026-10-sync/09-dissolution.md) records where each piece went.
+Bonne Garde is a shadcn-inspired toolkit: an empty base template, a CLI (`bonne-garde`) that installs registry content into it, and the registry of UI items, feature items and full-stack modules. Normative specs live in [`docs/specs/`](./docs/specs/README.md). The legacy monorepo (`apps/*`, `packages/{ui,emails,config,api-runtime}`) was dissolved into the registry and is no longer in-tree. The git history records where each piece went.
 
 | Layer                     | Choice                                                                                                          |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -52,7 +52,7 @@ bonne-garde-toolkit/
 ├── registry/           # ui/, features/, modules/<category>/<id>
 ├── templates/base      # empty monorepo template
 ├── scripts/            # golden, registry build, pack, doc generators
-├── docs/               # specs/ (normative), plans/ (history)
+├── docs/               # specs/ (normative)
 └── migrations/         # per-release upgrade intentions
 ```
 
