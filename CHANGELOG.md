@@ -2,6 +2,34 @@
 
 One lockstep version for the CLI, the base template, the registry and the migration intentions ([RELEASE.md](./docs/RELEASE.md)).
 
+## 0.3.0
+
+`bonne-garde` and `@bonne-garde/{cli,registry,schema}`: 0.2.0 → 0.3.0.
+
+### CLI
+
+- `create --features db` picks `db/libsql` on the `dockerfile` provider (`db/d1` stays the `cloudflare` one). `db/postgres` is reached with `bonne-garde add db/postgres orm/drizzle`.
+- The base template's `.gitignore` ignores `.data/`, where `db/libsql` keeps its SQLite file in dev.
+
+### Modules
+
+- `db/libsql`: a SQLite file under `DATA_DIR`, opened once per process through libsql, in `packages/db`. It is the database of `provider/dockerfile`.
+- `db/postgres`: a postgres-js client over `DATABASE_URL`, and a `compose.postgres.yaml` that starts a local Postgres (`vp run db:up`). It is for `provider/dockerfile`, and a project has one `db` module.
+- `orm/drizzle`: a `libsql` variant over `db/libsql` and a `postgres` variant over `db/postgres`, each with its Drizzle client, its `dbModule` plugin and its test database.
+- `provider/dockerfile` has a database now: sign-up and sign-in run on `db/libsql` or `db/postgres`. Object storage is still missing.
+
+### Fixes
+
+- None.
+
+### Docs
+
+- The specs and the dated plans are gone: five light docs (concepts, modules, manifest, CLI, release) and eight ADRs replace them.
+
+### Intentions
+
+- None added: this release has no migration. A new module changes no project that does not add it, and a project made with 0.2.0 has no `db/libsql`, so the `.data/` line asks nothing of it (one that adds `db/libsql` later adds `.data/` to its `.gitignore` itself). `email/resend/wire-email-into-auth` is unchanged (its wording lost a reference to the deleted specs).
+
 ## 0.2.0
 
 `bonne-garde` and `@bonne-garde/{cli,registry,schema}`: 0.1.0 → 0.2.0.

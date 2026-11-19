@@ -1,6 +1,6 @@
 {
   "name": "@bonne-garde/cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Workspace package for the Bonne Garde CLI (publish via bun run pack:cli → bonne-garde)",
   "bin": {
