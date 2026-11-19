@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "jsx": "react-jsx",
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@acme/ui/components/*": ["../../registry/ui/*.tsx"],
+      "@acme/ui/lib/*": ["../../registry/ui/*.ts"],
+      "@acme/ui/hooks/*": ["../../registry/ui/*.ts"],
+      "*": ["./node_modules/@types/*", "./node_modules/*"]
+    },
+    "rootDirs": [".", "./.react-router/types"]
+  },
+  "include": [
+    "app/**/*",
+    ".react-router/types/**/*",
+    "testing/**/*",
+    "vite.config.ts",
+    "react-router.config.ts"
+  ]
+}

@@ -5,6 +5,26 @@
       "entry": ["scripts/*.ts"],
       "project": ["scripts/**/*.ts"],
     },
+    "apps/docs": {
+      // Installed once so the later tickets never touch package.json or bun.lock: the registry/ui
+      // files import their own dependencies (resolved from apps/docs by vite.config.ts), and the
+      // guide, code and module pages use the rest.
+      "ignoreDependencies": [
+        "@base-ui/react",
+        "@bonne-garde/registry",
+        "@bonne-garde/schema",
+        "@react-router/node",
+        "class-variance-authority",
+        "clsx",
+        "lucide-react",
+        "motion",
+        "react-markdown",
+        "remark-gfm",
+        "shiki",
+        "tailwind-merge",
+        "vaul",
+      ],
+    },
   },
 
   "ignore": [

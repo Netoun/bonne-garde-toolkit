@@ -1,0 +1,48 @@
+{
+  "name": "@bonne-garde/docs",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "react-router build",
+    "dev": "react-router dev",
+    "pretypecheck": "react-router typegen",
+    "typecheck": "tsc --noEmit",
+    "test": "vp test",
+    "test:watch": "vp test watch"
+  },
+  "dependencies": {
+    "@base-ui/react": "1.7.0",
+    "@bonne-garde/registry": "workspace:*",
+    "@bonne-garde/schema": "workspace:*",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "isbot": "5.2.1",
+    "lucide-react": "1.29.0",
+    "motion": "13.0.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-markdown": "10.1.0",
+    "react-router": "8.3.0",
+    "remark-gfm": "4.0.1",
+    "shiki": "4.6.0",
+    "tailwind-merge": "3.6.0",
+    "vaul": "1.1.2"
+  },
+  "devDependencies": {
+    "@react-router/dev": "8.3.0",
+    "@tailwindcss/vite": "4.3.3",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@types/node": "26.1.2",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "jsdom": "30.1.1",
+    "tailwindcss": "4.3.3",
+    "tailwindcss-animate": "1.0.7",
+    "typescript": "7.0.2",
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.2.8",
+    "vite-plus": "0.2.8",
+    "wrangler": "4.119.0"
+  }
+}
