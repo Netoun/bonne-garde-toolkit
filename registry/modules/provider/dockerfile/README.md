@@ -18,15 +18,15 @@ Harvested from `bonne-garde-keeper`, which shipped this runtime and whose design
 
 ## What it settles
 
-| Seam            | Choice                                                                   | State                 |
-| --------------- | ------------------------------------------------------------------------ | --------------------- |
-| Runtime adapter | Elysia's web-standard adapter behind srvx, listening on `PORT`; `aot` on | done                  |
-| Environment     | `process.env`, completed for one origin                                  | done                  |
-| Origins         | One `APP_URL`, which fills the `SPA_URL` / `SSR_URL` / `API_URL` triple  | done, with one caveat |
-| Secrets         | `BETTER_AUTH_SECRET` generated into `DATA_DIR` on first start when unset | done, `auth` reads it |
-| Deploy          | `docker build` and `compose.yaml`                                        | done                  |
-| Database        | SQLite file under `DATA_DIR`, through `drizzle-orm/libsql`               | done, `db/libsql`     |
-| Object storage  | Local filesystem under `DATA_DIR`                                        | **not done**          |
+| Seam            | Choice                                                                   | State                                               |
+| --------------- | ------------------------------------------------------------------------ | --------------------------------------------------- |
+| Runtime adapter | Elysia's web-standard adapter behind srvx, listening on `PORT`; `aot` on | done                                                |
+| Environment     | `process.env`, completed for one origin                                  | done                                                |
+| Origins         | One `APP_URL`, which fills the `SPA_URL` / `SSR_URL` / `API_URL` triple  | done, with one caveat                               |
+| Secrets         | `BETTER_AUTH_SECRET` generated into `DATA_DIR` on first start when unset | done, `auth` reads it                               |
+| Deploy          | `docker build` and `compose.yaml`                                        | done                                                |
+| Database        | SQLite file under `DATA_DIR`, through `drizzle-orm/libsql`               | done, `db/libsql` or `db/postgres` (`DATABASE_URL`) |
+| Object storage  | Local filesystem under `DATA_DIR`                                        | **not done**                                        |
 
 The caveat on origins is in the list of what does not work: the URLs agree, the paths do not.
 

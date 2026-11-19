@@ -807,6 +807,8 @@ describe("module contract", () => {
         ui: "packages/ui",
       };
       const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+      // db/postgres ships its dev compose file at the project root, where `docker compose` finds it.
+      const ROOT_FILES = new Set(["db/postgres: compose.postgres.yaml"]);
       const outside: string[] = [];
 
       for (const { manifest } of catalog.modules) {
@@ -816,8 +818,9 @@ describe("module contract", () => {
         }
         for (const variant of manifest.variants) {
           for (const path of variant.copy ?? []) {
-            if (!path.startsWith(`${home}/`)) {
-              outside.push(`${manifest.category}/${manifest.id}: ${path}`);
+            const entry = `${manifest.category}/${manifest.id}: ${path}`;
+            if (!path.startsWith(`${home}/`) && !ROOT_FILES.has(entry)) {
+              outside.push(entry);
             }
           }
         }
@@ -2183,6 +2186,112 @@ describe("module contract", () => {
         await expect(formatWithProjectFormatter({ [file]: text })).resolves.toEqual({
           [file]: text,
         });
+      });
+    });
+
+    describe("db/postgres: the same package on a Postgres over DATABASE_URL, with a dev compose file", () => {
+      const POSTGRES = join(MODULES, "db/postgres/template");
+      const postgresText = (path: string): Promise<string> =>
+        readFile(join(POSTGRES, path), "utf8");
+      const postgresModule = async () => {
+        const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+        const postgres = catalog.modules.find(
+          ({ manifest }) => manifest.category === "db" && manifest.id === "postgres",
+        );
+        const [variant] = postgres?.manifest.variants ?? [];
+        if (!postgres || !variant) {
+          throw new Error("db/postgres is missing or has no variant");
+        }
+        return { catalog, postgres: { ...postgres, variant } };
+      };
+
+      test("peers on the dockerfile provider and the API, ships one default variant that owns the workspace, and declares DATABASE_URL", async () => {
+        const { postgres } = await postgresModule();
+
+        expect(postgres.manifest.peers).toEqual({ provider: ["dockerfile"], api: ["elysia"] });
+        expect(postgres.manifest.variants).toHaveLength(1);
+        expect(postgres.variant.key).toBe("default");
+        expect(postgres.variant.match).toEqual({});
+        expect(postgres.variant.workspace).toEqual({ name: "{{SCOPE}}/db", path: "packages/db" });
+        const exact = expect.stringMatching(/^\d+\.\d+\.\d+$/);
+        expect(postgres.variant.dependencies).toEqual({
+          postgres: exact,
+          "{{SCOPE}}/api-runtime": "workspace:*",
+        });
+        expect(postgres.variant.devDependencies).toEqual({
+          "@electric-sql/pglite": exact,
+          "@electric-sql/pglite-socket": exact,
+        });
+        expect(postgres.variant.env).toEqual([
+          {
+            name: "DATABASE_URL",
+            required: true,
+            example: "postgres://postgres:postgres@localhost:5432/app",
+          },
+        ]);
+        expect(postgres.variant.intent ?? []).toEqual([]);
+      });
+
+      test("its template is exactly what it copies, and reaches for neither Cloudflare, wrangler nor Bun", async () => {
+        const { postgres } = await postgresModule();
+
+        expect(await templateFiles(POSTGRES)).toEqual([...(postgres.variant.copy ?? [])].sort());
+        for (const path of postgres.variant.copy ?? []) {
+          expect([
+            path,
+            /cloudflare|wrangler|Bun\.|bun:|bunx/i.test(await postgresText(path)),
+          ]).toEqual([path, false]);
+        }
+      });
+
+      test("its package.json exports ./postgres, runs typecheck, test and the compose file, and holds no dependency map", async () => {
+        const body: unknown = JSON.parse(await postgresText("packages/db/package.json"));
+
+        expect(body).toMatchObject({
+          name: "{{SCOPE}}/db",
+          exports: { "./postgres": "./src/postgres.ts" },
+          scripts: {
+            typecheck: "tsc --noEmit",
+            test: "vp test",
+            "db:up": "docker compose -f ../../compose.postgres.yaml up -d --wait",
+            "db:down": "docker compose -f ../../compose.postgres.yaml down",
+          },
+        });
+        for (const map of ["dependencies", "devDependencies", "peerDependencies"]) {
+          expect(isRecord(body) && map in body ? map : null).toBeNull();
+        }
+      });
+
+      test("compose.postgres.yaml is one pinned postgres service matching the example URL, local only, with a healthcheck", async () => {
+        const compose = await postgresText("compose.postgres.yaml");
+
+        expect(compose).toContain("image: postgres:17-alpine");
+        expect(compose).toContain('"127.0.0.1:5432:5432"');
+        expect(compose).toContain("POSTGRES_USER: postgres");
+        expect(compose).toContain("POSTGRES_PASSWORD: postgres");
+        expect(compose).toContain("POSTGRES_DB: app");
+        expect(compose).toContain("pg_isready");
+        expect(compose.match(/^ {2}\w[\w-]*:$/gm)).toEqual(["  postgres:", "  postgres-data:"]);
+      });
+
+      test("a project on the cloudflare provider is refused, naming the provider", async () => {
+        const { catalog } = await postgresModule();
+        const project = createEmptyProjectManifest({ scope: "@app", registries: {} });
+
+        await expect(
+          resolveModulePlans(
+            catalog,
+            [
+              { category: "config", id: "branding" },
+              { category: "api", id: "elysia" },
+              { category: "provider", id: "cloudflare" },
+              { category: "db", id: "postgres" },
+            ],
+            project,
+          ),
+        ).rejects.toThrow(
+          /db\/postgres accepts only dockerfile for provider, but provider\/cloudflare is present/,
+        );
       });
     });
 

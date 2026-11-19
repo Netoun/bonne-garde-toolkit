@@ -6,7 +6,7 @@
 
 ## Overview
 
-Bonne Garde is a Bun monorepo of a CLI, the registry it installs from and the base template it copies: 3 packages, 19 modules in 14 categories, 34 items.
+Bonne Garde is a Bun monorepo of a CLI, the registry it installs from and the base template it copies: 3 packages, 20 modules in 14 categories, 34 items.
 
 ### Packages
 
@@ -23,7 +23,7 @@ Bonne Garde is a Bun monorepo of a CLI, the registry it installs from and the ba
 | `registry/modules/api`      | `elysia`                          |
 | `registry/modules/auth`     | `better-auth`                     |
 | `registry/modules/config`   | `branding`                        |
-| `registry/modules/db`       | `d1`, `libsql`                    |
+| `registry/modules/db`       | `d1`, `libsql`, `postgres`        |
 | `registry/modules/deploy`   | `cloudflare-actions`              |
 | `registry/modules/dev`      | `portless`                        |
 | `registry/modules/email`    | `resend`                          |

@@ -1,0 +1,16 @@
+{
+  "name": "{{SCOPE}}/db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The project's database: a Postgres over DATABASE_URL, opened through postgres-js, and the ORM built on it",
+  "type": "module",
+  "exports": {
+    "./postgres": "./src/postgres.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vp test",
+    "db:up": "docker compose -f ../../compose.postgres.yaml up -d --wait",
+    "db:down": "docker compose -f ../../compose.postgres.yaml down"
+  }
+}

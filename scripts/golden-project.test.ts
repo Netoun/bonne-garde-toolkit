@@ -332,7 +332,12 @@ describe("the golden project and modules", () => {
 
     const { modules, excluded } = selectModules(listing, MODULES, EXCLUDED_MODULES);
 
-    expect(excluded).toEqual([]);
+    expect(excluded).toEqual([
+      {
+        name: "db/postgres",
+        reason: expect.stringContaining("dockerfile-postgres configuration"),
+      },
+    ]);
     expect(modules).toEqual([
       "pm/pnpm",
       "provider/cloudflare",
@@ -383,7 +388,7 @@ describe("the golden project and modules", () => {
     expect(used.every((names) => names.length === 1)).toBe(true);
     expect([...new Set(used.flat())].sort()).toEqual([...providers].sort());
     // `create` maps the db feature by provider, so the dockerfile configuration installs `db/libsql`.
-    expect(Object.keys(EXCLUDED_MODULES)).toEqual([]);
+    expect(Object.keys(EXCLUDED_MODULES)).toEqual(["db/postgres"]);
   });
 
   test("only the configuration with a ui module installs items, which land in packages/ui", () => {

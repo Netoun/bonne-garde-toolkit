@@ -1,0 +1,40 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "postgres",
+  "category": "db",
+  "version": "0.1.0",
+  "title": "Postgres (DATABASE_URL)",
+  "description": "A Postgres database over DATABASE_URL, opened once per URL through postgres-js, in packages/db, with a dev compose file: the database of the dockerfile provider for a project that wants Postgres.",
+  "peers": { "provider": ["dockerfile"], "api": ["elysia"] },
+  "checks": ["cd packages/db && vp run typecheck && vp run test"],
+  "variants": [
+    {
+      "key": "default",
+      "match": {},
+      "workspace": { "name": "{{SCOPE}}/db", "path": "packages/db" },
+      "dependencies": {
+        "postgres": "4.1.1",
+        "{{SCOPE}}/api-runtime": "workspace:*"
+      },
+      "devDependencies": {
+        "@electric-sql/pglite": "0.5.17",
+        "@electric-sql/pglite-socket": "0.2.20"
+      },
+      "copy": [
+        "compose.postgres.yaml",
+        "packages/db/package.json",
+        "packages/db/tsconfig.json",
+        "packages/db/src/postgres.ts",
+        "packages/db/src/postgres.test.ts",
+        "packages/db/src/postgres-testing.ts"
+      ],
+      "env": [
+        {
+          "name": "DATABASE_URL",
+          "required": true,
+          "example": "postgres://postgres:postgres@localhost:5432/app"
+        }
+      ]
+    }
+  ]
+}
