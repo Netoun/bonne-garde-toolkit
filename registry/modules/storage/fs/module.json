@@ -1,0 +1,96 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "fs",
+  "category": "storage",
+  "version": "0.1.0",
+  "title": "Files on disk",
+  "description": "Media uploads over a directory under DATA_DIR: the medias table and the /v1/media routes, in packages/storage, for the dockerfile provider.",
+  "peers": {
+    "provider": ["dockerfile"],
+    "db": ["libsql"],
+    "orm": ["drizzle"],
+    "auth": ["better-auth"]
+  },
+  "checks": ["cd packages/storage && vp run typecheck && vp run test"],
+  "variants": [
+    {
+      "key": "default",
+      "match": {},
+      "workspace": {
+        "name": "{{SCOPE}}/storage",
+        "path": "packages/storage"
+      },
+      "dependencies": {
+        "drizzle-orm": "0.45.2",
+        "elysia": "1.4.29",
+        "{{SCOPE}}/api-runtime": "workspace:*",
+        "{{SCOPE}}/auth": "workspace:*",
+        "{{SCOPE}}/db": "workspace:*"
+      },
+      "devDependencies": {
+        "@elysiajs/eden": "1.4.9"
+      },
+      "copy": [
+        "packages/storage/package.json",
+        "packages/storage/src/bucket.test.ts",
+        "packages/storage/src/bucket.ts",
+        "packages/storage/src/env.test.ts",
+        "packages/storage/src/env.ts",
+        "packages/storage/src/exports.test.ts",
+        "packages/storage/src/index.ts",
+        "packages/storage/src/media.contract.ts",
+        "packages/storage/src/media.e2e.test.ts",
+        "packages/storage/src/media.module.test.ts",
+        "packages/storage/src/media.module.ts",
+        "packages/storage/src/media.routes.test.ts",
+        "packages/storage/src/media.routes.ts",
+        "packages/storage/src/media.service.ts",
+        "packages/storage/src/schema.ts",
+        "packages/storage/src/storage.test.ts",
+        "packages/storage/src/storage.ts",
+        "packages/storage/src/testing.ts",
+        "packages/storage/tsconfig.json",
+        "packages/storage/tsconfig.test.json"
+      ],
+      "patch": [
+        {
+          "type": "package.dependencies",
+          "file": "apps/api/package.json",
+          "dependencies": {
+            "{{SCOPE}}/storage": "workspace:*"
+          },
+          "intent": "Declare the project's storage package as a dependency of the API app."
+        },
+        {
+          "type": "ts.addImport",
+          "file": "apps/api/src/app.ts",
+          "moduleSpecifier": "{{SCOPE}}/storage",
+          "namedImports": ["mediaModule"],
+          "intent": "Import mediaModule from the project's storage package in the API app."
+        },
+        {
+          "type": "ts.elysiaUse",
+          "file": "apps/api/src/app.ts",
+          "targetName": "app",
+          "argument": "mediaModule",
+          "intent": "Register mediaModule on the API app after its last .use and before its routes: it serves the media routes under /v1/media."
+        },
+        {
+          "type": "package.dependencies",
+          "file": "packages/db/package.json",
+          "dependencies": {
+            "{{SCOPE}}/storage": "workspace:*"
+          },
+          "intent": "Declare the project's storage package as a dependency of the db package, whose schema barrel re-exports its table."
+        },
+        {
+          "type": "ts.addNamedExport",
+          "file": "packages/db/src/schema/index.ts",
+          "moduleSpecifier": "{{SCOPE}}/storage/schema",
+          "exports": ["medias", "mediasRelations"],
+          "intent": "Re-export the medias table and its relations of the storage package from the schema barrel, so db:generate and createDB see them."
+        }
+      ]
+    }
+  ]
+}

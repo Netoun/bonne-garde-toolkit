@@ -3366,6 +3366,202 @@ describe("module contract", () => {
     });
   });
 
+  describe("storage/fs is packages/storage on the dockerfile provider: the media of storage/r2, with files under DATA_DIR", () => {
+    const STORAGE = join(MODULES, "storage/fs/template");
+    const storageText = (path: string): Promise<string> => readFile(join(STORAGE, path), "utf8");
+    const storageModule = async () => {
+      const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+      const found = catalog.modules.find(
+        ({ manifest }) => manifest.category === "storage" && manifest.id === "fs",
+      );
+      const [variant, ...others] = found?.manifest.variants ?? [];
+      if (!found || !variant) {
+        throw new Error("registry/modules/storage/fs is missing or has no variant");
+      }
+      return { catalog, manifest: found.manifest, variant, others };
+    };
+    const sources = async (): Promise<[string, string][]> => {
+      const { variant } = await storageModule();
+      const read: [string, string][] = [];
+      for (const path of variant.copy ?? []) {
+        if (/^packages\/storage\/src\/.+\.ts$/.test(path)) {
+          read.push([
+            path,
+            (await storageText(path))
+              .split("\n")
+              .filter((line) => !/^\s*(?:\/\/|\/?\*)/.test(line))
+              .join("\n"),
+          ]);
+        }
+      }
+      return read;
+    };
+
+    test("one default variant, which owns the workspace `{{SCOPE}}/storage`, peering on dockerfile, libsql, drizzle and better-auth", async () => {
+      const { manifest, variant, others } = await storageModule();
+
+      expect(others).toEqual([]);
+      expect(variant.key).toBe("default");
+      expect(variant.match).toEqual({});
+      expect(variant.workspace).toEqual({ name: "{{SCOPE}}/storage", path: "packages/storage" });
+      expect(manifest.peers).toEqual({
+        provider: ["dockerfile"],
+        db: ["libsql"],
+        orm: ["drizzle"],
+        auth: ["better-auth"],
+      });
+    });
+
+    test("it copies explicit paths inside packages/storage, every one of them shipped and nothing else", async () => {
+      const { variant } = await storageModule();
+
+      expect(variant.copy?.filter((path) => !path.startsWith("packages/storage/"))).toEqual([]);
+      const shipped = (
+        await Array.fromAsync(
+          new Bun.Glob("**/*").scan({ cwd: STORAGE, dot: true, onlyFiles: true }),
+        )
+      ).sort();
+      expect([...(variant.copy ?? [])].sort()).toEqual(shipped);
+    });
+
+    test("it has no Cloudflare dependency, source or wrangler patch", async () => {
+      const { variant } = await storageModule();
+      const declared = [
+        ...Object.keys(variant.dependencies ?? {}),
+        ...Object.keys(variant.devDependencies ?? {}),
+      ];
+
+      expect(declared.filter((name) => /cloudflare|miniflare|wrangler/i.test(name))).toEqual([]);
+      expect(
+        (variant.patch ?? []).filter((patch) => String(patch.file).includes("wrangler")),
+      ).toEqual([]);
+      for (const [path, source] of await sources()) {
+        expect([path, /cloudflare|miniflare|wrangler|R2Bucket/i.test(source)]).toEqual([
+          path,
+          false,
+        ]);
+      }
+    });
+
+    test("every package the sources import is declared, and every dependency is imported", async () => {
+      const { variant } = await storageModule();
+      const declared = new Set([
+        ...Object.keys(variant.dependencies ?? {}),
+        ...Object.keys(variant.devDependencies ?? {}),
+      ]);
+      const imported = new Set<string>();
+      for (const [path, source] of await sources()) {
+        for (const name of packagesImportedBy(source)) {
+          if (name.includes(":") || name === "{{SCOPE}}/storage" || BASE_TOOLING.has(name))
+            continue;
+          imported.add(name);
+          expect([path, declared.has(name)]).toEqual([path, true]);
+        }
+      }
+
+      expect([...declared].filter((name) => !imported.has(name))).toEqual([]);
+    });
+
+    test("it pins what the modules it sits beside pin", async () => {
+      const { catalog, variant } = await storageModule();
+      const pinnedBy = (category: string, id: string, name: string): string | undefined =>
+        catalog.modules
+          .find(({ manifest }) => manifest.category === category && manifest.id === id)
+          ?.manifest.variants.map(
+            (entry) => entry.dependencies?.[name] ?? entry.devDependencies?.[name],
+          )
+          .find(Boolean);
+
+      for (const name of ["drizzle-orm", "elysia", "@elysiajs/eden"]) {
+        const owner: [string, string] =
+          name === "@elysiajs/eden" ? ["api", "elysia"] : ["auth", "better-auth"];
+        const mine = variant.dependencies?.[name] ?? variant.devDependencies?.[name];
+        expect([name, mine]).toEqual([name, pinnedBy(...owner, name)]);
+      }
+    });
+
+    test("it wires itself like storage/r2, with no wrangler patch", async () => {
+      const { variant } = await storageModule();
+      const r2 = (await storageModule()).catalog.modules.find(
+        ({ manifest }) => manifest.category === "storage" && manifest.id === "r2",
+      )?.manifest.variants[0];
+      const wiring = (patches: typeof variant.patch) =>
+        (patches ?? []).filter((patch) => !String(patch.file).includes("wrangler"));
+
+      expect(wiring(variant.patch)).toEqual(wiring(r2?.patch));
+      expect((variant.patch ?? []).map(({ type, file }) => `${type} ${String(file)}`)).toEqual([
+        "package.dependencies apps/api/package.json",
+        "ts.addImport apps/api/src/app.ts",
+        "ts.elysiaUse apps/api/src/app.ts",
+        "package.dependencies packages/db/package.json",
+        "ts.addNamedExport packages/db/src/schema/index.ts",
+      ]);
+    });
+
+    test("it declares no env entry: APP_URL and DATA_DIR are the provider's", async () => {
+      const { variant } = await storageModule();
+
+      expect(variant.env ?? []).toEqual([]);
+    });
+
+    test("the table and the contract are those of storage/r2, byte for byte", async () => {
+      for (const path of [
+        "packages/storage/src/schema.ts",
+        "packages/storage/src/media.contract.ts",
+      ]) {
+        const r2 = await readFile(join(MODULES, "storage/r2/template", path), "utf8");
+        // The contract imports the allowed types from the module's own helpers file.
+        expect([path, (await storageText(path)).replaceAll("./storage", "./r2")]).toEqual([
+          path,
+          r2,
+        ]);
+      }
+    });
+
+    test("it plans on dockerfile with libsql, and is refused beside D1 on cloudflare", async () => {
+      const { catalog } = await storageModule();
+      const project = createEmptyProjectManifest({ scope: "@app", registries: {} });
+      const dockerfile: ModuleRef[] = [
+        { category: "pm", id: "bun" },
+        { category: "provider", id: "dockerfile" },
+        { category: "config", id: "branding" },
+        { category: "api", id: "elysia" },
+        { category: "db", id: "libsql" },
+        { category: "orm", id: "drizzle" },
+        { category: "auth", id: "better-auth" },
+      ];
+
+      const plans = await resolveModulePlans(
+        catalog,
+        [...dockerfile, { category: "storage", id: "fs" }],
+        project,
+      );
+      expect(plans.map(({ key, variant }) => `${key}:${variant}`)).toContain("storage/fs:default");
+      // storage/r2 stays refused there, with its message unchanged.
+      await expect(
+        resolveModulePlans(catalog, [...dockerfile, { category: "storage", id: "r2" }], project),
+      ).rejects.toThrow(
+        /storage\/r2 accepts only cloudflare for provider, but provider\/dockerfile is present/,
+      );
+      await expect(
+        resolveModulePlans(
+          catalog,
+          [
+            { category: "pm", id: "bun" },
+            { category: "provider", id: "cloudflare" },
+            { category: "config", id: "branding" },
+            { category: "api", id: "elysia" },
+            { category: "db", id: "d1" },
+            { category: "orm", id: "drizzle" },
+            { category: "auth", id: "better-auth" },
+            { category: "storage", id: "fs" },
+          ],
+          project,
+        ),
+      ).rejects.toThrow(/storage\/fs accepts only dockerfile for provider/);
+    });
+  });
+
   describe("deploy/cloudflare-actions is the project's deploy workflow, and the script that plans it from the tree", () => {
     const MODULE = join(MODULES, "deploy/cloudflare-actions");
     const WORKFLOW = ".github/workflows/deploy.yml";

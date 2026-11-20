@@ -135,7 +135,7 @@ describe("bonne-garde add --yes", () => {
 
     expect(code).toBe(1);
     expect(stderr).toContain(
-      "spa-backoffice needs the ui, auth, web/spa and storage modules, and none is installed or named in this call; run: npx bonne-garde add ui/shadcn auth/better-auth web/spa storage/r2 spa-backoffice",
+      "spa-backoffice needs the ui, auth, web/spa and storage modules, and none is installed or named in this call; run: npx bonne-garde add ui/shadcn auth/better-auth web/spa storage/fs or storage/r2 spa-backoffice",
     );
   });
 

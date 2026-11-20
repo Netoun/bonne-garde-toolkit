@@ -355,7 +355,7 @@ describe("the golden project and modules", () => {
 
     const { modules, excluded } = selectModules(listing, MODULES, EXCLUDED_MODULES);
 
-    expect(excluded).toEqual([]);
+    expect(excluded.map(({ name }) => name)).toEqual(["storage/fs"]);
     expect(modules).toEqual([
       "pm/pnpm",
       "provider/cloudflare",
@@ -406,8 +406,9 @@ describe("the golden project and modules", () => {
     );
     expect(used.every((names) => names.length === 1)).toBe(true);
     expect([...new Set(used.flat())].sort()).toEqual([...providers].sort());
-    // `create` maps the db feature by provider, so the dockerfile configuration installs `db/libsql`.
-    expect(EXCLUDED_MODULES).toEqual({});
+    // `create` maps the db feature by provider, so the dockerfile configuration installs `db/libsql`;
+    // it does not map storage yet, so `storage/fs` waits for the next stage.
+    expect(Object.keys(EXCLUDED_MODULES)).toEqual(["storage/fs"]);
   });
 
   test("only the configuration with a ui module installs items, which land in packages/ui", () => {

@@ -872,7 +872,8 @@ export const FEATURE_REFUSALS: readonly {
       "web/spa",
     ],
     item: "spa-backoffice",
-    missing: ["storage/r2"],
+    // Two modules fill the category, so the refusal lists both, as it does for `db`.
+    missing: ["storage/fs or storage/r2"],
   },
 ];
 
@@ -880,7 +881,10 @@ export const FEATURE_REFUSALS: readonly {
  * Modules `bonne-garde list` shows that stay out of every configuration, each with its reason. An entry for
  * a module the registry no longer lists fails the run, as for `EXCLUDED`.
  */
-export const EXCLUDED_MODULES: Readonly<Record<string, string>> = {};
+export const EXCLUDED_MODULES: Readonly<Record<string, string>> = {
+  "storage/fs":
+    "installed by the dockerfile configuration once create maps storage by provider (next stage)",
+};
 
 /**
  * The module ids to `bonne-garde add`, read from the `module` lines of `bonne-garde list` output
