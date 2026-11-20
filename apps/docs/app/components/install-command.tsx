@@ -19,7 +19,7 @@ function commandFor(name: string, tab: PackageManagerId): string {
 export function InstallCommand({ name }: { name: string }) {
   const [tab, setTab] = useState<PackageManagerId>("bun");
   const [copied, setCopied] = useState(false);
-  const resetCopyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resetCopyTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {

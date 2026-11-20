@@ -10,7 +10,7 @@ type CodeBlockProps = {
 
 export function CodeBlock({ code, html, label }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
-  const resetCopyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resetCopyTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
