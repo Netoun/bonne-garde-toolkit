@@ -25,7 +25,7 @@ describe("Home", () => {
       {
         path: "/",
         Component: () => (
-          <SiteLayout sections={[]}>
+          <SiteLayout sections={[]} showSidebar={false}>
             <Home />
           </SiteLayout>
         ),

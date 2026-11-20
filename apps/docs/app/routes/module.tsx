@@ -34,9 +34,9 @@ export default function Module() {
   const { manifest, environment, checks } = useLoaderData<typeof loader>();
 
   return (
-    <article className="flex flex-col gap-8">
+    <article className="mx-auto flex w-full max-w-3xl flex-col gap-8">
       <header className="flex flex-col gap-3">
-        <h1 className="text-3xl font-bold tracking-tight">{manifest.title}</h1>
+        <h1 className="font-heading text-3xl font-bold tracking-tight">{manifest.title}</h1>
         <p className="text-muted-foreground">{manifest.description}</p>
         <p className="flex flex-wrap items-center gap-2 text-sm">
           <Badge variant="secondary">{manifest.category}</Badge>

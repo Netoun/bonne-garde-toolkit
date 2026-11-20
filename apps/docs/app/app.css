@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "@fontsource-variable/urbanist/wght.css";
+@import "@fontsource-variable/faustina/wght.css";
 
 @source "../../../registry/ui";
 @source "./";

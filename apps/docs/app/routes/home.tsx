@@ -24,7 +24,7 @@ export default function Home() {
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-8 px-6 py-24">
-      <h1 className="text-4xl font-bold tracking-tight">Bonne Garde</h1>
+      <h1 className="font-heading text-4xl font-bold tracking-tight">Bonne Garde</h1>
       <p className="text-lg text-muted-foreground">
         A shadcn-inspired toolkit: an empty base template, a CLI and a registry of UI components and
         full-stack modules you install into your own project.

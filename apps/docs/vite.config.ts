@@ -35,6 +35,8 @@ function registryUiDependencies(): Plugin {
 
 export default defineConfig(({ mode }) => ({
   base: basePath,
+  // Favicons and logos must stay URL assets so GitHub Pages base paths apply after prerender.
+  build: { assetsInlineLimit: 0 },
   plugins: [registryUiDependencies(), ...(mode === "test" ? [] : [tailwindcss(), reactRouter()])],
   test: {
     environment: "jsdom",

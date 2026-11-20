@@ -1,10 +1,24 @@
-import { Links, Meta, Outlet, Scripts, ScrollRestoration, useLoaderData } from "react-router";
+import {
+  Links,
+  Meta,
+  Outlet,
+  Scripts,
+  ScrollRestoration,
+  useLoaderData,
+  useLocation,
+} from "react-router";
 
+import faviconUrl from "../../../assets/logo/logo-mark-blue.svg?url";
+import type { Route } from "./+types/root";
 import appCss from "./app.css?url";
 import { SiteLayout } from "./components/site-layout";
 import { docsThemeInitScript } from "./components/theme-toggle";
 import { readCachedNav } from "./lib/nav-cache";
 import type { NavSection } from "./nav";
+
+export const links: Route.LinksFunction = () => [
+  { rel: "icon", href: faviconUrl, type: "image/svg+xml" },
+];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -34,8 +48,10 @@ export async function loader() {
 
 export default function App() {
   const { sections } = useLoaderData<{ sections: NavSection[] }>();
+  const { pathname } = useLocation();
+  const showSidebar = pathname !== "/" && pathname !== "";
   return (
-    <SiteLayout sections={sections}>
+    <SiteLayout sections={sections} showSidebar={showSidebar}>
       <Outlet />
     </SiteLayout>
   );
