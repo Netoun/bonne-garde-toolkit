@@ -8,7 +8,7 @@ describe("SiteHeader", () => {
   it("renders main nav links with their hrefs", () => {
     render(
       <MemoryRouter>
-        <SiteHeader showSidebar={false} />
+        <SiteHeader showSidebar={false} sections={[]} />
       </MemoryRouter>,
     );
 
@@ -29,7 +29,7 @@ describe("SiteHeader", () => {
   it("marks only the current section link with aria-current on /components/button", () => {
     render(
       <MemoryRouter initialEntries={["/components/button"]}>
-        <SiteHeader showSidebar={false} />
+        <SiteHeader showSidebar={false} sections={[]} />
       </MemoryRouter>,
     );
 

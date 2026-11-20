@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { NavSection } from "../nav";
 import { SiteLayout } from "./site-layout";
@@ -96,6 +96,35 @@ describe("SiteLayout", () => {
       "href",
       "/components/button",
     );
+  });
+
+  describe("unreleased banner on layout routes", () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("shows the banner on / and on a doc page when the next build is active", () => {
+      vi.stubEnv("BASE_URL", "/bonne-garde-toolkit/next/");
+
+      const { unmount: unmountHome } = render(
+        <MemoryRouter initialEntries={["/"]}>
+          <SiteLayout sections={SECTIONS} showSidebar={false}>
+            <div>Home</div>
+          </SiteLayout>
+        </MemoryRouter>,
+      );
+      expect(screen.getByRole("note", { name: "Unreleased version" })).toBeInTheDocument();
+      unmountHome();
+
+      render(
+        <MemoryRouter initialEntries={["/docs/introduction"]}>
+          <SiteLayout sections={SECTIONS} showSidebar>
+            <div>Guide</div>
+          </SiteLayout>
+        </MemoryRouter>,
+      );
+      expect(screen.getByRole("note", { name: "Unreleased version" })).toBeInTheDocument();
+    });
   });
 
   it("renders no pager on /", () => {

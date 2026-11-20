@@ -1,16 +1,14 @@
 name: Docs
 
-# Deploys the docs site to GitHub Pages from the release tag, never from `main`: the CLI reads the
-# registry at its own tag (ADR 7), so a site built from `main` would advertise modules the published
-# `bonne-garde` cannot install yet.
+# Publishes one GitHub Pages site holding two versions of the docs. The root is built from the latest
+# `v*` tag: the CLI reads the registry at its own tag (ADR 7), so the main docs only advertise what
+# the published `bonne-garde` can install. `main` is built under `/next/`, which shows an
+# "unreleased" banner. A Pages deployment replaces the whole site, so every run rebuilds both.
 on:
   push:
+    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      tag:
-        description: Tag to publish (vX.Y.Z)
-        required: true
 
 permissions:
   contents: read
@@ -22,25 +20,48 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+          ref: main
+          path: next
+          fetch-depth: 0
+          persist-credentials: false
+      - id: latest
+        working-directory: next
+        run: echo "tag=$(git -c versionsort.suffix=- tag --list 'v*' --sort=-v:refname | head -n 1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ steps.latest.outputs.tag }}
+          path: release
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version-file: package.json
-      - run: bun install --frozen-lockfile
+          bun-version-file: next/package.json
       - id: pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - run: bun install --frozen-lockfile
+        working-directory: release
       # `/<repo>` on the github.io project page, empty on a custom domain.
       - run: bun run docs:build
+        working-directory: release
         env:
           DOCS_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+      - run: bun install --frozen-lockfile
+        working-directory: next
+      - run: bun run docs:build
+        working-directory: next
+        env:
+          DOCS_BASE_PATH: ${{ steps.pages.outputs.base_path }}/next
+      - id: site
+        run: |
+          mkdir -p site/next
+          cp -R release/apps/docs/build/client/. site/
+          cp -R next/apps/docs/build/client/. site/next/
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: apps/docs/build/client
+          path: site
 
   deploy:
     needs: build
