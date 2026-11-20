@@ -1,5 +1,6 @@
 import { Button } from "@acme/ui/components/button";
-import { Copy } from "lucide-react";
+import { Check, Copy } from "lucide-react";
+import { useState } from "react";
 
 type CodeBlockProps = {
   code: string;
@@ -8,8 +9,12 @@ type CodeBlockProps = {
 };
 
 export function CodeBlock({ code, html, label }: CodeBlockProps) {
+  const [copied, setCopied] = useState(false);
+
   async function copy() {
     await navigator.clipboard.writeText(code);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
   }
 
   return (
@@ -19,7 +24,7 @@ export function CodeBlock({ code, html, label }: CodeBlockProps) {
       ) : null}
       <div className="relative">
         <div
-          className="overflow-x-auto text-sm [&_.shiki]:!m-0 [&_.shiki]:rounded-none [&_.shiki]:!bg-transparent [&_.shiki]:p-4"
+          className="max-h-[min(65vh,28rem)] overflow-x-auto overflow-y-auto text-sm [&_.shiki]:!m-0 [&_.shiki]:rounded-none [&_.shiki]:!bg-transparent [&_.shiki]:p-4"
           // Shiki HTML is produced server-side from trusted source strings in loaders.
           dangerouslySetInnerHTML={{ __html: html }}
         />
@@ -29,9 +34,9 @@ export function CodeBlock({ code, html, label }: CodeBlockProps) {
           size="icon-sm"
           className="absolute top-2 right-2"
           onClick={copy}
-          aria-label="Copy"
+          aria-label={copied ? "Copied" : "Copy"}
         >
-          <Copy />
+          {copied ? <Check /> : <Copy />}
         </Button>
       </div>
     </figure>

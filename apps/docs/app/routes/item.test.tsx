@@ -23,6 +23,7 @@ describe("Item page", () => {
     }, loaderTimeout);
 
     expect(screen.getByRole("tab", { name: "Preview" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Preview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Code" }));
     expect(screen.getByText("packages/ui/src/components/button.tsx")).toBeInTheDocument();
   });
