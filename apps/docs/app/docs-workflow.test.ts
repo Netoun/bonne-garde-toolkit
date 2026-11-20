@@ -51,7 +51,8 @@ describe(".github/workflows/docs.yml", () => {
   it("builds the root from the latest version tag, whatever triggered the run", () => {
     const latest = build.steps.find((s) => s.id === "latest");
     expect(latest?.["working-directory"]).toBe("next");
-    expect(latest?.run).toContain("git tag --list 'v*' --sort=-v:refname");
+    // `versionsort.suffix=-` ranks v1.0.0 above v1.0.0-rc.1.
+    expect(latest?.run).toContain("git -c versionsort.suffix=- tag --list 'v*' --sort=-v:refname");
 
     const ref = String(checkoutAt("release")?.with?.ref);
     expect(ref).toBe("refs/tags/${{ steps.latest.outputs.tag }}");

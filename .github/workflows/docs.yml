@@ -30,7 +30,7 @@ jobs:
           persist-credentials: false
       - id: latest
         working-directory: next
-        run: echo "tag=$(git tag --list 'v*' --sort=-v:refname | head -n 1)" >> "$GITHUB_OUTPUT"
+        run: echo "tag=$(git -c versionsort.suffix=- tag --list 'v*' --sort=-v:refname | head -n 1)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/tags/${{ steps.latest.outputs.tag }}
