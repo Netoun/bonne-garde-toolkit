@@ -57,7 +57,19 @@ import {
   GOLDEN_MEDIA_STATEMENT,
   GOLDEN_NOTE_STATEMENT,
   GOLDEN_TABLE,
+  AUTH_LIBSQL_MIN_TESTS,
   AUTH_MIN_TESTS,
+  authMinTests,
+  cookieHeader,
+  expectServedBack,
+  GOLDEN_PNG,
+  hasMediaOnDisk,
+  MEDIA_DIR,
+  mediaPath,
+  readUploadedMedia,
+  STORAGE_FS_MIN_TESTS,
+  storageMinTests,
+  VERIFY_EMAIL_SCRIPT,
   EMAIL_MIN_TESTS,
   expectPending,
   hasAuth,
@@ -218,6 +230,17 @@ describe("the golden project", () => {
     expect(dockerfile?.modules).not.toContain("db/d1");
   });
 
+  test("the dockerfile configuration has auth and storage, which create maps by provider: auth over libsql, files on disk", () => {
+    expect(ANSWER_SETS.dockerfile?.features).toEqual(
+      expect.arrayContaining(["db", "auth", "storage"]),
+    );
+    const dockerfile = CONFIGURATIONS.find(({ name }) => name === "dockerfile");
+    expect(dockerfile?.modules).toContain("auth/better-auth");
+    expect(dockerfile?.modules).toContain("storage/fs");
+    expect(dockerfile?.modules).not.toContain("storage/r2");
+    expect(Object.keys(EXCLUDED_MODULES)).not.toContain("storage/fs");
+  });
+
   test("the dockerfile-postgres configuration is create without the db feature, then add db/postgres orm/drizzle", () => {
     expect(ANSWER_SETS["dockerfile-postgres"]?.features).not.toContain("db");
     const postgres = CONFIGURATIONS.find(({ name }) => name === "dockerfile-postgres");
@@ -229,19 +252,24 @@ describe("the golden project", () => {
     // What `create` maps for the dockerfile answers minus the db feature, in the dockerfile one's order.
     const dockerfile = CONFIGURATIONS.find(({ name }) => name === "dockerfile");
     expect(postgres?.modules.slice(0, -2)).toEqual(
-      (dockerfile?.modules ?? []).filter((name) => name !== "db/libsql" && name !== "orm/drizzle"),
+      (dockerfile?.modules ?? []).filter(
+        (name) => !["db/libsql", "orm/drizzle", "auth/better-auth", "storage/fs"].includes(name),
+      ),
     );
   });
 
   test("a configuration has features when it installs the items and has the auth module they need", () => {
-    const [cloudflare, dockerfile] = CONFIGURATIONS;
+    const [cloudflare, dockerfile, fronts] = CONFIGURATIONS;
     expect(hasFeatures(cloudflare as Configuration)).toBe(true);
-    expect(hasFeatures(dockerfile as Configuration)).toBe(false);
+    expect(hasFeatures(dockerfile as Configuration)).toBe(true);
+    expect(hasFeatures(fronts as Configuration)).toBe(false);
   });
 
   test("the spa runs the shell's tests everywhere, and the features' too where they are installed", () => {
     const [cloudflare, dockerfile] = CONFIGURATIONS;
-    expect(spaMinTests(dockerfile as Configuration)).toBe(SPA_SHELL_MIN_TESTS);
+    expect(spaMinTests(dockerfile as Configuration)).toBe(
+      SPA_SHELL_MIN_TESTS + SPA_FEATURE_MIN_TESTS,
+    );
     expect(spaMinTests(cloudflare as Configuration)).toBe(
       SPA_SHELL_MIN_TESTS + SPA_FEATURE_MIN_TESTS,
     );
@@ -355,7 +383,7 @@ describe("the golden project and modules", () => {
 
     const { modules, excluded } = selectModules(listing, MODULES, EXCLUDED_MODULES);
 
-    expect(excluded.map(({ name }) => name)).toEqual(["storage/fs"]);
+    expect(excluded).toEqual([]);
     expect(modules).toEqual([
       "pm/pnpm",
       "provider/cloudflare",
@@ -376,6 +404,7 @@ describe("the golden project and modules", () => {
       "pm/bun",
       "provider/dockerfile",
       "db/libsql",
+      "storage/fs",
       "db/postgres",
     ]);
   });
@@ -406,9 +435,9 @@ describe("the golden project and modules", () => {
     );
     expect(used.every((names) => names.length === 1)).toBe(true);
     expect([...new Set(used.flat())].sort()).toEqual([...providers].sort());
-    // `create` maps the db feature by provider, so the dockerfile configuration installs `db/libsql`;
-    // it does not map storage yet, so `storage/fs` waits for the next stage.
-    expect(Object.keys(EXCLUDED_MODULES)).toEqual(["storage/fs"]);
+    // `create` maps the db and storage features by provider, so the dockerfile configuration installs
+    // `db/libsql` and `storage/fs`: every module of the registry is in a configuration.
+    expect(EXCLUDED_MODULES).toEqual({});
   });
 
   test("only the configuration with a ui module installs items, which land in packages/ui", () => {
@@ -417,8 +446,8 @@ describe("the golden project and modules", () => {
         expect(modules).toContain("ui/shadcn");
       }
     }
-    // The dockerfile configuration installs the ui module and no item: the image the Dockerfile has to build.
-    expect(CONFIGURATIONS.find(({ name }) => name === "dockerfile")?.items).toBe(false);
+    // The dockerfile configuration installs the items its spa and auth bring: the image the Dockerfile has to build.
+    expect(CONFIGURATIONS.find(({ name }) => name === "dockerfile")?.items).toBe(true);
   });
 
   test("no item golden installs shares its bare name with a module: `bonne-garde add` refuses a name that is both", async () => {
@@ -801,6 +830,30 @@ describe("the golden project and patches", () => {
           "imports[@app/db]",
           "scripts.db:generate",
         ],
+        "auth/better-auth": [
+          "dependencies.@app/auth",
+          "dependencies.@app/auth",
+          "elysia[app].use[authModule]",
+          'exports."."',
+          'exports."./client"',
+          'exports."./schema"',
+          'exports."./testing"',
+          "exports[@app/auth/schema]",
+          "imports[@app/auth]",
+          "scripts.auth:generate",
+          "scripts.auth:secret",
+          "scripts.db:seed",
+          "scripts.test",
+          "scripts.typecheck",
+        ],
+        "storage/fs": [
+          "dependencies.@app/storage",
+          "dependencies.@app/storage",
+          "elysia[app].use[mediaModule]",
+          "exports[@app/storage/schema]",
+          "imports[@app/storage]",
+        ],
+        "email/resend": ["dependencies.@app/email"],
         "web/spa": ["scripts.dev"],
         "dev/portless": [
           "devDependencies.portless",
@@ -1869,14 +1922,17 @@ describe("testCounts", () => {
 });
 
 describe("the auth phases", () => {
-  test("a configuration generates the auth schema again when it installs the auth module, and only the cloudflare one does", () => {
+  test("a configuration generates the auth schema again when it installs the auth module, and the cloudflare and dockerfile ones do", () => {
     expect(hasAuth({ name: "a", modules: ["api/elysia", "auth/better-auth"], items: false })).toBe(
       true,
     );
     expect(hasAuth({ name: "b", modules: ["api/elysia", "orm/drizzle"], items: false })).toBe(
       false,
     );
-    expect(CONFIGURATIONS.filter(hasAuth).map(({ name }) => name)).toEqual(["cloudflare"]);
+    expect(CONFIGURATIONS.filter(hasAuth).map(({ name }) => name)).toEqual([
+      "cloudflare",
+      "dockerfile",
+    ]);
   });
 
   test("auth is installed after the db and the orm it peers on", () => {
@@ -2050,15 +2106,18 @@ describe("the auth phases", () => {
 });
 
 describe("the email phases", () => {
-  test("every configuration installs email, and only the one with auth has anything to wire", () => {
+  test("every configuration installs email, and the ones with auth have the wiring pending", () => {
     expect(CONFIGURATIONS.filter(hasEmail).map(({ name }) => name)).toEqual([
       "cloudflare",
       "dockerfile",
       "dockerfile-postgres",
     ]);
     expect(hasEmail({ name: "a", modules: ["api/elysia"], items: false })).toBe(false);
-    // The dockerfile project has no db, so no auth: email installs there on its own, and cleanly.
-    expect(CONFIGURATIONS.find(({ name }) => name === "dockerfile")?.modules).not.toContain(
+    // The Postgres project has no auth: email installs there on its own, and cleanly.
+    expect(
+      CONFIGURATIONS.find(({ name }) => name === "dockerfile-postgres")?.modules,
+    ).not.toContain("auth/better-auth");
+    expect(CONFIGURATIONS.find(({ name }) => name === "dockerfile")?.modules).toContain(
       "auth/better-auth",
     );
   });
@@ -2109,7 +2168,7 @@ describe("the email phases", () => {
       }
       expect(PENDING).toEqual({
         cloudflare: ["email/resend/wire-email-into-auth"],
-        dockerfile: [],
+        dockerfile: ["email/resend/wire-email-into-auth"],
         "dockerfile-postgres": [],
         fronts: [],
       });
@@ -2341,14 +2400,20 @@ describe("the email phases", () => {
 });
 
 describe("the storage phases", () => {
-  test("a configuration counts the storage tests and expects its table when it installs the storage module, and only the cloudflare one does", () => {
+  test("a configuration counts the storage tests when it installs a storage module, and the cloudflare and dockerfile ones do", () => {
     expect(hasStorage({ name: "a", modules: ["api/elysia", "storage/r2"], items: false })).toBe(
       true,
     );
     expect(
       hasStorage({ name: "b", modules: ["api/elysia", "auth/better-auth"], items: false }),
     ).toBe(false);
-    expect(CONFIGURATIONS.filter(hasStorage).map(({ name }) => name)).toEqual(["cloudflare"]);
+    expect(CONFIGURATIONS.filter(hasStorage).map(({ name }) => name)).toEqual([
+      "cloudflare",
+      "dockerfile",
+    ]);
+    expect(hasStorage({ name: "c", modules: ["api/elysia", "storage/fs"], items: false })).toBe(
+      true,
+    );
   });
 
   test("storage is installed after the db, the orm and the auth it peers on", () => {
@@ -2360,7 +2425,7 @@ describe("the storage phases", () => {
   });
 
   test("the migration has to create the table golden adds and the medias table", () => {
-    expect(MODULE_TABLES).toEqual({ "storage/r2": ["medias"] });
+    expect(MODULE_TABLES).toEqual({ "storage/r2": ["medias"], "storage/fs": ["medias"] });
     expect(expectedTables({ name: "a", modules: ["orm/drizzle"], items: false })).toEqual([
       GOLDEN_TABLE,
     ]);
@@ -2734,5 +2799,84 @@ describe("every web shell serves the favicons and the manifest config/branding s
         await changed.stop();
       }
     });
+  });
+});
+
+describe("the media on disk phase (the container's volume holds the uploaded file)", () => {
+  test("is the dockerfile configuration, which has an image, auth and storage/fs, and no other", () => {
+    expect(CONFIGURATIONS.filter(hasMediaOnDisk).map(({ name }) => name)).toEqual(["dockerfile"]);
+    expect(
+      hasMediaOnDisk({
+        name: "x",
+        modules: ["provider/dockerfile", "storage/fs"],
+        items: false,
+      }),
+    ).toBe(false);
+    expect(MEDIA_DIR).toBe("/data/media");
+    expect(mediaPath("uploads/a-b.png")).toBe("/data/media/uploads/a-b.png");
+  });
+
+  test("the libsql variant of auth has its own floor of tests, below d1's", () => {
+    const [cloudflare, dockerfile] = CONFIGURATIONS;
+    expect(authMinTests(cloudflare as Configuration)).toBe(AUTH_MIN_TESTS);
+    expect(authMinTests(dockerfile as Configuration)).toBe(AUTH_LIBSQL_MIN_TESTS);
+  });
+
+  test("storage/fs has its own floor of tests, below r2's", () => {
+    const [cloudflare, dockerfile] = CONFIGURATIONS;
+    expect(storageMinTests(cloudflare as Configuration)).toBe(STORAGE_MIN_TESTS);
+    expect(storageMinTests(dockerfile as Configuration)).toBe(STORAGE_FS_MIN_TESTS);
+  });
+
+  test("the floor of storage/fs tests is what its template has", async () => {
+    const dir = join(resolve(import.meta.dir, ".."), "registry/modules/storage/fs/template");
+    let tests = 0;
+    for await (const path of new Bun.Glob("packages/storage/src/**/*.test.ts").scan({ cwd: dir })) {
+      const text = await Bun.file(join(dir, path)).text();
+      tests += [...text.matchAll(/^\s*(?:test|it)(?:\.each\([\s\S]*?\))?\(/gm)].length;
+    }
+    expect(STORAGE_FS_MIN_TESTS).toBeLessThanOrEqual(tests);
+    expect(STORAGE_FS_MIN_TESTS).toBeGreaterThan(tests - 10);
+  });
+
+  test("the cookie sent back is the name=value pairs of the sign-in's Set-Cookie headers", () => {
+    expect(
+      cookieHeader([
+        "better-auth.session_token=abc.def; Max-Age=604800; Path=/; HttpOnly; SameSite=Lax",
+        "better-auth.session_data=xyz; Path=/",
+      ]),
+    ).toBe("better-auth.session_token=abc.def; better-auth.session_data=xyz");
+    expect(() => cookieHeader([])).toThrow(/no cookie/);
+  });
+
+  test("an upload answers a key and a url, and nothing else is one", () => {
+    expect(
+      readUploadedMedia({
+        id: "1",
+        key: "uploads/a.png",
+        url: "http://x/v1/media/file/uploads/a.png",
+      }),
+    ).toEqual({ key: "uploads/a.png", url: "http://x/v1/media/file/uploads/a.png" });
+    expect(() => readUploadedMedia({ error: "nope" })).toThrow(/not a key and a url/);
+    expect(() => readUploadedMedia(null)).toThrow(/not a key and a url/);
+  });
+
+  test("the bytes served back are the ones uploaded, as a png", () => {
+    expect(() =>
+      expectServedBack({ contentType: "image/png", bytes: new Uint8Array(GOLDEN_PNG) }),
+    ).not.toThrow();
+    expect(() =>
+      expectServedBack({ contentType: "text/html", bytes: new Uint8Array(GOLDEN_PNG) }),
+    ).toThrow(/not image\/png/);
+    expect(() =>
+      expectServedBack({ contentType: "image/png", bytes: new Uint8Array([1, 2, 3]) }),
+    ).toThrow(/3 bytes/);
+    expect(GOLDEN_PNG.slice(0, 4)).toEqual(Uint8Array.from([0x89, 0x50, 0x4e, 0x47]));
+  });
+
+  test("the verification script marks one user of the volume's database", () => {
+    expect(VERIFY_EMAIL_SCRIPT).toContain("file:/data/db.sqlite");
+    expect(VERIFY_EMAIL_SCRIPT).toContain("email_verified = 1");
+    expect(VERIFY_EMAIL_SCRIPT).toContain("GOLDEN_EMAIL");
   });
 });

@@ -140,7 +140,7 @@ export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
   dockerfile: {
     apps: ["api", "spa"],
     provider: "dockerfile",
-    features: ["db", "email", "portless"],
+    features: ["db", "auth", "storage", "email", "portless"],
     pm: "bun",
   },
   // The fronts alone: no api, so no Eden client and no API variable, deployed.
@@ -320,13 +320,32 @@ export function hasAuth(configuration: Configuration): boolean {
   return configuration.modules.includes(AUTH_MODULE);
 }
 
-/** The module whose tests golden has to see run, and whose table has to be in the migration. */
+/** The modules whose tests golden has to see run: `storage/r2` is Cloudflare's, `storage/fs` the container's. */
 const STORAGE_MODULE = "storage/r2";
+const FS_STORAGE_MODULE = "storage/fs";
 
-/** Whether the configuration has storage, so golden counts its tests and expects its table in the migration. */
+/** Whether the configuration has storage, so golden counts its tests. The table to migrate is `MODULE_TABLES`'s. */
 export function hasStorage(configuration: Configuration): boolean {
-  return configuration.modules.includes(STORAGE_MODULE);
+  return (
+    configuration.modules.includes(STORAGE_MODULE) ||
+    configuration.modules.includes(FS_STORAGE_MODULE)
+  );
 }
+
+/**
+ * Whether the container keeps files on its volume, so golden uploads an image through the API and
+ * looks for the file there: files on disk, behind the sign-in the media routes ask for.
+ */
+export function hasMediaOnDisk(configuration: Configuration): boolean {
+  return (
+    buildsImage(configuration) &&
+    configuration.modules.includes(FS_STORAGE_MODULE) &&
+    hasAuth(configuration)
+  );
+}
+
+/** Where the container's volume holds the media files, once an upload has been served. */
+export const MEDIA_DIR = "/data/media";
 
 /**
  * The schema `auth:generate` writes has to be the one the module ships. The legacy file kept a hand
@@ -734,6 +753,7 @@ export function goldenSchema(configuration: Configuration): string {
  */
 export const MODULE_TABLES: Readonly<Record<string, readonly string[]>> = {
   "storage/r2": ["medias"],
+  "storage/fs": ["medias"],
 };
 
 /** What the migration has to create in a configuration: the table golden adds, and each module's own. */
@@ -881,10 +901,7 @@ export const FEATURE_REFUSALS: readonly {
  * Modules `bonne-garde list` shows that stay out of every configuration, each with its reason. An entry for
  * a module the registry no longer lists fails the run, as for `EXCLUDED`.
  */
-export const EXCLUDED_MODULES: Readonly<Record<string, string>> = {
-  "storage/fs":
-    "installed by the dockerfile configuration once create maps storage by provider (next stage)",
-};
+export const EXCLUDED_MODULES: Readonly<Record<string, string>> = {};
 
 /**
  * The module ids to `bonne-garde add`, read from the `module` lines of `bonne-garde list` output
@@ -1008,6 +1025,31 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "imports[@app/db]",
       "scripts.db:generate",
     ],
+    "auth/better-auth": [
+      "dependencies.@app/auth",
+      "dependencies.@app/auth",
+      "elysia[app].use[authModule]",
+      'exports."."',
+      'exports."./client"',
+      'exports."./schema"',
+      'exports."./testing"',
+      "exports[@app/auth/schema]",
+      "imports[@app/auth]",
+      "scripts.auth:generate",
+      "scripts.auth:secret",
+      "scripts.db:seed",
+      "scripts.test",
+      "scripts.typecheck",
+    ],
+    "storage/fs": [
+      "dependencies.@app/storage",
+      "dependencies.@app/storage",
+      "elysia[app].use[mediaModule]",
+      "exports[@app/storage/schema]",
+      "imports[@app/storage]",
+    ],
+    // Not the import into mailer.ts: that is the intention's edit, as on cloudflare.
+    "email/resend": ["dependencies.@app/email"],
     "web/spa": ["scripts.dev"],
     "dev/portless": [
       "devDependencies.portless",
@@ -1069,7 +1111,22 @@ export const PATCHED_ITEMS: Readonly<Record<string, Readonly<Record<string, read
         "dependencies.@tanstack/react-virtual",
       ],
     },
-    dockerfile: {},
+    dockerfile: {
+      "spa-auth": [
+        "dependencies.@app/auth",
+        "dependencies.@hookform/resolvers",
+        "dependencies.better-auth",
+        "dependencies.motion",
+        "dependencies.react-hook-form",
+        "dependencies.zod",
+      ],
+      "spa-backoffice": [
+        "dependencies.@tanstack/react-form",
+        "dependencies.@tanstack/react-pacer",
+        "dependencies.@tanstack/react-table",
+        "dependencies.@tanstack/react-virtual",
+      ],
+    },
   };
 
 /** One patch of a module, as `bonne-garde add` prints it: its outcome and, per region, what it did. */
@@ -1621,12 +1678,12 @@ const WIRED_TEST_FILE = "packages/auth/src/mailer.wired.test.ts";
 /**
  * The intentions `bonne-garde add` leaves pending, per configuration: what the variants it
  * selects ship. Golden resolves each the way an executor would, and a configuration that gains one is a
- * decision made here. The dockerfile project has no auth, so email selects the variant that wires nothing
- * and nothing is pending: it installs cleanly and `doctor --strict` is green as it is.
+ * decision made here. A project with auth and email has the wiring pending (cloudflare and dockerfile);
+ * `dockerfile-postgres` has no auth, so email selects the variant that wires nothing and nothing is pending.
  */
 export const PENDING: Readonly<Record<string, readonly string[]>> = {
   cloudflare: ["email/resend/wire-email-into-auth"],
-  dockerfile: [],
+  dockerfile: ["email/resend/wire-email-into-auth"],
   "dockerfile-postgres": [],
   fronts: [],
 };
@@ -1999,11 +2056,29 @@ export function testCounts(output: string): Record<string, number> {
 /** How many tests the auth package runs in the project; fewer means the root `test` stopped reaching it. */
 export const AUTH_MIN_TESTS = 53;
 
+/** The same count for the libsql variant of auth, which has its own flow, organization and seed tests. */
+export const AUTH_LIBSQL_MIN_TESTS = 51;
+
+/** The floor of the auth package's test count: the variant that matches the configuration's database. */
+export function authMinTests(configuration: Configuration): number {
+  return configuration.modules.includes(LIBSQL_MODULE) ? AUTH_LIBSQL_MIN_TESTS : AUTH_MIN_TESTS;
+}
+
 /**
  * How many tests the storage package runs in the project: the legacy media tests (r2, routes, e2e)
  * ported, and the ones the extraction added. Fewer means the root `test` stopped reaching them.
  */
 export const STORAGE_MIN_TESTS = 75;
+
+/** The same count for `storage/fs`, which has no R2 binding to test: its own bucket tests instead. */
+export const STORAGE_FS_MIN_TESTS = 55;
+
+/** The floor of the storage package's test count in a configuration that has storage. */
+export function storageMinTests(configuration: Configuration): number {
+  return configuration.modules.includes(FS_STORAGE_MODULE)
+    ? STORAGE_FS_MIN_TESTS
+    : STORAGE_MIN_TESTS;
+}
 
 /** Whether the configuration installs the feature items, which need the auth module. */
 export function hasFeatures(configuration: Configuration): boolean {
@@ -2686,13 +2761,13 @@ async function configured(
     const { stdout, stderr } = await captureBoth(pm.run("test"), project);
     const ran = testCounts(`${stdout}\n${stderr}`);
     if (hasAuth(configuration)) {
-      expectRan(ran, `${SCOPE}/auth`, AUTH_MIN_TESTS);
+      expectRan(ran, `${SCOPE}/auth`, authMinTests(configuration));
     }
     if (hasEmail(configuration)) {
       expectRan(ran, `${SCOPE}/email`, EMAIL_MIN_TESTS);
     }
     if (hasStorage(configuration)) {
-      expectRan(ran, `${SCOPE}/storage`, STORAGE_MIN_TESTS);
+      expectRan(ran, `${SCOPE}/storage`, storageMinTests(configuration));
     }
     expectRan(ran, `${SCOPE}/spa`, spaMinTests(configuration));
     const counts = Object.entries(ran);
@@ -2791,8 +2866,8 @@ async function configured(
     if (hasAuth(configuration)) {
       await seeded(project, timings, name, pm, configuration);
     }
-  } else if (hasPostgres(configuration)) {
-    // Only the migration: the container applies it to a real Postgres, in the docker phase below.
+  } else if (hasPostgres(configuration) || hasSqliteFile(configuration)) {
+    // Only the migration: the container applies it to its Postgres or its SQLite file, in the docker phase below.
     await generated(project, timings, name, pm, configuration);
   }
   await step("check", () => run(pm.run("check"), project));
@@ -3364,7 +3439,11 @@ async function imaged(
         if (postgres !== null) {
           await startedPostgres(project, docker, postgres);
         }
-        await answers(project, docker, { sqlite: hasSqliteFile(configuration), postgres });
+        await answers(project, docker, {
+          sqlite: hasSqliteFile(configuration),
+          media: hasMediaOnDisk(configuration),
+          postgres,
+        });
       } catch (error) {
         for (const container of [docker, postgres?.container ?? null]) {
           if (container !== null) {
@@ -3400,13 +3479,160 @@ async function imaged(
   }
 }
 
+/** A 1x1 PNG: the smallest image the media routes accept. */
+export const GOLDEN_PNG = Uint8Array.from(
+  atob(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAfbLI3wAAAABJRU5ErkJggg==",
+  ),
+  (character) => character.charCodeAt(0),
+);
+
+/** The user golden signs up in the container. */
+export const GOLDEN_USER = {
+  name: "Golden",
+  email: "golden@example.com",
+  password: "golden-password-1234",
+};
+
+/**
+ * The container sends no email, and Better Auth refuses a sign-in until the address is verified:
+ * this marks the golden user's as verified in the volume's database, the way the link would. It runs in
+ * the container, in the auth package, where `@libsql/client` resolves; the address is `GOLDEN_EMAIL`.
+ */
+export const VERIFY_EMAIL_SCRIPT = `import { createClient } from "@libsql/client";
+const db = createClient({ url: "file:${SQLITE_FILE}" });
+const { rowsAffected } = await db.execute({
+  sql: 'UPDATE "user" SET email_verified = 1 WHERE email = ?',
+  args: [process.env.GOLDEN_EMAIL],
+});
+if (rowsAffected !== 1) {
+  throw new Error("no user to verify: " + rowsAffected);
+}
+`;
+
+/** The `name=value` pairs of a response's `Set-Cookie` headers, as one `Cookie` header. */
+export function cookieHeader(setCookies: readonly string[]): string {
+  const pairs = setCookies.map((cookie) => cookie.split(";")[0]?.trim() ?? "").filter(Boolean);
+  if (pairs.length === 0) {
+    throw new Error("the sign-in answered no cookie");
+  }
+  return pairs.join("; ");
+}
+
+/** What an upload answered: the key of the file on disk and the url it is served at. */
+export function readUploadedMedia(body: unknown): { key: string; url: string } {
+  if (!isRecord(body) || typeof body.key !== "string" || typeof body.url !== "string") {
+    throw new Error(`the upload answered ${JSON.stringify(body)}, not a key and a url`);
+  }
+  return { key: body.key, url: body.url };
+}
+
+/** The file of a media in the container's volume. */
+export function mediaPath(key: string): string {
+  return `${MEDIA_DIR}/${key}`;
+}
+
+/** The bytes served back are the bytes uploaded, with the image's content type. */
+export function expectServedBack(served: { contentType: string | null; bytes: Uint8Array }): void {
+  if (!served.contentType?.startsWith("image/png")) {
+    throw new Error(`the media came back as ${served.contentType}, not image/png`);
+  }
+  if (Buffer.compare(served.bytes, GOLDEN_PNG) !== 0) {
+    throw new Error(
+      `the media came back as ${served.bytes.length} bytes that are not the ${GOLDEN_PNG.length} uploaded`,
+    );
+  }
+}
+
+/**
+ * Signs a user up in the running container, verifies the address, signs in, uploads an image through
+ * `/v1/media`, reads it back by the path of its url, and finds the file under the volume's `media/`
+ * directory with the size uploaded.
+ */
+async function uploadedAndServed(project: string, docker: string, origin: string): Promise<void> {
+  const send = async (path: string, init: RequestInit) =>
+    fetch(`${origin}${path}`, { ...init, signal: AbortSignal.timeout(10_000) });
+  // The origin Better Auth trusts is the container's own, `APP_URL`, not the port docker picked.
+  const json = {
+    "content-type": "application/json",
+    origin: "http://localhost:5172",
+  };
+  const signUp = await send("/api/auth/sign-up/email", {
+    method: "POST",
+    headers: json,
+    body: JSON.stringify(GOLDEN_USER),
+  });
+  if (!signUp.ok) {
+    throw new Error(`sign-up answered ${signUp.status}: ${await signUp.text()}`);
+  }
+  await run(
+    [
+      "docker",
+      "exec",
+      "-w",
+      "/app/packages/auth",
+      "-e",
+      `GOLDEN_EMAIL=${GOLDEN_USER.email}`,
+      docker,
+      "node",
+      "--input-type=module",
+      "-e",
+      VERIFY_EMAIL_SCRIPT,
+    ],
+    project,
+  );
+  const signIn = await send("/api/auth/sign-in/email", {
+    method: "POST",
+    headers: json,
+    body: JSON.stringify({ email: GOLDEN_USER.email, password: GOLDEN_USER.password }),
+  });
+  if (!signIn.ok) {
+    throw new Error(`sign-in answered ${signIn.status}: ${await signIn.text()}`);
+  }
+  const cookie = cookieHeader(signIn.headers.getSetCookie());
+
+  const form = new FormData();
+  form.set("file", new File([GOLDEN_PNG], "golden.png", { type: "image/png" }));
+  // A valid upload with no session: the body is validated before the guard answers, so an empty one is a 422.
+  const anonymous = await send("/v1/media", { method: "POST", body: form });
+  if (anonymous.status !== 401) {
+    throw new Error(`POST /v1/media without a session answered ${anonymous.status}, not 401`);
+  }
+  const upload = await send("/v1/media", { method: "POST", headers: { cookie }, body: form });
+  if (!upload.ok) {
+    throw new Error(`POST /v1/media answered ${upload.status}: ${await upload.text()}`);
+  }
+  const { key, url } = readUploadedMedia(await upload.json());
+  // The url carries the container's `APP_URL`; the same path is served on the port docker picked.
+  const back = await send(new URL(url).pathname, {});
+  if (!back.ok) {
+    throw new Error(`GET ${url} answered ${back.status}`);
+  }
+  expectServedBack({
+    contentType: back.headers.get("content-type"),
+    bytes: new Uint8Array(await back.arrayBuffer()),
+  });
+  const size = await capture(
+    ["docker", "exec", docker, "stat", "-c", "%s", mediaPath(key)],
+    project,
+  );
+  if (Number(size.trim()) !== GOLDEN_PNG.length) {
+    throw new Error(
+      `${mediaPath(key)} holds ${size.trim()} bytes, not the ${GOLDEN_PNG.length} uploaded`,
+    );
+  }
+  console.log(
+    `golden: the volume holds ${mediaPath(key)}, served back at ${new URL(url).pathname}`,
+  );
+}
+
 /** Starts the container, waits for `/health`, and checks what it serves: the API, the SPA, a hashed asset, a client route. */
 async function answers(
   project: string,
   docker: string,
-  database: { sqlite: boolean; postgres: PostgresContainer | null },
+  database: { sqlite: boolean; media: boolean; postgres: PostgresContainer | null },
 ): Promise<void> {
-  const { sqlite, postgres } = database;
+  const { sqlite, media, postgres } = database;
   await run(
     [
       "docker",
@@ -3475,6 +3701,9 @@ async function answers(
   // The API opened its database on the first request: the volume holds the SQLite file.
   if (sqlite) {
     await run(["docker", "exec", docker, "test", "-f", SQLITE_FILE], project);
+  }
+  if (media) {
+    await uploadedAndServed(project, docker, `http://127.0.0.1:${port}`);
   }
   // `/health` came after the db plugin, so the first one migrated the Postgres: ask psql, inside it.
   if (postgres !== null) {
