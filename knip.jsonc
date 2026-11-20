@@ -7,13 +7,14 @@
     },
     "apps/docs": {
       "entry": ["app/demos/*.tsx"],
+      // `react-router typegen` (pretypecheck) writes the ./+types/* route types. They do not exist
+      // before typegen runs, so knip must not report them.
+      "ignoreUnresolved": ["^\\./\\+types/"],
       // Installed once so the later tickets never touch package.json or bun.lock: the registry/ui
       // files import their own dependencies (resolved from apps/docs by vite.config.ts), and the
       // guide, code and module pages use the rest.
       "ignoreDependencies": [
         "@base-ui/react",
-        "@bonne-garde/registry",
-        "@bonne-garde/schema",
         "@react-router/node",
         "class-variance-authority",
         "clsx",
