@@ -10,6 +10,15 @@ import { VariantsTable } from "../components/module/variants-table";
 import { highlight } from "../lib/highlight";
 import { CATEGORY_HOME, mergeEnv } from "../lib/modules";
 import { loadModules } from "../lib/registry.server";
+import type { Route } from "./+types/module";
+
+export const meta: Route.MetaFunction = ({ loaderData }) => {
+  if (!loaderData) return [{ title: "Bonne Garde" }];
+  return [
+    { title: `${loaderData.manifest.title} · Bonne Garde` },
+    { name: "description", content: loaderData.manifest.description },
+  ];
+};
 
 export async function loader({ params }: LoaderFunctionArgs) {
   const modules = await loadModules();

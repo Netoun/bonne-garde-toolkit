@@ -3,7 +3,8 @@ import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vite-plus/test";
 
 import { listModules } from "../content/modules";
-import Module, { loader } from "./module";
+import type { Route } from "./+types/module";
+import Module, { loader, meta } from "./module";
 
 async function renderModule(category: string, id: string) {
   const Stub = createRoutesStub([{ path: "/modules/:category/:id", Component: Module, loader }]);
@@ -68,5 +69,14 @@ describe("Module page", () => {
       }
       unmount();
     }
+  });
+
+  it("titles the tab with the module title, the site name and the module description", () => {
+    const data = { manifest: { title: "Static site", description: "A static site." } };
+
+    expect(meta({ loaderData: data } as unknown as Route.MetaArgs)).toEqual([
+      { title: "Static site · Bonne Garde" },
+      { name: "description", content: "A static site." },
+    ]);
   });
 });

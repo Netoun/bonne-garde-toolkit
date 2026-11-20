@@ -4,7 +4,8 @@ import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vite-plus/test";
 
 import { SiteLayout } from "../components/site-layout";
-import Home, { loader as homeLoader } from "./home";
+import type { Route } from "./+types/home";
+import Home, { loader as homeLoader, meta } from "./home";
 
 describe("Home", () => {
   it("shows hero, quick start, calls to action and toolkit cards", async () => {
@@ -61,5 +62,15 @@ describe("Home", () => {
   it("renders the registry Button through the @acme/ui alias", () => {
     render(<Button>Probe</Button>);
     expect(screen.getByRole("button", { name: "Probe" })).toBeInTheDocument();
+  });
+
+  it("titles the page Bonne Garde with the home description", () => {
+    const tags = meta({} as Route.MetaArgs);
+
+    expect(tags).toContainEqual({ title: "Bonne Garde" });
+    expect(tags).toContainEqual({
+      name: "description",
+      content: expect.stringContaining("shadcn-inspired toolkit"),
+    });
   });
 });

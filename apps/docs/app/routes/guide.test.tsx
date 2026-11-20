@@ -3,7 +3,8 @@ import { createMemoryRouter, createRoutesStub, RouterProvider } from "react-rout
 import { describe, expect, it } from "vite-plus/test";
 
 import { listGuides } from "../content/guides";
-import Guide, { loader } from "./guide";
+import type { Route } from "./+types/guide";
+import Guide, { loader, meta } from "./guide";
 
 async function renderPage(href: string) {
   const Stub = createRoutesStub([{ path: href, Component: Guide, loader }]);
@@ -102,5 +103,13 @@ describe("guide page", () => {
     expect(internal?.getAttribute("href")).toBe(`${basename}docs/modules`);
     const external = container.querySelector('a[href*="/blob/"]');
     expect(external?.getAttribute("href")).toMatch(/^https:\/\/github\.com\//);
+  });
+
+  it("titles the tab with the guide title and the site name", () => {
+    const data = { title: "Introduction", markdown: "", links: {}, highlighted: {} };
+
+    expect(meta({ loaderData: data } as unknown as Route.MetaArgs)).toEqual([
+      { title: "Introduction · Bonne Garde" },
+    ]);
   });
 });

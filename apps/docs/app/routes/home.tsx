@@ -6,6 +6,10 @@ import { Link, useLoaderData } from "react-router";
 import logoMarkUrl from "../../../../assets/logo/logo-mark-blue.svg?url";
 import { CodeBlock } from "../components/code-block";
 import { highlight } from "../lib/highlight";
+import type { Route } from "./+types/home";
+
+const PITCH =
+  "A shadcn-inspired toolkit: an empty base template, a CLI and a registry of UI components and full-stack modules you install into your own project.";
 
 const QUICK_START = `bunx bonne-garde create my-app
 cd my-app
@@ -32,6 +36,11 @@ const TOOLKIT_CARDS = [
   },
 ] as const;
 
+export const meta: Route.MetaFunction = () => [
+  { title: "Bonne Garde" },
+  { name: "description", content: PITCH },
+];
+
 export async function loader() {
   const html = await highlight(QUICK_START, "bash");
   return { quickStart: { code: QUICK_START, html, label: "Quick start" } };
@@ -48,10 +57,7 @@ export default function Home() {
           <h1 className="font-heading text-4xl font-bold tracking-tight sm:text-5xl">
             Bonne Garde
           </h1>
-          <p className="text-lg text-muted-foreground sm:text-xl">
-            A shadcn-inspired toolkit: an empty base template, a CLI and a registry of UI components
-            and full-stack modules you install into your own project.
-          </p>
+          <p className="text-lg text-muted-foreground sm:text-xl">{PITCH}</p>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Button render={<Link to="/docs/introduction" />}>Get started</Button>

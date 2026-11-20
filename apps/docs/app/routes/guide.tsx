@@ -9,6 +9,7 @@ import { resolveGuideLink } from "../lib/guide-links";
 import { listPublishedSources } from "../lib/guide-source";
 import { extractHeadings, slugify } from "../lib/headings";
 import { highlight } from "../lib/highlight";
+import type { Route } from "./+types/guide";
 
 const FENCE = /^```([\w-]*)[^\n]*\n([\s\S]*?)\n```$/gm;
 const LINK = /\]\(([^)\s]+)/g;
@@ -22,6 +23,10 @@ async function highlightBlock(code: string, lang: string) {
     return highlight(code, "text");
   }
 }
+
+export const meta: Route.MetaFunction = ({ loaderData }) => [
+  { title: loaderData ? `${loaderData.title} · Bonne Garde` : "Bonne Garde" },
+];
 
 export async function loader({ request }: { request: Request }) {
   // Prerendering also requests `<route>.data`; the guide and the ADR routes share this loader.
