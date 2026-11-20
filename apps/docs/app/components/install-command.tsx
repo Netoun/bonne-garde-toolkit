@@ -1,7 +1,7 @@
 import { Button } from "@acme/ui/components/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@acme/ui/components/tabs";
 import { Check, Copy } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const PACKAGE_MANAGERS = [
   { id: "bun", label: "bun", command: (name: string) => `bunx bonne-garde add ${name}` },
@@ -19,11 +19,26 @@ function commandFor(name: string, tab: PackageManagerId): string {
 export function InstallCommand({ name }: { name: string }) {
   const [tab, setTab] = useState<PackageManagerId>("bun");
   const [copied, setCopied] = useState(false);
+  const resetCopyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resetCopyTimerRef.current !== null) {
+        clearTimeout(resetCopyTimerRef.current);
+      }
+    };
+  }, []);
 
   async function copyActive() {
     await navigator.clipboard.writeText(commandFor(name, tab));
     setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
+    if (resetCopyTimerRef.current !== null) {
+      clearTimeout(resetCopyTimerRef.current);
+    }
+    resetCopyTimerRef.current = window.setTimeout(() => {
+      setCopied(false);
+      resetCopyTimerRef.current = null;
+    }, 2000);
   }
 
   return (

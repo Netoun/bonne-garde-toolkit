@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { InstallCommand } from "./install-command";
 
@@ -19,26 +19,38 @@ describe("InstallCommand", () => {
     expect(writeText).toHaveBeenCalledWith("pnpm dlx bonne-garde add button");
   });
 
-  it("names the copy button Copied for two seconds after copying bun command", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      value: { writeText },
-      configurable: true,
+  describe("copy feedback", () => {
+    afterEach(() => {
+      vi.useRealTimers();
     });
 
-    render(<InstallCommand name="button" />);
+    it("names the copy button Copied for two seconds on the active package manager tab", async () => {
+      vi.useFakeTimers();
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "clipboard", {
+        value: { writeText },
+        configurable: true,
+      });
 
-    await fireEvent.click(screen.getByRole("button", { name: "Copy" }));
-    expect(writeText).toHaveBeenCalledWith("bunx bonne-garde add button");
-    await waitFor(() => {
+      render(<InstallCommand name="button" />);
+
+      fireEvent.click(screen.getByRole("tab", { name: "pnpm" }));
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+        await Promise.resolve();
+      });
+      expect(writeText).toHaveBeenCalledWith("pnpm dlx bonne-garde add button");
       expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
-    });
 
-    await waitFor(
-      () => {
-        expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
-      },
-      { timeout: 2500 },
-    );
+      act(() => {
+        vi.advanceTimersByTime(1999);
+      });
+      expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
+    });
   });
 });
