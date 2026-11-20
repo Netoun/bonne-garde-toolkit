@@ -3,6 +3,8 @@ import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath } from "node:url";
 import { defineConfig, searchForWorkspaceRoot, type Plugin } from "vite-plus";
 
+import { basePath } from "./base-path";
+
 const registryUi = fileURLToPath(new URL("../../registry/ui", import.meta.url));
 const registryLoader = fileURLToPath(
   new URL("../../packages/registry/src/load-registry.ts", import.meta.url),
@@ -32,6 +34,7 @@ function registryUiDependencies(): Plugin {
 }
 
 export default defineConfig(({ mode }) => ({
+  base: basePath,
   plugins: [registryUiDependencies(), ...(mode === "test" ? [] : [tailwindcss(), reactRouter()])],
   test: {
     environment: "jsdom",

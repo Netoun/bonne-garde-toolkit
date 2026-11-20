@@ -1,5 +1,5 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
-import { createRoutesStub } from "react-router";
+import { createMemoryRouter, createRoutesStub, RouterProvider } from "react-router";
 import { describe, expect, it } from "vite-plus/test";
 
 import { listGuides } from "../content/guides";
@@ -47,5 +47,22 @@ describe("guide page", () => {
         .getAllByRole("columnheader")
         .map((th) => th.textContent),
     ).toContain("Tier");
+  });
+
+  it("keeps its links under the base path the site is served from", async () => {
+    const basename = "/bonne-garde-toolkit/";
+    const router = createMemoryRouter([{ path: "/docs/:slug", Component: Guide, loader }], {
+      basename,
+      initialEntries: [`${basename}docs/concepts`],
+    });
+    const { container } = render(<RouterProvider router={router} />);
+    await waitFor(() => {
+      expect(container.querySelector("article")).not.toBeNull();
+    });
+
+    const internal = screen.getAllByRole("link", { name: "MODULES.md" })[0];
+    expect(internal?.getAttribute("href")).toBe(`${basename}docs/modules`);
+    const external = container.querySelector('a[href*="/blob/"]');
+    expect(external?.getAttribute("href")).toMatch(/^https:\/\/github\.com\//);
   });
 });

@@ -34,7 +34,8 @@ export async function loadItemPageData({ params, request }: LoaderFunctionArgs) 
   }
 
   const pathname = new URL(request.url).pathname.replace(/\.data$/, "").replace(/(.)\/$/, "$1");
-  const onBlocks = pathname.startsWith("/blocks/");
+  // The request URL carries the base path the site is served under: only the last two segments count.
+  const onBlocks = /\/blocks\/[^/]+$/.test(pathname);
   if (onBlocks !== (item.type === "registry:block")) {
     throw new Response("Not Found", { status: 404 });
   }

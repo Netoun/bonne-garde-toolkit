@@ -1,6 +1,6 @@
 import { Children, isValidElement, type ComponentProps, type ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
-import { useLoaderData } from "react-router";
+import { Link, useLoaderData } from "react-router";
 import remarkGfm from "remark-gfm";
 
 import { CodeBlock } from "../components/code-block";
@@ -23,8 +23,9 @@ async function highlightBlock(code: string, lang: string) {
 
 export async function loader({ request }: { request: Request }) {
   // Prerendering also requests `<route>.data`; the guide and the ADR routes share this loader.
+  // The request URL carries the base path the site is served under, which the hrefs do not.
   const pathname = new URL(request.url).pathname.replace(/\.data$/, "").replace(/(.)\/$/, "$1");
-  const source = listPublishedSources().find((candidate) => candidate.href === pathname);
+  const source = listPublishedSources().find((candidate) => pathname.endsWith(candidate.href));
   if (!source) throw new Response("Not found", { status: 404 });
 
   const links = Object.fromEntries(
@@ -87,7 +88,15 @@ export default function Guide() {
     h4: heading("h4"),
     h5: heading("h5"),
     h6: heading("h6"),
-    a: ({ href, children }) => <a href={href ? (links[href] ?? href) : href}>{children}</a>,
+    a: ({ href, children }) => {
+      const target = href ? (links[href] ?? href) : href;
+      // React Router adds the base path to a route; any other target is left alone.
+      return target?.startsWith("/") ? (
+        <Link to={target}>{children}</Link>
+      ) : (
+        <a href={target}>{children}</a>
+      );
+    },
     pre: ({ children }) => {
       const code = Children.toArray(children)[0];
       if (!isValidElement<{ className?: string; children?: ReactNode }>(code)) {
