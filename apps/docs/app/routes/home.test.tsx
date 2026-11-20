@@ -7,16 +7,34 @@ import { SiteLayout } from "../components/site-layout";
 import Home, { loader as homeLoader } from "./home";
 
 describe("Home", () => {
-  it("shows the quick start and links to the sections", async () => {
+  it("shows hero, quick start, calls to action and toolkit cards", async () => {
     const Stub = createRoutesStub([{ path: "/", Component: Home, loader: homeLoader }]);
     render(<Stub initialEntries={["/"]} />);
 
     await waitFor(() => {
       expect(document.body).toHaveTextContent("bunx bonne-garde create my-app");
     });
-    expect(screen.getByRole("link", { name: "Guides" })).toHaveAttribute(
+
+    expect(screen.getByRole("heading", { level: 1, name: "Bonne Garde" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Get started" })).toHaveAttribute(
       "href",
       "/docs/introduction",
+    );
+    expect(screen.getByRole("link", { name: "Browse components" })).toHaveAttribute(
+      "href",
+      "/components/button",
+    );
+    expect(screen.getByRole("link", { name: /Base template & CLI/i })).toHaveAttribute(
+      "href",
+      "/docs/introduction",
+    );
+    expect(screen.getByRole("link", { name: /UI Components/i })).toHaveAttribute(
+      "href",
+      "/components/button",
+    );
+    expect(screen.getByRole("link", { name: /Full-stack modules/i })).toHaveAttribute(
+      "href",
+      "/modules/ui/shadcn",
     );
   });
 
