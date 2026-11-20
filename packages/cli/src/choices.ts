@@ -28,7 +28,7 @@ const PROVIDER_CHOICES = [
 const FEATURE_CHOICES = [
   { value: "db", label: "Database", hint: "Drizzle on D1, or on an SQLite file with Docker" },
   { value: "auth", label: "Auth", hint: "Better Auth, organizations, the SPA's sign-in pages" },
-  { value: "storage", label: "Storage", hint: "media uploads on R2" },
+  { value: "storage", label: "Storage", hint: "media uploads, on R2 or on disk with Docker" },
   { value: "email", label: "Email", hint: "transactional email with Resend" },
   { value: "deploy", label: "Deploy", hint: "a GitHub Actions workflow to Cloudflare" },
   { value: "backoffice", label: "Backoffice", hint: "the SPA's signed-in area" },
@@ -65,6 +65,7 @@ export const CANDIDATE_MODULES = [
   "orm/drizzle",
   "auth/better-auth",
   "storage/r2",
+  "storage/fs",
   "web/spa",
   "web/ssr",
   "web/static",
@@ -82,7 +83,7 @@ const FRONTS: Partial<Record<App, string>> = {
 const FEATURE_MODULES: Record<Feature, readonly string[]> = {
   db: ["orm/drizzle"],
   auth: ["auth/better-auth"],
-  storage: ["storage/r2"],
+  storage: [],
   email: ["email/resend"],
   deploy: ["deploy/cloudflare-actions"],
   backoffice: [],
@@ -91,6 +92,12 @@ const FEATURE_MODULES: Record<Feature, readonly string[]> = {
 
 /** The `db` feature's database module: provider technology lives in the provider's modules. */
 const DB_MODULES: Record<Provider, string> = { cloudflare: "db/d1", dockerfile: "db/libsql" };
+
+/** The `storage` feature's module: R2 is Cloudflare's, files under `DATA_DIR` are the container's. */
+const STORAGE_MODULES: Record<Provider, string> = {
+  cloudflare: "storage/r2",
+  dockerfile: "storage/fs",
+};
 
 /** 040's table: the modules and items of a set of answers. Every project has its package manager's. */
 export function namesFor({ apps, provider, features, pm }: Choices): {
@@ -118,6 +125,9 @@ export function namesFor({ apps, provider, features, pm }: Choices): {
   for (const feature of features) {
     if (feature === "db") {
       named.add(DB_MODULES[provider]);
+    }
+    if (feature === "storage") {
+      named.add(STORAGE_MODULES[provider]);
     }
     for (const module of FEATURE_MODULES[feature]) {
       named.add(module);

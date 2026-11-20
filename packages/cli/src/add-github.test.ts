@@ -334,7 +334,7 @@ describe("bonne-garde add from a github source", () => {
         },
       ]);
       expect(modulePlans.map(({ key, variant }) => [key, variant])).toEqual([
-        ["auth/better-auth", "default"],
+        ["auth/better-auth", "d1"],
         ["email/resend", "better-auth"],
       ]);
       expect(raw.requested).toContain("modules/email/resend/intent/01-wire-email-into-auth.md");

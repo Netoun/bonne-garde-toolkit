@@ -48,14 +48,23 @@ const OTHER_PROVIDER_STACK = [
   "api/elysia",
   "db/libsql",
   "orm/drizzle",
+  "auth/better-auth",
+  "storage/fs",
   "web/spa",
 ];
-/** The same stack on a Postgres: `db/postgres` is the one `db`, so it takes the place of `db/libsql` (and of the ORM, which has no postgres variant yet). */
+/**
+ * The same stack on a Postgres: `db/postgres` is the one `db`, so it takes the place of `db/libsql` (and of the ORM, which has no postgres variant yet).
+ * `auth` and `storage` peer on a SQLite database, so they stay out.
+ */
 const OTHER_PROVIDER_POSTGRES_STACK = OTHER_PROVIDER_STACK.flatMap((key) =>
-  key === "db/libsql" ? ["db/postgres"] : key === "orm/drizzle" ? [] : [key],
+  key === "db/libsql"
+    ? ["db/postgres"]
+    : ["orm/drizzle", "auth/better-auth", "storage/fs"].includes(key)
+      ? []
+      : [key],
 );
-/** What needs that provider's tree: `db/libsql` and `db/postgres` peer on `dockerfile`, so they are never installed alone. */
-const OTHER_PROVIDER_ONLY = ["db/libsql", "db/postgres"];
+/** What needs that provider's tree: `db/libsql`, `db/postgres` and `storage/fs` peer on `dockerfile`, so they are never installed alone. */
+const OTHER_PROVIDER_ONLY = ["db/libsql", "db/postgres", "storage/fs"];
 
 const dirs: string[] = [];
 

@@ -10,15 +10,16 @@ bunx bonne-garde add provider/cloudflare config/branding api/elysia db/d1 orm/dr
 
 ## Peers and variant
 
-| Peer       | Allow-list | Why                                                                                            |
-| ---------- | ---------- | ---------------------------------------------------------------------------------------------- |
-| `provider` | any        | `readRuntimeEnv` from `{{SCOPE}}/api-runtime` reads the secret; the provider owns that package |
-| `api`      | any        | the CORS allow-list, the logger and the config of `{{SCOPE}}/api/lib/*`                        |
-| `db`       | `d1`       | `readD1()` from `{{SCOPE}}/db/d1`                                                              |
-| `orm`      | `drizzle`  | `createDB` from `{{SCOPE}}/db` and the test database from `{{SCOPE}}/db/testing`               |
+| Peer       | Allow-list     | Why                                                                                            |
+| ---------- | -------------- | ---------------------------------------------------------------------------------------------- |
+| `provider` | any            | `readRuntimeEnv` from `{{SCOPE}}/api-runtime` reads the secret; the provider owns that package |
+| `api`      | any            | the CORS allow-list, the logger and the config of `{{SCOPE}}/api/lib/*`                        |
+| `db`       | `d1`, `libsql` | `readD1()` from `{{SCOPE}}/db/d1`, or `readLibsql()` from `{{SCOPE}}/db/libsql`                |
+| `orm`      | `drizzle`      | `createDB` from `{{SCOPE}}/db` and the test database from `{{SCOPE}}/db/testing`               |
 
-One variant, `default`. It is Cloudflare-only today, through `db/d1`: a project on the `dockerfile`
-provider has no `db` module, so it cannot install auth until one exists.
+Two variants, picked by the installed `db`: `d1` (Cloudflare) and `libsql` (the `dockerfile` provider, see
+[Dockerfile and libsql](#dockerfile-and-libsql)). Both write the same `packages/auth`; only the files bound to the
+database differ.
 
 `bunx bonne-garde add better-auth` in a project with no `orm` fails with
 `auth/better-auth needs a module in category orm (drizzle) and none is installed`, before anything is
@@ -118,6 +119,33 @@ the SPA's `index.html` for a browser navigation. `auth.flow.test.ts` pins both h
 
 The legacy `apps/spa` still talks to the legacy `apps/api` at `/auth`; the front's `lib/auth.ts` moves
 with the feature items and takes `AUTH_BASE_PATH` then.
+
+## Dockerfile and libsql
+
+```bash
+bunx bonne-garde create my-app --provider dockerfile --apps api --features db
+bunx bonne-garde add auth/better-auth
+```
+
+The `libsql` variant reads the database through `readLibsql()` and `createDB` of `{{SCOPE}}/db`, over the SQLite
+file under `DATA_DIR`. The schema, `auth.config.ts` and the SQLite dialect are the D1 variant's, unchanged. A module has one
+`template/` tree and a variant cannot change a file's content, so the files bound to the database sit at paths of their
+own, as `orm/drizzle`'s `libsql-*.ts` do, and the variant points the package at them (`jsonc.merge` on `exports`,
+`scripts.merge` on the scripts; the variant vendors no `package.json`, the planner generates it):
+
+| D1 variant                                                            | libsql variant                                                                       |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `auth.module.ts` (`readD1`)                                           | `libsql-auth.module.ts` (`readLibsql`), one instance per process                     |
+| `auth.cli.ts` (`bindD1`)                                              | `libsql-auth.cli.ts`: an in-memory libsql client that is never queried               |
+| `seed.ts` (`wrangler d1 execute`)                                     | `libsql-seed.ts`: migrations, then the admin, through the libsql client; no wrangler |
+| `index.ts`                                                            | `libsql-index.ts`                                                                    |
+| `auth.flow.test.ts`, `auth.organization.test.ts`, `auth.seed.test.ts` | the same tests importing `libsql-auth.module`; `libsql-seed.test.ts` for the seed    |
+
+`vp run db:seed` applies `packages/db/migrations` (run `vp run db:generate` in `packages/db` first) to
+`<DATA_DIR>/db.sqlite` and inserts the same admin as the D1 seed, once: a second run says so and changes nothing.
+There is no `db:reset` on libsql: start over by deleting the database file. `BETTER_AUTH_SECRET` is the module's env
+key, as on Cloudflare; `provider/dockerfile`'s `readRuntimeEnv` generates it under `DATA_DIR/secrets` when unset.
+The variant depends on `@libsql/client` and has no Cloudflare, miniflare or wrangler dependency.
 
 ## Wiring
 

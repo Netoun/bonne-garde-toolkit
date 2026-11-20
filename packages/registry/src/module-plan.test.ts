@@ -871,6 +871,58 @@ describe("resolveModulePlans: the plan (050 step 8)", () => {
     });
   });
 
+  test("a generated workspace package.json holds the keys its merges fill before the dependency maps, where the formatter keeps them", async () => {
+    const catalog = await registry([
+      {
+        category: "auth",
+        id: "better-auth",
+        json: {
+          variants: [
+            {
+              key: "default",
+              match: {},
+              workspace: { name: "{{SCOPE}}/auth", path: "packages/auth" },
+              dependencies: { "better-auth": "1.4.2" },
+              copy: ["packages/auth/src/index.ts"],
+              patch: [
+                {
+                  type: "jsonc.merge",
+                  file: "packages/auth/package.json",
+                  value: { exports: { ".": "./src/index.ts" } },
+                  intent: "Export the entry.",
+                },
+                {
+                  type: "scripts.merge",
+                  file: "packages/auth/package.json",
+                  scripts: { test: "vp test" },
+                  intent: "Add the test script.",
+                },
+              ],
+            },
+          ],
+        },
+        template: { "packages/auth/src/index.ts": "export {};\n" },
+      },
+    ]);
+
+    const [plan] = await resolveModulePlans(
+      catalog,
+      [{ category: "auth", id: "better-auth" }],
+      project({}, "@shop"),
+    );
+
+    const generated = plan?.files.find((f) => f.target === "packages/auth/package.json");
+    expect(Object.keys(JSON.parse(generated?.content ?? "null"))).toEqual([
+      "name",
+      "version",
+      "private",
+      "type",
+      "exports",
+      "scripts",
+      "dependencies",
+    ]);
+  });
+
   test("a dependency on a sibling package is named with {{SCOPE}}, rendered in the plan and in the package.json", async () => {
     const catalog = await registry([
       {

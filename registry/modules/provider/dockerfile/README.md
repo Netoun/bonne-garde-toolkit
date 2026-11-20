@@ -2,9 +2,9 @@
 
 One container. The API, on Node, listens on `PORT` and serves the built SPA from the same origin; a
 single `/data` volume is meant to hold the database, media and generated secrets. No Cloudflare
-account. Today the container runs and serves the API shell and the SPA, but it has **no object
-storage** and `auth` has no database to run on, so sign-up, sign-in and media do not work — see
-[What runs, and what does not](#what-runs-and-what-does-not).
+account. The container serves the API and the SPA; with the `db`, `auth` and `storage` features of
+`bg create` it also signs users up and stores uploaded images on the volume (`auth/better-auth` over
+libsql, `storage/fs`) — see [What runs, and what does not](#what-runs-and-what-does-not).
 
 It peers on no package manager: the image installs the project with the one `package.json` pins
 (`packageManager`, the `pm` module's) — `npm install --global` of that exact version, then its `install
@@ -26,7 +26,7 @@ Harvested from `bonne-garde-keeper`, which shipped this runtime and whose design
 | Secrets         | `BETTER_AUTH_SECRET` generated into `DATA_DIR` on first start when unset | done, `auth` reads it                               |
 | Deploy          | `docker build` and `compose.yaml`                                        | done                                                |
 | Database        | SQLite file under `DATA_DIR`, through `drizzle-orm/libsql`               | done, `db/libsql` or `db/postgres` (`DATABASE_URL`) |
-| Object storage  | Local filesystem under `DATA_DIR`                                        | **not done**                                        |
+| Object storage  | Local filesystem under `DATA_DIR`                                        | done, `storage/fs` (`bg create --features storage`) |
 
 The caveat on origins is in the list of what does not work: the URLs agree, the paths do not.
 
@@ -44,7 +44,8 @@ entry stay as they are:
 - `readRuntimeEnv(source = process.env)`: fills `SPA_URL`, `SSR_URL` and `API_URL` from `APP_URL`, and
   `BETTER_AUTH_SECRET` from `DATA_DIR/secrets/better-auth-secret`. It invents no other key: a key
   belongs to the module whose code reads it (035), so `RESEND_API_KEY` is the `email` module's and
-  `R2_PUBLIC_URL` is `storage/r2`'s, which is Cloudflare-only and has no variant for this provider.
+  `R2_PUBLIC_URL` is `storage/r2`'s, which is Cloudflare-only: storage on this provider is `storage/fs`,
+  which reads no key of its own and serves its files under `APP_URL`.
 - `clientIpHeaders`: `["x-client-ip"]`, the header `serve` fills with the client's address. See
   [The client's address](#the-clients-address-and-a-reverse-proxy).
 - `serve(app, { spaDir, port, trustedProxyHeader })`: starts [srvx](https://srvx.h3.dev), which runs the
@@ -148,8 +149,13 @@ answers another status or media type, or when the client route answers something
 `GET /`. It skips them, and says so, when `docker` is not on PATH or its daemon does not answer
 `docker info`, unless `GOLDEN_REQUIRE_DOCKER` is set: CI sets it, and then that is a failed run.
 
-The `api/elysia` shell wires no database, authentication, object storage or email, so the container
-has none of them.
+The `api/elysia` shell alone wires no database, authentication, object storage or email. With
+`bg create --provider dockerfile --apps api,spa --features db,auth,storage`, golden's `dockerfile`
+configuration, the container also runs them, and `bun run golden` proves it: it signs a user up,
+marks the address verified in the volume's database (the container sends no email), signs in, uploads
+a PNG through `POST /v1/media` (and sees a request without a session refused with 401), fetches it
+back by the path of its url, and finds the file under `/data/media/` in the container with the size
+uploaded.
 
 ## Building and running the image
 

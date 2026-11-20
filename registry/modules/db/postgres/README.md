@@ -60,5 +60,5 @@ no `DATABASE_URL`, still starts and answers `/health`.
 
 ## Not here
 
-The ORM comes with `orm/drizzle`. `auth/better-auth` and `storage/r2` stay D1-only
-(`peers.db: ["d1"]`): auth on Docker is a separate decision.
+The ORM comes with `orm/drizzle`. `auth/better-auth` (`peers.db: ["d1", "libsql"]`) and `storage/r2` (`["d1"]`) do not accept it:
+auth on Postgres waits for a project that asks for it.

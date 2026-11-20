@@ -80,6 +80,16 @@ describe("namesFor (040: the one table the CLI holds)", () => {
     expect(cloudflare).not.toContain("db/libsql");
   });
 
+  test("storage names the media storage of the provider: r2 on cloudflare, fs on dockerfile", () => {
+    const api = { apps: ["api"], features: ["db", "auth", "storage"], pm: "bun" } as const;
+    const dockerfile = namesFor({ ...api, provider: "dockerfile" }).modules;
+    expect(dockerfile).toContain("storage/fs");
+    expect(dockerfile).not.toContain("storage/r2");
+    const cloudflare = namesFor({ ...api, provider: "cloudflare" }).modules;
+    expect(cloudflare).toContain("storage/r2");
+    expect(cloudflare).not.toContain("storage/fs");
+  });
+
   test("auth brings the sign-in pages only with the spa", () => {
     expect(
       namesFor({ apps: ["api"], provider: "cloudflare", features: ["db", "auth"], pm: "bun" })

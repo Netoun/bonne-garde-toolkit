@@ -2,11 +2,11 @@
 
 <!-- GEN:START -->
 
-> Auto-generated from `package.json` files and the `registry/` tree. Regenerate: `bun run gen:architecture`. Last: 2026-11-19.
+> Auto-generated from `package.json` files and the `registry/` tree. Regenerate: `bun run gen:architecture`. Last: 2026-11-20.
 
 ## Overview
 
-Bonne Garde is a Bun monorepo of a CLI, the registry it installs from and the base template it copies: 3 packages, 20 modules in 14 categories, 34 items.
+Bonne Garde is a Bun monorepo of a CLI, the registry it installs from and the base template it copies: 3 packages, 21 modules in 14 categories, 34 items.
 
 ### Packages
 
@@ -30,7 +30,7 @@ Bonne Garde is a Bun monorepo of a CLI, the registry it installs from and the ba
 | `registry/modules/orm`      | `drizzle`                         |
 | `registry/modules/pm`       | `bun`, `pnpm`                     |
 | `registry/modules/provider` | `cloudflare`, `dockerfile`        |
-| `registry/modules/storage`  | `r2`                              |
+| `registry/modules/storage`  | `fs`, `r2`                        |
 | `registry/modules/tooling`  | `vite-plus`                       |
 | `registry/modules/ui`       | `shadcn`                          |
 | `registry/modules/web`      | `spa`, `ssr`, `static`            |

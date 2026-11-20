@@ -2594,25 +2594,30 @@ describe("module contract", () => {
         specifier === undefined ? [] : [specifier],
       );
 
-    test("one variant, the default, which owns the workspace `{{SCOPE}}/auth` at packages/auth", async () => {
+    test("one variant per db, d1 first, each owning the workspace `{{SCOPE}}/auth` at packages/auth", async () => {
       const { manifest, variant, others } = await authModule();
 
-      expect(others).toEqual([]);
-      expect(variant.key).toBe("default");
-      expect(variant.match).toEqual({});
-      expect(variant.workspace).toEqual({ name: "{{SCOPE}}/auth", path: "packages/auth" });
+      expect(manifest.variants.map(({ key, match }) => [key, match])).toEqual([
+        ["d1", { db: "d1" }],
+        ["libsql", { db: "libsql" }],
+      ]);
+      expect(variant.key).toBe("d1");
+      expect(others.map(({ key }) => key)).toEqual(["libsql"]);
+      for (const each of manifest.variants) {
+        expect(each.workspace).toEqual({ name: "{{SCOPE}}/auth", path: "packages/auth" });
+      }
       // 035's example asks for `options.withOrg`; a variant cannot select files by an option, and the
       // schema is generator output with the organization tables in it, so the module ships them always.
       expect(manifest.options).toBeUndefined();
     });
 
-    test("it peers on the provider, the api, the d1 db and the drizzle orm, and nothing else", async () => {
+    test("it peers on the provider, the api, the d1 or libsql db and the drizzle orm, and nothing else", async () => {
       const { manifest } = await authModule();
 
       expect(manifest.peers).toEqual({
         provider: [],
         api: [],
-        db: ["d1"],
+        db: ["d1", "libsql"],
         orm: ["drizzle"],
       });
     });
@@ -2695,7 +2700,108 @@ describe("module contract", () => {
       const shipped = (
         await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: AUTH, dot: true, onlyFiles: true }))
       ).sort();
-      expect([...(variant.copy ?? [])].sort()).toEqual(shipped);
+      // One template tree serves both variants: what is shipped is what the two copy, together.
+      const { manifest } = await authModule();
+      const every = [...new Set(manifest.variants.flatMap((each) => each.copy ?? []))].sort();
+      expect(every).toEqual(shipped);
+      for (const each of manifest.variants) {
+        expect(each.copy?.filter((path) => !path.startsWith("packages/auth/"))).toEqual([]);
+      }
+    });
+
+    test("the libsql variant copies what the d1 one does, except the files bound to D1 (module, CLI entry, seed, barrel, and the two tests that import the module), which it replaces at paths of their own, and package.json, which it leaves to the planner", async () => {
+      const { manifest, variant: d1 } = await authModule();
+      const libsql = manifest.variants.find(({ key }) => key === "libsql");
+      const bound = [
+        "packages/auth/package.json",
+        "packages/auth/src/auth.cli.ts",
+        "packages/auth/src/auth.flow.test.ts",
+        "packages/auth/src/auth.module.ts",
+        "packages/auth/src/auth.organization.test.ts",
+        "packages/auth/src/auth.seed.test.ts",
+        "packages/auth/src/index.ts",
+        "packages/auth/src/seed.ts",
+      ];
+
+      expect(libsql?.copy?.filter((path) => (d1.copy ?? []).includes(path)).sort()).toEqual(
+        (d1.copy ?? []).filter((path) => !bound.includes(path)).sort(),
+      );
+      const own = (libsql?.copy ?? []).filter((path) => !(d1.copy ?? []).includes(path)).sort();
+      expect(own).toEqual([
+        "packages/auth/src/libsql-auth.cli.ts",
+        "packages/auth/src/libsql-auth.flow.test.ts",
+        "packages/auth/src/libsql-auth.module.ts",
+        "packages/auth/src/libsql-auth.organization.test.ts",
+        "packages/auth/src/libsql-index.ts",
+        "packages/auth/src/libsql-seed.test.ts",
+        "packages/auth/src/libsql-seed.ts",
+      ]);
+      for (const path of libsql?.copy ?? []) {
+        expect([path, existsSync(join(AUTH, path))]).toEqual([path, true]);
+      }
+      // The D1 variant is untouched: it copies exactly what it did.
+      for (const path of d1.copy ?? []) {
+        expect(path).not.toMatch(/libsql/);
+      }
+    });
+
+    test("the libsql variant points the package at its own files, and carries no Cloudflare dependency", async () => {
+      const { manifest } = await authModule();
+      const libsql = manifest.variants.find(({ key }) => key === "libsql");
+      const merged = (libsql?.patch ?? []).filter(
+        ({ file }) => file === "packages/auth/package.json",
+      );
+
+      expect(merged.map(({ type }) => type)).toEqual(["jsonc.merge", "scripts.merge"]);
+      expect(merged[0]).toMatchObject({
+        value: { exports: { ".": "./src/libsql-index.ts" } },
+      });
+      expect(merged[1]).toMatchObject({
+        scripts: {
+          "auth:generate": expect.stringContaining("--config ./src/libsql-auth.cli.ts"),
+          "db:seed": "tsx src/libsql-seed.ts",
+        },
+      });
+      for (const map of [libsql?.dependencies, libsql?.devDependencies]) {
+        for (const name of Object.keys(map ?? {})) {
+          expect(name).not.toMatch(/cloudflare|miniflare|wrangler/);
+        }
+      }
+      expect(libsql?.dependencies?.["@libsql/client"]).toBe("0.18.0");
+      // The same wiring seams as the D1 variant, and the secret declared once.
+      const wiring = (variant: { patch?: { type: string; file?: unknown }[] } | undefined) =>
+        (variant?.patch ?? [])
+          .filter(({ file }) => file !== "packages/auth/package.json")
+          .map(({ type, file }) => `${type} ${String(file)}`);
+      expect(wiring(libsql)).toEqual(wiring(manifest.variants[0]));
+      expect(libsql?.env).toEqual(manifest.variants[0]?.env);
+    });
+
+    test("the libsql sources import the libsql db, never D1, and every package they import is declared", async () => {
+      const { manifest } = await authModule();
+      const libsql = manifest.variants.find(({ key }) => key === "libsql");
+      const declared = new Set([
+        ...Object.keys(libsql?.dependencies ?? {}),
+        ...Object.keys(libsql?.devDependencies ?? {}),
+      ]);
+      const reached = new Set<string>();
+      for (const path of libsql?.copy ?? []) {
+        if (!/^packages\/auth\/src\/.+\.ts$/.test(path)) continue;
+        const source = (await authText(path))
+          .split("\n")
+          .filter((line) => !/^\s*(?:\/\/|\/?\*)/.test(line))
+          .join("\n");
+        for (const specifier of specifiers(source)) {
+          reached.add(specifier);
+        }
+        for (const name of packagesImportedBy(source)) {
+          if (name.includes(":") || name === "{{SCOPE}}/auth" || BASE_TOOLING.has(name)) continue;
+          expect([path, declared.has(name)]).toEqual([path, true]);
+        }
+      }
+
+      expect(reached.has("{{SCOPE}}/db/libsql")).toBe(true);
+      expect(reached.has("{{SCOPE}}/db/d1")).toBe(false);
     });
 
     test("it wires itself in by patches on four known seams, and by nothing else", async () => {
@@ -2823,9 +2929,7 @@ describe("module contract", () => {
         [...stack, { category: "auth", id: "better-auth" }],
         project,
       );
-      expect(plans.map(({ key, variant }) => `${key}:${variant}`)).toContain(
-        "auth/better-auth:default",
-      );
+      expect(plans.map(({ key, variant }) => `${key}:${variant}`)).toContain("auth/better-auth:d1");
 
       // 035 acceptance: without an orm, the error names the category and its allow-list.
       await expect(
@@ -2840,6 +2944,24 @@ describe("module contract", () => {
       ).rejects.toThrow(
         /auth\/better-auth needs a module in category orm \(drizzle\) and none is installed/,
       );
+      // On the dockerfile provider with libsql, the same module plans its libsql variant.
+      const dockerfile = await resolveModulePlans(
+        catalog,
+        [
+          { category: "pm", id: "bun" },
+          { category: "provider", id: "dockerfile" },
+          { category: "config", id: "branding" },
+          { category: "api", id: "elysia" },
+          { category: "db", id: "libsql" },
+          { category: "orm", id: "drizzle" },
+          { category: "auth", id: "better-auth" },
+        ],
+        project,
+      );
+      expect(dockerfile.map(({ key, variant }) => `${key}:${variant}`)).toContain(
+        "auth/better-auth:libsql",
+      );
+
       await expect(
         resolveModulePlans(
           catalog,
@@ -3241,6 +3363,202 @@ describe("module contract", () => {
       ).rejects.toThrow(
         /db\/d1 accepts only cloudflare for provider, but provider\/dockerfile is present/,
       );
+    });
+  });
+
+  describe("storage/fs is packages/storage on the dockerfile provider: the media of storage/r2, with files under DATA_DIR", () => {
+    const STORAGE = join(MODULES, "storage/fs/template");
+    const storageText = (path: string): Promise<string> => readFile(join(STORAGE, path), "utf8");
+    const storageModule = async () => {
+      const catalog = await loadLocalRegistry(join(ROOT, "registry/registry.json"));
+      const found = catalog.modules.find(
+        ({ manifest }) => manifest.category === "storage" && manifest.id === "fs",
+      );
+      const [variant, ...others] = found?.manifest.variants ?? [];
+      if (!found || !variant) {
+        throw new Error("registry/modules/storage/fs is missing or has no variant");
+      }
+      return { catalog, manifest: found.manifest, variant, others };
+    };
+    const sources = async (): Promise<[string, string][]> => {
+      const { variant } = await storageModule();
+      const read: [string, string][] = [];
+      for (const path of variant.copy ?? []) {
+        if (/^packages\/storage\/src\/.+\.ts$/.test(path)) {
+          read.push([
+            path,
+            (await storageText(path))
+              .split("\n")
+              .filter((line) => !/^\s*(?:\/\/|\/?\*)/.test(line))
+              .join("\n"),
+          ]);
+        }
+      }
+      return read;
+    };
+
+    test("one default variant, which owns the workspace `{{SCOPE}}/storage`, peering on dockerfile, libsql, drizzle and better-auth", async () => {
+      const { manifest, variant, others } = await storageModule();
+
+      expect(others).toEqual([]);
+      expect(variant.key).toBe("default");
+      expect(variant.match).toEqual({});
+      expect(variant.workspace).toEqual({ name: "{{SCOPE}}/storage", path: "packages/storage" });
+      expect(manifest.peers).toEqual({
+        provider: ["dockerfile"],
+        db: ["libsql"],
+        orm: ["drizzle"],
+        auth: ["better-auth"],
+      });
+    });
+
+    test("it copies explicit paths inside packages/storage, every one of them shipped and nothing else", async () => {
+      const { variant } = await storageModule();
+
+      expect(variant.copy?.filter((path) => !path.startsWith("packages/storage/"))).toEqual([]);
+      const shipped = (
+        await Array.fromAsync(
+          new Bun.Glob("**/*").scan({ cwd: STORAGE, dot: true, onlyFiles: true }),
+        )
+      ).sort();
+      expect([...(variant.copy ?? [])].sort()).toEqual(shipped);
+    });
+
+    test("it has no Cloudflare dependency, source or wrangler patch", async () => {
+      const { variant } = await storageModule();
+      const declared = [
+        ...Object.keys(variant.dependencies ?? {}),
+        ...Object.keys(variant.devDependencies ?? {}),
+      ];
+
+      expect(declared.filter((name) => /cloudflare|miniflare|wrangler/i.test(name))).toEqual([]);
+      expect(
+        (variant.patch ?? []).filter((patch) => String(patch.file).includes("wrangler")),
+      ).toEqual([]);
+      for (const [path, source] of await sources()) {
+        expect([path, /cloudflare|miniflare|wrangler|R2Bucket/i.test(source)]).toEqual([
+          path,
+          false,
+        ]);
+      }
+    });
+
+    test("every package the sources import is declared, and every dependency is imported", async () => {
+      const { variant } = await storageModule();
+      const declared = new Set([
+        ...Object.keys(variant.dependencies ?? {}),
+        ...Object.keys(variant.devDependencies ?? {}),
+      ]);
+      const imported = new Set<string>();
+      for (const [path, source] of await sources()) {
+        for (const name of packagesImportedBy(source)) {
+          if (name.includes(":") || name === "{{SCOPE}}/storage" || BASE_TOOLING.has(name))
+            continue;
+          imported.add(name);
+          expect([path, declared.has(name)]).toEqual([path, true]);
+        }
+      }
+
+      expect([...declared].filter((name) => !imported.has(name))).toEqual([]);
+    });
+
+    test("it pins what the modules it sits beside pin", async () => {
+      const { catalog, variant } = await storageModule();
+      const pinnedBy = (category: string, id: string, name: string): string | undefined =>
+        catalog.modules
+          .find(({ manifest }) => manifest.category === category && manifest.id === id)
+          ?.manifest.variants.map(
+            (entry) => entry.dependencies?.[name] ?? entry.devDependencies?.[name],
+          )
+          .find(Boolean);
+
+      for (const name of ["drizzle-orm", "elysia", "@elysiajs/eden"]) {
+        const owner: [string, string] =
+          name === "@elysiajs/eden" ? ["api", "elysia"] : ["auth", "better-auth"];
+        const mine = variant.dependencies?.[name] ?? variant.devDependencies?.[name];
+        expect([name, mine]).toEqual([name, pinnedBy(...owner, name)]);
+      }
+    });
+
+    test("it wires itself like storage/r2, with no wrangler patch", async () => {
+      const { variant } = await storageModule();
+      const r2 = (await storageModule()).catalog.modules.find(
+        ({ manifest }) => manifest.category === "storage" && manifest.id === "r2",
+      )?.manifest.variants[0];
+      const wiring = (patches: typeof variant.patch) =>
+        (patches ?? []).filter((patch) => !String(patch.file).includes("wrangler"));
+
+      expect(wiring(variant.patch)).toEqual(wiring(r2?.patch));
+      expect((variant.patch ?? []).map(({ type, file }) => `${type} ${String(file)}`)).toEqual([
+        "package.dependencies apps/api/package.json",
+        "ts.addImport apps/api/src/app.ts",
+        "ts.elysiaUse apps/api/src/app.ts",
+        "package.dependencies packages/db/package.json",
+        "ts.addNamedExport packages/db/src/schema/index.ts",
+      ]);
+    });
+
+    test("it declares no env entry: APP_URL and DATA_DIR are the provider's", async () => {
+      const { variant } = await storageModule();
+
+      expect(variant.env ?? []).toEqual([]);
+    });
+
+    test("the table and the contract are those of storage/r2, byte for byte", async () => {
+      for (const path of [
+        "packages/storage/src/schema.ts",
+        "packages/storage/src/media.contract.ts",
+      ]) {
+        const r2 = await readFile(join(MODULES, "storage/r2/template", path), "utf8");
+        // The contract imports the allowed types from the module's own helpers file.
+        expect([path, (await storageText(path)).replaceAll("./storage", "./r2")]).toEqual([
+          path,
+          r2,
+        ]);
+      }
+    });
+
+    test("it plans on dockerfile with libsql, and is refused beside D1 on cloudflare", async () => {
+      const { catalog } = await storageModule();
+      const project = createEmptyProjectManifest({ scope: "@app", registries: {} });
+      const dockerfile: ModuleRef[] = [
+        { category: "pm", id: "bun" },
+        { category: "provider", id: "dockerfile" },
+        { category: "config", id: "branding" },
+        { category: "api", id: "elysia" },
+        { category: "db", id: "libsql" },
+        { category: "orm", id: "drizzle" },
+        { category: "auth", id: "better-auth" },
+      ];
+
+      const plans = await resolveModulePlans(
+        catalog,
+        [...dockerfile, { category: "storage", id: "fs" }],
+        project,
+      );
+      expect(plans.map(({ key, variant }) => `${key}:${variant}`)).toContain("storage/fs:default");
+      // storage/r2 stays refused there, with its message unchanged.
+      await expect(
+        resolveModulePlans(catalog, [...dockerfile, { category: "storage", id: "r2" }], project),
+      ).rejects.toThrow(
+        /storage\/r2 accepts only cloudflare for provider, but provider\/dockerfile is present/,
+      );
+      await expect(
+        resolveModulePlans(
+          catalog,
+          [
+            { category: "pm", id: "bun" },
+            { category: "provider", id: "cloudflare" },
+            { category: "config", id: "branding" },
+            { category: "api", id: "elysia" },
+            { category: "db", id: "d1" },
+            { category: "orm", id: "drizzle" },
+            { category: "auth", id: "better-auth" },
+            { category: "storage", id: "fs" },
+          ],
+          project,
+        ),
+      ).rejects.toThrow(/storage\/fs accepts only dockerfile for provider/);
     });
   });
 
