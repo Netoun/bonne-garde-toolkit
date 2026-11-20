@@ -43,6 +43,6 @@
     "typescript": "7.0.2",
     "vite": "npm:@voidzero-dev/vite-plus-core@0.2.8",
     "vite-plus": "0.2.8",
-    "wrangler": "4.119.0"
+    "yaml": "2.9.0"
   }
 }

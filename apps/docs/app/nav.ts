@@ -4,7 +4,11 @@ import { listModules } from "./content/modules";
 
 export type NavSection = { title: string; links: { title: string; href: string }[] };
 
+let navPromise: Promise<NavSection[]> | undefined;
+
 export async function listNav(): Promise<NavSection[]> {
-  const sections = await Promise.all([listGuides(), listItems(), listModules()]);
-  return sections.flat();
+  navPromise ??= Promise.all([listGuides(), listItems(), listModules()]).then((sections) =>
+    sections.flat(),
+  );
+  return navPromise;
 }

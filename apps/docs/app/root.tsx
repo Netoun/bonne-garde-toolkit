@@ -3,7 +3,8 @@ import { Links, Meta, Outlet, Scripts, ScrollRestoration, useLoaderData } from "
 import appCss from "./app.css?url";
 import { SiteLayout } from "./components/site-layout";
 import { docsThemeInitScript } from "./components/theme-toggle";
-import { listNav, type NavSection } from "./nav";
+import { readCachedNav } from "./lib/nav-cache";
+import type { NavSection } from "./nav";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -27,7 +28,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export async function loader() {
-  const sections = await listNav();
+  const sections = readCachedNav() ?? [];
   return { sections };
 }
 

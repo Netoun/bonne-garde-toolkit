@@ -3,7 +3,12 @@ import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath } from "node:url";
 import { defineConfig, searchForWorkspaceRoot, type Plugin } from "vite-plus";
 
+import { basePath } from "./base-path";
+
 const registryUi = fileURLToPath(new URL("../../registry/ui", import.meta.url));
+const registryLoader = fileURLToPath(
+  new URL("../../packages/registry/src/load-registry.ts", import.meta.url),
+);
 const docsImporter = fileURLToPath(new URL("./app/root.tsx", import.meta.url));
 
 /**
@@ -29,6 +34,7 @@ function registryUiDependencies(): Plugin {
 }
 
 export default defineConfig(({ mode }) => ({
+  base: basePath,
   plugins: [registryUiDependencies(), ...(mode === "test" ? [] : [tailwindcss(), reactRouter()])],
   test: {
     environment: "jsdom",
@@ -37,6 +43,9 @@ export default defineConfig(({ mode }) => ({
   },
   resolve: {
     alias: [
+      // The docs only read the catalog. The package index also exports the patch engine, whose
+      // `ts-morph` dependency does not evaluate in the prerender's server bundle.
+      { find: /^@bonne-garde\/registry$/, replacement: registryLoader },
       { find: /^@acme\/ui\/components\/(.+)$/, replacement: `${registryUi}/$1.tsx` },
       { find: /^@acme\/ui\/(lib|hooks)\/(.+)$/, replacement: `${registryUi}/$2.ts` },
     ],

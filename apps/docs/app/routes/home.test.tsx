@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vite-plus/test";
 
+import { SiteLayout } from "../components/site-layout";
 import Home, { loader as homeLoader } from "./home";
 
 describe("Home", () => {
@@ -17,6 +18,26 @@ describe("Home", () => {
       "href",
       "/docs/introduction",
     );
+  });
+
+  it("renders inside the layout's main element, without a second one", async () => {
+    const Stub = createRoutesStub([
+      {
+        path: "/",
+        Component: () => (
+          <SiteLayout sections={[]}>
+            <Home />
+          </SiteLayout>
+        ),
+        loader: homeLoader,
+      },
+    ]);
+    render(<Stub initialEntries={["/"]} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Bonne Garde" })).toBeInTheDocument();
+    });
+    expect(screen.getAllByRole("main")).toHaveLength(1);
   });
 
   it("renders the registry Button through the @acme/ui alias", () => {
