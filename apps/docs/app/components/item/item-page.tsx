@@ -1,3 +1,5 @@
+import { Badge, badgeVariants } from "@acme/ui/components/badge";
+import { cn } from "@acme/ui/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@acme/ui/components/tabs";
 import { Link } from "react-router";
 import {
@@ -69,23 +71,29 @@ export function ItemPage({
   const [tab, setTab] = useState(hasDemo ? "preview" : "code");
 
   return (
-    <article className="flex flex-col gap-8">
+    <article className="mx-auto flex w-full max-w-3xl flex-col gap-8">
       <header className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
+        <h1 className="font-heading text-3xl font-bold tracking-tight">{title}</h1>
         {description ? <p className="text-muted-foreground">{description}</p> : null}
       </header>
 
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
+      <Tabs value={tab} onValueChange={setTab} className="flex flex-col gap-3">
+        <TabsList className="w-fit">
           {hasDemo ? <TabsTrigger value="preview">Preview</TabsTrigger> : null}
           <TabsTrigger value="code">Code</TabsTrigger>
         </TabsList>
         {hasDemo ? (
-          <TabsContent value="preview" className="rounded-lg border p-6">
-            <ItemDemo name={name} />
+          <TabsContent value="preview" className="mt-0">
+            <section
+              role="region"
+              aria-label="Preview"
+              className="flex min-h-[350px] items-center justify-center rounded-lg border bg-muted/30 p-6"
+            >
+              <ItemDemo name={name} />
+            </section>
           </TabsContent>
         ) : null}
-        <TabsContent value="code" className="flex flex-col gap-4">
+        <TabsContent value="code" className="mt-0 flex flex-col gap-4">
           {codeFiles.map((file) => (
             <CodeBlock key={file.label} code={file.code} html={file.html} label={file.label} />
           ))}
@@ -100,41 +108,47 @@ export function ItemPage({
       {npmDependencies.length > 0 ? (
         <section className="flex flex-col gap-2">
           <h2 className="text-xl font-semibold tracking-tight">Dependencies</h2>
-          <ul className="list-inside list-disc text-sm text-muted-foreground">
+          <div className="flex flex-wrap gap-2">
             {npmDependencies.map((dep) => (
-              <li key={dep}>{dep}</li>
+              <Badge key={dep} variant="secondary">
+                {dep}
+              </Badge>
             ))}
-          </ul>
+          </div>
         </section>
       ) : null}
 
       {registryDependencyHrefs.length > 0 ? (
         <section className="flex flex-col gap-2">
           <h2 className="text-xl font-semibold tracking-tight">Registry dependencies</h2>
-          <ul className="flex flex-wrap gap-2 text-sm">
+          <div className="flex flex-wrap gap-2">
             {registryDependencyHrefs.map((dep) => (
-              <li key={dep.name}>
-                <Link className="text-primary underline-offset-4 hover:underline" to={dep.href}>
-                  {dep.name}
-                </Link>
-              </li>
+              <Link
+                key={dep.name}
+                to={dep.href}
+                className={cn(badgeVariants({ variant: "outline" }), "hover:bg-muted")}
+              >
+                {dep.name}
+              </Link>
             ))}
-          </ul>
+          </div>
         </section>
       ) : null}
 
       {moduleLinks.length > 0 ? (
         <section className="flex flex-col gap-2">
           <h2 className="text-xl font-semibold tracking-tight">Required modules</h2>
-          <ul className="flex flex-wrap gap-2 text-sm">
+          <div className="flex flex-wrap gap-2">
             {moduleLinks.map((mod) => (
-              <li key={mod.href}>
-                <Link className="text-primary underline-offset-4 hover:underline" to={mod.href}>
-                  {mod.label}
-                </Link>
-              </li>
+              <Link
+                key={mod.href}
+                to={mod.href}
+                className={cn(badgeVariants({ variant: "outline" }), "hover:bg-muted")}
+              >
+                {mod.label}
+              </Link>
             ))}
-          </ul>
+          </div>
         </section>
       ) : null}
     </article>

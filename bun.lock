@@ -20,6 +20,8 @@
         "@base-ui/react": "1.7.0",
         "@bonne-garde/registry": "workspace:*",
         "@bonne-garde/schema": "workspace:*",
+        "@fontsource-variable/faustina": "5.3.0",
+        "@fontsource-variable/urbanist": "5.3.0",
         "class-variance-authority": "0.7.1",
         "clsx": "2.1.1",
         "isbot": "5.2.1",
@@ -211,6 +213,10 @@
     "@floating-ui/react-dom": ["@floating-ui/react-dom@2.1.9", "", { "dependencies": { "@floating-ui/dom": "^1.8.0" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-JDjEFGCpImxDCA7JJKviA0M9+RtmJdj0m/NVU5IMgBK+AmZouAQQ7/+2GLH0GXXY0YMw9oXPB8hKdbPYg5QLYg=="],
 
     "@floating-ui/utils": ["@floating-ui/utils@0.2.12", "", {}, "sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww=="],
+
+    "@fontsource-variable/faustina": ["@fontsource-variable/faustina@5.3.0", "", {}, "sha512-C0OuS3x2cKErndfoX3mGIGnVsrkjvMuujj4b0b1FVBNw/scN1BLxZKCSxy++8FXJjhNwJcWfDwwurE4s0/rXjw=="],
+
+    "@fontsource-variable/urbanist": ["@fontsource-variable/urbanist@5.3.0", "", {}, "sha512-riHbcRgoOhEdCwVw3n3R1JLEwvRD1N9GlXtBcwl/UJ2KabfyDBuryE2Yq10308QJgbXw3F/IFF+VoMuuqwVfIA=="],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 

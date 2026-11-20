@@ -2,7 +2,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vite-plus/test";
 
-import Item, { loader as itemLoader } from "./item";
+import type { Route } from "./+types/item";
+import Item, { loader as itemLoader, meta } from "./item";
 
 const loaderTimeout = { timeout: 10_000 };
 
@@ -23,6 +24,7 @@ describe("Item page", () => {
     }, loaderTimeout);
 
     expect(screen.getByRole("tab", { name: "Preview" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Preview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Code" }));
     expect(screen.getByText("packages/ui/src/components/button.tsx")).toBeInTheDocument();
   });
@@ -63,5 +65,20 @@ describe("Item page", () => {
       "href",
       "/modules/web/spa",
     );
+  });
+
+  it("titles the tab with the item title, the site name and the item description", () => {
+    const data = { title: "Button", description: "A button." };
+
+    expect(meta({ loaderData: data } as unknown as Route.MetaArgs)).toEqual([
+      { title: "Button · Bonne Garde" },
+      { name: "description", content: "A button." },
+    ]);
+  });
+
+  it("titles the tab without a description meta when the item has none", () => {
+    expect(meta({ loaderData: { title: "Button" } } as unknown as Route.MetaArgs)).toEqual([
+      { title: "Button · Bonne Garde" },
+    ]);
   });
 });

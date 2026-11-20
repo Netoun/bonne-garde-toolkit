@@ -7,7 +7,7 @@ import { SiteLayout } from "./site-layout";
 function renderSite() {
   render(
     <MemoryRouter>
-      <SiteLayout sections={[]}>
+      <SiteLayout sections={[]} showSidebar>
         <div>Page body</div>
       </SiteLayout>
     </MemoryRouter>,

@@ -1,6 +1,9 @@
 import { SidebarInset, SidebarProvider } from "@acme/ui/components/sidebar";
 
-import type { NavSection } from "../nav";
+import { useLocation } from "react-router";
+
+import { adjacentLinks, type NavSection } from "../nav";
+import { DocPager } from "./doc-pager";
 import { SiteHeader } from "./site-header";
 import { SiteSidebar } from "./site-sidebar";
 import { UnreleasedBanner } from "./unreleased-banner";
@@ -8,18 +11,37 @@ import { UnreleasedBanner } from "./unreleased-banner";
 export function SiteLayout({
   sections,
   children,
+  showSidebar,
 }: {
   sections: NavSection[];
   children: React.ReactNode;
+  showSidebar: boolean;
 }) {
+  const { pathname } = useLocation();
+
+  if (!showSidebar) {
+    return (
+      <div className="flex min-h-svh flex-col">
+        <SiteHeader showSidebar={false} sections={sections} />
+        <UnreleasedBanner />
+        <main className="flex-1">{children}</main>
+      </div>
+    );
+  }
+
   return (
-    <SidebarProvider className="flex-col">
-      <SiteHeader />
+    <SidebarProvider className="min-h-svh flex-col">
+      <SiteHeader showSidebar sections={sections} />
       <div className="flex w-full flex-1">
         <SiteSidebar sections={sections} />
-        <SidebarInset>
+        <SidebarInset className="overflow-x-hidden">
           <UnreleasedBanner />
-          <div className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">{children}</div>
+          <div className="flex-1 px-6 py-10">
+            {children}
+            <div className="mx-auto max-w-3xl">
+              <DocPager {...adjacentLinks(sections, pathname)} />
+            </div>
+          </div>
         </SidebarInset>
       </div>
     </SidebarProvider>

@@ -11,39 +11,75 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@acme/ui/components/sidebar";
+import { cn } from "@acme/ui/lib/utils";
 
 import type { NavSection } from "../nav";
+import { isMainNavActive, MAIN_NAV_LINKS } from "./main-nav";
 
 export function SiteSidebar({ sections }: { sections: NavSection[] }) {
   const { pathname } = useLocation();
   const { isMobile, setOpenMobile } = useSidebar();
 
   return (
-    <Sidebar className="top-14 h-[calc(100svh-3.5rem)]">
-      <SidebarContent className="gap-0">
-        {sections.map((section) => (
-          <SidebarGroup key={section.title}>
-            <SidebarGroupLabel>{section.title}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {section.links.map((link) => (
-                  <SidebarMenuItem key={link.href}>
+    <Sidebar className="top-14 h-[calc(100svh-3.5rem)] border-r">
+      <SidebarContent className="gap-0 overflow-y-auto">
+        <SidebarGroup className="border-b pb-2 md:hidden">
+          <SidebarGroupLabel className="text-xs text-muted-foreground">Sections</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {MAIN_NAV_LINKS.map((item) => {
+                const active = isMainNavActive(pathname, item.prefixes);
+                return (
+                  <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
-                      isActive={pathname === link.href}
-                      className="h-auto min-h-9 py-1.5 text-sm"
+                      isActive={active}
+                      className="h-8 text-sm"
                       render={
                         <Link
-                          to={link.href}
+                          to={item.href}
+                          aria-current={active ? "page" : undefined}
                           onClick={() => {
                             if (isMobile) setOpenMobile(false);
                           }}
                         />
                       }
                     >
-                      {link.title}
+                      {item.label}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                ))}
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        {sections.map((section) => (
+          <SidebarGroup key={section.title} className="py-1">
+            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground">
+              {section.title}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {section.links.map((link) => {
+                  const active = pathname === link.href || pathname === `${link.href}/`;
+                  return (
+                    <SidebarMenuItem key={link.href}>
+                      <SidebarMenuButton
+                        isActive={active}
+                        className={cn("h-7 py-0 text-sm", active && "font-medium")}
+                        render={
+                          <Link
+                            to={link.href}
+                            onClick={() => {
+                              if (isMobile) setOpenMobile(false);
+                            }}
+                          />
+                        }
+                      >
+                        {link.title}
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

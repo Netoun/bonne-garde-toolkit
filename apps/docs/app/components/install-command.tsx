@@ -1,7 +1,7 @@
 import { Button } from "@acme/ui/components/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@acme/ui/components/tabs";
-import { Copy } from "lucide-react";
-import { useState } from "react";
+import { Check, Copy } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 const PACKAGE_MANAGERS = [
   { id: "bun", label: "bun", command: (name: string) => `bunx bonne-garde add ${name}` },
@@ -18,9 +18,27 @@ function commandFor(name: string, tab: PackageManagerId): string {
 
 export function InstallCommand({ name }: { name: string }) {
   const [tab, setTab] = useState<PackageManagerId>("bun");
+  const [copied, setCopied] = useState(false);
+  const resetCopyTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resetCopyTimerRef.current !== null) {
+        clearTimeout(resetCopyTimerRef.current);
+      }
+    };
+  }, []);
 
   async function copyActive() {
     await navigator.clipboard.writeText(commandFor(name, tab));
+    setCopied(true);
+    if (resetCopyTimerRef.current !== null) {
+      clearTimeout(resetCopyTimerRef.current);
+    }
+    resetCopyTimerRef.current = window.setTimeout(() => {
+      setCopied(false);
+      resetCopyTimerRef.current = null;
+    }, 2000);
   }
 
   return (
@@ -33,18 +51,20 @@ export function InstallCommand({ name }: { name: string }) {
         ))}
       </TabsList>
       {PACKAGE_MANAGERS.map((pm) => (
-        <TabsContent key={pm.id} value={pm.id}>
-          <div className="relative rounded-lg border bg-muted">
-            <pre className="overflow-x-auto p-4 pr-12 font-mono text-sm">{pm.command(name)}</pre>
+        <TabsContent key={pm.id} value={pm.id} className="mt-0">
+          <div className="relative overflow-hidden rounded-lg border">
+            <pre className="overflow-x-auto bg-muted/40 p-4 pr-12 font-mono text-sm">
+              {pm.command(name)}
+            </pre>
             <Button
               type="button"
               variant="ghost"
               size="icon-sm"
               className="absolute top-2 right-2"
               onClick={copyActive}
-              aria-label="Copy"
+              aria-label={copied ? "Copied" : "Copy"}
             >
-              <Copy />
+              {copied ? <Check /> : <Copy />}
             </Button>
           </div>
         </TabsContent>
