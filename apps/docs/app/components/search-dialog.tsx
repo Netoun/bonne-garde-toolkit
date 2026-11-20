@@ -42,11 +42,22 @@ export function SearchDialog({
     setActiveIndex(0);
   }, [query]);
 
+  const optionRefs = useRef<Array<HTMLElement | null>>([]);
+
   useEffect(() => {
     if (open) {
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [open]);
+
+  useEffect(() => {
+    optionRefs.current.length = flatLinks.length;
+  }, [flatLinks]);
+
+  useEffect(() => {
+    if (!open || flatLinks.length === 0) return;
+    optionRefs.current[activeIndex]?.scrollIntoView?.({ block: "nearest" });
+  }, [activeIndex, flatLinks.length, open]);
 
   function handleOpenChange(next: boolean) {
     onOpenChange(next);
@@ -129,6 +140,9 @@ export function SearchDialog({
                     return (
                       <li key={link.href}>
                         <Link
+                          ref={(element) => {
+                            optionRefs.current[index] = element;
+                          }}
                           to={link.href}
                           role="option"
                           aria-selected={active}
