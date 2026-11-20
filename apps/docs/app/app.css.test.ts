@@ -15,4 +15,10 @@ describe("app.css", () => {
       expect(css).toMatch(new RegExp(`\\.prose-docs\\s+${tag}\\b`));
     },
   );
+
+  it("does not color .prose-docs links with the pale primary", () => {
+    const rule = /\.prose-docs a\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(rule).not.toMatch(/(^|\s)text-primary\b/);
+    expect(rule).toMatch(/text-foreground/);
+  });
 });

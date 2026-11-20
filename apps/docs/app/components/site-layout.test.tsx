@@ -77,4 +77,38 @@ describe("SiteLayout", () => {
     expect(sidebar).toHaveClass("top-14");
     expect(sidebar).toHaveClass("h-[calc(100svh-3.5rem)]");
   });
+
+  it("ends a doc page with links to its neighbours, in sidebar order", () => {
+    render(
+      <MemoryRouter initialEntries={["/docs/cli"]}>
+        <SiteLayout sections={SECTIONS} showSidebar>
+          <div>Guide</div>
+        </SiteLayout>
+      </MemoryRouter>,
+    );
+
+    const pager = screen.getByRole("navigation", { name: "Previous and next pages" });
+    expect(within(pager).getByRole("link", { name: /Introduction/ })).toHaveAttribute(
+      "href",
+      "/docs/introduction",
+    );
+    expect(within(pager).getByRole("link", { name: /Button/ })).toHaveAttribute(
+      "href",
+      "/components/button",
+    );
+  });
+
+  it("renders no pager on /", () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <SiteLayout sections={SECTIONS} showSidebar={false}>
+          <div>Home</div>
+        </SiteLayout>
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.queryByRole("navigation", { name: "Previous and next pages" }),
+    ).not.toBeInTheDocument();
+  });
 });

@@ -1,6 +1,9 @@
 import { SidebarInset, SidebarProvider } from "@acme/ui/components/sidebar";
 
-import type { NavSection } from "../nav";
+import { useLocation } from "react-router";
+
+import { adjacentLinks, type NavSection } from "../nav";
+import { DocPager } from "./doc-pager";
 import { SiteHeader } from "./site-header";
 import { SiteSidebar } from "./site-sidebar";
 
@@ -13,6 +16,8 @@ export function SiteLayout({
   children: React.ReactNode;
   showSidebar: boolean;
 }) {
+  const { pathname } = useLocation();
+
   if (!showSidebar) {
     return (
       <div className="flex min-h-svh flex-col">
@@ -28,7 +33,12 @@ export function SiteLayout({
       <div className="flex w-full flex-1">
         <SiteSidebar sections={sections} />
         <SidebarInset className="overflow-x-hidden">
-          <div className="flex-1 px-6 py-10">{children}</div>
+          <div className="flex-1 px-6 py-10">
+            {children}
+            <div className="mx-auto max-w-3xl">
+              <DocPager {...adjacentLinks(sections, pathname)} />
+            </div>
+          </div>
         </SidebarInset>
       </div>
     </SidebarProvider>

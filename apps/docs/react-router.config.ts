@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { basePath, hoistBasePathOutput } from "./base-path";
 import { writeCachedNav } from "./app/lib/nav-cache";
-import { listNav } from "./app/nav";
+import { listNav } from "./app/nav.server";
 
 export default {
   basename: basePath,

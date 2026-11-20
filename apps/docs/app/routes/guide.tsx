@@ -4,8 +4,10 @@ import { Link, useLoaderData } from "react-router";
 import remarkGfm from "remark-gfm";
 
 import { CodeBlock } from "../components/code-block";
+import { TableOfContents } from "../components/table-of-contents";
 import { resolveGuideLink } from "../lib/guide-links";
 import { listPublishedSources } from "../lib/guide-source";
+import { extractHeadings, slugify } from "../lib/headings";
 import { highlight } from "../lib/highlight";
 
 const FENCE = /^```([\w-]*)[^\n]*\n([\s\S]*?)\n```$/gm;
@@ -59,15 +61,6 @@ function textOf(node: ReactNode): string {
     .join("");
 }
 
-/** GitHub's anchor rule, so the guides' own `#anchor` links keep working. */
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s-]/gu, "")
-    .trim()
-    .replace(/\s/g, "-");
-}
-
 function heading(Tag: "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
   return function Heading({ children }: ComponentProps<typeof Tag>) {
     return (
@@ -109,11 +102,22 @@ export default function Guide() {
     },
   };
 
+  const headings = extractHeadings(markdown);
+
   return (
-    <article className="prose-docs mx-auto flex max-w-3xl flex-col gap-4 px-6 py-10">
-      <Markdown remarkPlugins={[remarkGfm]} components={components}>
-        {markdown}
-      </Markdown>
-    </article>
+    <div className="mx-auto flex max-w-5xl gap-10 py-10">
+      <article className="prose-docs flex min-w-0 max-w-3xl flex-1 flex-col gap-4">
+        <Markdown remarkPlugins={[remarkGfm]} components={components}>
+          {markdown}
+        </Markdown>
+      </article>
+      {headings.some(({ depth }) => depth === 2) ? (
+        <aside className="hidden w-52 shrink-0 xl:block">
+          <div className="sticky top-24">
+            <TableOfContents headings={headings} />
+          </div>
+        </aside>
+      ) : null}
+    </div>
   );
 }
