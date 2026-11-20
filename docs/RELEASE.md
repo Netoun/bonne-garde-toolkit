@@ -11,7 +11,14 @@ One semver versions the whole platform ([ADR 7](./adr/0007-lockstep-versioning.m
 
 Pushing a tag `vX.Y.Z` runs `.github/workflows/release.yml`: `pack:cli`, then `npm publish` with npm trusted publishing (no token stored, provenance added). It refuses a tag that does not name the packed version, and the packed `repository.url` must name this repository. A tag pushed before the workflow existed is published by running the workflow by hand with that tag. Dry run: `bun run publish:cli:dry`.
 
-The same tag also runs `.github/workflows/docs.yml`, which builds `apps/docs` at that tag and deploys it to GitHub Pages (`https://netoun.github.io/bonne-garde-toolkit/`); run it by hand with a tag to republish the site.
+The docs site on GitHub Pages holds two versions, both built by `.github/workflows/docs.yml`:
+
+| Version | URL                                                  | Built from                                                           |
+| ------- | ---------------------------------------------------- | -------------------------------------------------------------------- |
+| Release | `https://netoun.github.io/bonne-garde-toolkit/`      | The latest `v*` tag: what the published `bonne-garde` can install    |
+| Next    | `https://netoun.github.io/bonne-garde-toolkit/next/` | `main`, with an "unreleased" banner linking back to the release docs |
+
+A Pages deployment replaces the whole site, so every run (a push to `main`, a tag, or by hand) rebuilds both and deploys them together. A tag cut from a commit older than this workflow runs the old one, which deploys the release alone and drops `/next/` until the next push to `main`.
 
 The tarball is JavaScript that runs on Node ≥ 22.12 and on Bun: one bundled bin, `templates/base` embedded, `packages/schema` and `packages/registry` vendored into the bundle (no `workspace:` dependency), and the npm dependencies it imports pinned exactly. Golden runs the packed bin with `node`.
 
