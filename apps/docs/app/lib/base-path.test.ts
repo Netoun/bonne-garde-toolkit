@@ -17,6 +17,11 @@ describe("normalizeBasePath", () => {
     expect(normalizeBasePath("bonne-garde-toolkit")).toBe("/bonne-garde-toolkit/");
     expect(normalizeBasePath("/bonne-garde-toolkit/")).toBe("/bonne-garde-toolkit/");
   });
+
+  it("keeps every segment of the next/ base", () => {
+    expect(normalizeBasePath("/bonne-garde-toolkit/next")).toBe("/bonne-garde-toolkit/next/");
+    expect(normalizeBasePath("/next")).toBe("/next/");
+  });
 });
 
 describe("hoistBasePathOutput", () => {
@@ -38,6 +43,20 @@ describe("hoistBasePathOutput", () => {
     expect(readFileSync(join(dir, "index.html"), "utf8")).toBe("home");
     expect(readFileSync(join(dir, "docs", "cli", "index.html"), "utf8")).toBe("cli");
     expect(existsSync(join(dir, "assets"))).toBe(true);
+    expect(existsSync(join(dir, "bonne-garde-toolkit"))).toBe(false);
+  });
+
+  it("moves the pages of a next/ build to the site root", () => {
+    const dir = mkdtempSync(join(tmpdir(), "docs-client-"));
+    const nested = join(dir, "bonne-garde-toolkit", "next");
+    mkdirSync(join(nested, "docs", "cli"), { recursive: true });
+    writeFileSync(join(nested, "index.html"), "next home");
+    writeFileSync(join(nested, "docs", "cli", "index.html"), "next cli");
+
+    hoistBasePathOutput(dir, "/bonne-garde-toolkit/next/");
+
+    expect(readFileSync(join(dir, "index.html"), "utf8")).toBe("next home");
+    expect(readFileSync(join(dir, "docs", "cli", "index.html"), "utf8")).toBe("next cli");
     expect(existsSync(join(dir, "bonne-garde-toolkit"))).toBe(false);
   });
 
