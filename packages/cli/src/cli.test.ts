@@ -1770,7 +1770,7 @@ describe("bonne-garde add: an installed module is selected again when a module i
       "bonne-garde: email/resend, installed on variant default, is planned again on variant better-auth, which matches auth/better-auth",
     );
     expect(out.modules.map(({ module, variant }) => [module, variant])).toEqual([
-      ["auth/better-auth", "default"],
+      ["auth/better-auth", "d1"],
       ["email/resend", "better-auth"],
     ]);
     // The patch that declares the email package in auth's package.json lands in the same apply,
@@ -1884,7 +1884,7 @@ describe("bonne-garde add: an installed module is selected again when a module i
       // Named in the call, email is a requested module and not a planned-again one.
       expect(out.reselected).toEqual([]);
       expect(out.modules.map(({ module, variant }) => [module, variant])).toEqual([
-        ["auth/better-auth", "default"],
+        ["auth/better-auth", "d1"],
         ["email/resend", "better-auth"],
       ]);
       expect((await emailRecord(target))?.variant).toBe("better-auth");

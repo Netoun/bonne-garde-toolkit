@@ -41,5 +41,5 @@ restart runs none again. `db:reset` and `db:studio` are not shipped: they need w
 
 ## Not here
 
-`auth/better-auth` and `storage/r2` stay D1-only (`peers.db: ["d1"]`): auth on Docker is a separate decision.
+`auth/better-auth` has a `libsql` variant over this database ([its README](../../auth/better-auth/README.md#dockerfile-and-libsql)). `storage/r2` stays D1-only (`peers.db: ["d1"]`).
 A Postgres database is [`db/postgres`](../postgres/README.md), over `DATABASE_URL`.

@@ -495,6 +495,7 @@ function workspacePackageJson(
   variant: ModuleVariant,
   scope: string,
   vendored: PlannedFile[],
+  patches: PlannedPatch[],
 ): PlannedFile | null {
   const key = keyOf(manifest);
   const dependencies = renderedMap(variant.dependencies, scope);
@@ -522,8 +523,14 @@ function workspacePackageJson(
     private: true,
     type: "module",
   };
+  // A generated file gets the keys the variant's merges fill, where the formatter keeps them (before
+  // the dependency maps): `jsonc.merge` and `scripts.merge` would append them after.
+  const merged = (type: PlannedPatch["type"]) =>
+    patches.some((patch) => patch.type === type && patch.file === target);
   const body = {
     ...base,
+    ...(vendoredBody === null && merged("jsonc.merge") ? { exports: {} } : {}),
+    ...(vendoredBody === null && merged("scripts.merge") ? { scripts: {} } : {}),
     ...(Object.keys(dependencies).length > 0 ? { dependencies: sortedMap(dependencies) } : {}),
     ...(Object.keys(devDependencies).length > 0
       ? { devDependencies: sortedMap(devDependencies) }
@@ -557,7 +564,7 @@ async function planModule(
       );
     }
   }
-  const packageJson = workspacePackageJson(manifest, variant, project.scope, copied.files);
+  const packageJson = workspacePackageJson(manifest, variant, project.scope, copied.files, patches);
   const files = packageJson
     ? [...copied.files.filter((file) => file.target !== packageJson.target), packageJson]
     : copied.files;
