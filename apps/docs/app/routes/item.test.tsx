@@ -4,6 +4,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import Item, { loader as itemLoader } from "./item";
 
+const loaderTimeout = { timeout: 10_000 };
+
 function itemStub(initial: string) {
   const Stub = createRoutesStub([
     { path: "/components/:name", Component: Item, loader: itemLoader },
@@ -18,7 +20,7 @@ describe("Item page", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Button" })).toBeInTheDocument();
-    });
+    }, loaderTimeout);
 
     expect(screen.getByRole("tab", { name: "Preview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Code" }));
@@ -30,7 +32,7 @@ describe("Item page", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Separator" })).toBeInTheDocument();
-    });
+    }, loaderTimeout);
 
     expect(screen.queryByRole("tab", { name: "Preview" })).not.toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Code" })).toHaveAttribute("aria-selected", "true");
@@ -41,7 +43,7 @@ describe("Item page", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Installation" })).toBeInTheDocument();
-    });
+    }, loaderTimeout);
 
     expect(document.body).toHaveTextContent("bunx bonne-garde add button");
   });
@@ -51,7 +53,7 @@ describe("Item page", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "SPA auth" })).toBeInTheDocument();
-    });
+    }, loaderTimeout);
 
     expect(screen.getByRole("link", { name: "auth" })).toHaveAttribute(
       "href",

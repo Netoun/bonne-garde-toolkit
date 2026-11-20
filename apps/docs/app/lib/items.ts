@@ -1,5 +1,5 @@
 import { isModuleCategory } from "@bonne-garde/schema";
-import type { RegistryCatalog, RegistryItem } from "./registry-types";
+import type { RegistryCatalog, RegistryItem } from "@bonne-garde/registry";
 
 export function itemHref(item: Pick<RegistryItem, "name" | "type">): string {
   const base = item.type === "registry:block" ? "/blocks" : "/components";

@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import type { RegistryFile, RegistryItem } from "./registry-types";
+import type { RegistryFile, RegistryItem } from "@bonne-garde/registry";
 
 export function itemFileText(item: string, path: string, bytes: Uint8Array): string {
   const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });

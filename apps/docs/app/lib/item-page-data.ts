@@ -6,7 +6,7 @@ import { itemHasDemo } from "./demos";
 import { itemFileTarget, itemFileText } from "./item-file-source";
 import { highlight } from "./highlight";
 import { itemHref, itemTitle, moduleNeedHref } from "./items";
-import { getCatalogSync } from "./registry";
+import { getCatalog } from "./registry";
 
 function langForTarget(target: string): string {
   if (target.endsWith(".tsx")) {
@@ -27,7 +27,7 @@ export async function loadItemPageData({ params, request }: LoaderFunctionArgs) 
     throw new Response("Not Found", { status: 404 });
   }
 
-  const catalog = getCatalogSync();
+  const catalog = await getCatalog();
   const item = catalog.items.find((entry) => entry.name === name);
   if (!item) {
     throw new Response("Not Found", { status: 404 });
