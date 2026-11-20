@@ -1,8 +1,6 @@
 import { SidebarInset, SidebarProvider } from "@acme/ui/components/sidebar";
 
 import type { NavSection } from "../nav";
-
-const HEADER_HEIGHT = "3.5rem";
 import { SiteHeader } from "./site-header";
 import { SiteSidebar } from "./site-sidebar";
 
@@ -14,10 +12,7 @@ export function SiteLayout({
   children: React.ReactNode;
 }) {
   return (
-    <SidebarProvider
-      className="flex-col"
-      style={{ "--header-height": HEADER_HEIGHT } as React.CSSProperties}
-    >
+    <SidebarProvider className="flex-col">
       <SiteHeader />
       <div className="flex w-full flex-1">
         <SiteSidebar sections={sections} />
