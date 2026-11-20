@@ -8,18 +8,18 @@ The state file `create` writes, `add` and `record` update, and `doctor` reads. I
   "version": 2,
   "scope": "@acme",
   "platform": {
-    "version": "0.3.0",
+    "version": "0.3.1",
     "remote": "github:Netoun/bonne-garde-toolkit",
     "intentions": { "applied": [], "skipped": {} }
   },
-  "registries": { "@bg": "github:Netoun/bonne-garde-toolkit@v0.3.0" },
+  "registries": { "@bg": "github:Netoun/bonne-garde-toolkit@v0.3.1" },
   "apps": [{ "id": "api", "dir": "apps/api", "kind": "worker" }],
   "modules": {
     "auth": [
       {
         "id": "better-auth",
         "variant": "default",
-        "version": "0.3.0",
+        "version": "0.3.1",
         "installedAt": "2026-01-01T00:00:00.000Z",
         "options": { "withOrg": false },
         "patches": [{ "type": "ts.elysiaUse", "file": "apps/api/src/app.ts", "status": "applied" }],
@@ -30,7 +30,7 @@ The state file `create` writes, `add` and `record` update, and `doctor` reads. I
   "items": {
     "button": {
       "source": "@bg/button",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "installedAt": "2026-01-01T00:00:00.000Z"
     }
   },

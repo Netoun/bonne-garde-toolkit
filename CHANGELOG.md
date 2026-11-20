@@ -2,6 +2,30 @@
 
 One lockstep version for the CLI, the base template, the registry and the migration intentions ([RELEASE.md](./docs/RELEASE.md)).
 
+## 0.3.1
+
+`bonne-garde` and `@bonne-garde/{cli,registry,schema}`: 0.3.0 → 0.3.1.
+
+### CLI
+
+- No change: the CLI, the base template and the registry are the same as 0.3.0 (`git log v0.3.0..main` holds no commit under `packages/`, `registry/` or `templates/`, hence a patch release).
+
+### Modules
+
+- No new or changed module or item.
+
+### Fixes
+
+- None.
+
+### Docs
+
+- The documentation site (`apps/docs`) is published to GitHub Pages (`https://netoun.github.io/bonne-garde-toolkit/`) on each tag: guides, one page per module and registry item with its demo, and the new Bonne Garde logo (a ring-pommel sword that spells t, b and g). `apps/docs` joins the lockstep version.
+
+### Intentions
+
+- None added: this release has no migration, and `migrations/` is unchanged.
+
 ## 0.3.0
 
 `bonne-garde` and `@bonne-garde/{cli,registry,schema}`: 0.2.0 → 0.3.0.
