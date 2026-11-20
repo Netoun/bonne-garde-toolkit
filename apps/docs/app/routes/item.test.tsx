@@ -27,15 +27,15 @@ describe("Item page", () => {
     expect(screen.getByText("packages/ui/src/components/button.tsx")).toBeInTheDocument();
   });
 
-  it("renders separator without Preview and leaves Code selected", async () => {
+  it("renders separator with Preview and Code tabs", async () => {
     render(itemStub("/components/separator"));
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Separator" })).toBeInTheDocument();
     }, loaderTimeout);
 
-    expect(screen.queryByRole("tab", { name: "Preview" })).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Code" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Preview" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Code" })).toBeInTheDocument();
   });
 
   it("shows the Installation block for button", async () => {
