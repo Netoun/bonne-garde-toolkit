@@ -161,6 +161,8 @@ export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
 
 /** The modules `bonne-garde add` installs after what `create` produced for the set, in that order. */
 export const ADDED_AFTER_CREATE: Readonly<Record<string, readonly string[]>> = {
+  // `create` offers no observability module; the cloudflare variant is the next stage.
+  dockerfile: ["observability/sentry"],
   "dockerfile-postgres": ["db/postgres", "orm/drizzle"],
 };
 
@@ -1047,6 +1049,14 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "elysia[app].use[mediaModule]",
       "exports[@app/storage/schema]",
       "imports[@app/storage]",
+    ],
+    "observability/sentry": [
+      "dependencies.@app/observability",
+      "elysia[app].use[observabilityModule]",
+      'exports."."',
+      "imports[@app/observability]",
+      "scripts.test",
+      "scripts.typecheck",
     ],
     // Not the import into mailer.ts: that is the intention's edit, as on cloudflare.
     "email/resend": ["dependencies.@app/email"],

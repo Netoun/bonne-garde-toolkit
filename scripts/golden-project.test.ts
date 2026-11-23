@@ -253,7 +253,14 @@ describe("the golden project", () => {
     const dockerfile = CONFIGURATIONS.find(({ name }) => name === "dockerfile");
     expect(postgres?.modules.slice(0, -2)).toEqual(
       (dockerfile?.modules ?? []).filter(
-        (name) => !["db/libsql", "orm/drizzle", "auth/better-auth", "storage/fs"].includes(name),
+        (name) =>
+          ![
+            "db/libsql",
+            "orm/drizzle",
+            "auth/better-auth",
+            "storage/fs",
+            "observability/sentry",
+          ].includes(name),
       ),
     );
   });
@@ -405,6 +412,7 @@ describe("the golden project and modules", () => {
       "provider/dockerfile",
       "db/libsql",
       "storage/fs",
+      "observability/sentry",
       "db/postgres",
     ]);
   });
@@ -852,6 +860,14 @@ describe("the golden project and patches", () => {
           "elysia[app].use[mediaModule]",
           "exports[@app/storage/schema]",
           "imports[@app/storage]",
+        ],
+        "observability/sentry": [
+          "dependencies.@app/observability",
+          "elysia[app].use[observabilityModule]",
+          'exports."."',
+          "imports[@app/observability]",
+          "scripts.test",
+          "scripts.typecheck",
         ],
         "email/resend": ["dependencies.@app/email"],
         "web/spa": ["scripts.dev"],

@@ -91,6 +91,7 @@
           "queue",
           "storage",
           "payments",
+          "observability",
           "web",
           "testing",
           "deploy",

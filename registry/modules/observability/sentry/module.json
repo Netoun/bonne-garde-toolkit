@@ -1,0 +1,64 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "sentry",
+  "category": "observability",
+  "version": "0.1.0",
+  "title": "Sentry",
+  "description": "Error reporting to Sentry, or GlitchTip (same DSN protocol): an Elysia plugin that captures the API's unexpected errors, in packages/observability.",
+  "peers": { "provider": [], "api": ["elysia"] },
+  "checks": ["cd packages/observability && vp run typecheck && vp run test"],
+  "variants": [
+    {
+      "key": "dockerfile",
+      "match": { "provider": "dockerfile" },
+      "workspace": { "name": "{{SCOPE}}/observability", "path": "packages/observability" },
+      "dependencies": { "@sentry/node": "11.16.0", "elysia": "1.4.29" },
+      "env": [
+        { "name": "SENTRY_DSN", "required": false, "example": "" },
+        { "name": "SENTRY_ENVIRONMENT", "required": false, "example": "" }
+      ],
+      "copy": [
+        "packages/observability/tsconfig.json",
+        "packages/observability/tsconfig.test.json",
+        "packages/observability/src/node.ts",
+        "packages/observability/src/node.test.ts"
+      ],
+      "patch": [
+        {
+          "type": "jsonc.merge",
+          "file": "packages/observability/package.json",
+          "value": { "exports": { ".": "./src/node.ts" } },
+          "intent": "Point the package's main export at the Node implementation."
+        },
+        {
+          "type": "scripts.merge",
+          "file": "packages/observability/package.json",
+          "scripts": {
+            "typecheck": "tsc --noEmit && tsc --project tsconfig.test.json --noEmit",
+            "test": "vp test"
+          }
+        },
+        {
+          "type": "package.dependencies",
+          "file": "apps/api/package.json",
+          "dependencies": { "{{SCOPE}}/observability": "workspace:*" },
+          "intent": "Declare the project's observability package as a dependency of the API app."
+        },
+        {
+          "type": "ts.addImport",
+          "file": "apps/api/src/app.ts",
+          "moduleSpecifier": "{{SCOPE}}/observability",
+          "namedImports": ["observabilityModule"],
+          "intent": "Import observabilityModule from the project's observability package in the API app."
+        },
+        {
+          "type": "ts.elysiaUse",
+          "file": "apps/api/src/app.ts",
+          "targetName": "app",
+          "argument": "observabilityModule",
+          "intent": "Register observabilityModule on the API app after its last .use and before its onError, so it reports an error before the app's handler answers it."
+        }
+      ]
+    }
+  ]
+}
