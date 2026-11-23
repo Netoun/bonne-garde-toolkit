@@ -21,6 +21,7 @@
         "path": "packages/realtime"
       },
       "dependencies": {
+        "@libsql/client": "0.18.0",
         "crossws": "0.4.17",
         "typebox": "1.3.11",
         "{{SCOPE}}/api-runtime": "workspace:*"
@@ -41,7 +42,10 @@
         "packages/realtime/src/index.ts",
         "packages/realtime/src/protocol.test.ts",
         "packages/realtime/src/protocol.ts",
+        "packages/realtime/src/rooms.test.ts",
         "packages/realtime/src/rooms.ts",
+        "packages/realtime/src/state.node.test.ts",
+        "packages/realtime/src/state.node.ts",
         "packages/realtime/src/testing-client.ts",
         "packages/realtime/src/testing.node.ts",
         "packages/realtime/src/ticket.test.ts",
