@@ -845,7 +845,7 @@ describe("bonne-garde add <module>", () => {
     });
   });
 
-  test("a second provider fails on cardinality, pointing at bonne-garde replace, and changes nothing", async () => {
+  test("a second provider fails on cardinality, without pointing at replace, and changes nothing", async () => {
     const target = await freshProject("bg-cli-mod-card-");
     await runBonneGarde(target, "add", "cloudflare", "--yes", "--no-install");
     const before = await snapshot(target);
@@ -860,7 +860,8 @@ describe("bonne-garde add <module>", () => {
 
     expect(code).toBe(1);
     expect(stderr).toContain("provider is already filled by provider/cloudflare");
-    expect(stderr).toContain("bonne-garde replace provider/dockerfile");
+    expect(stderr).toContain("replace is not available yet");
+    expect(stderr).not.toContain("bonne-garde replace provider/dockerfile");
     expect(await snapshot(target)).toEqual(before);
   });
 

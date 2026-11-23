@@ -3,7 +3,6 @@ import { join, posix } from "node:path";
 import { glob } from "tinyglobby";
 import {
   categoryCardinality,
-  cliRunner,
   isModuleCategory,
   MODULE_CATEGORIES,
   readModuleIntention,
@@ -62,6 +61,48 @@ function qualifiedForms(modules: RegistryModule[]): string {
   return modules.map(({ manifest }) => keyOf(manifest)).join(", ");
 }
 
+/** Damerau-Levenshtein distance (adjacent transpositions count as one edit). */
+function editDistance(a: string, b: string): number {
+  const rows: number[][] = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) {
+    rows[0]![j] = j;
+  }
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      let best = Math.min(rows[i - 1]![j]! + 1, rows[i]![j - 1]! + 1, rows[i - 1]![j - 1]! + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        best = Math.min(best, rows[i - 2]![j - 2]! + 1);
+      }
+      rows[i]![j] = best;
+    }
+  }
+  return rows[a.length]![b.length]!;
+}
+
+const MAX_TYPO_SUGGESTIONS = 3;
+
+/** The names closest to `needle` by edit distance: an item name, or a module's id or `<category>/<id>`. */
+function closestNames(catalog: RegistryCatalog, needle: string): string[] {
+  const limit = Math.max(1, Math.floor(needle.length / 3));
+  const candidates = [
+    ...catalog.items.map((item) => ({ name: item.name, forms: [item.name] })),
+    ...catalog.modules.map(({ manifest }) => ({
+      name: keyOf(manifest),
+      forms: [manifest.id, keyOf(manifest)],
+    })),
+  ];
+  return candidates
+    .map(({ name, forms }) => ({
+      name,
+      distance: Math.min(...forms.map((form) => editDistance(needle, form.toLowerCase()))),
+    }))
+    .filter(({ distance }) => distance <= limit)
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, MAX_TYPO_SUGGESTIONS)
+    .map(({ name }) => name);
+}
+
 function suggestions(catalog: RegistryCatalog, name: string): string[] {
   const needle = name.trim().toLowerCase();
   const items = searchCatalog(catalog, name).map((item) => item.name);
@@ -73,7 +114,7 @@ function suggestions(catalog: RegistryCatalog, name: string): string[] {
         .includes(needle),
     )
     .map(({ manifest }) => keyOf(manifest));
-  return [...items, ...modules];
+  return [...new Set([...closestNames(catalog, needle), ...items, ...modules])];
 }
 
 /**
@@ -208,7 +249,7 @@ function checkCardinality(requested: ModuleRef[], manifest: ProjectManifest): vo
     const installed = manifest.modules[category]?.[0];
     if (wanted && installed && installed.id !== wanted.id) {
       throw new PlanError(
-        `${category} is already filled by ${category}/${installed.id}; \`${cliRunner()} replace ${keyOf(wanted)}\` swaps it`,
+        `${category} is already filled by ${category}/${installed.id}. A project has one ${category} module, and replace is not available yet. Nothing was written.`,
       );
     }
   }
@@ -616,6 +657,9 @@ export function reselectedModules(
   requested: ModuleRef[],
   project: ProjectManifest,
 ): Reselected[] {
+  // Cardinality is checked before any variant is selected: a second `db` is refused for being a
+  // second one, not for the ambiguity it creates between the variants of an installed module.
+  checkCardinality(requested, project);
   const named = new Set(requested.map(keyOf));
   const present = presentModules(project, requested);
   const reselected: Reselected[] = [];
