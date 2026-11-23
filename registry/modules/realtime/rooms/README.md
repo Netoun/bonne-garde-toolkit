@@ -11,10 +11,10 @@ bunx bonne-garde add provider/cloudflare api/elysia realtime/rooms   # or provid
 One module, a driver per provider behind the package's `./driver` export, both reached through the upgrade
 seam of `{{SCOPE}}/api-runtime` (`registerUpgrade`):
 
-| Provider     | Driver                                                                                                                   |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `dockerfile` | [crossws](https://crossws.h3.dev), one instance, peers and publish in memory                                             |
-| `cloudflare` | One Durable Object per room (`RealtimeRoom`, `idFromName(room)`) on the hibernation API, SQLite-backed class, no crossws |
+| Provider     | Driver                                                                                                                                                                 |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dockerfile` | [crossws](https://crossws.h3.dev), one instance, peers and publish in memory                                                                                           |
+| `cloudflare` | One Durable Object per room (`RealtimeRoom`, `idFromName(room)`) on the hibernation API, SQLite-backed class, no crossws; its state is the object's own SQLite storage |
 
 ## Peers
 
@@ -149,13 +149,22 @@ with `(room, key)` as primary key, values stored as JSON text. It is **not** `db
 peer and a project on `db/postgres` runs it as is; with `db/libsql` both files sit side by side under `DATA_DIR`.
 No migration: the table is created when the file is opened. Keep `DATA_DIR` on the volume, as for `db.sqlite`.
 
+On `cloudflare` the state is the room's own Durable Object storage: table `room_state (key, value)` in the object's
+SQLite database (JSON text, as on `dockerfile`), created when the object is built. Every call, a hook's included,
+goes through the room's stub (RPC `stateGet`, `stateSet`, `stateDelete`, `stateList`, `stateClear`), so the state is
+on disk and survives the object's eviction and a deploy. No new migration: `RealtimeRoom` is already in
+`new_sqlite_classes` (`realtime-rooms-v1`), and no D1 or `db` peer is involved. Each object serialises its own
+calls, so two writes of one room never interleave inside a call; a `get` then a `set` is still not atomic.
+
 ## Tests on Workers
 
 Rooms are defined in the Worker, which workerd runs apart from the test, so a test of yours writes a Worker
 entry beside it (see `test-worker.cloudflare.ts`) and hands it to `startTestRealtime({ entry })`. The harness
 bundles it with `vite-plus/pack`, **replaces Elysia's Cloudflare adapter by an empty one in that bundle**
 (Miniflare refuses its dynamic `import()`, and a test never reads what the adapter configures), and serves it.
-`publish()` runs `publishToRoom` inside workerd. On Cloudflare the runtime answers `ping` itself, so
+`startTestRealtime({ entry, persist })` takes a directory the objects keep their storage in: start it again over the
+same one to find the state of a room after a restart (you remove the directory). `state(room)` is `roomState(room)`
+as server code runs it, inside workerd. `publish()` runs `publishToRoom` inside workerd. On Cloudflare the runtime answers `ping` itself, so
 `settled()` only orders what a completed publish already sent.
 
 ## Limits
