@@ -1,7 +1,7 @@
 /**
  * The API's provider seam, `dockerfile` variant: Elysia on Node in one container that also serves
  * the built SPA, so the API and the front share one origin. It replaces the `cloudflare` variant
- * of this package and exports the same five names, which `apps/api` and the modules import and
+ * of this package and exports the same six names, which `apps/api` and the modules import and
  * nothing else:
  * - `runtimeOptions`: the constructor options of `new Elysia(...)` that differ per provider.
  * - `readRuntimeEnv()`: the environment record, read once by `apps/api`'s config.
@@ -12,6 +12,10 @@
  *   second one.
  * - `registerUpgrade(prefix, hooks)`: claims the WebSocket upgrades under a path prefix, before the
  *   app sees them. Here it takes crossws hooks; the `cloudflare` variant takes a fetch-style handler.
+ * - `wrapRequests(wrapper)`: registers a `RequestWrapper` that `serve` runs around every request it
+ *   hands to the app (not the SPA's built files, nor a WebSocket upgrade), and returns the function
+ *   that removes it. Here `env` is `process.env`, and `waitUntil` lets the promise run on: the process
+ *   outlives the response.
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { link, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -187,7 +191,48 @@ function withClientIp(request: IncomingRequest, proxyHeader: string): Request {
   return new Request(request.url, init);
 }
 
+/** What a wrapper may use of the request's context, the same on every provider (see the cloudflare one). */
+export interface RequestContext {
+  waitUntil(promise: Promise<unknown>): void;
+}
+
+/** Runs around the app for one request: `next()` answers with the app's response, through the wrappers registered after this one. */
+export type RequestWrapper = (
+  request: Request,
+  env: unknown,
+  ctx: RequestContext,
+  next: () => Promise<Response>,
+) => Promise<Response>;
+
+const wrappers: RequestWrapper[] = [];
+
+/** Registers `wrapper`, outside the ones registered before it, and returns what removes it. */
+export function wrapRequests(wrapper: RequestWrapper): () => void {
+  wrappers.push(wrapper);
+  return () => {
+    const index = wrappers.indexOf(wrapper);
+    if (index !== -1) wrappers.splice(index, 1);
+  };
+}
+
+/** Node keeps running after the response, so the promise needs no keeping alive; a rejection is logged, as Workers do. */
+const nodeContext: RequestContext = {
+  waitUntil(promise) {
+    // oxlint-disable-next-line no-console -- the runtime has no logger of its own; Workers print it too.
+    promise.catch((error: unknown) => console.error(error));
+  },
+};
+
 type App = { fetch: (request: Request) => Response | Promise<Response> };
+
+function wrapped(app: App, request: Request): Promise<Response> {
+  const handle = wrappers.reduceRight<() => Promise<Response>>(
+    (next, wrapper) => () => wrapper(request, process.env, nodeContext, next),
+    async () => app.fetch(request),
+  );
+  return handle();
+}
+
 type ServeOptions = { spaDir?: string; port?: number; trustedProxyHeader?: string };
 
 /**
@@ -214,7 +259,7 @@ export function handler(
       if (file) return fileResponse(file);
     }
 
-    const response = await app.fetch(request);
+    const response = await wrapped(app, request);
     if (isRead && response.status === 404 && request.headers.get("accept")?.includes("text/html")) {
       const index = await builtFile(root, "/");
       if (index) return fileResponse(index);

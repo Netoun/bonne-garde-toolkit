@@ -13,6 +13,10 @@
  * - `registerUpgrade(prefix, handler)`: claims the WebSocket upgrades under a path prefix, before the
  *   app sees them (Elysia rebuilds a 101 response, which Workers reject). Here the handler is
  *   fetch-style and gets the Worker's `env` and `ctx`; the `dockerfile` variant takes crossws hooks.
+ * - `wrapRequests(wrapper)`: registers a `RequestWrapper` that `serve` runs around every request it
+ *   hands to the app (a claimed WebSocket upgrade is not one), for a module that must see the request
+ *   before the app does (error reporting that flushes after the response, ...). It returns the
+ *   function that removes it. A module calls it at import, so `apps/api/src/index.ts` stays as it is.
  */
 /// <reference types="@cloudflare/workers-types" />
 import type { ElysiaConfig } from "elysia";
@@ -71,11 +75,50 @@ function upgradeHandler(request: Request): FetchHandler | undefined {
   return undefined;
 }
 
-export function serve(app: { fetch: FetchHandler }) {
+/**
+ * The part of the request's context a wrapper may use, the same on every provider. On Workers it is
+ * the `ExecutionContext`: `waitUntil` keeps the isolate alive for the promise after the response.
+ */
+export interface RequestContext {
+  waitUntil(promise: Promise<unknown>): void;
+}
+
+/**
+ * Runs around the app for one request: `env` is the Workers env (bindings and vars), and `next()`
+ * answers with the app's response, through the wrappers registered after this one.
+ */
+export type RequestWrapper = (
+  request: Request,
+  env: unknown,
+  ctx: RequestContext,
+  next: () => Promise<Response>,
+) => Promise<Response>;
+
+const wrappers: RequestWrapper[] = [];
+
+/** Registers `wrapper`, outside the ones registered before it, and returns what removes it. */
+export function wrapRequests(wrapper: RequestWrapper): () => void {
+  wrappers.push(wrapper);
+  return () => {
+    const index = wrappers.indexOf(wrapper);
+    if (index !== -1) wrappers.splice(index, 1);
+  };
+}
+
+export function serve(app: {
+  fetch: (request: Request, env: unknown, ctx: RequestContext) => Response | Promise<Response>;
+}) {
   return {
-    fetch(request: Request, env: unknown, ctx: unknown) {
+    // The lists are read per request: a module registers at import, which may come after `serve`.
+    fetch(request: Request, env: unknown, ctx: RequestContext) {
+      // Before the wrappers: one may rebuild the response, and Workers reject a rebuilt 101.
       const upgrade = upgradeHandler(request);
-      return upgrade ? upgrade(request, env, ctx) : app.fetch(request, env, ctx);
+      if (upgrade) return upgrade(request, env, ctx);
+      const handle = wrappers.reduceRight<() => Promise<Response>>(
+        (next, wrapper) => () => wrapper(request, env, ctx, next),
+        async () => app.fetch(request, env, ctx),
+      );
+      return handle();
     },
   };
 }

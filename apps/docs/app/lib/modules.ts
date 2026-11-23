@@ -20,6 +20,7 @@ export const CATEGORY_HOME = {
   storage: "package packages/storage",
   realtime: "package packages/realtime",
   payments: "package packages/payments",
+  observability: "package packages/observability",
   web: "app apps/<id>",
   testing: "app",
   deploy: "repo",

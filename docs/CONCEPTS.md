@@ -33,28 +33,29 @@ A module with no tier-3 change installs with no agent. Tier 2 wins over tier 3 w
 
 The order is topological: a category comes after every category it may peer on, `many` categories last. `MODULE_CATEGORIES` in `packages/schema/src/module-manifest.ts` is the one place it is written.
 
-| id         | cardinality | home                        | Notes                                                                               |
-| ---------- | ----------- | --------------------------- | ----------------------------------------------------------------------------------- |
-| `pm`       | one         | repo                        | Package manager: owns the `packageManager` pin, its workspace file and the CI setup |
-| `provider` | one         | repo                        | Runtime and deploy target; owns the runtime seam (`packages/api-runtime`)           |
-| `tooling`  | one         | repo                        | fmt / lint / check / hooks                                                          |
-| `config`   | one         | package `packages/config`   | Branding constants and assets every app imports                                     |
-| `api`      | one         | app `apps/api`              | Elysia app shell                                                                    |
-| `db`       | one         | package `packages/db`       | Binding and client; provider-matched                                                |
-| `orm`      | one         | package `packages/db`       | Shares the `db` directory                                                           |
-| `auth`     | one         | package `packages/auth`     |                                                                                     |
-| `ui`       | one         | package `packages/ui`       | Host package for the UI items                                                       |
-| `email`    | one         | package `packages/email`    |                                                                                     |
-| `queue`    | one         | package `packages/queue`    |                                                                                     |
-| `storage`  | one         | package `packages/storage`  |                                                                                     |
-| `realtime` | one         | package `packages/realtime` | Rooms over WebSocket, one variant per provider                                      |
-| `payments` | one         | package `packages/payments` |                                                                                     |
-| `web`      | many        | app `apps/<id>`             | SPA / SSR / static shells                                                           |
-| `testing`  | many        | app                         |                                                                                     |
-| `deploy`   | many        | repo                        | CI / deploy pipeline                                                                |
-| `dev`      | many        | repo                        | Local launchers (named HTTPS URLs); never on the runtime path                       |
+| id              | cardinality | home                             | Notes                                                                               |
+| --------------- | ----------- | -------------------------------- | ----------------------------------------------------------------------------------- |
+| `pm`            | one         | repo                             | Package manager: owns the `packageManager` pin, its workspace file and the CI setup |
+| `provider`      | one         | repo                             | Runtime and deploy target; owns the runtime seam (`packages/api-runtime`)           |
+| `tooling`       | one         | repo                             | fmt / lint / check / hooks                                                          |
+| `config`        | one         | package `packages/config`        | Branding constants and assets every app imports                                     |
+| `api`           | one         | app `apps/api`                   | Elysia app shell                                                                    |
+| `db`            | one         | package `packages/db`            | Binding and client; provider-matched                                                |
+| `orm`           | one         | package `packages/db`            | Shares the `db` directory                                                           |
+| `auth`          | one         | package `packages/auth`          |                                                                                     |
+| `ui`            | one         | package `packages/ui`            | Host package for the UI items                                                       |
+| `email`         | one         | package `packages/email`         |                                                                                     |
+| `queue`         | one         | package `packages/queue`         |                                                                                     |
+| `storage`       | one         | package `packages/storage`       |                                                                                     |
+| `realtime`      | one         | package `packages/realtime`      | Rooms over WebSocket, one variant per provider                                      |
+| `payments`      | one         | package `packages/payments`      |                                                                                     |
+| `observability` | one         | package `packages/observability` | Error reporting; provider-matched                                                   |
+| `web`           | many        | app `apps/<id>`                  | SPA / SSR / static shells                                                           |
+| `testing`       | many        | app                              |                                                                                     |
+| `deploy`        | many        | repo                             | CI / deploy pipeline                                                                |
+| `dev`           | many        | repo                             | Local launchers (named HTTPS URLs); never on the runtime path                       |
 
-- `api`, `db`, `storage`, `realtime`, `web` and `deploy` declare `peers.provider` and ship one variant per provider they support.
+- `api`, `db`, `storage`, `realtime`, `observability`, `web` and `deploy` declare `peers.provider` and ship one variant per provider they support.
 - A category's note never names a provider's technology (`D1`, `R2`, `wrangler`): that belongs to the provider's modules.
 - `cardinality: one` means one module per category (per app for app-homed ones). A second is a conflict by construction.
 

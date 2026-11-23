@@ -260,6 +260,7 @@ describe("the golden project", () => {
             "auth/better-auth",
             "storage/fs",
             "realtime/rooms",
+            "observability/sentry",
           ].includes(name),
       ),
     );
@@ -409,6 +410,7 @@ describe("the golden project and modules", () => {
       "email/resend",
       "deploy/cloudflare-actions",
       "realtime/rooms",
+      "observability/sentry",
       "pm/bun",
       "provider/dockerfile",
       "db/libsql",
@@ -832,6 +834,14 @@ describe("the golden project and patches", () => {
         // by the `intent[<id>]` region `bonne-garde record` leaves, not by a patch that imports for it.
         "email/resend": ["dependencies.@app/email"],
         "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
+        "observability/sentry": [
+          "dependencies.@app/observability",
+          "elysia[app].use[observabilityModule]",
+          'exports."."',
+          "imports[@app/observability]",
+          "scripts.test",
+          "scripts.typecheck",
+        ],
       },
       dockerfile: {
         "config/branding": ["scripts.gen:branding"],
@@ -876,6 +886,14 @@ describe("the golden project and patches", () => {
           "elysia[app].use[mediaModule]",
           "exports[@app/storage/schema]",
           "imports[@app/storage]",
+        ],
+        "observability/sentry": [
+          "dependencies.@app/observability",
+          "elysia[app].use[observabilityModule]",
+          'exports."."',
+          "imports[@app/observability]",
+          "scripts.test",
+          "scripts.typecheck",
         ],
         "email/resend": ["dependencies.@app/email"],
         "web/spa": ["scripts.dev"],

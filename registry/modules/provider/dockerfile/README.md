@@ -57,8 +57,12 @@ entry stay as they are:
   the port: the one given, `PORT`, or 5172.
 - `registerUpgrade(prefix, hooks)`: answers the WebSocket upgrades under `prefix` with
   [crossws](https://crossws.h3.dev) hooks, before the app; an upgrade no package registered gets 404.
+- `wrapRequests(wrapper)`: the same registration as on `provider/cloudflare`. The wrappers run around
+  the requests `handler` hands to the app, not the SPA's built files nor a WebSocket upgrade, with `env`
+  set to `process.env` and a `ctx` whose `waitUntil` lets the promise run on and logs a rejection: the process outlives the
+  response.
 
-Its tests (`index.test.ts`, 38) travel with it. In a project, `packages/api-runtime` is a workspace
+Its tests (`index.test.ts`, 43) travel with it. In a project, `packages/api-runtime` is a workspace
 and `vp test` runs them; in this repo `registry/` is not one, so they run through
 `bun run test:scripts`.
 

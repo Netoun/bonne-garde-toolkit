@@ -92,6 +92,7 @@
           "storage",
           "realtime",
           "payments",
+          "observability",
           "web",
           "testing",
           "deploy",

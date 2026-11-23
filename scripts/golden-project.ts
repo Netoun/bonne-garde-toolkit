@@ -161,9 +161,9 @@ export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
 
 /** The modules `bonne-garde add` installs after what `create` produced for the set, in that order. */
 export const ADDED_AFTER_CREATE: Readonly<Record<string, readonly string[]>> = {
-  // Realtime is not a `create` feature.
-  cloudflare: ["realtime/rooms"],
-  dockerfile: ["realtime/rooms"],
+  // `create` offers neither realtime nor observability: each provider's set adds its variants.
+  cloudflare: ["realtime/rooms", "observability/sentry"],
+  dockerfile: ["realtime/rooms", "observability/sentry"],
   "dockerfile-postgres": ["db/postgres", "orm/drizzle"],
 };
 
@@ -1027,6 +1027,14 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
     // region-checked by the `intent[<id>]` region `bonne-garde record` leaves.
     "email/resend": ["dependencies.@app/email"],
     "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
+    "observability/sentry": [
+      "dependencies.@app/observability",
+      "elysia[app].use[observabilityModule]",
+      'exports."."',
+      "imports[@app/observability]",
+      "scripts.test",
+      "scripts.typecheck",
+    ],
   },
   dockerfile: {
     "config/branding": ["scripts.gen:branding"],
@@ -1071,6 +1079,14 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "elysia[app].use[mediaModule]",
       "exports[@app/storage/schema]",
       "imports[@app/storage]",
+    ],
+    "observability/sentry": [
+      "dependencies.@app/observability",
+      "elysia[app].use[observabilityModule]",
+      'exports."."',
+      "imports[@app/observability]",
+      "scripts.test",
+      "scripts.typecheck",
     ],
     // Not the import into mailer.ts: that is the intention's edit, as on cloudflare.
     "email/resend": ["dependencies.@app/email"],
