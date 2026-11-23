@@ -1,4 +1,6 @@
+import { randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -7,6 +9,7 @@ import {
   handler,
   listenPort,
   readRuntimeEnv,
+  registerUpgrade,
   runtimeOptions,
   serve,
   wrapRequests,
@@ -400,6 +403,89 @@ describe("the client's address", () => {
   });
 });
 
+describe("registerUpgrade", () => {
+  /** Stands in for the app: answers /health, and records every path that reached it. */
+  const reached: string[] = [];
+  const app = {
+    fetch(request: Request) {
+      const { pathname } = new URL(request.url);
+      reached.push(pathname);
+      return pathname === "/health"
+        ? Response.json({ status: "ok" })
+        : new Response("api: not found", { status: 404 });
+    },
+  };
+
+  /** The status a WebSocket handshake to `url` is answered with: 101 when it upgrades. */
+  const handshakeStatus = (url: URL) =>
+    new Promise<number>((resolve, reject) => {
+      const request = httpRequest(url, {
+        headers: {
+          connection: "Upgrade",
+          upgrade: "websocket",
+          "sec-websocket-version": "13",
+          "sec-websocket-key": randomBytes(16).toString("base64"),
+        },
+      });
+      request.on("upgrade", (_response, socket) => {
+        socket.destroy();
+        resolve(101);
+      });
+      request.on("response", (response) => {
+        response.resume();
+        resolve(response.statusCode ?? 0);
+      });
+      request.on("error", reject);
+      request.end();
+    });
+
+  it("echoes over a WebSocket under the prefix, beside the app, and refuses one under no prefix", async () => {
+    const unregister = registerUpgrade("/ws/echo", {
+      message(peer, message) {
+        peer.send(message.text());
+      },
+    });
+    const server = await serve(app, { spaDir: join(dir, "no-spa"), port: 0 });
+    try {
+      const url = new URL("/ws/echo", server.url);
+      url.protocol = "ws:";
+      const socket = new WebSocket(url);
+      const opened = new Promise((resolve, reject) => {
+        socket.addEventListener("open", resolve);
+        socket.addEventListener("error", reject);
+      });
+      const echoed = new Promise((resolve) => {
+        socket.addEventListener("message", (event) => resolve(event.data));
+      });
+      const closed = new Promise((resolve) => socket.addEventListener("close", resolve));
+      await opened;
+      socket.send("hello");
+
+      expect(await echoed).toBe("hello");
+      socket.close();
+      await closed;
+
+      const health = await fetch(new URL("/health", server.url));
+      expect(await health.json()).toMatchObject({ status: "ok" });
+
+      expect(await handshakeStatus(new URL("/ws/other", server.url))).toBe(404);
+      expect(reached).toEqual(["/health"]);
+    } finally {
+      unregister();
+      await server.close(true);
+    }
+  });
+
+  it("refuses a prefix that is already registered", () => {
+    const unregister = registerUpgrade("/ws/echo", {});
+    try {
+      expect(() => registerUpgrade("/ws/echo", {})).toThrow(/\/ws\/echo/);
+    } finally {
+      unregister();
+    }
+  });
+});
+
 describe("wrapRequests", () => {
   const disposers: Array<() => void> = [];
   const register = (wrapper: RequestWrapper) => disposers.push(wrapRequests(wrapper));
@@ -482,6 +568,41 @@ describe("wrapRequests", () => {
       expect(logged).toHaveBeenCalledWith(failure);
     } finally {
       logged.mockRestore();
+    }
+  });
+});
+
+describe("registerUpgrade with wrapRequests", () => {
+  it("answers an upgrade under a registered prefix without the wrappers, which still run around a plain request", async () => {
+    const seen: string[] = [];
+    const unwrap = wrapRequests(async (request, _env, _ctx, next) => {
+      seen.push(new URL(request.url).pathname);
+      const response = await next();
+      return new Response(response.body, response);
+    });
+    const unregister = registerUpgrade("/ws/echo", {});
+    const app = { fetch: () => Response.json({ status: "ok" }) };
+    const server = await serve(app, { spaDir: join(dir, "no-spa"), port: 0 });
+    try {
+      const url = new URL("/ws/echo/abc", server.url);
+      url.protocol = "ws:";
+      const socket = new WebSocket(url);
+      await new Promise((resolve, reject) => {
+        socket.addEventListener("open", resolve);
+        socket.addEventListener("error", reject);
+      });
+      const closed = new Promise((resolve) => socket.addEventListener("close", resolve));
+      socket.close();
+      await closed;
+
+      const health = await fetch(new URL("/health", server.url));
+
+      expect(await health.json()).toMatchObject({ status: "ok" });
+      expect(seen).toEqual(["/health"]);
+    } finally {
+      unwrap();
+      unregister();
+      await server.close(true);
     }
   });
 });

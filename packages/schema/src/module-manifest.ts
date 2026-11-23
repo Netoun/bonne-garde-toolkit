@@ -22,6 +22,7 @@ export const MODULE_CATEGORIES = [
   "email",
   "queue",
   "storage",
+  "realtime",
   "payments",
   "observability",
   "web",
@@ -46,6 +47,7 @@ const SINGLE_CATEGORIES = new Set<ModuleCategory>([
   "email",
   "queue",
   "storage",
+  "realtime",
   "payments",
   "observability",
 ]);

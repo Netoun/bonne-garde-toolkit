@@ -1,0 +1,190 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "rooms",
+  "category": "realtime",
+  "version": "0.1.0",
+  "title": "Realtime rooms",
+  "description": "Rooms over WebSocket: a signed ticket opens a room, a publish reaches its peers or the ones carrying a tag. Crossws in memory on the dockerfile provider, one hibernating Durable Object per room on Cloudflare.",
+  "peers": {
+    "provider": ["cloudflare", "dockerfile"],
+    "api": ["elysia"]
+  },
+  "checks": ["cd packages/realtime && vp run typecheck && vp run test"],
+  "variants": [
+    {
+      "key": "dockerfile",
+      "match": {
+        "provider": "dockerfile"
+      },
+      "workspace": {
+        "name": "{{SCOPE}}/realtime",
+        "path": "packages/realtime"
+      },
+      "dependencies": {
+        "crossws": "0.4.17",
+        "typebox": "1.3.11",
+        "{{SCOPE}}/api-runtime": "workspace:*"
+      },
+      "env": [
+        {
+          "name": "REALTIME_TICKET_SECRET",
+          "required": true,
+          "example": ""
+        }
+      ],
+      "copy": [
+        "packages/realtime/package.json",
+        "packages/realtime/src/client.node.test.ts",
+        "packages/realtime/src/client.ts",
+        "packages/realtime/src/driver.node.test.ts",
+        "packages/realtime/src/driver.node.ts",
+        "packages/realtime/src/index.ts",
+        "packages/realtime/src/protocol.test.ts",
+        "packages/realtime/src/protocol.ts",
+        "packages/realtime/src/rooms.ts",
+        "packages/realtime/src/testing-client.ts",
+        "packages/realtime/src/testing.node.ts",
+        "packages/realtime/src/ticket.test.ts",
+        "packages/realtime/src/ticket.ts",
+        "packages/realtime/tsconfig.json"
+      ],
+      "patch": [
+        {
+          "type": "jsonc.merge",
+          "file": "packages/realtime/package.json",
+          "value": {
+            "exports": {
+              "./driver": "./src/driver.node.ts",
+              "./testing": "./src/testing.node.ts"
+            }
+          },
+          "intent": "Point the package's ./driver and ./testing exports at the Node files, those of the dockerfile provider."
+        },
+        {
+          "type": "package.dependencies",
+          "file": "apps/api/package.json",
+          "dependencies": {
+            "{{SCOPE}}/realtime": "workspace:*"
+          },
+          "intent": "Declare the project's realtime package as a dependency of the API app."
+        },
+        {
+          "type": "ts.addNamedExport",
+          "file": "apps/api/src/index.ts",
+          "moduleSpecifier": "{{SCOPE}}/realtime/driver",
+          "exports": ["unregisterRealtime"],
+          "intent": "Import the realtime driver from the API entry, which registers the /realtime upgrade; unregisterRealtime is its stop."
+        }
+      ]
+    },
+    {
+      "key": "cloudflare",
+      "match": {
+        "provider": "cloudflare"
+      },
+      "workspace": {
+        "name": "{{SCOPE}}/realtime",
+        "path": "packages/realtime"
+      },
+      "dependencies": {
+        "typebox": "1.3.11",
+        "{{SCOPE}}/api-runtime": "workspace:*"
+      },
+      "devDependencies": {
+        "@cloudflare/workers-types": "5.20260804.1",
+        "miniflare": "5.20260801.0-alpha"
+      },
+      "env": [
+        {
+          "name": "REALTIME_TICKET_SECRET",
+          "required": true,
+          "example": ""
+        }
+      ],
+      "copy": [
+        "packages/realtime/package.json",
+        "packages/realtime/src/client.ts",
+        "packages/realtime/src/driver.cloudflare.test.ts",
+        "packages/realtime/src/driver.cloudflare.ts",
+        "packages/realtime/src/index.ts",
+        "packages/realtime/src/names.cloudflare.ts",
+        "packages/realtime/src/protocol.test.ts",
+        "packages/realtime/src/protocol.ts",
+        "packages/realtime/src/rooms.ts",
+        "packages/realtime/src/test-worker.cloudflare.ts",
+        "packages/realtime/src/testing-client.ts",
+        "packages/realtime/src/testing.cloudflare.ts",
+        "packages/realtime/src/ticket.test.ts",
+        "packages/realtime/src/ticket.ts",
+        "packages/realtime/tsconfig.json"
+      ],
+      "patch": [
+        {
+          "type": "jsonc.merge",
+          "file": "packages/realtime/package.json",
+          "value": {
+            "exports": {
+              "./driver": "./src/driver.cloudflare.ts",
+              "./testing": "./src/testing.cloudflare.ts"
+            }
+          },
+          "intent": "Point the package's ./driver and ./testing exports at the Workers files, those of the cloudflare provider."
+        },
+        {
+          "type": "package.dependencies",
+          "file": "apps/api/package.json",
+          "dependencies": {
+            "{{SCOPE}}/realtime": "workspace:*"
+          },
+          "intent": "Declare the project's realtime package as a dependency of the API app."
+        },
+        {
+          "type": "ts.addNamedExport",
+          "file": "apps/api/src/index.ts",
+          "moduleSpecifier": "{{SCOPE}}/realtime/driver",
+          "exports": ["RealtimeRoom"],
+          "intent": "Re-export the Durable Object class from the Worker entry, which Workers need to bind it; loading the driver also registers the /realtime upgrade."
+        },
+        {
+          "type": "jsonc.merge",
+          "file": "apps/api/wrangler.jsonc",
+          "value": {
+            "durable_objects": {
+              "bindings": [
+                {
+                  "name": "REALTIME_ROOM",
+                  "class_name": "RealtimeRoom"
+                }
+              ]
+            },
+            "migrations": [
+              {
+                "tag": "realtime-rooms-v1",
+                "new_sqlite_classes": ["RealtimeRoom"]
+              }
+            ],
+            "env": {
+              "production": {
+                "durable_objects": {
+                  "bindings": [
+                    {
+                      "name": "REALTIME_ROOM",
+                      "class_name": "RealtimeRoom"
+                    }
+                  ]
+                },
+                "migrations": [
+                  {
+                    "tag": "realtime-rooms-v1",
+                    "new_sqlite_classes": ["RealtimeRoom"]
+                  }
+                ]
+              }
+            }
+          },
+          "intent": "Declare the REALTIME_ROOM Durable Object binding and the migration that creates the RealtimeRoom class on SQLite storage in the Worker's wrangler.jsonc, for the default environment and for production, which do not inherit them."
+        }
+      ]
+    }
+  ]
+}

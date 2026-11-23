@@ -339,9 +339,12 @@ describe("module contract", () => {
           expect(variant?.copy).toContain(path);
         }
         // A dependency is declared once: `elysia` is the variant's, pinned the same everywhere;
-        // the container's runtime also has srvx, the server it listens with.
+        // the container's runtime also has srvx, the server it listens with, and crossws, which
+        // answers its WebSocket upgrades.
         expect(variant?.dependencies).toEqual(
-          manifest.id === "dockerfile" ? { elysia: "1.4.29", srvx: "1.0.8" } : { elysia: "1.4.29" },
+          manifest.id === "dockerfile"
+            ? { crossws: "0.4.17", elysia: "1.4.29", srvx: "1.0.8" }
+            : { elysia: "1.4.29" },
         );
       }
     });
@@ -362,13 +365,20 @@ describe("module contract", () => {
       }
     });
 
-    test("each index.ts exports the four names `api` and the modules import, whatever the provider", async () => {
+    test("each index.ts exports the five names `api` and the modules import, whatever the provider", async () => {
       for (const { manifest, dir } of await providers()) {
         const source = await readFile(
           join(dir, "template/packages/api-runtime/src/index.ts"),
           "utf8",
         );
-        for (const name of ["runtimeOptions", "readRuntimeEnv", "clientIpHeaders", "serve"]) {
+        const names = [
+          "runtimeOptions",
+          "readRuntimeEnv",
+          "clientIpHeaders",
+          "serve",
+          "registerUpgrade",
+        ];
+        for (const name of names) {
           expect(`${manifest.id}: ${source}`).toMatch(
             new RegExp(`export (?:const|async function|function) ${name}\\b`),
           );

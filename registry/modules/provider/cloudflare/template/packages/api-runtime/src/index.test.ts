@@ -3,6 +3,7 @@ import { Elysia } from "elysia";
 import {
   clientIpHeaders,
   readRuntimeEnv,
+  registerUpgrade,
   runtimeOptions,
   serve,
   wrapRequests,
@@ -88,6 +89,73 @@ describe("serve", () => {
   });
 });
 
+describe("registerUpgrade", () => {
+  const upgrade = (path: string) =>
+    new Request(`http://localhost${path}`, { headers: { Upgrade: "WebSocket" } });
+
+  /** Stands in for the app: records what reached it. */
+  const recordingApp = () => {
+    const reached: string[] = [];
+    return {
+      reached,
+      fetch(request: Request) {
+        reached.push(new URL(request.url).pathname);
+        return new Response("from the app");
+      },
+    };
+  };
+
+  it("hands a WebSocket upgrade under the prefix to the handler, with env and ctx, not to the app", async () => {
+    const app = recordingApp();
+    const env = { ROOMS: "durable object namespace" };
+    const ctx = { waitUntil: () => {} };
+    const seen: unknown[] = [];
+    // Not 101: outside workerd, `new Response(null, { status: 101 })` throws a RangeError.
+    const unregister = registerUpgrade("/ws/rooms", (...args) => {
+      seen.push(...args);
+      return new Response("upgraded");
+    });
+    try {
+      const request = upgrade("/ws/rooms/abc");
+
+      const response = await serve(app).fetch(request, env, ctx);
+
+      expect(await response.text()).toBe("upgraded");
+      expect(seen).toEqual([request, env, ctx]);
+      expect(app.reached).toEqual([]);
+    } finally {
+      unregister();
+    }
+  });
+
+  it("leaves a plain request, an upgrade under another path and a longer segment to the app", async () => {
+    const app = recordingApp();
+    const unregister = registerUpgrade("/ws/rooms", () => new Response("upgraded"));
+    try {
+      const plain = new Request("http://localhost/ws/rooms");
+      for (const request of [plain, upgrade("/ws/other"), upgrade("/ws/roomsx")]) {
+        expect(await (await serve(app).fetch(request, {}, { waitUntil: () => {} })).text()).toBe(
+          "from the app",
+        );
+      }
+      expect(app.reached).toEqual(["/ws/rooms", "/ws/other", "/ws/roomsx"]);
+    } finally {
+      unregister();
+    }
+  });
+
+  it("refuses a prefix that is already registered", () => {
+    const unregister = registerUpgrade("/ws/rooms", () => new Response("upgraded"));
+    try {
+      expect(() => registerUpgrade("/ws/rooms", () => new Response("again"))).toThrow(
+        /\/ws\/rooms/,
+      );
+    } finally {
+      unregister();
+    }
+  });
+});
+
 describe("wrapRequests", () => {
   const disposers: Array<() => void> = [];
   const register = (wrapper: RequestWrapper) => disposers.push(wrapRequests(wrapper));
@@ -163,5 +231,46 @@ describe("wrapRequests", () => {
     await serve(app).fetch(new Request("http://localhost/"), {}, { waitUntil: () => {} });
 
     expect(calls).toBe(0);
+  });
+});
+
+describe("registerUpgrade with wrapRequests", () => {
+  const upgrade = (path: string) =>
+    new Request(`http://localhost${path}`, { headers: { Upgrade: "websocket" } });
+  const app = { fetch: () => new Response("from the app") };
+  const ctx: RequestContext = { waitUntil: () => {} };
+  const disposers: Array<() => void> = [];
+  /** A wrapper that records the paths it sees and rebuilds the response, as `@sentry/cloudflare` may. */
+  const seen: string[] = [];
+  const rebuilding: RequestWrapper = async (request, _env, _ctx, next) => {
+    seen.push(new URL(request.url).pathname);
+    const response = await next();
+    return new Response(response.body, response);
+  };
+
+  afterEach(() => {
+    for (const dispose of disposers.splice(0)) dispose();
+    seen.length = 0;
+  });
+
+  it("claims an upgrade under a registered prefix before the wrappers, which never see it", async () => {
+    disposers.push(wrapRequests(rebuilding));
+    const handled = new Response("upgraded");
+    disposers.push(registerUpgrade("/ws/rooms", () => handled));
+
+    const response = await serve(app).fetch(upgrade("/ws/rooms/abc"), {}, ctx);
+
+    expect(response).toBe(handled);
+    expect(seen).toEqual([]);
+  });
+
+  it("still runs the wrappers around a plain request and an upgrade under no registered prefix", async () => {
+    disposers.push(wrapRequests(rebuilding));
+    disposers.push(registerUpgrade("/ws/rooms", () => new Response("upgraded")));
+
+    for (const request of [new Request("http://localhost/ws/rooms"), upgrade("/ws/other")]) {
+      expect(await (await serve(app).fetch(request, {}, ctx)).text()).toBe("from the app");
+    }
+    expect(seen).toEqual(["/ws/rooms", "/ws/other"]);
   });
 });

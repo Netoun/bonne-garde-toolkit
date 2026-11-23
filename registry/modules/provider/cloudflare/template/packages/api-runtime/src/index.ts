@@ -10,10 +10,13 @@
  * - `serve(app)`: what `apps/api/src/index.ts` default-exports. Workers want a `{ fetch }` object,
  *   so that is what this variant returns; the `dockerfile` variant returns `{ port, fetch }`, which
  *   Bun serves by itself when that file is the entry.
+ * - `registerUpgrade(prefix, handler)`: claims the WebSocket upgrades under a path prefix, before the
+ *   app sees them (Elysia rebuilds a 101 response, which Workers reject). Here the handler is
+ *   fetch-style and gets the Worker's `env` and `ctx`; the `dockerfile` variant takes crossws hooks.
  * - `wrapRequests(wrapper)`: registers a `RequestWrapper` that `serve` runs around every request it
- *   hands to the app, for a module that must see the request before the app does (error reporting
- *   that flushes after the response, ...). It returns the function that removes it. A module calls it
- *   at import, so `apps/api/src/index.ts` stays as it is.
+ *   hands to the app (a claimed WebSocket upgrade is not one), for a module that must see the request
+ *   before the app does (error reporting that flushes after the response, ...). It returns the
+ *   function that removes it. A module calls it at import, so `apps/api/src/index.ts` stays as it is.
  */
 /// <reference types="@cloudflare/workers-types" />
 import type { ElysiaConfig } from "elysia";
@@ -45,6 +48,31 @@ export async function readRuntimeEnv(): Promise<Record<string, unknown>> {
     // Bun and Node: the Workers specifier does not resolve at run time.
     return { ...process.env };
   }
+}
+
+type FetchHandler = (request: Request, env: unknown, ctx: unknown) => Response | Promise<Response>;
+
+const upgrades = new Map<string, FetchHandler>();
+
+/**
+ * Hands the WebSocket upgrades whose path is `prefix` or under it (`/ws/rooms`, `/ws/rooms/abc`, not
+ * `/ws/roomsx`) to `handler`, called at module load by the package that owns them. Returns the
+ * function that takes the registration back.
+ */
+export function registerUpgrade(prefix: string, handler: FetchHandler): () => void {
+  if (upgrades.has(prefix))
+    throw new Error(`An upgrade handler is already registered for ${prefix}`);
+  upgrades.set(prefix, handler);
+  return () => upgrades.delete(prefix);
+}
+
+function upgradeHandler(request: Request): FetchHandler | undefined {
+  if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return undefined;
+  const { pathname } = new URL(request.url);
+  for (const [prefix, handler] of upgrades) {
+    if (pathname === prefix || pathname.startsWith(`${prefix}/`)) return handler;
+  }
+  return undefined;
 }
 
 /**
@@ -81,8 +109,11 @@ export function serve(app: {
   fetch: (request: Request, env: unknown, ctx: RequestContext) => Response | Promise<Response>;
 }) {
   return {
-    // The list is read per request: a module registers at import, which may come after `serve`.
+    // The lists are read per request: a module registers at import, which may come after `serve`.
     fetch(request: Request, env: unknown, ctx: RequestContext) {
+      // Before the wrappers: one may rebuild the response, and Workers reject a rebuilt 101.
+      const upgrade = upgradeHandler(request);
+      if (upgrade) return upgrade(request, env, ctx);
       const handle = wrappers.reduceRight<() => Promise<Response>>(
         (next, wrapper) => () => wrapper(request, env, ctx, next),
         async () => app.fetch(request, env, ctx),

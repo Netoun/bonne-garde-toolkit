@@ -48,19 +48,21 @@ entry stay as they are:
   which reads no key of its own and serves its files under `APP_URL`.
 - `clientIpHeaders`: `["x-client-ip"]`, the header `serve` fills with the client's address. See
   [The client's address](#the-clients-address-and-a-reverse-proxy).
-- `serve(app, { spaDir, port, trustedProxyHeader })`: starts [srvx](https://srvx.h3.dev), which runs the
-  same on Node and on Bun, and resolves with the server once it listens. It returns a promise, which
+- `serve(app, { spaDir, port, trustedProxyHeader })`: starts [srvx](https://srvx.h3.dev)'s Node
+  adapter, which WebSocket upgrades need, and resolves with the server once it listens. It returns a promise, which
   has no `fetch`, so a runtime that serves a default-exported `{ fetch }` by itself starts no second one.
   What it answers is `handler(app, options)`: a file under `apps/spa/build/client` is served as is with
   its content type, anything else goes to the app, and a `GET` the app answers 404 gets `index.html`
   when the client accepts `text/html`. It also exits on SIGINT and SIGTERM, see below. `listenPort` is
   the port: the one given, `PORT`, or 5172.
+- `registerUpgrade(prefix, hooks)`: answers the WebSocket upgrades under `prefix` with
+  [crossws](https://crossws.h3.dev) hooks, before the app; an upgrade no package registered gets 404.
 - `wrapRequests(wrapper)`: the same registration as on `provider/cloudflare`. The wrappers run around
-  the requests `handler` hands to the app, not the SPA's built files, with `env` set to `process.env`
-  and a `ctx` whose `waitUntil` lets the promise run on and logs a rejection: the process outlives the
+  the requests `handler` hands to the app, not the SPA's built files nor a WebSocket upgrade, with `env`
+  set to `process.env` and a `ctx` whose `waitUntil` lets the promise run on and logs a rejection: the process outlives the
   response.
 
-Its tests (`index.test.ts`, 40) travel with it. In a project, `packages/api-runtime` is a workspace
+Its tests (`index.test.ts`, 43) travel with it. In a project, `packages/api-runtime` is a workspace
 and `vp test` runs them; in this repo `registry/` is not one, so they run through
 `bun run test:scripts`.
 

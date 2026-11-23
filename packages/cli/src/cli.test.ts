@@ -918,7 +918,7 @@ describe("bonne-garde add <module>", () => {
       await readFile(join(target, "packages/api-runtime/package.json"), "utf8"),
     ) as { name: string; dependencies: Record<string, string> };
     expect(runtime.name).toBe("@cli-app/api-runtime");
-    expect(runtime.dependencies).toEqual({ elysia: "1.4.29", srvx: "1.0.8" });
+    expect(runtime.dependencies).toEqual({ crossws: "0.4.17", elysia: "1.4.29", srvx: "1.0.8" });
     // 09 (c): a project with no SPA workspace has to build, so no `--filter '<scope>/spa'`.
     const dockerfile = await readFile(join(target, "Dockerfile"), "utf8");
     // The package manager package.json pins runs the root build script.
