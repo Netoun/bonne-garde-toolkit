@@ -161,6 +161,8 @@ export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
 
 /** The modules `bonne-garde add` installs after what `create` produced for the set, in that order. */
 export const ADDED_AFTER_CREATE: Readonly<Record<string, readonly string[]>> = {
+  // Realtime is not a `create` feature.
+  dockerfile: ["realtime/rooms"],
   "dockerfile-postgres": ["db/postgres", "orm/drizzle"],
 };
 
@@ -330,6 +332,11 @@ export function hasStorage(configuration: Configuration): boolean {
     configuration.modules.includes(STORAGE_MODULE) ||
     configuration.modules.includes(FS_STORAGE_MODULE)
   );
+}
+
+/** The module that refuses to start the API without `REALTIME_TICKET_SECRET`, so the container is given one. */
+export function hasRealtime(configuration: Configuration): boolean {
+  return buildsImage(configuration) && configuration.modules.includes("realtime/rooms");
 }
 
 /**
@@ -1040,6 +1047,11 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "scripts.db:seed",
       "scripts.test",
       "scripts.typecheck",
+    ],
+    "realtime/rooms": [
+      "dependencies.@app/realtime",
+      'exports."./driver"',
+      "exports[@app/realtime/driver]",
     ],
     "storage/fs": [
       "dependencies.@app/storage",
@@ -3442,6 +3454,7 @@ async function imaged(
         await answers(project, docker, {
           sqlite: hasSqliteFile(configuration),
           media: hasMediaOnDisk(configuration),
+          realtime: hasRealtime(configuration),
           postgres,
         });
       } catch (error) {
@@ -3630,9 +3643,14 @@ async function uploadedAndServed(project: string, docker: string, origin: string
 async function answers(
   project: string,
   docker: string,
-  database: { sqlite: boolean; media: boolean; postgres: PostgresContainer | null },
+  database: {
+    sqlite: boolean;
+    media: boolean;
+    realtime: boolean;
+    postgres: PostgresContainer | null;
+  },
 ): Promise<void> {
-  const { sqlite, media, postgres } = database;
+  const { sqlite, media, realtime, postgres } = database;
   await run(
     [
       "docker",
@@ -3642,6 +3660,7 @@ async function answers(
       docker,
       "-v",
       `${docker}:/data`,
+      ...(realtime ? ["-e", "REALTIME_TICKET_SECRET=golden-realtime-ticket-secret"] : []),
       ...(postgres === null
         ? []
         : [

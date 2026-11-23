@@ -1,0 +1,15 @@
+{
+  "name": "{{SCOPE}}/realtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The project's realtime rooms over WebSocket: ticketed upgrade, rooms, publish",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vp test"
+  }
+}

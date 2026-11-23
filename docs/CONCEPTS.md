@@ -47,13 +47,14 @@ The order is topological: a category comes after every category it may peer on, 
 | `email`    | one         | package `packages/email`    |                                                                                     |
 | `queue`    | one         | package `packages/queue`    |                                                                                     |
 | `storage`  | one         | package `packages/storage`  |                                                                                     |
+| `realtime` | one         | package `packages/realtime` | Rooms over WebSocket, one variant per provider                                      |
 | `payments` | one         | package `packages/payments` |                                                                                     |
 | `web`      | many        | app `apps/<id>`             | SPA / SSR / static shells                                                           |
 | `testing`  | many        | app                         |                                                                                     |
 | `deploy`   | many        | repo                        | CI / deploy pipeline                                                                |
 | `dev`      | many        | repo                        | Local launchers (named HTTPS URLs); never on the runtime path                       |
 
-- `api`, `db`, `storage`, `web` and `deploy` declare `peers.provider` and ship one variant per provider they support.
+- `api`, `db`, `storage`, `realtime`, `web` and `deploy` declare `peers.provider` and ship one variant per provider they support.
 - A category's note never names a provider's technology (`D1`, `R2`, `wrangler`): that belongs to the provider's modules.
 - `cardinality: one` means one module per category (per app for app-homed ones). A second is a conflict by construction.
 

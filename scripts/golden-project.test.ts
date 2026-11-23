@@ -253,7 +253,14 @@ describe("the golden project", () => {
     const dockerfile = CONFIGURATIONS.find(({ name }) => name === "dockerfile");
     expect(postgres?.modules.slice(0, -2)).toEqual(
       (dockerfile?.modules ?? []).filter(
-        (name) => !["db/libsql", "orm/drizzle", "auth/better-auth", "storage/fs"].includes(name),
+        (name) =>
+          ![
+            "db/libsql",
+            "orm/drizzle",
+            "auth/better-auth",
+            "storage/fs",
+            "realtime/rooms",
+          ].includes(name),
       ),
     );
   });
@@ -405,6 +412,7 @@ describe("the golden project and modules", () => {
       "provider/dockerfile",
       "db/libsql",
       "storage/fs",
+      "realtime/rooms",
       "db/postgres",
     ]);
   });
@@ -845,6 +853,11 @@ describe("the golden project and patches", () => {
           "scripts.db:seed",
           "scripts.test",
           "scripts.typecheck",
+        ],
+        "realtime/rooms": [
+          "dependencies.@app/realtime",
+          'exports."./driver"',
+          "exports[@app/realtime/driver]",
         ],
         "storage/fs": [
           "dependencies.@app/storage",

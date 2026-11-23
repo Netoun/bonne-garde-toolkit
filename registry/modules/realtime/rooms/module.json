@@ -1,0 +1,57 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "rooms",
+  "category": "realtime",
+  "version": "0.1.0",
+  "title": "Realtime rooms",
+  "description": "Rooms over WebSocket: a signed ticket opens a room, a publish reaches its peers or the ones carrying a tag. Dockerfile provider; the Cloudflare one comes next.",
+  "peers": { "provider": ["dockerfile"], "api": ["elysia"] },
+  "checks": ["cd packages/realtime && vp run typecheck && vp run test"],
+  "variants": [
+    {
+      "key": "dockerfile",
+      "match": { "provider": "dockerfile" },
+      "workspace": { "name": "{{SCOPE}}/realtime", "path": "packages/realtime" },
+      "dependencies": {
+        "crossws": "0.4.17",
+        "typebox": "1.3.11",
+        "{{SCOPE}}/api-runtime": "workspace:*"
+      },
+      "env": [{ "name": "REALTIME_TICKET_SECRET", "required": true, "example": "" }],
+      "copy": [
+        "packages/realtime/package.json",
+        "packages/realtime/tsconfig.json",
+        "packages/realtime/src/driver.node.ts",
+        "packages/realtime/src/driver.node.test.ts",
+        "packages/realtime/src/index.ts",
+        "packages/realtime/src/protocol.ts",
+        "packages/realtime/src/protocol.test.ts",
+        "packages/realtime/src/rooms.ts",
+        "packages/realtime/src/testing.ts",
+        "packages/realtime/src/ticket.ts",
+        "packages/realtime/src/ticket.test.ts"
+      ],
+      "patch": [
+        {
+          "type": "jsonc.merge",
+          "file": "packages/realtime/package.json",
+          "value": { "exports": { "./driver": "./src/driver.node.ts" } },
+          "intent": "Point the package's ./driver export at the Node driver, the file of the dockerfile provider."
+        },
+        {
+          "type": "package.dependencies",
+          "file": "apps/api/package.json",
+          "dependencies": { "{{SCOPE}}/realtime": "workspace:*" },
+          "intent": "Declare the project's realtime package as a dependency of the API app."
+        },
+        {
+          "type": "ts.addNamedExport",
+          "file": "apps/api/src/index.ts",
+          "moduleSpecifier": "{{SCOPE}}/realtime/driver",
+          "exports": ["unregisterRealtime"],
+          "intent": "Import the realtime driver from the API entry, which registers the /realtime upgrade; unregisterRealtime is its stop."
+        }
+      ]
+    }
+  ]
+}

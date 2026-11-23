@@ -18,6 +18,7 @@ export const CATEGORY_HOME = {
   email: "package packages/email",
   queue: "package packages/queue",
   storage: "package packages/storage",
+  realtime: "package packages/realtime",
   payments: "package packages/payments",
   web: "app apps/<id>",
   testing: "app",
