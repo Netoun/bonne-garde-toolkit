@@ -43,9 +43,39 @@ function rewriteMarkdownLinks(markdown: string, fromFile: string, basePath: stri
   });
 }
 
-function guideDescription(markdown: string): string {
+function proseFromBlock(block: string): string {
+  const text = block
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("#"))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text || /^Status:\s/i.test(text)) return "";
+  return text;
+}
+
+function firstProseParagraph(markdown: string): string {
   const body = markdown.replace(/^#\s+.+\n*/, "");
-  return (body.match(/^[^\n#][^\n]*/)?.[0]?.trim() ?? "").replace(/\s+/g, " ");
+  for (const block of body.split(/\n\n+/)) {
+    const prose = proseFromBlock(block);
+    if (prose) return prose;
+  }
+  return "";
+}
+
+function plainDescriptionText(text: string, fromFile: string, basePath: string): string {
+  const linked = rewriteMarkdownLinks(text, fromFile, basePath);
+  return linked
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function guideDescription(source: GuideSource, basePath: string): string {
+  const prose = firstProseParagraph(source.markdown);
+  const description = prose ? plainDescriptionText(prose, source.file, basePath) : "";
+  return description || source.title;
 }
 
 function indexLinkUrl(href: string, basePath: string): string {
@@ -81,10 +111,10 @@ export function buildLlmsFull(sources: GuideSource[], basePath: string): string 
   return sources.map((source) => buildGuideMarkdownCopy(source, basePath)).join("\n\n");
 }
 
-export async function pageDescriptions(): Promise<Map<string, string>> {
+export async function pageDescriptions(basePath: string): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   for (const source of listPublishedSources()) {
-    map.set(source.href, guideDescription(source.markdown));
+    map.set(source.href, guideDescription(source, basePath));
   }
   const catalog = await loadRegistryCatalog();
   for (const item of catalog.items) {
@@ -106,7 +136,7 @@ function writeTextFile(filePath: string, contents: string): void {
 /** Writes llms artifacts at the root of the static client output (after base-path hoist). */
 export async function writeLlmsArtifacts(clientDir: string, basePath: string): Promise<void> {
   const sections = await listNav();
-  const descriptions = await pageDescriptions();
+  const descriptions = await pageDescriptions(basePath);
   const sources = listPublishedSources();
 
   writeTextFile(joinPath(clientDir, "llms.txt"), buildLlmsIndex(sections, descriptions, basePath));
