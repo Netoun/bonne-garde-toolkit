@@ -56,7 +56,7 @@ describe("guide page", () => {
 
   it("renders every published page without a dangling link", async () => {
     const hrefs = (await listGuides()).flatMap((section) => section.links.map((l) => l.href));
-    expect(hrefs).toHaveLength(7 + 8);
+    expect(hrefs).toHaveLength(7 + 9);
 
     for (const href of hrefs) {
       const { container, unmount } = await renderPage(href);

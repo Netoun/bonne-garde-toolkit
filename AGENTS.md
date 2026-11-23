@@ -32,13 +32,13 @@ What `bonne-garde add` writes into a project is Elysia on Workers (AOT disabled)
 
 ### Key decisions
 
-| Decision                      | Why                                                                |
-| ----------------------------- | ------------------------------------------------------------------ |
-| D1 (SQLite)                   | Free, CF-integrated, portable SQLite                               |
-| Eden Treaty                   | No shared package to maintain                                      |
-| `new Elysia({ aot: false })`  | Conservative portable execution; retain the starter's non-AOT mode |
-| Separate `tsconfig.test.json` | `@cloudflare/workers-types` vs `bun-types` clash                   |
-| Platform agnosticism          | Never use CF proprietary APIs outside bindings `DB` / `BUCKET`     |
+| Decision                      | Why                                                                                                                                                                    |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1 (SQLite)                   | Free, CF-integrated, portable SQLite                                                                                                                                   |
+| Eden Treaty                   | No shared package to maintain                                                                                                                                          |
+| `new Elysia({ aot: false })`  | Conservative portable execution; retain the starter's non-AOT mode                                                                                                     |
+| Separate `tsconfig.test.json` | `@cloudflare/workers-types` vs `bun-types` clash                                                                                                                       |
+| Platform agnosticism          | CF proprietary APIs only in code scoped to the cloudflare provider, each with a dockerfile equivalent ([ADR 0009](./docs/adr/0009-provider-scoped-cloudflare-apis.md)) |
 
 ---
 
@@ -101,7 +101,7 @@ Most module and feature code imports packages that exist only after install, so 
 - `as` to bypass an Eden type — fix the API contract at the source
 - `npm` / `yarn` / `pnpm` / `npx` / `node` — `bun` / `bunx` only. Exception: the tests that prove the packed CLI runs on Node drive it with `node`
 - Mock Drizzle, mock `fetch`, snapshot tests
-- CF proprietary APIs outside `DB` / `BUCKET`
+- CF proprietary APIs outside code scoped to the cloudflare provider (ADR 0009)
 - Skip phases defined in the issue
 - `--no-verify`, `reset --hard`, `push --force` without explicit request
 
