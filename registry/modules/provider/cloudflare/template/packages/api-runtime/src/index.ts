@@ -10,6 +10,9 @@
  * - `serve(app)`: what `apps/api/src/index.ts` default-exports. Workers want a `{ fetch }` object,
  *   so that is what this variant returns; the `dockerfile` variant returns `{ port, fetch }`, which
  *   Bun serves by itself when that file is the entry.
+ * - `registerUpgrade(prefix, handler)`: claims the WebSocket upgrades under a path prefix, before the
+ *   app sees them (Elysia rebuilds a 101 response, which Workers reject). Here the handler is
+ *   fetch-style and gets the Worker's `env` and `ctx`; the `dockerfile` variant takes crossws hooks.
  */
 /// <reference types="@cloudflare/workers-types" />
 import type { ElysiaConfig } from "elysia";
@@ -43,12 +46,36 @@ export async function readRuntimeEnv(): Promise<Record<string, unknown>> {
   }
 }
 
-export function serve(app: {
-  fetch: (request: Request, env: unknown, ctx: unknown) => Response | Promise<Response>;
-}) {
+type FetchHandler = (request: Request, env: unknown, ctx: unknown) => Response | Promise<Response>;
+
+const upgrades = new Map<string, FetchHandler>();
+
+/**
+ * Hands the WebSocket upgrades whose path is `prefix` or under it (`/ws/rooms`, `/ws/rooms/abc`, not
+ * `/ws/roomsx`) to `handler`, called at module load by the package that owns them. Returns the
+ * function that takes the registration back.
+ */
+export function registerUpgrade(prefix: string, handler: FetchHandler): () => void {
+  if (upgrades.has(prefix))
+    throw new Error(`An upgrade handler is already registered for ${prefix}`);
+  upgrades.set(prefix, handler);
+  return () => upgrades.delete(prefix);
+}
+
+function upgradeHandler(request: Request): FetchHandler | undefined {
+  if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return undefined;
+  const { pathname } = new URL(request.url);
+  for (const [prefix, handler] of upgrades) {
+    if (pathname === prefix || pathname.startsWith(`${prefix}/`)) return handler;
+  }
+  return undefined;
+}
+
+export function serve(app: { fetch: FetchHandler }) {
   return {
     fetch(request: Request, env: unknown, ctx: unknown) {
-      return app.fetch(request, env, ctx);
+      const upgrade = upgradeHandler(request);
+      return upgrade ? upgrade(request, env, ctx) : app.fetch(request, env, ctx);
     },
   };
 }

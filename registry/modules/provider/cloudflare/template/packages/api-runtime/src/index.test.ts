@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vite-plus/test";
 import { Elysia } from "elysia";
-import { clientIpHeaders, readRuntimeEnv, runtimeOptions, serve } from "./index";
+import { clientIpHeaders, readRuntimeEnv, registerUpgrade, runtimeOptions, serve } from "./index";
 
 describe("runtimeOptions", () => {
   it("turns AOT compilation off, because Workers forbid new Function()", () => {
@@ -73,5 +73,70 @@ describe("serve", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ status: "ok" });
+  });
+});
+
+describe("registerUpgrade", () => {
+  const upgrade = (path: string) =>
+    new Request(`http://localhost${path}`, { headers: { Upgrade: "WebSocket" } });
+
+  /** Stands in for the app: records what reached it. */
+  const recordingApp = () => {
+    const reached: string[] = [];
+    return {
+      reached,
+      fetch(request: Request) {
+        reached.push(new URL(request.url).pathname);
+        return new Response("from the app");
+      },
+    };
+  };
+
+  it("hands a WebSocket upgrade under the prefix to the handler, with env and ctx, not to the app", async () => {
+    const app = recordingApp();
+    const env = { ROOMS: "durable object namespace" };
+    const ctx = { waitUntil: () => {} };
+    const seen: unknown[] = [];
+    // Not 101: outside workerd, `new Response(null, { status: 101 })` throws a RangeError.
+    const unregister = registerUpgrade("/ws/rooms", (...args) => {
+      seen.push(...args);
+      return new Response("upgraded");
+    });
+    try {
+      const request = upgrade("/ws/rooms/abc");
+
+      const response = await serve(app).fetch(request, env, ctx);
+
+      expect(await response.text()).toBe("upgraded");
+      expect(seen).toEqual([request, env, ctx]);
+      expect(app.reached).toEqual([]);
+    } finally {
+      unregister();
+    }
+  });
+
+  it("leaves a plain request, an upgrade under another path and a longer segment to the app", async () => {
+    const app = recordingApp();
+    const unregister = registerUpgrade("/ws/rooms", () => new Response("upgraded"));
+    try {
+      const plain = new Request("http://localhost/ws/rooms");
+      for (const request of [plain, upgrade("/ws/other"), upgrade("/ws/roomsx")]) {
+        expect(await (await serve(app).fetch(request, {}, {})).text()).toBe("from the app");
+      }
+      expect(app.reached).toEqual(["/ws/rooms", "/ws/other", "/ws/roomsx"]);
+    } finally {
+      unregister();
+    }
+  });
+
+  it("refuses a prefix that is already registered", () => {
+    const unregister = registerUpgrade("/ws/rooms", () => new Response("upgraded"));
+    try {
+      expect(() => registerUpgrade("/ws/rooms", () => new Response("again"))).toThrow(
+        /\/ws\/rooms/,
+      );
+    } finally {
+      unregister();
+    }
   });
 });

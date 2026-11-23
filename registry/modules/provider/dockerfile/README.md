@@ -37,7 +37,7 @@ name, an `exports` map and the `typecheck` and `test` scripts; `elysia` is merge
 variant), `tsconfig.json`, `src/index.ts`, `src/index.test.ts` and `src/main.ts`, the container's entry.
 `src/index.ts` is what `provider/cloudflare`
 writes at the same paths, so swapping providers swaps this package and leaves `apps/api` alone.
-`src/index.ts` exports the same four names `apps/api` and the modules import, so `app.ts` and the
+`src/index.ts` exports the same five names `apps/api` and the modules import, so `app.ts` and the
 entry stay as they are:
 
 - `runtimeOptions`: `{ aot: true }`. Elysia picks its adapter by the runtime: web-standard on Node.
@@ -48,15 +48,17 @@ entry stay as they are:
   which reads no key of its own and serves its files under `APP_URL`.
 - `clientIpHeaders`: `["x-client-ip"]`, the header `serve` fills with the client's address. See
   [The client's address](#the-clients-address-and-a-reverse-proxy).
-- `serve(app, { spaDir, port, trustedProxyHeader })`: starts [srvx](https://srvx.h3.dev), which runs the
-  same on Node and on Bun, and resolves with the server once it listens. It returns a promise, which
+- `serve(app, { spaDir, port, trustedProxyHeader })`: starts [srvx](https://srvx.h3.dev)'s Node
+  adapter, which WebSocket upgrades need, and resolves with the server once it listens. It returns a promise, which
   has no `fetch`, so a runtime that serves a default-exported `{ fetch }` by itself starts no second one.
   What it answers is `handler(app, options)`: a file under `apps/spa/build/client` is served as is with
   its content type, anything else goes to the app, and a `GET` the app answers 404 gets `index.html`
   when the client accepts `text/html`. It also exits on SIGINT and SIGTERM, see below. `listenPort` is
   the port: the one given, `PORT`, or 5172.
+- `registerUpgrade(prefix, hooks)`: answers the WebSocket upgrades under `prefix` with
+  [crossws](https://crossws.h3.dev) hooks, before the app; an upgrade no package registered gets 404.
 
-Its tests (`index.test.ts`, 36) travel with it. In a project, `packages/api-runtime` is a workspace
+Its tests (`index.test.ts`, 38) travel with it. In a project, `packages/api-runtime` is a workspace
 and `vp test` runs them; in this repo `registry/` is not one, so they run through
 `bun run test:scripts`.
 

@@ -1,20 +1,26 @@
 /**
  * The API's provider seam, `dockerfile` variant: Elysia on Node in one container that also serves
  * the built SPA, so the API and the front share one origin. It replaces the `cloudflare` variant
- * of this package and exports the same four names, which `apps/api` and the modules import and
+ * of this package and exports the same five names, which `apps/api` and the modules import and
  * nothing else:
  * - `runtimeOptions`: the constructor options of `new Elysia(...)` that differ per provider.
  * - `readRuntimeEnv()`: the environment record, read once by `apps/api`'s config.
  * - `clientIpHeaders`: the request headers that carry the client's address, in the order to read them.
- * - `serve(app)`: what `apps/api/src/index.ts` default-exports. It starts the server (srvx, which runs
- *   the same on Node and on Bun) and resolves with it once it listens. A promise has no `fetch`, so a
- *   runtime that serves a default-exported `{ fetch }` by itself (Bun) does not start a second one.
+ * - `serve(app)`: what `apps/api/src/index.ts` default-exports. It starts the server (srvx's Node
+ *   adapter, which WebSocket upgrades need) and resolves with it once it listens. A promise has no
+ *   `fetch`, so a runtime that serves a default-exported `{ fetch }` by itself (Bun) does not start a
+ *   second one.
+ * - `registerUpgrade(prefix, hooks)`: claims the WebSocket upgrades under a path prefix, before the
+ *   app sees them. Here it takes crossws hooks; the `cloudflare` variant takes a fetch-style handler.
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { link, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, join, resolve, sep } from "node:path";
+import type { Hooks } from "crossws";
+import { plugin as webSockets } from "crossws/server/node";
 import type { ElysiaConfig } from "elysia";
-import { serve as listen, type Server } from "srvx";
+import type { Server } from "srvx";
+import { serve as listen } from "srvx/node";
 
 const DEFAULT_PORT = 5172;
 const DEFAULT_DATA_DIR = ".data";
@@ -217,6 +223,31 @@ export function handler(
   };
 }
 
+const upgrades = new Map<string, Partial<Hooks>>();
+
+/**
+ * Answers the WebSocket upgrades whose path is `prefix` or under it (`/ws/echo`, `/ws/echo/abc`, not
+ * `/ws/echoes`) with `hooks`, called at module load by the package that owns them. Their `upgrade`
+ * hook sees the request and can refuse it. Returns the function that takes the registration back.
+ */
+export function registerUpgrade(prefix: string, hooks: Partial<Hooks>): () => void {
+  if (upgrades.has(prefix))
+    throw new Error(`An upgrade handler is already registered for ${prefix}`);
+  upgrades.set(prefix, hooks);
+  return () => upgrades.delete(prefix);
+}
+
+/** An upgrade no package claimed: answered 404, and never handed to the app. */
+const unclaimed: Partial<Hooks> = { upgrade: () => new Response("Not found", { status: 404 }) };
+
+function upgradeHooks(request: Request): Partial<Hooks> {
+  const { pathname } = new URL(request.url);
+  for (const [prefix, hooks] of upgrades) {
+    if (pathname === prefix || pathname.startsWith(`${prefix}/`)) return hooks;
+  }
+  return unclaimed;
+}
+
 /** The port the server listens on: the one given, else `PORT`, else 5172. */
 export function listenPort(port?: number): number {
   return port ?? (Number(process.env.PORT) || DEFAULT_PORT);
@@ -228,6 +259,8 @@ export async function serve(app: App, options: ServeOptions = {}): Promise<Serve
   const server = listen({
     port: listenPort(options.port),
     fetch: handler(app, options),
+    // Upgrades reach Node's `upgrade` event, not `fetch`: crossws answers them from the registrations.
+    plugins: [webSockets({ resolve: upgradeHooks })],
     // The handler above is what a stop does in a container; srvx's own would wait for open requests.
     gracefulShutdown: false,
   });

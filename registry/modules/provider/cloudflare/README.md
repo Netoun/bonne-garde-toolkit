@@ -34,8 +34,10 @@ imports for everything that depends on where it runs:
   every request that reaches a Worker and replaces a value the client sent; `x-forwarded-for`, which
   Better Auth reads unless told otherwise, is not set on Workers.
 - `serve(app)`: a `{ fetch }` object, which is what Workers want a module to default-export.
+- `registerUpgrade(prefix, handler)`: hands the WebSocket upgrades under `prefix` to a fetch-style
+  handler with the Worker's `env` and `ctx`, before Elysia, which cannot return a 101.
 
-Its tests (`index.test.ts`, 7) travel with it and run from the project's root through `vp run test`.
+Its tests (`index.test.ts`, 10) travel with it and run from the project's root through `vp run test`.
 They import `elysia`, which this repo's root does not install, so `test:scripts` skips them and golden
 is where they run.
 It declares `elysia`, `@cloudflare/workers-types` and `@types/node`, pinned, in the workspace

@@ -12,7 +12,7 @@
       "key": "default",
       "match": {},
       "workspace": { "name": "{{SCOPE}}/api-runtime", "path": "packages/api-runtime" },
-      "dependencies": { "elysia": "1.4.29", "srvx": "1.0.8" },
+      "dependencies": { "crossws": "0.4.17", "elysia": "1.4.29", "srvx": "1.0.8" },
       "copy": [
         "Dockerfile",
         ".dockerignore",
