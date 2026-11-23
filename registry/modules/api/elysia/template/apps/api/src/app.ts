@@ -4,6 +4,7 @@ import { cors } from "@elysiajs/cors";
 import { openapi } from "@elysiajs/openapi";
 import { runtimeOptions } from "{{SCOPE}}/api-runtime";
 import { branding } from "{{SCOPE}}/config";
+import { handleError } from "{{SCOPE}}/api/lib/errors";
 import { originAllowed } from "{{SCOPE}}/api/lib/origins";
 
 export const app = new Elysia(runtimeOptions)
@@ -28,6 +29,8 @@ export const app = new Elysia(runtimeOptions)
   // one `.use(<module>)` here, after the last `.use()` above and before the routes below, through
   // the `ts.elysiaUse` patch keyed on `app`: it owns `elysia[app].use[<module>]` and
   // reformats nothing. Keep `app` exported under that name, built from `new Elysia(runtimeOptions)`.
+  // The app's own `onError` comes after the insertion point, so a module's `onError` runs first.
+  .onError(handleError)
   .get("/health", () => ({ status: "ok", timestamp: Date.now() }));
 
 export type App = typeof app;
