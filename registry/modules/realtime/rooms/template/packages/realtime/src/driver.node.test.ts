@@ -3,7 +3,7 @@ import { request as httpRequest } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { issueTicket } from "./ticket";
 import { defineRoom, publishToRoom } from "./rooms";
-import { startTestRealtime } from "./testing";
+import { startTestRealtime } from "./testing.node";
 
 type Realtime = Awaited<ReturnType<typeof startTestRealtime>>;
 

@@ -162,6 +162,7 @@ export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
 /** The modules `bonne-garde add` installs after what `create` produced for the set, in that order. */
 export const ADDED_AFTER_CREATE: Readonly<Record<string, readonly string[]>> = {
   // Realtime is not a `create` feature.
+  cloudflare: ["realtime/rooms"],
   dockerfile: ["realtime/rooms"],
   "dockerfile-postgres": ["db/postgres", "orm/drizzle"],
 };
@@ -1004,6 +1005,16 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "scripts.db:reset",
       "scripts.db:studio",
     ],
+    "realtime/rooms": [
+      "dependencies.@app/realtime",
+      "durable_objects.bindings",
+      "env.production.durable_objects.bindings",
+      "env.production.migrations",
+      'exports."./driver"',
+      'exports."./testing"',
+      "exports[@app/realtime/driver]",
+      "migrations",
+    ],
     "web/spa": ["env.production.vars.API_URL", "scripts.deploy", "scripts.dev", "vars.API_URL"],
     "web/ssr": ["env.production.vars.API_URL", "scripts.deploy", "scripts.dev", "vars.API_URL"],
     "web/static": ["scripts.deploy", "scripts.dev"],
@@ -1051,6 +1062,7 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
     "realtime/rooms": [
       "dependencies.@app/realtime",
       'exports."./driver"',
+      'exports."./testing"',
       "exports[@app/realtime/driver]",
     ],
     "storage/fs": [

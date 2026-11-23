@@ -5,32 +5,42 @@ app, names the room, a subject and tags, and expires. A message published to a r
 or only the ones whose ticket carries one of the tags of the publish.
 
 ```bash
-bunx bonne-garde add provider/dockerfile api/elysia realtime/rooms
+bunx bonne-garde add provider/cloudflare api/elysia realtime/rooms   # or provider/dockerfile
 ```
 
-This first version is the **dockerfile** provider: [crossws](https://crossws.h3.dev) behind the upgrade
-seam of `{{SCOPE}}/api-runtime` (`registerUpgrade`), one instance, peers and publish in memory. The
-Cloudflare variant (Durable Objects) is refused for now: `realtime/rooms accepts only dockerfile for provider`.
+One module, a driver per provider behind the package's `./driver` export, both reached through the upgrade
+seam of `{{SCOPE}}/api-runtime` (`registerUpgrade`):
+
+| Provider     | Driver                                                                                                                   |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `dockerfile` | [crossws](https://crossws.h3.dev), one instance, peers and publish in memory                                             |
+| `cloudflare` | One Durable Object per room (`RealtimeRoom`, `idFromName(room)`) on the hibernation API, SQLite-backed class, no crossws |
 
 ## Peers
 
-| Peer       | Allow-list   | Why                                                                           |
-| ---------- | ------------ | ----------------------------------------------------------------------------- |
-| `provider` | `dockerfile` | `registerUpgrade` of `{{SCOPE}}/api-runtime` claims the upgrade before Elysia |
-| `api`      | `elysia`     | `apps/api/src/index.ts` imports the driver, so the upgrade is registered      |
+| Peer       | Allow-list                 | Why                                                                           |
+| ---------- | -------------------------- | ----------------------------------------------------------------------------- |
+| `provider` | `cloudflare`, `dockerfile` | `registerUpgrade` of `{{SCOPE}}/api-runtime` claims the upgrade before Elysia |
+| `api`      | `elysia`                   | `apps/api/src/index.ts` loads the driver, so the upgrade is registered        |
 
 ## What it writes
 
-Everything in `packages/realtime`, plus the driver import in `apps/api/src/index.ts` and the
-`REALTIME_TICKET_SECRET` line of `.env.example`.
+Everything in `packages/realtime`, plus the driver in `apps/api/src/index.ts` and the
+`REALTIME_TICKET_SECRET` line of `.env.example`. On `cloudflare`, `apps/api/src/index.ts` also
+re-exports `RealtimeRoom` (Workers bind a Durable Object class from the entry), and `apps/api/wrangler.jsonc`
+gets the `REALTIME_ROOM` binding and a `new_sqlite_classes` migration (`realtime-rooms-v1`), in the default
+environment and in `production`. A project that already has `migrations` in `wrangler.jsonc` merges the entry by hand.
 
-| File                 | What it is                                                                                                      |
-| -------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `src/protocol.ts`    | The envelope `{ v: 1, type, room, data }` (TypeBox), `encode` and `decode`, which returns null on anything else |
-| `src/ticket.ts`      | `issueTicket`, `verifyTicket`, HMAC-SHA256 over Web Crypto, secret `REALTIME_TICKET_SECRET`                     |
-| `src/rooms.ts`       | `defineRoom(name, { onJoin, onMessage, onLeave })` and `publishToRoom(room, message, { tags })`                 |
-| `src/driver.node.ts` | The `./driver` export: the upgrade under `/realtime/`, the ping answer, the peers in memory                     |
-| `src/testing.ts`     | `startTestRealtime()`: the API on a port the system picks, and clients that open a room                         |
+| File                            | What it is                                                                                                                      |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `src/protocol.ts`               | The envelope `{ v: 1, type, room, data }` (TypeBox), `encode` and `decode`, which returns null on anything else                 |
+| `src/ticket.ts`                 | `issueTicket`, `verifyTicket`, HMAC-SHA256 over Web Crypto, secret `REALTIME_TICKET_SECRET`                                     |
+| `src/rooms.ts`                  | `defineRoom(name, { onJoin, onMessage, onLeave })` and `publishToRoom(room, message, { tags })`                                 |
+| `src/driver.node.ts`            | `dockerfile`: the `./driver` export, the upgrade under `/realtime/`, the ping answer, the peers in memory                       |
+| `src/driver.cloudflare.ts`      | `cloudflare`: the `./driver` export, the `RealtimeRoom` object, the upgrade that forwards to it, `ping` answered by the runtime |
+| `src/testing.node.ts`           | `dockerfile`: `startTestRealtime()`, the API on a port the system picks, and clients that open a room                           |
+| `src/testing.cloudflare.ts`     | `cloudflare`: `startTestRealtime({ entry })`, a Worker entry bundled and run in workerd by Miniflare, and the same clients      |
+| `src/test-worker.cloudflare.ts` | `cloudflare`: the entry of the module's own tests; yours defines your rooms the same way                                        |
 
 ## Use
 
@@ -51,7 +61,8 @@ app.get("/v1/rooms/:room/ticket", async ({ params, user }) => ({
 }));
 ```
 
-Define what a room does once, at module load, and speak into it from anywhere:
+Define what a room does once, at module load, and speak into it from anywhere (`publishToRoom` returns a promise,
+which resolves once the frame is sent: await it where a later step relies on the peers having it):
 
 ```ts
 import { defineRoom, publishToRoom } from "{{SCOPE}}/realtime";
@@ -67,14 +78,29 @@ Without `tags` a publish reaches every peer; with `tags` only the peers carrying
 list (`tags: []`, say a computed one) reaches nobody.
 
 A hook keeps nothing in a closure between calls: what a peer needs is on the peer (`subject`, `tags`, from
-its ticket), so the Durable Object variant can serve a room again after it hibernated.
+its ticket), so the Durable Object variant can serve a room again after it hibernated: the claims are the
+attachment of the socket, read back on every frame.
 
 The raw text `ping` is answered `pong` before any room sees it: the browser client's heartbeat relies on it.
-`REALTIME_TICKET_SECRET` is required; the API refuses to start without it (`openssl rand -base64 32`).
-Under `NODE_ENV=test` a fixture stands in. In a container, `compose.yaml` passes the project's `.env` whole.
+`REALTIME_TICKET_SECRET` is required (`openssl rand -base64 32`). Under `NODE_ENV=test` a fixture stands in.
+On `dockerfile` the API refuses to start without it, and `compose.yaml` passes the project's `.env` whole. On
+`cloudflare` the first upgrade fails without it: put it in `.dev.vars` for `wrangler dev` and run
+`wrangler secret put REALTIME_TICKET_SECRET` when deployed.
+
+## Tests on Workers
+
+Rooms are defined in the Worker, which workerd runs apart from the test, so a test of yours writes a Worker
+entry beside it (see `test-worker.cloudflare.ts`) and hands it to `startTestRealtime({ entry })`. The harness
+bundles it with `vite-plus/pack`, **replaces Elysia's Cloudflare adapter by an empty one in that bundle**
+(Miniflare refuses its dynamic `import()`, and a test never reads what the adapter configures), and serves it.
+`publish()` runs `publishToRoom` inside workerd. On Cloudflare the runtime answers `ping` itself, so
+`settled()` only orders what a completed publish already sent.
 
 ## Limits
 
-One instance: a second one has its own peers, so a publish reaches only the sockets of the instance that
-made it. A Valkey adapter belongs behind `Transport` in `rooms.ts`, to write at the first need. Nothing is
+`dockerfile`: one instance; a second one has its own peers, so a publish reaches only the sockets of the instance
+that made it. A Valkey adapter belongs behind `Transport` in `rooms.ts`, to write at the first need. Nothing is
 persisted: a room's state is what its peers hold.
+
+`cloudflare`: a Durable Object accepts at most 10 tags per socket, and an attachment holds 2 KiB, so a ticket
+carries a few short tags. A server-side `publishToRoom` is a call to the room's object, one per room.

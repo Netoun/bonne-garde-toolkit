@@ -5,8 +5,7 @@
   "description": "The project's realtime rooms over WebSocket: ticketed upgrade, rooms, publish",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./testing": "./src/testing.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

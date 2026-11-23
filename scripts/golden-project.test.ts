@@ -408,11 +408,11 @@ describe("the golden project and modules", () => {
       "dev/portless",
       "email/resend",
       "deploy/cloudflare-actions",
+      "realtime/rooms",
       "pm/bun",
       "provider/dockerfile",
       "db/libsql",
       "storage/fs",
-      "realtime/rooms",
       "db/postgres",
     ]);
   });
@@ -795,6 +795,16 @@ describe("the golden project and patches", () => {
           "imports[@app/storage]",
           "r2_buckets",
         ],
+        "realtime/rooms": [
+          "dependencies.@app/realtime",
+          "durable_objects.bindings",
+          "env.production.durable_objects.bindings",
+          "env.production.migrations",
+          'exports."./driver"',
+          'exports."./testing"',
+          "exports[@app/realtime/driver]",
+          "migrations",
+        ],
         "orm/drizzle": [
           "dependencies.@app/db",
           "dependencies.drizzle-orm",
@@ -857,6 +867,7 @@ describe("the golden project and patches", () => {
         "realtime/rooms": [
           "dependencies.@app/realtime",
           'exports."./driver"',
+          'exports."./testing"',
           "exports[@app/realtime/driver]",
         ],
         "storage/fs": [
