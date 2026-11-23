@@ -7,6 +7,9 @@ const app = new Elysia()
   .get("/boom", () => {
     throw new Error("secret");
   })
+  .get("/coded", () => {
+    throw Object.assign(new Error("secret db"), { code: 19 });
+  })
   .get("/teapot", () => {
     throw status(418, { error: "short and stout" });
   })
@@ -47,6 +50,16 @@ describe("handleError", () => {
       path: "/boom",
       error: { message: "secret" },
     });
+  });
+
+  it("treats an unexpected error carrying a numeric code below 500 as unexpected", async () => {
+    const res = await app.handle(new Request("http://localhost/coded"));
+    const text = await res.text();
+
+    expect(res.status).toBe(500);
+    expect(JSON.parse(text)).toEqual({ error: "Internal Server Error" });
+    expect(text).not.toContain("secret db");
+    expect(errorLogs()).toHaveLength(1);
   });
 
   it("treats a thrown status(5xx) as unexpected", async () => {
