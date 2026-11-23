@@ -36,8 +36,10 @@ environment and in `production`. A project that already has `migrations` in `wra
 | `src/protocol.ts`               | The envelope `{ v: 1, type, room, data }` (TypeBox), `encode` and `decode`, which returns null on anything else                 |
 | `src/ticket.ts`                 | `issueTicket`, `verifyTicket`, HMAC-SHA256 over Web Crypto, secret `REALTIME_TICKET_SECRET`                                     |
 | `src/rooms.ts`                  | `defineRoom(name, { onJoin, onMessage, onLeave })` and `publishToRoom(room, message, { tags })`                                 |
+| `src/client.ts`                 | The browser client, `./client` export, no server code: `connectRoom` with backoff, heartbeat and a fresh ticket per connection  |
 | `src/driver.node.ts`            | `dockerfile`: the `./driver` export, the upgrade under `/realtime/`, the ping answer, the peers in memory                       |
 | `src/driver.cloudflare.ts`      | `cloudflare`: the `./driver` export, the `RealtimeRoom` object, the upgrade that forwards to it, `ping` answered by the runtime |
+| `src/client.node.test.ts`       | `dockerfile`: the client against the real server, through a TCP relay that can go deaf to the server                            |
 | `src/testing.node.ts`           | `dockerfile`: `startTestRealtime()`, the API on a port the system picks, and clients that open a room                           |
 | `src/testing.cloudflare.ts`     | `cloudflare`: `startTestRealtime({ entry })`, a Worker entry bundled and run in workerd by Miniflare, and the same clients      |
 | `src/test-worker.cloudflare.ts` | `cloudflare`: the entry of the module's own tests; yours defines your rooms the same way                                        |
@@ -60,6 +62,27 @@ app.get("/v1/rooms/:room/ticket", async ({ params, user }) => ({
   }),
 }));
 ```
+
+Open the room from the browser with the client (`./client`, nothing server-side in it, so `apps/spa` imports it
+once it lists `"{{SCOPE}}/realtime": "workspace:*"` in its dependencies): it asks `getTicket` before **every** connection, since a ticket expires, and comes back by itself after a drop.
+
+```ts
+import { connectRoom } from "{{SCOPE}}/realtime/client";
+
+const room = connectRoom({
+  url: "wss://api.example.com/realtime", // the API's address, `/realtime` included
+  room: "lobby",
+  getTicket: async () => (await api.v1.rooms({ room: "lobby" }).ticket.get()).data.ticket,
+  onMessage: (message) => console.log(message.type, message.data),
+  onStatus: (status) => console.log(status), // connecting, open, reconnecting, closed
+});
+room.send({ type: "chat", data: "hello" }); // false, and dropped, while the socket is not open
+room.close(); // for good: no further reconnect
+```
+
+Retries wait between half of and the full `500 ms * 2^n` (cap 30 s, back to 500 ms after a connection that held
+10 s). It sends `ping` every 25 s; no `pong` within 10 s closes the socket and reconnects. A frame that is not an
+envelope of version 1 is dropped before `onMessage`. A failing `getTicket` counts as a failed attempt.
 
 Define what a room does once, at module load, and speak into it from anywhere (`publishToRoom` returns a promise,
 which resolves once the frame is sent: await it where a later step relies on the peers having it):

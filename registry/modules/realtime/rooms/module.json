@@ -34,6 +34,8 @@
       ],
       "copy": [
         "packages/realtime/package.json",
+        "packages/realtime/src/client.node.test.ts",
+        "packages/realtime/src/client.ts",
         "packages/realtime/src/driver.node.test.ts",
         "packages/realtime/src/driver.node.ts",
         "packages/realtime/src/index.ts",
@@ -101,6 +103,7 @@
       ],
       "copy": [
         "packages/realtime/package.json",
+        "packages/realtime/src/client.ts",
         "packages/realtime/src/driver.cloudflare.test.ts",
         "packages/realtime/src/driver.cloudflare.ts",
         "packages/realtime/src/index.ts",
