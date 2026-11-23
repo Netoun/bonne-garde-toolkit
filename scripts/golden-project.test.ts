@@ -253,7 +253,14 @@ describe("the golden project", () => {
     const dockerfile = CONFIGURATIONS.find(({ name }) => name === "dockerfile");
     expect(postgres?.modules.slice(0, -2)).toEqual(
       (dockerfile?.modules ?? []).filter(
-        (name) => !["db/libsql", "orm/drizzle", "auth/better-auth", "storage/fs"].includes(name),
+        (name) =>
+          ![
+            "db/libsql",
+            "orm/drizzle",
+            "auth/better-auth",
+            "storage/fs",
+            "observability/sentry",
+          ].includes(name),
       ),
     );
   });
@@ -401,6 +408,7 @@ describe("the golden project and modules", () => {
       "dev/portless",
       "email/resend",
       "deploy/cloudflare-actions",
+      "observability/sentry",
       "pm/bun",
       "provider/dockerfile",
       "db/libsql",
@@ -814,6 +822,14 @@ describe("the golden project and patches", () => {
         // by the `intent[<id>]` region `bonne-garde record` leaves, not by a patch that imports for it.
         "email/resend": ["dependencies.@app/email"],
         "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
+        "observability/sentry": [
+          "dependencies.@app/observability",
+          "elysia[app].use[observabilityModule]",
+          'exports."."',
+          "imports[@app/observability]",
+          "scripts.test",
+          "scripts.typecheck",
+        ],
       },
       dockerfile: {
         "config/branding": ["scripts.gen:branding"],
@@ -852,6 +868,14 @@ describe("the golden project and patches", () => {
           "elysia[app].use[mediaModule]",
           "exports[@app/storage/schema]",
           "imports[@app/storage]",
+        ],
+        "observability/sentry": [
+          "dependencies.@app/observability",
+          "elysia[app].use[observabilityModule]",
+          'exports."."',
+          "imports[@app/observability]",
+          "scripts.test",
+          "scripts.typecheck",
         ],
         "email/resend": ["dependencies.@app/email"],
         "web/spa": ["scripts.dev"],

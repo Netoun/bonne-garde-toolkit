@@ -264,6 +264,7 @@ describe("the category table", () => {
     expect(categoryCardinality("pm")).toBe("one");
     expect(categoryCardinality("provider")).toBe("one");
     expect(categoryCardinality("config")).toBe("one");
+    expect(categoryCardinality("observability")).toBe("one");
     expect(categoryCardinality("api")).toBe("one");
     expect(categoryCardinality("web")).toBe("many");
     expect(categoryCardinality("deploy")).toBe("many");
@@ -285,6 +286,7 @@ describe("the category table", () => {
       "queue",
       "storage",
       "payments",
+      "observability",
       "web",
       "testing",
       "deploy",
