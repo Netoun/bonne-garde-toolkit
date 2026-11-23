@@ -125,13 +125,21 @@ function join(room = "r1", getTicket?: () => Promise<string>): RoomConnection {
   return connection;
 }
 
-const open = (count = 1) => until(() => expect(peers.length).toBe(count));
 const lastStatus = (status: RoomStatus) => until(() => expect(statuses.at(-1)).toBe(status));
+/**
+ * The server has the peer AND the client read the handshake answer. The server side alone is not
+ * enough: a frame the relay slips in, or a socket it mutes, before the client read the 101 breaks the
+ * handshake and sends the client into a reconnect.
+ */
+async function connected(count = 1): Promise<void> {
+  await until(() => expect(peers.length).toBe(count));
+  await lastStatus("open");
+}
 // The network takes real time that the fake clock does not count. `vi.waitFor` is not for this: under
 // fake timers it advances the clock itself, which is what these tests must keep in their own hands.
 const realSetTimeout = globalThis.setTimeout;
 const realPause = (ms: number) => new Promise((resolve) => realSetTimeout(resolve, ms));
-async function until(check: () => void, timeoutMs = 2000): Promise<void> {
+async function until(check: () => void, timeoutMs = 4000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     try {
@@ -146,7 +154,7 @@ async function until(check: () => void, timeoutMs = 2000): Promise<void> {
 describe("connectRoom", () => {
   it("receives what is published to its room, and reports connecting then open", async () => {
     join();
-    await open();
+    await connected();
 
     await publishToRoom("r1", { type: "notice", data: "hi" });
 
@@ -174,7 +182,7 @@ describe("connectRoom", () => {
 
   it("reconnects with a new ticket after the server closes the socket, within the backoff bounds", async () => {
     join();
-    await open();
+    await connected();
     expect(tickets).toBe(1);
 
     peers[0]?.close();
@@ -185,8 +193,7 @@ describe("connectRoom", () => {
     expect(tickets).toBe(1);
     await vi.advanceTimersByTimeAsync(251);
     expect(tickets).toBe(2);
-    await open(2);
-    await lastStatus("open");
+    await connected(2);
     expect(statuses).toEqual(["connecting", "open", "reconnecting", "open"]);
   });
 
@@ -214,8 +221,7 @@ describe("connectRoom", () => {
 
   it("closes a socket whose pings go unanswered and reconnects, 25 s + 10 s after the last sign of life", async () => {
     join();
-    // Open on the client's side too: the handshake answer must have passed before the relay goes deaf.
-    await lastStatus("open");
+    await connected();
 
     relay.muteServer();
     await vi.advanceTimersByTimeAsync(PING_INTERVAL_MS + PONG_TIMEOUT_MS - 1);
@@ -226,13 +232,12 @@ describe("connectRoom", () => {
     expect(statuses.at(-1)).toBe("reconnecting");
     await vi.advanceTimersByTimeAsync(500);
     expect(tickets).toBe(2);
-    await open(2);
-    await lastStatus("open");
+    await connected(2);
   });
 
   it("keeps a socket whose pings are answered", async () => {
     join();
-    await open();
+    await connected();
 
     await vi.advanceTimersByTimeAsync(PING_INTERVAL_MS);
     await realPause(100);
@@ -244,7 +249,7 @@ describe("connectRoom", () => {
 
   it("stops reconnecting once closed", async () => {
     const connection = join();
-    await open();
+    await connected();
     peers[0]?.close();
     await lastStatus("reconnecting");
 
@@ -259,7 +264,7 @@ describe("connectRoom", () => {
 
   it("never hands an invalid envelope to onMessage", async () => {
     join();
-    await open();
+    await connected();
 
     for (const frame of [
       "not json",
