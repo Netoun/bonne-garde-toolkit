@@ -161,7 +161,8 @@ export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
 
 /** The modules `bonne-garde add` installs after what `create` produced for the set, in that order. */
 export const ADDED_AFTER_CREATE: Readonly<Record<string, readonly string[]>> = {
-  // `create` offers no observability module; the cloudflare variant is the next stage.
+  // `create` offers no observability module: each provider's set adds its variant.
+  cloudflare: ["observability/sentry"],
   dockerfile: ["observability/sentry"],
   "dockerfile-postgres": ["db/postgres", "orm/drizzle"],
 };
@@ -1011,6 +1012,14 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
     // region-checked by the `intent[<id>]` region `bonne-garde record` leaves.
     "email/resend": ["dependencies.@app/email"],
     "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
+    "observability/sentry": [
+      "dependencies.@app/observability",
+      "elysia[app].use[observabilityModule]",
+      'exports."."',
+      "imports[@app/observability]",
+      "scripts.test",
+      "scripts.typecheck",
+    ],
   },
   dockerfile: {
     "config/branding": ["scripts.gen:branding"],

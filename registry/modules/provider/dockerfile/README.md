@@ -37,7 +37,7 @@ name, an `exports` map and the `typecheck` and `test` scripts; `elysia` is merge
 variant), `tsconfig.json`, `src/index.ts`, `src/index.test.ts` and `src/main.ts`, the container's entry.
 `src/index.ts` is what `provider/cloudflare`
 writes at the same paths, so swapping providers swaps this package and leaves `apps/api` alone.
-`src/index.ts` exports the same four names `apps/api` and the modules import, so `app.ts` and the
+`src/index.ts` exports the same five names `apps/api` and the modules import, so `app.ts` and the
 entry stay as they are:
 
 - `runtimeOptions`: `{ aot: true }`. Elysia picks its adapter by the runtime: web-standard on Node.
@@ -55,8 +55,12 @@ entry stay as they are:
   its content type, anything else goes to the app, and a `GET` the app answers 404 gets `index.html`
   when the client accepts `text/html`. It also exits on SIGINT and SIGTERM, see below. `listenPort` is
   the port: the one given, `PORT`, or 5172.
+- `wrapRequests(wrapper)`: the same registration as on `provider/cloudflare`. The wrappers run around
+  the requests `handler` hands to the app, not the SPA's built files, with `env` set to `process.env`
+  and a `ctx` whose `waitUntil` lets the promise run on and logs a rejection: the process outlives the
+  response.
 
-Its tests (`index.test.ts`, 36) travel with it. In a project, `packages/api-runtime` is a workspace
+Its tests (`index.test.ts`, 40) travel with it. In a project, `packages/api-runtime` is a workspace
 and `vp test` runs them; in this repo `registry/` is not one, so they run through
 `bun run test:scripts`.
 

@@ -10,6 +10,10 @@
  * - `serve(app)`: what `apps/api/src/index.ts` default-exports. Workers want a `{ fetch }` object,
  *   so that is what this variant returns; the `dockerfile` variant returns `{ port, fetch }`, which
  *   Bun serves by itself when that file is the entry.
+ * - `wrapRequests(wrapper)`: registers a `RequestWrapper` that `serve` runs around every request it
+ *   hands to the app, for a module that must see the request before the app does (error reporting
+ *   that flushes after the response, ...). It returns the function that removes it. A module calls it
+ *   at import, so `apps/api/src/index.ts` stays as it is.
  */
 /// <reference types="@cloudflare/workers-types" />
 import type { ElysiaConfig } from "elysia";
@@ -43,12 +47,47 @@ export async function readRuntimeEnv(): Promise<Record<string, unknown>> {
   }
 }
 
+/**
+ * The part of the request's context a wrapper may use, the same on every provider. On Workers it is
+ * the `ExecutionContext`: `waitUntil` keeps the isolate alive for the promise after the response.
+ */
+export interface RequestContext {
+  waitUntil(promise: Promise<unknown>): void;
+}
+
+/**
+ * Runs around the app for one request: `env` is the Workers env (bindings and vars), and `next()`
+ * answers with the app's response, through the wrappers registered after this one.
+ */
+export type RequestWrapper = (
+  request: Request,
+  env: unknown,
+  ctx: RequestContext,
+  next: () => Promise<Response>,
+) => Promise<Response>;
+
+const wrappers: RequestWrapper[] = [];
+
+/** Registers `wrapper`, outside the ones registered before it, and returns what removes it. */
+export function wrapRequests(wrapper: RequestWrapper): () => void {
+  wrappers.push(wrapper);
+  return () => {
+    const index = wrappers.indexOf(wrapper);
+    if (index !== -1) wrappers.splice(index, 1);
+  };
+}
+
 export function serve(app: {
-  fetch: (request: Request, env: unknown, ctx: unknown) => Response | Promise<Response>;
+  fetch: (request: Request, env: unknown, ctx: RequestContext) => Response | Promise<Response>;
 }) {
   return {
-    fetch(request: Request, env: unknown, ctx: unknown) {
-      return app.fetch(request, env, ctx);
+    // The list is read per request: a module registers at import, which may come after `serve`.
+    fetch(request: Request, env: unknown, ctx: RequestContext) {
+      const handle = wrappers.reduceRight<() => Promise<Response>>(
+        (next, wrapper) => () => wrapper(request, env, ctx, next),
+        async () => app.fetch(request, env, ctx),
+      );
+      return handle();
     },
   };
 }

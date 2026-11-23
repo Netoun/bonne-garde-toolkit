@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   clientIpHeaders,
   handler,
@@ -9,7 +9,9 @@ import {
   readRuntimeEnv,
   runtimeOptions,
   serve,
+  wrapRequests,
   type IncomingRequest,
+  type RequestWrapper,
 } from "./index";
 
 let dir: string;
@@ -394,6 +396,92 @@ describe("the client's address", () => {
       expect(await addressOf(response)).toMatch(/^(?:::1|::ffff:127\.0\.0\.1|127\.0\.0\.1)$/);
     } finally {
       await server.close(true);
+    }
+  });
+});
+
+describe("wrapRequests", () => {
+  const disposers: Array<() => void> = [];
+  const register = (wrapper: RequestWrapper) => disposers.push(wrapRequests(wrapper));
+  const app = {
+    fetch: (request: Request) => new Response(`app: ${new URL(request.url).pathname}`),
+  };
+  const spaDir = () => join(dir, "client");
+
+  beforeEach(async () => {
+    await mkdir(spaDir(), { recursive: true });
+    await writeFile(join(spaDir(), "index.html"), "<html>the spa</html>");
+  });
+
+  afterEach(() => {
+    for (const dispose of disposers.splice(0)) dispose();
+  });
+
+  it("leaves the app's response alone when no wrapper is registered", async () => {
+    const response = new Response("untouched");
+
+    const result = await handler(
+      { fetch: () => response },
+      { spaDir: spaDir() },
+    )(new Request("http://localhost/api"));
+
+    expect(result).toBe(response);
+  });
+
+  it("calls a registered wrapper once per request the app answers, with the request, env and ctx", async () => {
+    const calls: Array<{ request: Request; env: unknown; ctx: unknown }> = [];
+    register((request, env, ctx, next) => {
+      calls.push({ request, env, ctx });
+      return next();
+    });
+    const serveRequest = handler(app, { spaDir: spaDir() });
+
+    const response = await serveRequest(new Request("http://localhost/api"));
+    await serveRequest(new Request("http://localhost/index.html"));
+
+    // The built file is the server's own answer, not the app's: no wrapper runs for it.
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.request.url).toBe("http://localhost/api");
+    expect(calls[0]?.env).toBe(process.env);
+    expect(calls[0]?.ctx).toEqual({ waitUntil: expect.any(Function) });
+    expect(await response.text()).toBe("app: /api");
+  });
+
+  it("runs wrappers in registration order, the first one outermost, and lets one replace the response", async () => {
+    const order: string[] = [];
+    register(async (_request, _env, _ctx, next) => {
+      order.push("first in");
+      const response = await next();
+      order.push("first out");
+      return new Response(`${await response.text()}, wrapped`);
+    });
+    register((_request, _env, _ctx, next) => {
+      order.push("second");
+      return next();
+    });
+
+    const response = await handler(app, { spaDir: spaDir() })(new Request("http://localhost/x"));
+
+    expect(order).toEqual(["first in", "second", "first out"]);
+    expect(await response.text()).toBe("app: /x, wrapped");
+  });
+
+  it("logs work handed to waitUntil that rejects, instead of failing the process", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const failure = new Error("flush failed");
+    register((_request, _env, ctx, next) => {
+      ctx.waitUntil(Promise.reject(failure));
+      return next();
+    });
+
+    try {
+      const response = await handler(app, { spaDir: spaDir() })(new Request("http://localhost/x"));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(response.status).toBe(200);
+      expect(logged).toHaveBeenCalledWith(failure);
+    } finally {
+      logged.mockRestore();
     }
   });
 });
