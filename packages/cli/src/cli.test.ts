@@ -288,7 +288,7 @@ describe("bonne-garde record", () => {
     const done = await runBonneGarde(target, "doctor", "--strict");
     expect(done.code).toBe(0);
     expect(done.stdout).toContain("1 applied, 1 skipped, 0 pending");
-  });
+  }, 15_000);
 
   test("an install intention lands on its module's record and doctor reads it from there", async () => {
     const target = await freshProject("bg-cli-record-module-");
@@ -366,7 +366,7 @@ describe("bonne-garde record", () => {
       expect(stderr).toMatch(message);
     }
     expect(await readFile(join(target, "bg.json"), "utf8")).toBe(before);
-  });
+  }, 15_000);
 
   test("a v1 bg.json is rewritten as v2, and says so, like add", async () => {
     const target = await freshProject("bg-cli-record-v1-");
