@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 import { runCli } from "./cli";
+import { errorText } from "./errors";
 
 const code = await runCli(process.argv.slice(2)).catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(message);
+  console.error(errorText(error));
   return 1;
 });
 process.exit(code);

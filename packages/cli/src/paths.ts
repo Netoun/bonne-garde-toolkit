@@ -96,3 +96,11 @@ export function registryDir(from = HERE): string | null {
   const repo = findRepoRoot(from);
   return repo ? join(repo, "registry") : null;
 }
+
+/** The version of this CLI package: `package.json` next to the sources, or at the root of the packed package. */
+export function cliVersion(): string {
+  const raw = JSON.parse(readFileSync(join(packageRoot(), "package.json"), "utf8")) as {
+    version?: string;
+  };
+  return raw.version ?? "unknown";
+}

@@ -358,7 +358,7 @@ describe("bonne-garde record", () => {
       [["record"], /requires an intention id/],
       [["record", "v0.2.0/x", "--skip"], /missing value for --skip/],
       [["record", "v0.2.0/x", "--skip", ""], /missing value for --skip/],
-      [["record", "v0.2.0/x", "extra"], /unexpected argument: extra/],
+      [["record", "v0.2.0/x", "extra"], /Unexpected argument: extra/],
     ];
     for (const [args, message] of cases) {
       const { stderr, code } = await runBonneGarde(target, ...args);
@@ -2303,7 +2303,7 @@ describe("bg create with choices (040)", () => {
     }
     const unknown = await runBonneGarde(parent, "create", "--bogus", "--yes", "--no-install");
     expect(unknown.code).toBe(1);
-    expect(unknown.stderr).toContain("create: unknown option --bogus");
+    expect(unknown.stderr).toContain("Unknown flag: --bogus");
     expect(await readdir(parent)).toEqual([]);
   });
 
