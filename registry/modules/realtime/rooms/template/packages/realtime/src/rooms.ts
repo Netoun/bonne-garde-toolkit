@@ -47,7 +47,8 @@ export function frameOf(room: string, message: Message): string {
 
 /** What carries a frame to the peers of a room; the provider's driver installs it when it loads. */
 export type Transport = {
-  publish(room: string, frame: string, tags: readonly string[]): void;
+  /** `tags` undefined is every peer; a list is the peers carrying one of them, so an empty list is nobody. */
+  publish(room: string, frame: string, tags: readonly string[] | undefined): void;
 };
 
 let transport: Transport | undefined;
@@ -58,7 +59,7 @@ export function useTransport(next: Transport): void {
 
 /**
  * Sends `message` to every peer of `room`. With `tags`, only to those whose ticket carries one of them
- * (`tags: ["staff"]` reaches the staff and nobody else); without, to all.
+ * (`tags: ["staff"]` reaches the staff and nobody else, `tags: []` nobody); without `tags`, to all.
  */
 export function publishToRoom(
   room: string,
@@ -70,5 +71,5 @@ export function publishToRoom(
       "No realtime driver is loaded: apps/api/src/index.ts imports it from the realtime package",
     );
   }
-  transport.publish(room, frameOf(room, message), options.tags ?? []);
+  transport.publish(room, frameOf(room, message), options.tags);
 }

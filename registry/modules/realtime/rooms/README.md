@@ -63,6 +63,9 @@ defineRoom("lobby", {
 publishToRoom("lobby", { type: "notice", data: "hi" }, { tags: ["staff"] });
 ```
 
+Without `tags` a publish reaches every peer; with `tags` only the peers carrying one of them, so an empty
+list (`tags: []`, say a computed one) reaches nobody.
+
 A hook keeps nothing in a closure between calls: what a peer needs is on the peer (`subject`, `tags`, from
 its ticket), so the Durable Object variant can serve a room again after it hibernated.
 

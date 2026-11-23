@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+import { request as httpRequest } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { issueTicket } from "./ticket";
 import { defineRoom, publishToRoom } from "./rooms";
@@ -47,6 +49,16 @@ describe("a room over a socket", () => {
 
     expect((await staff.settled()).map((message) => message.type)).toEqual(["notice"]);
     expect(await guest.settled()).toEqual([]);
+  });
+
+  it("reaches nobody when the tags of a publish are an empty list", async () => {
+    const staff = await realtime.connect("r1", { tags: ["staff"] });
+    const untagged = await realtime.connect("r1");
+
+    publishToRoom("r1", { type: "notice" }, { tags: [] });
+
+    expect(await staff.settled()).toEqual([]);
+    expect(await untagged.settled()).toEqual([]);
   });
 
   it("reaches every peer of the room from server code, with no tag", async () => {
@@ -108,6 +120,31 @@ describe("a room over a socket", () => {
 describe("the upgrade", () => {
   it("is refused without a ticket", async () => {
     await expect(realtime.connect("r1", { ticket: "" })).rejects.toThrow(/refused/);
+  });
+
+  it("is answered 404, not dropped, when the room in the path is not valid percent-encoding", async () => {
+    const url = realtime.url("r1", "x");
+    url.pathname = "/realtime/%E0%A4%A";
+    url.protocol = "http:";
+
+    const status = await new Promise<number>((resolve, reject) => {
+      const request = httpRequest(url, {
+        headers: {
+          connection: "Upgrade",
+          upgrade: "websocket",
+          "sec-websocket-version": "13",
+          "sec-websocket-key": randomBytes(16).toString("base64"),
+        },
+      });
+      request.on("response", (response) => {
+        response.resume();
+        resolve(response.statusCode ?? 0);
+      });
+      request.on("error", reject);
+      request.end();
+    });
+
+    expect(status).toBe(404);
   });
 
   it("is refused with a ticket that is tampered, expired or for another room", async () => {

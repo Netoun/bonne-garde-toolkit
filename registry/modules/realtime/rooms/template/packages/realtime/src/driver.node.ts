@@ -42,7 +42,12 @@ function roomPeerOf(peer: Peer): RoomPeer {
 const hooks: Partial<Hooks> = {
   async upgrade(request) {
     const url = new URL(request.url);
-    const room = decodeURIComponent(url.pathname.slice(REALTIME_PREFIX.length + 1));
+    let room: string;
+    try {
+      room = decodeURIComponent(url.pathname.slice(REALTIME_PREFIX.length + 1));
+    } catch {
+      return new Response("Not found", { status: 404 });
+    }
     if (room === "" || room.includes("/")) return new Response("Not found", { status: 404 });
     try {
       return {
@@ -86,7 +91,7 @@ const hooks: Partial<Hooks> = {
 useTransport({
   publish(room, frame, tags) {
     for (const peer of peersByRoom.get(room) ?? []) {
-      if (tags.length === 0 || claimsOf(peer).tags.some((tag) => tags.includes(tag))) {
+      if (tags === undefined || claimsOf(peer).tags.some((tag) => tags.includes(tag))) {
         peer.send(frame);
       }
     }
