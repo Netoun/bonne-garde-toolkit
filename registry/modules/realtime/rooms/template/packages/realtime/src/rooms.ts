@@ -77,3 +77,66 @@ export async function publishToRoom(
   }
   await transport.publish(room, frameOf(room, message), options.tags);
 }
+
+/** The state of one room, kept apart from its peers: it outlives them and the process. Values are JSON. */
+export type RoomState = {
+  /** `undefined` when the key is absent. */
+  get(key: string): Promise<unknown>;
+  /** Throws a `TypeError` for what JSON cannot hold (`undefined`, a function): delete the key instead. */
+  set(key: string, value: unknown): Promise<void>;
+  delete(key: string): Promise<void>;
+  list(): Promise<Record<string, unknown>>;
+  /** The only way a room's state goes: the last peer leaving keeps it. */
+  clear(): Promise<void>;
+};
+
+/** What keeps the state of the rooms, as JSON text; the provider's driver installs it when it loads. */
+export type StateStore = {
+  get(room: string, key: string): Promise<string | undefined>;
+  set(room: string, key: string, value: string): Promise<void>;
+  delete(room: string, key: string): Promise<void>;
+  list(room: string): Promise<Record<string, string>>;
+  clear(room: string): Promise<void>;
+};
+
+let stateStore: StateStore | undefined;
+
+export function useStateStore(next: StateStore): void {
+  stateStore = next;
+}
+
+/**
+ * The persistent state of `room`, from a hook (`roomState(peer.room)`) or from server code: a key-value
+ * store of JSON values, so what `JSON.stringify` keeps is what `get` returns. Last write wins: there is no
+ * update or transaction, and a `get` then a `set` across an `await` is not atomic between two hooks of the
+ * same room.
+ */
+export function roomState(room: string): RoomState {
+  const store = stateStore;
+  if (store === undefined) {
+    throw new Error(
+      "No realtime driver is loaded: apps/api/src/index.ts imports it from the realtime package",
+    );
+  }
+  return {
+    async get(key) {
+      const text = await store.get(room, key);
+      return text === undefined ? undefined : (JSON.parse(text) as unknown);
+    },
+    async set(key, value) {
+      const text = JSON.stringify(value) as string | undefined;
+      if (text === undefined) {
+        throw new TypeError(`The state key ${key} is not JSON: delete it to remove it`);
+      }
+      await store.set(room, key, text);
+    },
+    delete: (key) => store.delete(room, key),
+    async list() {
+      const entries = await store.list(room);
+      return Object.fromEntries(
+        Object.entries(entries).map(([key, text]) => [key, JSON.parse(text) as unknown]),
+      );
+    },
+    clear: () => store.clear(room),
+  };
+}

@@ -1,11 +1,27 @@
 import { randomBytes } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { issueTicket } from "./ticket";
-import { defineRoom, publishToRoom } from "./rooms";
+import { defineRoom, publishToRoom, roomState } from "./rooms";
 import { startTestRealtime } from "./testing.node";
 
 type Realtime = Awaited<ReturnType<typeof startTestRealtime>>;
+
+// The state lives in `<DATA_DIR>/realtime.sqlite`, read when the first state call opens it: a temp one, never `.data`.
+let dataDir: string;
+const dataDirBefore = process.env.DATA_DIR;
+beforeAll(async () => {
+  dataDir = await mkdtemp(join(tmpdir(), "realtime-driver-"));
+  process.env.DATA_DIR = dataDir;
+});
+afterAll(async () => {
+  if (dataDirBefore === undefined) delete process.env.DATA_DIR;
+  else process.env.DATA_DIR = dataDirBefore;
+  await rm(dataDir, { recursive: true, force: true });
+});
 
 let realtime: Realtime;
 let forget: Array<() => void> = [];
@@ -114,6 +130,59 @@ describe("a room over a socket", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(events).toEqual(["join u1 staff", "leave u1"]);
+  });
+});
+
+describe("the state of a room", () => {
+  it("is written by a hook and read back by server code", async () => {
+    forget.push(
+      defineRoom("counted", {
+        onMessage: async (peer) => {
+          const state = roomState(peer.room);
+          await state.set("count", (((await state.get("count")) as number | undefined) ?? 0) + 1);
+          peer.send({ type: "done" });
+        },
+      }),
+    );
+    const client = await realtime.connect("counted");
+
+    client.send(JSON.stringify({ v: 1, type: "inc", room: "counted", data: null }));
+    // The hook awaits the store: the peer is told once the write is done.
+    expect((await client.next()).type).toBe("done");
+
+    expect(await roomState("counted").get("count")).toBe(1);
+    expect(await roomState("r1").get("count")).toBeUndefined();
+  });
+
+  it("is written by server code and read inside a hook, which sends it back", async () => {
+    await roomState("shown").set("greeting", { text: "hello", n: [1, 2] });
+    forget.push(
+      defineRoom("shown", {
+        onJoin: async (peer) =>
+          peer.send({ type: "state", data: await roomState(peer.room).list() }),
+      }),
+    );
+
+    const client = await realtime.connect("shown");
+
+    expect(await client.next()).toEqual({
+      v: 1,
+      type: "state",
+      room: "shown",
+      data: { greeting: { text: "hello", n: [1, 2] } },
+    });
+    await roomState("shown").clear();
+  });
+
+  it("stays when the last peer leaves", async () => {
+    forget.push(defineRoom("kept", {}));
+    const client = await realtime.connect("kept");
+    await roomState("kept").set("k", "v");
+    await client.close();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(await roomState("kept").get("k")).toBe("v");
+    await roomState("kept").clear();
   });
 });
 

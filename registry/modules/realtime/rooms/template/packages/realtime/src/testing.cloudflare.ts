@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { Miniflare } from "miniflare";
 import { build } from "vite-plus/pack";
 import { REALTIME_PREFIX, ROOM_BINDING } from "./names.cloudflare";
-import type { Message } from "./rooms";
+import type { Message, RoomState } from "./rooms";
 import { clientOf, open, type ConnectOptions, type TestClient } from "./testing-client";
 import { issueTicket, readTicketSecret, SECRET_ENV } from "./ticket";
 
@@ -40,8 +40,12 @@ async function bundle(entry: string, dir: string): Promise<string> {
   return join(outDir, "worker.mjs");
 }
 
-/** Starts the Worker of `options.entry` in workerd, with one Durable Object per room. */
-export async function startTestRealtime(options: { entry: string }) {
+/**
+ * Starts the Worker of `options.entry` in workerd, with one Durable Object per room. With
+ * `options.persist`, a directory the objects keep their storage in: a test that starts workerd again over
+ * the same one finds the state of its rooms, as after an eviction or a deploy. The caller owns it.
+ */
+export async function startTestRealtime(options: { entry: string; persist?: string }) {
   const outDir = await mkdtemp(join(tmpdir(), "realtime-"));
   const miniflare = new Miniflare({
     modules: true,
@@ -52,6 +56,7 @@ export async function startTestRealtime(options: { entry: string }) {
     compatibilityFlags: ["nodejs_compat"],
     bindings: { [SECRET_ENV]: readTicketSecret() },
     durableObjects: { [ROOM_BINDING]: { className: "RealtimeRoom", useSQLite: true } },
+    resourcePersistencePath: options.persist,
   });
   const origin = await miniflare.ready;
   const clients = new Set<TestClient>();
@@ -93,6 +98,25 @@ export async function startTestRealtime(options: { entry: string }) {
     /** `publishToRoom` as server code runs it, inside workerd: resolves once the object has sent. */
     publish: (room: string, message: Message, publishOptions: { tags?: readonly string[] } = {}) =>
       post("/__publish", room, { message, tags: publishOptions.tags }),
+    /** `roomState(room)` as server code runs it, inside workerd. */
+    state(room: string): RoomState {
+      async function call(body: { op: string; key?: string; value?: unknown }): Promise<unknown> {
+        const response = await fetch(
+          new URL(`/__state?room=${encodeURIComponent(room)}`, origin).href,
+          { method: "POST", body: JSON.stringify(body) },
+        );
+        if (!response.ok) throw new Error(`/__state answered ${response.status}`);
+        const { value } = await response.json<{ value?: unknown }>();
+        return value;
+      }
+      return {
+        get: async (key) => (await call({ op: "get", key })) ?? undefined,
+        set: async (key, value) => void (await call({ op: "set", key, value })),
+        delete: async (key) => void (await call({ op: "delete", key })),
+        list: async () => (await call({ op: "list" })) as Record<string, unknown>,
+        clear: async () => void (await call({ op: "clear" })),
+      };
+    },
     /** What a new instance of the room's object makes of its sockets (`test-worker.cloudflare.ts`). */
     async rehydrated(room: string): Promise<{ seen: unknown[]; tags: string[][] }> {
       const response = await fetch(
