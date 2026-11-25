@@ -139,6 +139,9 @@ interface InvitationPageHandlerOptions {
   sessionEmail?: string;
   invitation?: InvitationRow;
   getInvitationMode?: "ok" | "not-found" | "wrong-email";
+  memberOfInvitedOrganization?: boolean;
+  acceptInvitationMode?: "ok" | "error";
+  acceptInvitationErrorMessage?: string;
   onAcceptInvitation?: (invitationId: string) => void;
   onRejectInvitation?: (invitationId: string) => void;
 }
@@ -212,11 +215,23 @@ export function organizationInvitationHandlers(options: InvitationPageHandlerOpt
       }
 
       if (request.method === "GET" && isAuthPath(request.url, "/organization/list")) {
-        return HttpResponse.json([ORG]);
+        if (options.memberOfInvitedOrganization) {
+          return HttpResponse.json([{ ...ORG, role: "member" }]);
+        }
+        return HttpResponse.json([]);
       }
 
       if (request.method === "POST" && isAuthPath(request.url, "/organization/accept-invitation")) {
         const body = (await request.json()) as { invitationId: string };
+        if (options.acceptInvitationMode === "error") {
+          return HttpResponse.json(
+            {
+              message: options.acceptInvitationErrorMessage ?? "Invitation not found!",
+              code: "INVITATION_NOT_FOUND",
+            },
+            { status: 400 },
+          );
+        }
         options.onAcceptInvitation?.(body.invitationId);
         return HttpResponse.json({
           invitation: { ...invitation, status: "accepted" },

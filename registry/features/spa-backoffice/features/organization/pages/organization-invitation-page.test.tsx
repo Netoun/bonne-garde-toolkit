@@ -24,6 +24,7 @@ function LocationProbe() {
 
 describe("OrganizationInvitationPage", () => {
   afterEach(async () => {
+    server.use(...organizationInvitationHandlers({ sessionEmail: "reset@example.com" }));
     await authClient.signOut();
   });
 
@@ -108,6 +109,42 @@ describe("OrganizationInvitationPage", () => {
     expect(
       await screen.findByText(/this invitation has expired or could not be found/i),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/already a member/i)).not.toBeInTheDocument();
+  });
+
+  it("shows already a member when the invitee belongs to the organization", async () => {
+    server.use(
+      ...organizationInvitationHandlers({
+        sessionEmail: "invitee@example.com",
+        memberOfInvitedOrganization: true,
+      }),
+    );
+
+    renderInvitationPage();
+
+    expect(await screen.findByText("Already a member")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /view organization/i })).toHaveAttribute(
+      "href",
+      "/organizations/acme/members",
+    );
+  });
+
+  it("shows an error when accepting fails", async () => {
+    server.use(
+      ...organizationInvitationHandlers({
+        sessionEmail: "invitee@example.com",
+        acceptInvitationMode: "error",
+        acceptInvitationErrorMessage: "Invitation not found!",
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderInvitationPage();
+
+    await user.click(await screen.findByRole("button", { name: /accept/i }));
+
+    expect(await screen.findByText("Invitation not found!")).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/invitations/inv-1");
   });
 
   it("shows the signed-in email when the invitation belongs to another account", async () => {
@@ -122,7 +159,9 @@ describe("OrganizationInvitationPage", () => {
     renderInvitationPage();
 
     expect(await screen.findByText("Wrong account")).toBeInTheDocument();
-    expect(screen.getByText("wrong@example.com")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("wrong@example.com")).toBeInTheDocument();
+    });
   });
 
   it("redirects signed-out visitors to login with a return path", async () => {

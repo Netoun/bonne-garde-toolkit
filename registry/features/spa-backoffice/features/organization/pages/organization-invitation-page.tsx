@@ -1,4 +1,4 @@
-import { useCallback, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
 import { Building2, Mail } from "lucide-react";
 // oxfmt-ignore
@@ -23,39 +23,62 @@ const roleLabel: Record<string, string> = {
   member: "Member",
 };
 
+function formatMutationError(error: unknown): string {
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.length > 0) {
+      return message;
+    }
+  }
+  return "Something went wrong. Please try again.";
+}
+
 export default function OrganizationInvitationPage({ params }: Route.ComponentProps) {
   useAuthRedirect();
   const navigate = useNavigate();
   const { data: sessionData, isPending: sessionPending } = useSession();
   const invitationId = params.invitationId;
   const { data: invitation, error, isPending, isError } = useOrganizationInvitation(invitationId);
-  const { data: organizations } = useOrganizations({ enabled: !!sessionData });
+  const { data: organizations, isPending: organizationsPending } = useOrganizations({
+    enabled: !!sessionData,
+  });
   const acceptInvitation = useAcceptOrganizationInvitation();
   const rejectInvitation = useRejectOrganizationInvitation();
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const loadErrorKind = isError ? classifyInvitationLoadError(error) : null;
 
-  const alreadyMemberOrganization =
-    loadErrorKind === "not-found" && organizations
-      ? organizations.find((org) => org.id === sessionData?.session?.activeOrganizationId)
+  const memberOfInvitedOrganization =
+    invitation && organizations
+      ? organizations.find((org) => org.id === invitation.organizationId)
       : undefined;
 
   const handleAccept = useCallback(async () => {
     if (!invitation) return;
-    const result = await acceptInvitation.mutateAsync({
-      invitationId: invitation.id,
-      organizationId: invitation.organizationId,
-      organizationSlug: invitation.organizationSlug,
-    });
-    navigate(`/organizations/${result.organizationSlug}/members`);
+    setActionError(null);
+    try {
+      const result = await acceptInvitation.mutateAsync({
+        invitationId: invitation.id,
+        organizationId: invitation.organizationId,
+        organizationSlug: invitation.organizationSlug,
+      });
+      navigate(`/organizations/${result.organizationSlug}/members`);
+    } catch (mutationError) {
+      setActionError(formatMutationError(mutationError));
+    }
   }, [acceptInvitation, invitation, navigate]);
 
   const handleDecline = useCallback(async () => {
-    await rejectInvitation.mutateAsync(invitationId);
-    navigate("/dashboard");
+    setActionError(null);
+    try {
+      await rejectInvitation.mutateAsync(invitationId);
+      navigate("/dashboard");
+    } catch (mutationError) {
+      setActionError(formatMutationError(mutationError));
+    }
   }, [invitationId, navigate, rejectInvitation]);
 
-  if (sessionPending || (sessionData && isPending)) {
+  if (sessionPending || (sessionData && (isPending || organizationsPending))) {
     return (
       <InvitationPageShell>
         <p className="text-muted-foreground text-sm">Loading invitation...</p>
@@ -100,24 +123,8 @@ export default function OrganizationInvitationPage({ params }: Route.ComponentPr
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground space-y-3">
             <p>This invitation has expired or could not be found.</p>
-            {alreadyMemberOrganization ? (
-              <p>
-                You are already a member of{" "}
-                <span className="font-medium text-foreground">
-                  {alreadyMemberOrganization.name}
-                </span>
-                .
-              </p>
-            ) : null}
           </CardContent>
           <CardFooter className="flex flex-col gap-2">
-            {alreadyMemberOrganization ? (
-              <Button asChild className="w-full">
-                <Link to={`/organizations/${alreadyMemberOrganization.slug}/members`}>
-                  View organization
-                </Link>
-              </Button>
-            ) : null}
             <Button asChild variant="outline" className="w-full">
               <Link to="/dashboard">Go to dashboard</Link>
             </Button>
@@ -129,6 +136,34 @@ export default function OrganizationInvitationPage({ params }: Route.ComponentPr
 
   if (!invitation) {
     return null;
+  }
+
+  if (memberOfInvitedOrganization) {
+    return (
+      <InvitationPageShell>
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Already a member</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground space-y-2">
+            <p>
+              You are already a member of{" "}
+              <span className="font-medium text-foreground">
+                {memberOfInvitedOrganization.name}
+              </span>
+              .
+            </p>
+          </CardContent>
+          <CardFooter>
+            <Button asChild className="w-full">
+              <Link to={`/organizations/${memberOfInvitedOrganization.slug}/members`}>
+                View organization
+              </Link>
+            </Button>
+          </CardFooter>
+        </Card>
+      </InvitationPageShell>
+    );
   }
 
   return (
@@ -158,6 +193,7 @@ export default function OrganizationInvitationPage({ params }: Route.ComponentPr
           <p className="text-muted-foreground">
             Accept to join as <span className="text-foreground">{sessionData.user.email}</span>.
           </p>
+          {actionError ? <p className="text-destructive">{actionError}</p> : null}
         </CardContent>
         <CardFooter className="flex gap-2">
           <Button
