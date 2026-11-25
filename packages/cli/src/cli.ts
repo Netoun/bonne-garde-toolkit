@@ -17,7 +17,7 @@ import { missingPackageManager, packageManagerOf } from "./package-manager";
 import { cliVersion, migrationsDir, registryDir } from "./paths";
 import { recordIntentionOutcome } from "./record";
 import { manifestMigrationNotice, reportAdd } from "./report";
-import { clack, showAdd, step } from "./terminal";
+import { addPhases, clack, showAdd } from "./terminal";
 
 /** A flag the command does not know is a typo: it fails with the nearest flag, never as a name or a query. */
 function refuseUnknownFlag(command: string, args: readonly string[]): void {
@@ -141,35 +141,28 @@ async function dispatch(argv: string[]): Promise<number> {
     if (!json) {
       clack.intro(styleText("inverse", " bonne-garde add "));
       try {
-        const outcome = await step(
-          `${dryRun ? "Planning" : "Adding"} ${args.join(", ")}`,
-          () =>
-            addItems({
-              items: args,
-              source,
-              dryRun,
-              force,
-              install: !noInstall,
-              installOutput: "capture",
-            }).catch(forceHint),
-          ({ modulePlans, plan }) => {
-            const names = [
-              ...modulePlans.map(({ key }) => key),
-              ...plan.items.map(({ name }) => name),
-            ];
-            const shown =
-              names.length > 4
-                ? `${names.slice(0, 4).join(", ")} and ${names.length - 4} more`
-                : names.join(", ");
-            return `${dryRun ? "Planned" : "Added"} ${shown}`;
-          },
-        );
-        showAdd(outcome, dryRun, await packageManagerOf(process.cwd()).catch(() => null));
+        const pm = await packageManagerOf(process.cwd()).catch(() => null);
+        const outcome = await addItems({
+          items: args,
+          source,
+          dryRun,
+          force,
+          install: !noInstall,
+          installOutput: "capture",
+          phase: addPhases(args, dryRun, pm),
+        }).catch(forceHint);
+        showAdd(outcome, dryRun, pm);
         if (outcome.installMissing !== null) {
           clack.cancel(missingPackageManager(outcome.installMissing));
           return 1;
         }
-        clack.outro(dryRun ? "Nothing written: --dry-run." : "En garde.");
+        clack.outro(
+          dryRun
+            ? "Nothing written. Run it again without --dry-run to apply."
+            : outcome.unchanged.length > 0 && outcome.unchanged.length === args.length
+              ? "Nothing to do."
+              : "Done.",
+        );
         return 0;
       } catch (error) {
         clack.cancel(clackErrorText(error));

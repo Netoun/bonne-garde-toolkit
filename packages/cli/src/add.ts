@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { createEmptyProjectManifest } from "@bonne-garde/schema";
+import { createEmptyProjectManifest, type ProjectManifest } from "@bonne-garde/schema";
 import {
   applyInstallPlan,
   checkModuleSet,
@@ -12,12 +12,13 @@ import {
   resolveInstallPlan,
   resolveModulePlans,
   searchCatalog,
+  type ApplyResult,
   type GithubOptions,
 } from "@bonne-garde/registry";
 import { stagePendingIntentions, type StagedAdd } from "./intentions/stage-add";
 import { defaultSource, loadManifest } from "./manifest-file";
 import { platformPackageVersion } from "./paths";
-import { installDependencies } from "./package-manager";
+import { installDependencies, type PackageManager } from "./package-manager";
 
 /**
  * How a github source is read. A caller that does not say gets GitHub raw, with `GITHUB_TOKEN` when
@@ -95,7 +96,38 @@ export type AddOptions = {
   installOutput?: "inherit" | "capture";
   /** Where a `github:` source is read from; GitHub raw unless a test says otherwise. */
   github?: GithubOptions;
+  /** Wraps each step of the call, so a terminal can show it and name the one that failed. */
+  phase?: AddPhaseRunner;
 };
+
+/** The steps of an add, in order. A dry run has no `install`. */
+export type AddPhase = "plan" | "write" | "install";
+
+/** What each step produces: the runner reads it to say what the step did. */
+export type AddPhaseValues = {
+  plan: Awaited<ReturnType<typeof planAdd>>;
+  write: ApplyResult;
+  install: { pm: PackageManager; missing: boolean };
+};
+
+export type AddPhaseRunner = <P extends AddPhase>(
+  name: P,
+  run: () => Promise<AddPhaseValues[P]>,
+) => Promise<AddPhaseValues[P]>;
+
+/** Every npm package an add brings: the items' and the modules', runtime and dev, once each. */
+export function packagesOf({ plan, modulePlans }: AddPhaseValues["plan"]): string[] {
+  return [
+    ...new Set([
+      ...plan.npmDependencies,
+      ...plan.npmDevDependencies,
+      ...modulePlans.flatMap(({ dependencies, devDependencies }) => [
+        ...Object.keys(dependencies),
+        ...Object.keys(devDependencies),
+      ]),
+    ]),
+  ].sort();
+}
 
 /**
  * A check that throws what `bonne-garde add` would refuse of a set of names in an empty project,
@@ -123,13 +155,13 @@ export async function namesChecker(
 
 export type AddOutcome = Awaited<ReturnType<typeof addItems>>;
 
-export async function addItems(options: AddOptions) {
-  const projectRoot = resolve(options.projectRoot ?? process.cwd());
-  const { manifest, migratedFrom } = await loadManifest(projectRoot);
-  const source = options.source ?? defaultSource(manifest);
-  if (!source) {
-    throw new Error("no registry configured in bg.json");
-  }
+/** Step one: read the registry, sort the names, plan the items and the modules. Nothing is written. */
+async function planAdd(
+  options: AddOptions,
+  projectRoot: string,
+  manifest: ProjectManifest,
+  source: string,
+) {
   const loaded = await loadRegistryFromSource(source, projectRoot, {
     platformVersion: manifest.platform.version,
     github: githubOptions(options.github),
@@ -151,30 +183,41 @@ export async function addItems(options: AddOptions) {
     [...modules, ...reselected.map(({ ref }) => ref)],
     manifest,
   );
-  const { dryRun = false, force = false } = options;
-  const result = await applyInstallPlan({
-    projectRoot,
-    manifest,
-    plan,
-    modules: modulePlans,
-    sourceLabel: source.startsWith("local:") ? "@bg" : source,
-    dryRun,
-    force,
-    reselected,
-  });
+  return { plan, modulePlans, items, modules, reselected };
+}
 
-  const modulesNeedInstall = modulePlans.some(
-    (module) =>
-      Object.keys(module.dependencies).length + Object.keys(module.devDependencies).length > 0,
+export async function addItems(options: AddOptions) {
+  const projectRoot = resolve(options.projectRoot ?? process.cwd());
+  const { manifest, migratedFrom } = await loadManifest(projectRoot);
+  const source = options.source ?? defaultSource(manifest);
+  if (!source) {
+    throw new Error("no registry configured in bg.json");
+  }
+  const phase: AddPhaseRunner = options.phase ?? ((_, run) => run());
+  const { dryRun = false, force = false } = options;
+  const planned = await phase("plan", () => planAdd(options, projectRoot, manifest, source));
+  const { plan, modulePlans, items, modules, reselected } = planned;
+  const result = await phase("write", () =>
+    applyInstallPlan({
+      projectRoot,
+      manifest,
+      plan,
+      modules: modulePlans,
+      sourceLabel: source.startsWith("local:") ? "@bg" : source,
+      dryRun,
+      force,
+      reselected,
+    }),
   );
+
+  const packages = packagesOf(planned);
   // No package manager to install with is not a failed add: the files are written, and what the add did
   // is still reported. The caller says so (`missingPackageManager`) and exits non-zero.
-  const installs =
-    !dryRun &&
-    options.install !== false &&
-    (plan.npmDependencies.length + plan.npmDevDependencies.length > 0 || modulesNeedInstall);
+  const installs = !dryRun && options.install !== false && packages.length > 0;
   const installed = installs
-    ? await installDependencies(projectRoot, { output: options.installOutput ?? "inherit" })
+    ? await phase("install", () =>
+        installDependencies(projectRoot, { output: options.installOutput ?? "inherit" }),
+      )
     : null;
   const installMissing = installed?.missing ? installed.pm : null;
 
@@ -192,5 +235,32 @@ export async function addItems(options: AddOptions) {
     ? null
     : await stagePendingIntentions(projectRoot, [...result.pending, ...result.authored], resolved);
 
-  return { plan, modulePlans, result, migratedFrom, staged, reselected, installMissing };
+  // Named in the call, installed before it, and left as they were: the report says so, not "added".
+  const written = new Set(result.written);
+  const touched = new Set([
+    ...Object.entries(result.manifest.files)
+      .filter(([path]) => written.has(path))
+      .map(([, { owner }]) => owner),
+    ...result.patches.filter(({ status }) => status === "applied").map(({ module }) => module),
+  ]);
+  const unchanged = [
+    ...items.filter((name) => name in manifest.items),
+    ...modules
+      .filter(({ category, id }) => manifest.modules[category]?.some((record) => record.id === id))
+      .map(({ category, id }) => `${category}/${id}`),
+  ].filter((name) => !touched.has(name));
+
+  return {
+    plan,
+    modulePlans,
+    result,
+    migratedFrom,
+    staged,
+    reselected,
+    installMissing,
+    requestedItems: items,
+    unchanged,
+    packages,
+    installedWith: installed === null ? null : installed.pm,
+  };
 }
