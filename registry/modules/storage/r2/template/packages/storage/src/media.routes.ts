@@ -15,7 +15,7 @@ export function mediaRoutes(resolveStorage: ResolveStorage, macro: AuthMacro) {
       .use(macro)
       .use(mediaServicePlugin(resolveStorage))
       // Public route to serve files from R2 (no auth required for viewing images)
-      // Using * to capture the full path including slashes (e.g., "medias/nodes/uuid-filename.png")
+      // Using * to capture the full path including slashes (e.g., "medias/nodes/uuid.png")
       .get("/file/*", async ({ params, mediaService, set }) => {
         try {
           // Decode URL-encoded characters in the key (e.g., %20 -> space, %C3%A9 -> é)
@@ -31,6 +31,8 @@ export function mediaRoutes(resolveStorage: ResolveStorage, macro: AuthMacro) {
             headers: {
               "Content-Type": result.contentType,
               "Cache-Control": "public, max-age=31536000", // Cache for 1 year
+              // The stored type is the detected one, and a browser must not second-guess it.
+              "X-Content-Type-Options": "nosniff",
             },
           });
         } catch (error) {
@@ -59,7 +61,10 @@ export function mediaRoutes(resolveStorage: ResolveStorage, macro: AuthMacro) {
               organizationId,
             });
           } catch (error) {
-            if (error instanceof R2Error && error.code === "INVALID_KEY") {
+            if (
+              error instanceof R2Error &&
+              (error.code === "INVALID_KEY" || error.code === "INVALID_FILE_TYPE")
+            ) {
               return status(400, { error: error.message, code: error.code });
             }
             throw error;

@@ -30,6 +30,18 @@ function createImageFile(content: string, name: string) {
   });
 }
 
+/** A real 1x1 PNG. */
+const PNG = new Uint8Array(
+  Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==",
+    "base64",
+  ),
+);
+
+function createPngFile(name: string, type = "image/png") {
+  return new File([PNG], name, { type });
+}
+
 /** Every file under `dir`, as paths relative to it: what is on the disk, whatever the service says. */
 async function filesUnder(dir: string): Promise<string[]> {
   if (!existsSync(dir)) return [];
@@ -66,7 +78,7 @@ describe("the media routes", () => {
 
       expect(error).toBeNull();
       if (!data) throw new Error("Expected uploaded media");
-      expect(data.key).toMatch(/^medias\/test-folder\/[a-f0-9-]+-test\.jpg$/);
+      expect(data.key).toMatch(/^medias\/test-folder\/[a-f0-9-]{36}\.jpg$/);
       expect(data.url).toContain(`${TEST_PUBLIC_URL}/medias/test-folder/`);
       expect(await filesUnder(testBucket.root)).toEqual([data.key]);
       expect(new Uint8Array(await readFile(join(testBucket.root, data.key)))).toEqual(
@@ -84,15 +96,47 @@ describe("the media routes", () => {
       });
     });
 
-    it("uses the uploads folder by default, and percent-encodes the url but not the key", async () => {
+    it("uses the uploads folder by default, and keeps the client filename out of the key and the url", async () => {
       const { data, error } = await api.v1.media.post({
         file: createImageFile("test-content", "é #1 100%?.jpg"),
       });
 
       expect(error).toBeNull();
-      expect(data?.key).toMatch(/^medias\/uploads\/[a-f0-9-]+-é #1 100%\?\.jpg$/);
-      expect(data?.url).toMatch(/\/uploads\/[a-f0-9-]+-%C3%A9%20%231%20100%25%3F\.jpg$/);
-      expect(extractKeyFromUrl(data?.url ?? "", TEST_PUBLIC_URL)).toBe(data?.key ?? "");
+      if (!data) throw new Error("Expected uploaded media");
+      expect(data.name).toBe("é #1 100%?.jpg");
+      expect(data.key).toMatch(/^medias\/uploads\/[a-f0-9-]{36}\.jpg$/);
+      expect(data.url).toBe(`${TEST_PUBLIC_URL}/${data.key}`);
+      expect(extractKeyFromUrl(data.url, TEST_PUBLIC_URL)).toBe(data.key);
+      const [row] = await test.db.select().from(medias).where(eq(medias.id, data.id));
+      expect(row?.name).toBe("é #1 100%?.jpg");
+    });
+
+    it("stores a real PNG uploaded as image/png with its detected type and a random .png key", async () => {
+      const { data, error } = await api.v1.media.post({ file: createPngFile("holiday photo.png") });
+
+      expect(error).toBeNull();
+      if (!data) throw new Error("Expected uploaded media");
+      expect(data.key).toMatch(/^medias\/[^/]+\/[0-9a-f-]{36}\.png$/);
+      const [row] = await test.db.select().from(medias).where(eq(medias.id, data.id));
+      expect(row?.mimeType).toBe("image/png");
+    });
+
+    it("refuses a real PNG uploaded as image/jpeg with 400, and stores nothing", async () => {
+      const { error } = await api.v1.media.post({ file: createPngFile("photo.jpg", "image/jpeg") });
+
+      expect(statusOf(error)).toBe(400);
+      expect(await filesUnder(testBucket.dataDir)).toEqual([]);
+      expect(await test.db.select().from(medias)).toEqual([]);
+    });
+
+    it("refuses a text file declared image/png with 400, and stores nothing", async () => {
+      const file = new File(["not an image"], "fake.png", { type: "image/png" });
+
+      const { error } = await api.v1.media.post({ file });
+
+      expect(statusOf(error)).toBe(400);
+      expect(await filesUnder(testBucket.dataDir)).toEqual([]);
+      expect(await test.db.select().from(medias)).toEqual([]);
     });
 
     it("rejects a folder that leaves the media directory, and writes nothing", async () => {
@@ -116,30 +160,21 @@ describe("the media routes", () => {
       expect(await test.db.select().from(medias)).toEqual([]);
     });
 
-    it("rejects a file type or size Elysia validates, and stores nothing", async () => {
+    it("refuses a text file declared text/plain with 400, and a file over 10 MB with 422 (Elysia's), and stores nothing", async () => {
       const text = new File(["test-content"], "test.txt", { type: "text/plain" });
       const large = new File([new Uint8Array(11 * 1024 * 1024)], "large.jpg", {
         type: "image/jpeg",
       });
 
-      for (const file of [text, large]) {
-        const { error } = await api.v1.media.post({ file });
-        expect(statusOf(error)).toBe(422);
-      }
+      expect(statusOf((await api.v1.media.post({ file: text })).error)).toBe(400);
+      expect(statusOf((await api.v1.media.post({ file: large })).error)).toBe(422);
       expect(await filesUnder(testBucket.dataDir)).toEqual([]);
     });
   });
 
   describe("GET /v1/media/file/*", () => {
     it("reads back the same bytes and content type an upload wrote, with no session", async () => {
-      // A real 1x1 PNG: Elysia checks the signature and the structure of an image.
-      const png = new Uint8Array(
-        Buffer.from(
-          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==",
-          "base64",
-        ),
-      );
-      const file = new File([png], "a.png", { type: "image/png" });
+      const file = createPngFile("a.png");
       const { data } = await api.v1.media.post({ file });
       if (!data) throw new Error("Expected uploaded media");
 
@@ -150,6 +185,7 @@ describe("the media routes", () => {
       expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toContain("image/png");
       expect(response.headers.get("cache-control")).toBe("public, max-age=31536000");
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
       expect(new Uint8Array(await response.arrayBuffer())).toEqual(
         new Uint8Array(await file.arrayBuffer()),
       );

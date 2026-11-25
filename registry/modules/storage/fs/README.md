@@ -27,21 +27,26 @@ One default variant. `storage/r2` there is refused (`storage/r2 accepts only clo
 Everything in `packages/storage`. `schema.ts` and `media.contract.ts` are those of `storage/r2` (the second
 imports its types from `storage.ts`, where `r2.ts` has them); a contract test compares them.
 
-| File                   | What it is                                                                                                 |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `src/bucket.ts`        | `MediaBucket` (`put`, `get`, `delete`), `createFsBucket(root)` over `node:fs/promises`, and `readBucket()` |
-| `src/storage.ts`       | `R2Error`, `validateFile`, `validateKey`, `generateKey`, `publicUrlFor`, `uploadFile`, `deleteFile`        |
-| `src/env.ts`           | `resolvePublicUrl`: `<APP_URL>/v1/media/file`                                                              |
-| `src/media.service.ts` | `createMediaService(context)`: `uploadMedia`, `deleteMedia`, `getMediaById`, `getFile`                     |
-| `src/media.module.ts`  | `mediaModule`, which `apps/api` mounts, and `resolveRuntimeStorage()`                                      |
+| File                   | What it is                                                                                                             |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `src/bucket.ts`        | `MediaBucket` (`put`, `get`, `delete`), `createFsBucket(root)` over `node:fs/promises`, and `readBucket()`             |
+| `src/storage.ts`       | `R2Error`, `detectImageType`, `validateFile`, `validateKey`, `generateKey`, `publicUrlFor`, `uploadFile`, `deleteFile` |
+| `src/env.ts`           | `resolvePublicUrl`: `<APP_URL>/v1/media/file`                                                                          |
+| `src/media.service.ts` | `createMediaService(context)`: `uploadMedia`, `deleteMedia`, `getMediaById`, `getFile`                                 |
+| `src/media.module.ts`  | `mediaModule`, which `apps/api` mounts, and `resolveRuntimeStorage()`                                                  |
 
 `R2Error` keeps its name and its codes (but `BUCKET_NOT_CONFIGURED`: a directory is always there), so code written
 against one storage module runs against the other.
 
+An upload is checked on its content, as in `storage/r2`: the first bytes must be a JPEG, PNG, GIF or WebP that
+matches the declared type, else `400 INVALID_FILE_TYPE`; `medias.mime_type` holds the detected type, and the file
+route sends `X-Content-Type-Options: nosniff`.
+
 ## Where the files are
 
 `<DATA_DIR>/media/<key>`, with `DATA_DIR` read as `db/libsql` reads it (`.data` by default, `/data` in the
-container). The directory is created on the first upload. A key is `medias/<folder>/<uuid>-<filename>`.
+container). The directory is created on the first upload. A key is `medias/<folder>/<uuid>.<ext>`, random, with the
+extension of the detected type (`jpg`, `png`, `gif`, `webp`): the client's filename stays in `medias.name`.
 
 Every key goes through `validateKey` (no `..`, no empty segment, so no absolute key, no backslash, no control
 character), and `createFsBucket` then refuses any key whose path already holds a symbolic link, so a link placed

@@ -80,10 +80,10 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
 
   const uploadMedia = async (
     input: UploadMediaInput,
-  ): Promise<UploadResult & { id: string; name: string }> => {
+  ): Promise<Pick<UploadResult, "key" | "url"> & { id: string; name: string }> => {
     try {
       // Write the file first
-      const { key, url } = await uploadFile(bucket, publicUrl, {
+      const { key, url, mimeType } = await uploadFile(bucket, publicUrl, {
         folder: input.folder,
         file: input.file,
       });
@@ -96,7 +96,7 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
         url,
         key,
         size: input.file.size,
-        mimeType: input.file.type,
+        mimeType,
         authorId: input.userId,
         organizationId: input.organizationId,
         createdAt: new Date(),

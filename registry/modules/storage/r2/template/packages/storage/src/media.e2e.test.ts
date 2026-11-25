@@ -7,14 +7,7 @@ import { SQLiteTable } from "drizzle-orm/sqlite-core";
 import * as authSchema from "{{SCOPE}}/auth/schema";
 // oxfmt-ignore
 import { resetStatements } from "{{SCOPE}}/db/reset";
-import {
-  deleteFromR2,
-  extractKeyFromUrl,
-  generateKey,
-  uploadToR2,
-  validateFile,
-  R2Error,
-} from "./r2";
+import { deleteFromR2, extractKeyFromUrl, uploadToR2 } from "./r2";
 import * as storageSchema from "./schema";
 import { medias } from "./schema";
 import { TEST_PUBLIC_URL, createTestStorage, startTestBucket } from "./testing";
@@ -44,69 +37,20 @@ function createImageFile(content: string, name: string) {
   });
 }
 
+/** A real 1x1 PNG. */
+const PNG = new Uint8Array(
+  Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==",
+    "base64",
+  ),
+);
+
+function createPngFile(name: string, type = "image/png") {
+  return new File([PNG], name, { type });
+}
+
 describe("R2 Helper Functions", () => {
   const publicUrl = "https://media.example.com";
-
-  describe("validateFile", () => {
-    it("should accept valid image types", () => {
-      const validFiles = [
-        new File([""], "test.jpg", { type: "image/jpeg" }),
-        new File([""], "test.png", { type: "image/png" }),
-        new File([""], "test.webp", { type: "image/webp" }),
-        new File([""], "test.gif", { type: "image/gif" }),
-      ];
-
-      for (const file of validFiles) {
-        expect(() => validateFile(file)).not.toThrow();
-      }
-    });
-
-    it("should reject invalid file types", () => {
-      const invalidFiles = [
-        new File([""], "test.txt", { type: "text/plain" }),
-        new File([""], "test.pdf", { type: "application/pdf" }),
-        new File([""], "test.exe", { type: "application/x-msdownload" }),
-      ];
-
-      for (const file of invalidFiles) {
-        expect(() => validateFile(file)).toThrow(R2Error);
-      }
-    });
-
-    it("should reject files that are too large", () => {
-      const largeContent = new Uint8Array(11 * 1024 * 1024);
-      const largeFile = new File([largeContent], "large.jpg", { type: "image/jpeg" });
-
-      expect(() => validateFile(largeFile)).toThrow(R2Error);
-    });
-  });
-
-  describe("generateKey", () => {
-    it("should generate correct key format", () => {
-      const key = generateKey("nodes/123", "test-image.jpg");
-
-      expect(key).toMatch(/^medias\/nodes\/123\/[a-f0-9-]+-test-image\.jpg$/);
-    });
-
-    it("should sanitize folder paths", () => {
-      const key = generateKey("/test/folder/", "file.jpg");
-
-      expect(key).toMatch(/^medias\/test\/folder\/[a-f0-9-]+-file\.jpg$/);
-    });
-
-    it("should sanitize filenames without destroying unicode", () => {
-      const key = generateKey("test", "file with accents éàè.jpg");
-
-      expect(key).toMatch(/^medias\/test\/[a-f0-9-]+-file with accents éàè\.jpg$/);
-    });
-
-    it("should prevent directory traversal", () => {
-      const key = generateKey("test", "../../../etc/passwd.jpg");
-
-      expect(key).not.toContain("../");
-      expect(key).toMatch(/^medias\/test\/[a-f0-9-]+-_.*etc_passwd\.jpg$/);
-    });
-  });
 
   describe("extractKeyFromUrl", () => {
     it("should extract key from URL", () => {
@@ -136,7 +80,7 @@ describe("R2 Helper Functions", () => {
 
   describe("uploadToR2", () => {
     it("should upload file to R2 bucket", async () => {
-      const file = new File(["test-content"], "test.jpg", { type: "image/jpeg" });
+      const file = createImageFile("test-content", "test.jpg");
 
       const result = await uploadToR2(bucket, publicUrl, {
         folder: "test",
@@ -144,21 +88,22 @@ describe("R2 Helper Functions", () => {
       });
 
       expect(result.url).toMatch(
-        /^https:\/\/media\.example\.com\/medias\/test\/[a-f0-9-]+-test\.jpg$/,
+        /^https:\/\/media\.example\.com\/medias\/test\/[a-f0-9-]{36}\.jpg$/,
       );
-      expect(result.key).toMatch(/^medias\/test\/[a-f0-9-]+-test\.jpg$/);
+      expect(result.key).toMatch(/^medias\/test\/[a-f0-9-]{36}\.jpg$/);
+      expect(result.mimeType).toBe("image/jpeg");
 
       // Verify the object exists in bucket
       const obj = await bucket.head(result.key);
       expect(obj).not.toBeNull();
-      expect(obj?.size).toBe(12); // "test-content".length
+      expect(obj?.size).toBe(file.size);
       expect(obj?.httpMetadata).toHaveProperty("contentType", "image/jpeg");
     });
   });
 
   describe("deleteFromR2", () => {
     it("should delete file from R2 bucket", async () => {
-      const file = new File(["test-content"], "test.jpg", { type: "image/jpeg" });
+      const file = createImageFile("test-content", "test.jpg");
 
       const { key } = await uploadToR2(bucket, publicUrl, {
         folder: "test",
@@ -210,7 +155,7 @@ describe("the media routes", () => {
       expect(data.id).toBeDefined();
       expect(data.name).toBe("test-image.jpg");
       expect(data.url).toMatch(
-        /^https:\/\/media\.example\.com\/medias\/test-folder\/[a-f0-9-]+-test-image\.jpg$/,
+        /^https:\/\/media\.example\.com\/medias\/test-folder\/[a-f0-9-]{36}\.jpg$/,
       );
       expect(data.key).toBeDefined();
 
@@ -238,17 +183,51 @@ describe("the media routes", () => {
       expect(data?.url).toMatch(/\/uploads\//);
     });
 
-    it("should percent-encode the public url and keep the stored key as is", async () => {
+    it("should keep the client filename out of the key and the url, and in the record", async () => {
       const file = createImageFile("test-content", "é #1 100%?.jpg");
 
       const { data, error } = await api.v1.media.post({ file, folder: "test-folder" });
 
       expect(error).toBeNull();
-      expect(data?.key).toMatch(/^medias\/test-folder\/[a-f0-9-]+-é #1 100%\?\.jpg$/);
-      expect(data?.url).toMatch(
-        /^https:\/\/media\.example\.com\/medias\/test-folder\/[a-f0-9-]+-%C3%A9%20%231%20100%25%3F\.jpg$/,
+      if (!data) throw new Error("Expected uploaded media");
+      expect(data.name).toBe("é #1 100%?.jpg");
+      expect(data.key).toMatch(/^medias\/test-folder\/[a-f0-9-]{36}\.jpg$/);
+      expect(data.url).toBe(`${TEST_PUBLIC_URL}/${data.key}`);
+      expect(extractKeyFromUrl(data.url, TEST_PUBLIC_URL)).toBe(data.key);
+      const [row] = await test.db.select().from(medias).where(eq(medias.id, data.id));
+      expect(row?.name).toBe("é #1 100%?.jpg");
+    });
+
+    it("should store a real PNG uploaded as image/png with its detected type and a random .png key", async () => {
+      const { data, error } = await api.v1.media.post({ file: createPngFile("holiday photo.png") });
+
+      expect(error).toBeNull();
+      if (!data) throw new Error("Expected uploaded media");
+      expect(data.key).toMatch(/^medias\/[^/]+\/[0-9a-f-]{36}\.png$/);
+      const [row] = await test.db.select().from(medias).where(eq(medias.id, data.id));
+      expect(row?.mimeType).toBe("image/png");
+      expect((await bucket.head(data.key))?.httpMetadata).toHaveProperty(
+        "contentType",
+        "image/png",
       );
-      expect(extractKeyFromUrl(data?.url ?? "", TEST_PUBLIC_URL)).toBe(data?.key ?? "");
+    });
+
+    it("should refuse a real PNG uploaded as image/jpeg with 400, and store nothing", async () => {
+      const { error } = await api.v1.media.post({ file: createPngFile("photo.jpg", "image/jpeg") });
+
+      expect(statusOf(error)).toBe(400);
+      expect((await bucket.list()).objects).toEqual([]);
+      expect(await test.db.select().from(medias)).toEqual([]);
+    });
+
+    it("should refuse a text file declared image/png with 400, and store nothing", async () => {
+      const file = new File(["not an image"], "fake.png", { type: "image/png" });
+
+      const { error } = await api.v1.media.post({ file });
+
+      expect(statusOf(error)).toBe(400);
+      expect((await bucket.list()).objects).toEqual([]);
+      expect(await test.db.select().from(medias)).toEqual([]);
     });
 
     it("should reject a folder that is not a valid key path and store nothing", async () => {
@@ -396,16 +375,22 @@ describe("the media routes", () => {
     });
   });
 
-  describe("validation", () => {
-    it("should reject invalid file types at Elysia validation level", async () => {
-      const file = new File(["test-content"], "test.txt", { type: "text/plain" });
+  describe("GET /v1/media/file/*", () => {
+    it("should serve the file with X-Content-Type-Options: nosniff", async () => {
+      const { data } = await api.v1.media.post({ file: createPngFile("a.png") });
+      if (!data) throw new Error("Expected uploaded media");
 
-      const { error } = await api.v1.media.post({ file });
+      const response = await test.app.handle(
+        new Request(`http://api.test/v1/media/file/${data.key}`),
+      );
 
-      expect(statusOf(error)).toBe(422);
-      expect((await bucket.list()).objects).toEqual([]);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(response.headers.get("content-type")).toBe("image/png");
     });
+  });
 
+  describe("validation", () => {
     it("should reject files too large at Elysia validation level", async () => {
       const largeContent = new Uint8Array(11 * 1024 * 1024);
       const file = new File([largeContent], "large.jpg", { type: "image/jpeg" });
@@ -423,19 +408,19 @@ describe("R2 Integration - Full Flow", () => {
     const publicUrl = "https://media.example.com";
 
     // Upload
-    const file = new File(["image-data-here"], "my-photo.png", { type: "image/png" });
+    const file = createPngFile("my-photo.png");
     const { key, url } = await uploadToR2(bucket, publicUrl, {
       folder: "nodes/node-123",
       file,
     });
 
     expect(url).toContain("/medias/nodes/node-123/");
-    expect(url).toContain("-my-photo.png");
+    expect(url).toMatch(/\/[a-f0-9-]{36}\.png$/);
 
     // Verify upload
     const uploaded = await bucket.get(key);
     expect(uploaded).not.toBeNull();
-    expect(uploaded?.size).toBe(15); // "image-data-here".length
+    expect(uploaded?.size).toBe(file.size);
     expect(uploaded?.httpMetadata).toHaveProperty("contentType", "image/png");
 
     // List objects
@@ -454,9 +439,9 @@ describe("R2 Integration - Full Flow", () => {
     const publicUrl = "https://media.example.com";
 
     const files = [
-      new File(["content1"], "file1.jpg", { type: "image/jpeg" }),
-      new File(["content2"], "file2.png", { type: "image/png" }),
-      new File(["content3"], "file3.gif", { type: "image/gif" }),
+      createImageFile("content1", "file1.jpg"),
+      createPngFile("file2.png"),
+      new File([new TextEncoder().encode("GIF89a content3")], "file3.gif", { type: "image/gif" }),
     ];
 
     const keys: string[] = [];

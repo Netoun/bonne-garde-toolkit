@@ -31,20 +31,20 @@ into pending intentions, but `auth` makes that case unreachable.
 
 Everything in `packages/storage`, from explicit paths:
 
-| File                    | What it is                                                                                            |
-| ----------------------- | ----------------------------------------------------------------------------------------------------- |
-| `package.json`          | `{{SCOPE}}/storage`: the `.` and `./schema` exports, the `typecheck` and `test` scripts               |
-| `src/r2.ts`             | `R2Error`, `validateFile`, `validateKey`, `generateKey`, `publicUrlFor`, `uploadToR2`, `deleteFromR2` |
-| `src/bucket.ts`         | `bindR2(env)` and `readR2()`: the `BUCKET` binding, or `undefined` (see below)                        |
-| `src/env.ts`            | `resolveStorageEnv`: `R2_PUBLIC_URL`, read from `readRuntimeEnv()`, and its default in development    |
-| `src/schema.ts`         | the `medias` table and its relations                                                                  |
-| `src/media.contract.ts` | the Elysia body and params of the routes                                                              |
-| `src/media.service.ts`  | `createMediaService(context)` and the plugin that puts `mediaService` on a route's context            |
-| `src/media.routes.ts`   | the routes, guarded by an `auth` macro they are given                                                 |
-| `src/media.module.ts`   | `mediaModule`, which `apps/api` mounts, and `resolveRuntimeStorage()`, what a request runs against    |
-| `src/index.ts`          | what `apps/api` imports                                                                               |
-| `src/testing.ts`        | `startTestBucket()` and `createTestStorage()`, for this package's tests                               |
-| `src/*.test.ts`         | 75 tests: the legacy ones that travel, and the new ones                                               |
+| File                    | What it is                                                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `package.json`          | `{{SCOPE}}/storage`: the `.` and `./schema` exports, the `typecheck` and `test` scripts                                  |
+| `src/r2.ts`             | `R2Error`, `detectImageType`, `validateFile`, `validateKey`, `generateKey`, `publicUrlFor`, `uploadToR2`, `deleteFromR2` |
+| `src/bucket.ts`         | `bindR2(env)` and `readR2()`: the `BUCKET` binding, or `undefined` (see below)                                           |
+| `src/env.ts`            | `resolveStorageEnv`: `R2_PUBLIC_URL`, read from `readRuntimeEnv()`, and its default in development                       |
+| `src/schema.ts`         | the `medias` table and its relations                                                                                     |
+| `src/media.contract.ts` | the Elysia body and params of the routes                                                                                 |
+| `src/media.service.ts`  | `createMediaService(context)` and the plugin that puts `mediaService` on a route's context                               |
+| `src/media.routes.ts`   | the routes, guarded by an `auth` macro they are given                                                                    |
+| `src/media.module.ts`   | `mediaModule`, which `apps/api` mounts, and `resolveRuntimeStorage()`, what a request runs against                       |
+| `src/index.ts`          | what `apps/api` imports                                                                                                  |
+| `src/testing.ts`        | `startTestBucket()` and `createTestStorage()`, for this package's tests                                                  |
+| `src/*.test.ts`         | 82 tests: the legacy ones that travel, and the new ones                                                                  |
 
 Dependencies are exact: `drizzle-orm` and `elysia` at the releases `auth` and `orm/drizzle` pin (a
 contract test compares them), the project's `api-runtime`, `auth` and `db` as workspaces, and, for the
@@ -59,12 +59,18 @@ module does not wait for one, because the path is stored: `medias.url` is `<R2_P
 Moving the routes would break every url already written to a database. A front calls them through
 Eden as `api.v1.media`.
 
-| Route                  | Auth    | Does                                                                                       |
-| ---------------------- | ------- | ------------------------------------------------------------------------------------------ |
-| `GET /v1/media/file/*` | none    | serves an object by key, cached for a year; `400 INVALID_KEY` for an unsafe key            |
-| `POST /v1/media`       | session | uploads an image (jpeg, png, webp, gif, 10 MB at most) and records it                      |
-| `DELETE /v1/media/:id` | session | deletes the object and the record, for its author or an admin or owner of its organization |
-| `GET /v1/media/:id`    | session | the record, with its author and organization                                               |
+| Route                  | Auth    | Does                                                                                                                                     |
+| ---------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /v1/media/file/*` | none    | serves an object by key, cached for a year, with `X-Content-Type-Options: nosniff`; `400 INVALID_KEY` for an unsafe key                  |
+| `POST /v1/media`       | session | uploads an image (jpeg, png, webp, gif, 10 MB at most) and records it; `400 INVALID_FILE_TYPE` if its bytes are not the type it declares |
+| `DELETE /v1/media/:id` | session | deletes the object and the record, for its author or an admin or owner of its organization                                               |
+| `GET /v1/media/:id`    | session | the record, with its author and organization                                                                                             |
+
+An upload is checked on its content, not on the type the client declares: `validateFile` reads the first bytes
+(hand-written signatures for JPEG, PNG, GIF and WebP, so the same code runs on Workers and Node) and refuses, with
+`INVALID_FILE_TYPE` (`400`), a file that is none of them or whose type is not the declared one. The detected type is
+what `medias.mime_type` and the object's content type hold. The key is `medias/<folder>/<uuid>.<ext>`, with no
+trace of the client's filename (it stays in `medias.name`), and the file route sends `nosniff`.
 
 The routes are given the `auth` macro: `mediaModule` is built with `authMacro` from `{{SCOPE}}/auth`, and
 `mediaPlugin(resolveStorage, macro)` takes another, which is how the tests run the real routes behind a real
@@ -160,7 +166,7 @@ storage's table, storage reads `createDB`), like the one `auth` has; bun and pnp
 
 ## Tests
 
-75 tests in the project, against what is real: an R2 bucket from Miniflare (workerd's own, not a stand-in), an
+82 tests in the project, against what is real: an R2 bucket from Miniflare (workerd's own, not a stand-in), an
 in-memory SQLite that has the auth and media tables, and a Better Auth instance for the sessions (`createTestAuth` of
 `{{SCOPE}}/auth/testing`, given the media tables: storage keeps no sign-in flow of its own). Nothing is
 mocked. The legacy ones travel: `r2.test.ts`, the file route of `media.routes.test.ts`, and the service cases

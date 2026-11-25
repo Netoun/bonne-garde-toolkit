@@ -80,14 +80,14 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
 
   const uploadMedia = async (
     input: UploadMediaInput,
-  ): Promise<UploadResult & { id: string; name: string }> => {
+  ): Promise<Pick<UploadResult, "key" | "url"> & { id: string; name: string }> => {
     if (!bucket) {
       throw new R2Error("R2 bucket not configured", "BUCKET_NOT_CONFIGURED");
     }
 
     try {
       // Upload to R2 first
-      const { key, url } = await uploadToR2(bucket, publicUrl, {
+      const { key, url, mimeType } = await uploadToR2(bucket, publicUrl, {
         folder: input.folder,
         file: input.file,
       });
@@ -100,7 +100,7 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
         url,
         key,
         size: input.file.size,
-        mimeType: input.file.type,
+        mimeType,
         authorId: input.userId,
         organizationId: input.organizationId,
         createdAt: new Date(),

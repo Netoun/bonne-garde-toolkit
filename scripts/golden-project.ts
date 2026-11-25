@@ -2113,10 +2113,10 @@ export function authMinTests(configuration: Configuration): number {
  * How many tests the storage package runs in the project: the legacy media tests (r2, routes, e2e)
  * ported, and the ones the extraction added. Fewer means the root `test` stopped reaching them.
  */
-export const STORAGE_MIN_TESTS = 75;
+export const STORAGE_MIN_TESTS = 82;
 
 /** The same count for `storage/fs`, which has no R2 binding to test: its own bucket tests instead. */
-export const STORAGE_FS_MIN_TESTS = 55;
+export const STORAGE_FS_MIN_TESTS = 69;
 
 /** The floor of the storage package's test count in a configuration that has storage. */
 export function storageMinTests(configuration: Configuration): number {
