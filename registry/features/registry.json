@@ -251,6 +251,16 @@
           "target": "apps/spa/src/features/organization/hooks/use-organization.ts"
         },
         {
+          "path": "spa-backoffice/features/organization/pages/organization-invitation-page.test.tsx",
+          "type": "registry:file",
+          "target": "apps/spa/src/features/organization/pages/organization-invitation-page.test.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/organization/pages/organization-invitation-page.tsx",
+          "type": "registry:page",
+          "target": "apps/spa/src/features/organization/pages/organization-invitation-page.tsx"
+        },
+        {
           "path": "spa-backoffice/features/organization/pages/organization-members-page.test.tsx",
           "type": "registry:file",
           "target": "apps/spa/src/features/organization/pages/organization-members-page.test.tsx"
