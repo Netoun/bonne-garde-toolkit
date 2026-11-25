@@ -1719,7 +1719,7 @@ export function hasEmail(configuration: Configuration): boolean {
 export const EMAIL_MIN_TESTS = 23;
 
 /** The region of the patch that points the email package's `./transport` export at its variant's file. */
-const TRANSPORT_REGION = 'exports."./transport"';
+const TRANSPORT_REGION: string = 'exports."./transport"';
 
 /** The tests only the dockerfile variants of email ship: the SMTP adapter's, and the transport's. */
 export const EMAIL_DOCKERFILE_EXTRA_TESTS = 7;
