@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vite-plus/test";
 import { and, desc, eq } from "drizzle-orm";
+import { acceptPendingInvitations } from "./invitations";
 import { unconfiguredMailer } from "./mailer";
 import { invitation, member, organization, session, user } from "./schema";
 import { TEST_APP_URL, createTestAuth } from "./testing";
@@ -161,6 +162,21 @@ describe("organization invitations", () => {
 
       expect(again.status).toBe(200);
       expect(await membersOf("new@example.com")).toHaveLength(1);
+    }, 60_000);
+
+    // Two sign-ins of the invitee (the return from the verification link and a manual one, or two tabs)
+    // can both ask "is there a member row?" before either inserts, and `member` has no unique index.
+    it("leaves one member row when the invitations are accepted twice at once", async () => {
+      const { invite, signIn, db, membersOf, organizationId } = await owner();
+      await signIn("new@example.com");
+      await invite("new@example.com");
+      const [found] = await db.select().from(user).where(eq(user.email, "new@example.com"));
+
+      await Promise.all(
+        Array.from({ length: 5 }, () => acceptPendingInvitations(db, found?.id ?? "")),
+      );
+
+      expect(await membersOf("new@example.com", organizationId)).toHaveLength(1);
     }, 60_000);
 
     it("leaves one member row, and marks the invitation accepted, for a user who already is a member", async () => {

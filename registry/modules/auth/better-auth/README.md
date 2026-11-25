@@ -244,13 +244,15 @@ refuses an accept from another email or after expiry, so nothing is hashed. An i
 
 `sendInvitation` is **optional** on `AuthMailer`, so a project whose `mailer` is its own adapter keeps compiling. Without
 it (`unconfiguredMailer` has one that only logs, a custom mailer may have none) the invitation is stored, nothing is sent,
-and auth logs a warning that never contains the link; the invite does not fail.
+and auth logs a warning that never contains the link; the invite does not fail. When a mailer's `sendInvitation`
+throws, the error is rethrown and the invitation row stays: it can still be accepted at sign-in.
 
 Signing in accepts what is pending, in `databaseHooks.session.create.before`: every `pending` invitation to the user's
 email (case-insensitive), not expired, of an organization with no `deletedAt`, becomes a `member` row with the invited role
 and is marked `accepted`. The user's email has to be verified (always true with `requireEmailVerification`). D1 has no
 transaction, so each step can run twice: a user who already is a member gets no second row and the invitation is still
-marked accepted. The session's active organization is the one of the most recent invitation accepted at that sign-in,
+marked accepted. The membership is one `INSERT … WHERE NOT EXISTS` (`src/invitations.ts`), not a read then an insert:
+`member` has no unique index on user and organization, and two sign-ins at once would both have passed the read. The session's active organization is the one of the most recent invitation accepted at that sign-in,
 else the first live one. `auth.invitation.test.ts` pins each case, including the four that are refused.
 
 ## Organizations marked deleted
