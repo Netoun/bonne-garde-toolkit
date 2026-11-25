@@ -1,5 +1,5 @@
 import { Button } from "@acme/ui/components/button";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -37,6 +37,16 @@ describe("Home", () => {
       "href",
       "/modules/ui/shadcn",
     );
+  });
+
+  it("lists the toolkit paths as three numbered steps under an eyebrow", async () => {
+    const Stub = createRoutesStub([{ path: "/", Component: Home, loader: homeLoader }]);
+    render(<Stub initialEntries={["/"]} />);
+
+    const steps = await screen.findByRole("list", { name: "Toolkit" });
+    expect(steps.tagName).toBe("OL");
+    expect(within(steps).getAllByRole("listitem")).toHaveLength(3);
+    expect(screen.getByText("Base template · CLI · Registry")).toBeInTheDocument();
   });
 
   it("renders inside the layout's main element, without a second one", async () => {

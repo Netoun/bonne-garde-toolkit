@@ -33,9 +33,11 @@ export function CodeBlock({ code, html, label }: CodeBlockProps) {
   }
 
   return (
-    <figure className="relative overflow-hidden rounded-lg border">
+    <figure className="docs-code relative overflow-hidden rounded-lg border border-docs-code-border bg-docs-code text-docs-code-foreground">
       {label ? (
-        <figcaption className="border-b bg-muted px-4 py-2 text-sm font-medium">{label}</figcaption>
+        <figcaption className="border-b border-docs-code-border px-4 py-2 font-mono text-xs text-docs-code-muted">
+          {label}
+        </figcaption>
       ) : null}
       <div className="relative">
         <div
@@ -47,7 +49,7 @@ export function CodeBlock({ code, html, label }: CodeBlockProps) {
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="absolute top-2 right-2"
+          className="absolute top-2 right-2 text-docs-code-muted transition-colors duration-150 hover:bg-docs-code-border hover:text-docs-code-foreground motion-reduce:transition-none"
           onClick={copy}
           aria-label={copied ? "Copied" : "Copy"}
         >

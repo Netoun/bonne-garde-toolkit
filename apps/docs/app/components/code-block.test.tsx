@@ -56,4 +56,12 @@ describe("CodeBlock", () => {
       expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
     });
   });
+
+  it("renders on the dark terminal surface with a mono caption", async () => {
+    const code = "bunx bonne-garde add ui/shadcn button";
+    render(<CodeBlock code={code} html={await highlight(code, "bash")} label="Quick start" />);
+
+    expect(screen.getByRole("figure")).toHaveClass("docs-code", "bg-docs-code");
+    expect(screen.getByText("Quick start")).toHaveClass("font-mono", "text-docs-code-muted");
+  });
 });

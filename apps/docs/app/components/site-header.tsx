@@ -38,12 +38,12 @@ export function SiteHeader({
   return (
     <>
       <SearchDialog sections={sections} open={searchOpen} onOpenChange={setSearchOpen} />
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur">
         <div className="flex h-14 items-center gap-3 px-4">
           {showSidebar ? <SidebarTrigger className="-ml-1 md:hidden" /> : null}
           <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
             <img src={logoUrl} alt="" className="size-7" width={28} height={28} />
-            <span>Bonne Garde</span>
+            <span className="font-heading text-lg">Bonne Garde</span>
           </Link>
           <nav
             aria-label="Main"
@@ -57,10 +57,10 @@ export function SiteHeader({
                   to={item.href}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "rounded-md px-2.5 py-1 transition-colors",
+                    "border-b-2 px-2.5 py-1 transition-colors duration-150 motion-reduce:transition-none",
                     active
-                      ? "bg-muted text-foreground"
-                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                      ? "border-docs-accent text-foreground"
+                      : "border-transparent text-muted-foreground hover:text-foreground",
                   )}
                 >
                   {item.label}
