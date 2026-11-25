@@ -10,6 +10,7 @@ const BASIC_DEMO_ITEMS = [
   "breadcrumb",
   "card",
   "checkbox",
+  "data-table",
   "empty-state",
   "entity-card",
   "input",

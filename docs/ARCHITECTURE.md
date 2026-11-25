@@ -2,11 +2,11 @@
 
 <!-- GEN:START -->
 
-> Auto-generated from `package.json` files and the `registry/` tree. Regenerate: `bun run gen:architecture`. Last: 2026-11-20.
+> Auto-generated from `package.json` files and the `registry/` tree. Regenerate: `bun run gen:architecture`. Last: 2026-11-25.
 
 ## Overview
 
-Bonne Garde is a Bun monorepo of a CLI, the registry it installs from and the base template it copies: 3 packages, 21 modules in 14 categories, 34 items.
+Bonne Garde is a Bun monorepo of a CLI, the registry it installs from and the base template it copies: 3 packages, 23 modules in 16 categories, 35 items.
 
 ### Packages
 
@@ -18,24 +18,26 @@ Bonne Garde is a Bun monorepo of a CLI, the registry it installs from and the ba
 
 ### Registry
 
-| Path                        | Content                           |
-| --------------------------- | --------------------------------- |
-| `registry/modules/api`      | `elysia`                          |
-| `registry/modules/auth`     | `better-auth`                     |
-| `registry/modules/config`   | `branding`                        |
-| `registry/modules/db`       | `d1`, `libsql`, `postgres`        |
-| `registry/modules/deploy`   | `cloudflare-actions`              |
-| `registry/modules/dev`      | `portless`                        |
-| `registry/modules/email`    | `resend`                          |
-| `registry/modules/orm`      | `drizzle`                         |
-| `registry/modules/pm`       | `bun`, `pnpm`                     |
-| `registry/modules/provider` | `cloudflare`, `dockerfile`        |
-| `registry/modules/storage`  | `fs`, `r2`                        |
-| `registry/modules/tooling`  | `vite-plus`                       |
-| `registry/modules/ui`       | `shadcn`                          |
-| `registry/modules/web`      | `spa`, `ssr`, `static`            |
-| `registry/ui`               | 32 items                          |
-| `registry/features`         | 2 items: spa-auth, spa-backoffice |
+| Path                             | Content                           |
+| -------------------------------- | --------------------------------- |
+| `registry/modules/api`           | `elysia`                          |
+| `registry/modules/auth`          | `better-auth`                     |
+| `registry/modules/config`        | `branding`                        |
+| `registry/modules/db`            | `d1`, `libsql`, `postgres`        |
+| `registry/modules/deploy`        | `cloudflare-actions`              |
+| `registry/modules/dev`           | `portless`                        |
+| `registry/modules/email`         | `resend`                          |
+| `registry/modules/observability` | `sentry`                          |
+| `registry/modules/orm`           | `drizzle`                         |
+| `registry/modules/pm`            | `bun`, `pnpm`                     |
+| `registry/modules/provider`      | `cloudflare`, `dockerfile`        |
+| `registry/modules/realtime`      | `rooms`                           |
+| `registry/modules/storage`       | `fs`, `r2`                        |
+| `registry/modules/tooling`       | `vite-plus`                       |
+| `registry/modules/ui`            | `shadcn`                          |
+| `registry/modules/web`           | `spa`, `ssr`, `static`            |
+| `registry/ui`                    | 33 items                          |
+| `registry/features`              | 2 items: spa-auth, spa-backoffice |
 
 <!-- GEN:END -->
 
