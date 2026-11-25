@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import {
   parseProjectManifest,
   readProjectManifest,
@@ -954,7 +955,7 @@ describe("renderDoctor", () => {
   test("a warning shows its symbol, its check, a short fix and the summary", async () => {
     const root = await projectWithButton();
     await writeFile(join(root, BUTTON), "// mine now\n");
-    const text = renderDoctor(await runDoctor(root));
+    const text = stripVTControlCharacters(renderDoctor(await runDoctor(root)));
     expect(text).toContain("▲ files");
     expect(text).toContain("✓ manifest");
     expect(text).toContain(`${BUTTON}: edited by you`);
@@ -979,7 +980,7 @@ describe("renderDoctor", () => {
         },
       },
     } as unknown as DoctorReport;
-    const text = renderDoctor(clean);
+    const text = stripVTControlCharacters(renderDoctor(clean));
     expect(text).toContain("✓ manifest");
     expect(text).toContain("All good.");
     expect(text).not.toContain("intent[<id>]");
@@ -993,7 +994,7 @@ describe("renderDoctor", () => {
       ...manifest,
       modules: { ...manifest.modules, db: [moduleRecord("d1", { patches: [] })] },
     }));
-    const text = renderDoctor(await runDoctor(root));
+    const text = stripVTControlCharacters(renderDoctor(await runDoctor(root)));
     expect(text).toMatch(/\d+ errors?/);
     expect(text).toContain("✖");
     expect(text).not.toContain("All good.");
