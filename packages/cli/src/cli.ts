@@ -6,7 +6,7 @@ import { type IntentionOutcome } from "@bonne-garde/schema";
 import { addItems, searchItems, viewItem } from "./add";
 import { takeFlag, takeOption } from "./args";
 import { createCommand } from "./create-command";
-import { doctorExitCode, formatDoctor, runDoctor } from "./doctor";
+import { doctorExitCode, formatDoctor, renderDoctor, runDoctor } from "./doctor";
 import { CliError, clackErrorText, errorText, notAProject, unknownName } from "./errors";
 import { addNamingCommand } from "./force-command";
 import { COMMANDS, commandHelp, flagsOf, usage } from "./help";
@@ -313,7 +313,13 @@ async function dispatch(argv: string[]): Promise<number> {
       throw notAProject(process.cwd());
     }
     const doctor = await runDoctor(process.cwd());
-    console.log(json ? JSON.stringify(doctor, null, 2) : formatDoctor(doctor));
+    console.log(
+      json
+        ? JSON.stringify(doctor, null, 2)
+        : process.stdout.isTTY === true
+          ? renderDoctor(doctor)
+          : formatDoctor(doctor),
+    );
     return doctorExitCode(doctor, strict);
   }
 

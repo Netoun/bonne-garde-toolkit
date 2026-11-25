@@ -10,7 +10,7 @@ import {
 } from "@bonne-garde/schema";
 import { addItems } from "./add";
 import { createProject } from "./create";
-import { doctorExitCode, formatDoctor, runDoctor, type DoctorReport } from "./doctor";
+import { doctorExitCode, formatDoctor, renderDoctor, runDoctor, type DoctorReport } from "./doctor";
 import { findRepoRoot } from "./paths";
 
 const dirs: string[] = [];
@@ -947,5 +947,55 @@ describe("formatDoctor", () => {
     }
     expect(text).toContain(BUTTON);
     expect(text).toContain("file-modified");
+  });
+});
+
+describe("renderDoctor", () => {
+  test("a warning shows its symbol, its check, a short fix and the summary", async () => {
+    const root = await projectWithButton();
+    await writeFile(join(root, BUTTON), "// mine now\n");
+    const text = renderDoctor(await runDoctor(root));
+    expect(text).toContain("▲ files");
+    expect(text).toContain("✓ manifest");
+    expect(text).toContain(`${BUTTON}: edited by you`);
+    expect(text).toContain("1 warning");
+    expect(text).not.toContain("1 warnings");
+    expect(text).not.toContain("All good.");
+    expect(text).not.toContain("sha256");
+    expect(text).not.toContain("file-modified");
+  });
+
+  test("a clean report says All good. and prints none of the notes", async () => {
+    const clean: DoctorReport = {
+      status: "ok",
+      checks: {
+        manifest: { status: "ok", summary: "version 2", details: null, findings: [], notes: [] },
+        regions: {
+          status: "ok",
+          summary: "0 regions",
+          details: null,
+          findings: [],
+          notes: ["an intent[<id>] region is present when its module's record lists it"],
+        },
+      },
+    } as unknown as DoctorReport;
+    const text = renderDoctor(clean);
+    expect(text).toContain("✓ manifest");
+    expect(text).toContain("All good.");
+    expect(text).not.toContain("intent[<id>]");
+    expect(text).not.toContain("note:");
+  });
+
+  test("errors and warnings are counted together", async () => {
+    const root = await projectWithButton();
+    await unlink(join(root, BUTTON));
+    await editManifest(root, (manifest) => ({
+      ...manifest,
+      modules: { ...manifest.modules, db: [moduleRecord("d1", { patches: [] })] },
+    }));
+    const text = renderDoctor(await runDoctor(root));
+    expect(text).toMatch(/\d+ errors?/);
+    expect(text).toContain("✖");
+    expect(text).not.toContain("All good.");
   });
 });

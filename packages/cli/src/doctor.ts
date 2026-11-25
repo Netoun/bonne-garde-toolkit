@@ -1,5 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { styleText } from "node:util";
 import {
   inspectPatch,
   patchRegions,
@@ -704,5 +705,61 @@ export function formatDoctor(doctor: DoctorReport): string {
     }
   }
   lines.push("", `result: ${doctor.status}`);
+  return lines.join("\n");
+}
+
+/** What to do about a finding, in a few words. The long message stays in `--json`. */
+const FIX_HINTS: Record<string, string> = {
+  "manifest-v1": "version 1: the next add or record upgrades it",
+  "file-missing": "missing: restore it, or run add again",
+  "file-unreadable": "cannot be read: check its permissions",
+  "file-modified": "edited by you: keep it, or run add --force to overwrite",
+  "region-file-missing": "missing: restore it, or run add again",
+  "region-owner-unknown": "region owner is not installed: add it, or remove the region",
+  "region-missing": "region is gone: restore it, or run add again",
+  "region-file-invalid": "cannot hold its regions: fix the file",
+  "region-foreign-edit": "region edited by you: keep it, or run add --force to overwrite",
+  "patch-failed": "patch failed: apply it by hand, then run bonne-garde record",
+  "intention-pending": "intention pending: apply it, then run bonne-garde record",
+  "intention-unreadable": "cannot be read as an intention: fix or remove it",
+};
+
+function fixLine(finding: Finding): string {
+  const hint = FIX_HINTS[finding.code];
+  if (hint === undefined) {
+    return finding.message;
+  }
+  return finding.path === undefined ? hint : `${finding.path}: ${hint}`;
+}
+
+const STATUS_MARKS = {
+  ok: { symbol: "✓", color: "green" },
+  warning: { symbol: "▲", color: "yellow" },
+  error: { symbol: "✖", color: "red" },
+  skipped: { symbol: "-", color: "dim" },
+} as const;
+
+/** The terminal report: a symbol and a color per check, one fix line per finding, a verdict. */
+export function renderDoctor(doctor: DoctorReport): string {
+  const entries = Object.entries(doctor.checks);
+  const width = Math.max(...entries.map(([name]) => name.length)) + 2;
+  const lines = ["bonne-garde doctor", ""];
+  const counts = { warning: 0, error: 0 };
+  for (const [name, check] of entries) {
+    const mark = STATUS_MARKS[check.status];
+    lines.push(
+      `${styleText(mark.color, mark.symbol)} ${styleText("bold", name.padEnd(width))}${check.summary}`,
+    );
+    for (const finding of check.findings) {
+      counts[finding.severity] += 1;
+      const { color } = STATUS_MARKS[finding.severity];
+      lines.push(`    ${styleText(color, fixLine(finding))}`);
+    }
+  }
+  const verdict = [
+    counts.error > 0 ? styleText("red", plural(counts.error, "error")) : null,
+    counts.warning > 0 ? styleText("yellow", plural(counts.warning, "warning")) : null,
+  ].filter((part) => part !== null);
+  lines.push("", verdict.length === 0 ? styleText("green", "All good.") : verdict.join(", "));
   return lines.join("\n");
 }
