@@ -1,9 +1,6 @@
-import { describe } from "vite-plus/test";
 import { http, HttpResponse } from "msw";
 
-describe.skip("organization MSW helpers", () => {});
-
-export { server } from "./organization-msw-server.test";
+export { server } from "../../../../testing/server";
 
 type OrganizationRole = "owner" | "admin" | "member";
 

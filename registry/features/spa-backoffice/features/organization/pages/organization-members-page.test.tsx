@@ -5,8 +5,8 @@ import {
   organizationAuthHandlers,
   pendingInvitation,
   server,
-} from "../lib/organization-msw-handlers.test";
-import { renderWithProviders } from "../lib/render-with-providers.test";
+} from "../lib/organization-msw-handlers";
+import { renderWithProviders } from "../lib/render-with-providers";
 import type { Route } from "./+types/organization-members-page";
 import OrganizationMembers from "./organization-members-page";
 

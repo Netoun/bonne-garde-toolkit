@@ -99,7 +99,7 @@ Applies to all three fronts. Each app's `vite.config.ts` contains the test block
 
 ### Setup
 
-Setup: each web module ships its own `apps/<front>/testing/frontend.setup.ts`, which extends matchers and cleans up React renders. `web/ssr` also ships `testing/server.ts`, and its setup resets MSW handlers after each test and stops the server at the end; `web/spa` and `web/static` ship no MSW server. Import lifecycle/assertion APIs from `vite-plus/test`.
+Setup: each web module ships its own `apps/<front>/testing/frontend.setup.ts`, which extends matchers and cleans up React renders. `web/spa` and `web/ssr` also ship `testing/server.ts`, and their setup starts it (`onUnhandledRequest: "error"`), resets MSW handlers after each test and stops the server at the end; `web/static` ships no MSW server, it never calls the API. Import lifecycle/assertion APIs from `vite-plus/test`.
 
 ```typescript
 import { beforeAll, afterEach, afterAll } from "vite-plus/test";

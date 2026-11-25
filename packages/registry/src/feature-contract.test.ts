@@ -40,7 +40,9 @@ async function sourcesOf(item: RegistryItem): Promise<Source[]> {
   );
 }
 
-const isTest = (target: string): boolean => /\.test\.tsx?$/.test(target);
+/** A test, or a helper only tests import (MSW handlers, the render wrapper): none is app code, so none pulls a runtime dependency. */
+const isTest = (target: string): boolean =>
+  /(?:\.test\.tsx?|-msw-handlers\.ts|render-with-providers\.tsx)$/.test(target);
 const isFragment = (relative: string): boolean => FRAGMENT.test(relative);
 const sorted = (names: Iterable<string>): string[] => [...new Set(names)].sort();
 
@@ -489,6 +491,10 @@ describe("the feature items", () => {
           (name) => name.startsWith(".") && !shipsOnlyWhenRouted(name),
         )) {
           const resolved = posix.join(posix.dirname(target), specifier);
+          // `apps/<app>/testing/` (the MSW server) is the web/spa shell's.
+          if (/^apps\/[^/]+\/testing\//.test(resolved) && isTest(target)) {
+            continue;
+          }
           if (![`${resolved}.ts`, `${resolved}.tsx`].some((candidate) => shipped.has(candidate))) {
             missing.push(`${target} imports ${specifier}`);
           }
