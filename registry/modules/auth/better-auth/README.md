@@ -37,9 +37,11 @@ Everything in `packages/auth`, from explicit paths:
 
 | File                                | What it is                                                                                                                      |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `package.json`                      | `{{SCOPE}}/auth`: the `.`, `./client`, `./schema` and `./testing` exports, the scripts below                                    |
+| `package.json`                      | `{{SCOPE}}/auth`: the `.`, `./client`, `./permissions`, `./schema` and `./testing` exports, the scripts below                   |
 | `src/auth.config.ts`                | `createAuth(options)`: the Better Auth instance, with no environment read and nothing built at import                           |
 | `src/auth.module.ts`                | `authModule` (the handler mounted on the app) and `authMacro` (`{ auth: true }` on a route)                                     |
+| `src/permissions.ts`                | `ac`, `roles` and `OrganizationRole`: the organization's access control, safe to import from a front                            |
+| `src/permission.macro.ts`           | the `{ permission: { ... } }` macro both modules mount                                                                          |
 | `src/schema.ts`                     | the Drizzle tables and relations, **generator output** (see below)                                                              |
 | `src/env.ts`                        | `resolveAuthEnv`: `BETTER_AUTH_SECRET`, read from `readRuntimeEnv()`                                                            |
 | `src/mailer.ts`                     | `AuthMailer`, and the `mailer` an `email` module replaces                                                                       |
@@ -207,6 +209,31 @@ them to `wrangler d1 execute DB --local` from `apps/api` (the `wrangler` it depe
 `db/d1`'s scripts do, not by the name in `wrangler.jsonc`. Golden runs `db:seed`, puts a row in every other
 table, runs `db:reset`, runs `db:seed` again, and once more on the seeded database, where it has to say so and
 leave every table with the rows it had.
+
+## Roles and permissions
+
+`src/permissions.ts` is the one file that says what a role may do. It builds `ac` (`createAccessControl`)
+over `statements`, which start as the organization plugin's own (`organization`, `member`, `invitation`, `team`,
+`ac`), and `roles = { owner, admin, member }` from the plugin's default definitions, so nothing changes until you
+edit it. `createAuth` hands both to `organization({ ac, roles })`, and the SPA's `organizationClient` takes the
+same two from `{{SCOPE}}/auth/permissions`, so the server and the front check the same table. The file imports
+nothing server-side.
+
+To add a resource, put it in `statements` (`projects: ["create", "update", "delete"]`) and grant it to a role in
+`roles` (`admin: ac.newRole({ ...adminAc.statements, projects: ["create", "update"] })`). The roles are fixed:
+`owner`, `admin` and `member` stay the only names.
+
+A route asks for a permission with the macro beside `auth`:
+
+```ts
+app.post("/projects", handler, { permission: { projects: ["create"] } });
+```
+
+It answers 401 with no session, 403 when the role of the member in the session's active organization lacks any of
+the statements (also when there is no active organization or the user is not a member of it), and runs the handler
+otherwise. It checks with `auth.api.hasPermission`, so it reads the same role table as Better Auth's own endpoints.
+It adds nothing to the context: combine it with `auth: true` to get `user` and `session`. Both variants mount the
+same macro from `permission.macro.ts`.
 
 ## Organizations marked deleted
 

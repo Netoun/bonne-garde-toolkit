@@ -1057,6 +1057,7 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "elysia[app].use[authModule]",
       'exports."."',
       'exports."./client"',
+      'exports."./permissions"',
       'exports."./schema"',
       'exports."./testing"',
       "exports[@app/auth/schema]",
@@ -2094,10 +2095,10 @@ export function testCounts(output: string): Record<string, number> {
 }
 
 /** How many tests the auth package runs in the project; fewer means the root `test` stopped reaching it. */
-export const AUTH_MIN_TESTS = 53;
+export const AUTH_MIN_TESTS = 59;
 
 /** The same count for the libsql variant of auth, which has its own flow, organization and seed tests. */
-export const AUTH_LIBSQL_MIN_TESTS = 51;
+export const AUTH_LIBSQL_MIN_TESTS = 55;
 
 /** The floor of the auth package's test count: the variant that matches the configuration's database. */
 export function authMinTests(configuration: Configuration): number {

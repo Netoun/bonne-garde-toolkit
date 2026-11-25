@@ -2719,7 +2719,7 @@ describe("module contract", () => {
       }
     });
 
-    test("the libsql variant copies what the d1 one does, except the files bound to D1 (module, CLI entry, seed, barrel, and the two tests that import the module), which it replaces at paths of their own, and package.json, which it leaves to the planner", async () => {
+    test("the libsql variant copies what the d1 one does, except the files bound to D1 (module, CLI entry, seed, barrel, and the three tests that import the module), which it replaces at paths of their own, and package.json, which it leaves to the planner", async () => {
       const { manifest, variant: d1 } = await authModule();
       const libsql = manifest.variants.find(({ key }) => key === "libsql");
       const bound = [
@@ -2728,6 +2728,7 @@ describe("module contract", () => {
         "packages/auth/src/auth.flow.test.ts",
         "packages/auth/src/auth.module.ts",
         "packages/auth/src/auth.organization.test.ts",
+        "packages/auth/src/auth.permission.test.ts",
         "packages/auth/src/auth.seed.test.ts",
         "packages/auth/src/index.ts",
         "packages/auth/src/seed.ts",
@@ -2742,6 +2743,7 @@ describe("module contract", () => {
         "packages/auth/src/libsql-auth.flow.test.ts",
         "packages/auth/src/libsql-auth.module.ts",
         "packages/auth/src/libsql-auth.organization.test.ts",
+        "packages/auth/src/libsql-auth.permission.test.ts",
         "packages/auth/src/libsql-index.ts",
         "packages/auth/src/libsql-seed.test.ts",
         "packages/auth/src/libsql-seed.ts",
@@ -2890,7 +2892,13 @@ describe("module contract", () => {
       for (const map of ["dependencies", "devDependencies", "peerDependencies"]) {
         expect(map in record ? map : null).toBeNull();
       }
-      expect(Object.keys(exported).sort()).toEqual([".", "./client", "./schema", "./testing"]);
+      expect(Object.keys(exported).sort()).toEqual([
+        ".",
+        "./client",
+        "./permissions",
+        "./schema",
+        "./testing",
+      ]);
       for (const target of Object.values(exported)) {
         expect(existsSync(join(AUTH, "packages/auth", String(target)))).toBe(true);
       }

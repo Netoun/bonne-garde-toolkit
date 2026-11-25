@@ -864,6 +864,7 @@ describe("the golden project and patches", () => {
           "elysia[app].use[authModule]",
           'exports."."',
           'exports."./client"',
+          'exports."./permissions"',
           'exports."./schema"',
           'exports."./testing"',
           "exports[@app/auth/schema]",
