@@ -1,7 +1,7 @@
 # email/resend
 
-Transactional email over the project's provider: the React templates auth needs (verification and
-password reset), a `memory` adapter for tests, and Resend over its HTTP API. It is the legacy
+Transactional email over the project's provider: the React templates auth needs (verification, password
+reset and organization invitations), a `memory` adapter for tests, and Resend over its HTTP API. It is the legacy
 `packages/emails` and `apps/api/src/lib/email.ts` extracted into `packages/email`.
 
 ```bash
@@ -33,18 +33,18 @@ and `bonne-garde doctor --strict` is green as it is.
 
 Everything in `packages/email`, from explicit paths:
 
-| File                                       | What it is                                                                                            |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `package.json`                             | `{{SCOPE}}/email`: the `.` and `./testing` exports, the scripts                                       |
-| `src/types.ts`, `render.ts`, `send.ts`     | `EmailMessage`, `EmailProvider`, `renderEmailTemplate` and `sendEmail`, as `packages/emails` had them |
-| `src/templates/*.template.ts`              | `VerifyEmailEmail`, `ResetPasswordEmail` and `WelcomeTemplate`, carried over as they were             |
-| `src/providers/memory.provider.ts`         | `createMemoryEmailProvider(store)`: keeps what it is asked to send, sends nothing                     |
-| `src/providers/resend.provider.ts`         | `createResendEmailProvider({ apiKey, from?, baseUrl? })`: `POST /emails`, plain `fetch`               |
-| `src/env.ts`                               | `resolveEmailEnv`: `RESEND_API_KEY`, read from `readRuntimeEnv()`                                     |
-| `src/runtime.ts`                           | `emailProvider`: the adapter the runtime sends through, chosen at the first email                     |
-| `src/auth-mailer.ts`                       | `createAuthMailer` and `emailMailer`: auth's two emails, rendered and sent                            |
-| `src/testing.ts`                           | `outbox` and `clearOutbox`: what the memory adapter holds under test                                  |
-| `src/*.test.ts`, `src/providers/*.test.ts` | the tests that travel, and the new ones: no mock of `fetch`, no snapshot                              |
+| File                                       | What it is                                                                                                         |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `package.json`                             | `{{SCOPE}}/email`: the `.` and `./testing` exports, the scripts                                                    |
+| `src/types.ts`, `render.ts`, `send.ts`     | `EmailMessage`, `EmailProvider`, `renderEmailTemplate` and `sendEmail`, as `packages/emails` had them              |
+| `src/templates/*.template.ts`              | `VerifyEmailEmail`, `ResetPasswordEmail` and `WelcomeTemplate`, carried over as they were; `InvitationEmail` (new) |
+| `src/providers/memory.provider.ts`         | `createMemoryEmailProvider(store)`: keeps what it is asked to send, sends nothing                                  |
+| `src/providers/resend.provider.ts`         | `createResendEmailProvider({ apiKey, from?, baseUrl? })`: `POST /emails`, plain `fetch`                            |
+| `src/env.ts`                               | `resolveEmailEnv`: `RESEND_API_KEY`, read from `readRuntimeEnv()`                                                  |
+| `src/runtime.ts`                           | `emailProvider`: the adapter the runtime sends through, chosen at the first email                                  |
+| `src/auth-mailer.ts`                       | `createAuthMailer` and `emailMailer`: auth's two emails, rendered and sent                                         |
+| `src/testing.ts`                           | `outbox` and `clearOutbox`: what the memory adapter holds under test                                               |
+| `src/*.test.ts`, `src/providers/*.test.ts` | the tests that travel, and the new ones: no mock of `fetch`, no snapshot                                           |
 
 Dependencies are exact: `@react-email/render`, `react` and `react-dom` (`react-dom` is a peer of the
 renderer), and the project's `api-runtime` and `config` as workspaces. `@types/react` is the dev one.

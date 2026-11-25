@@ -37,9 +37,11 @@ Everything in `packages/auth`, from explicit paths:
 
 | File                                | What it is                                                                                                                      |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `package.json`                      | `{{SCOPE}}/auth`: the `.`, `./client`, `./schema` and `./testing` exports, the scripts below                                    |
+| `package.json`                      | `{{SCOPE}}/auth`: the `.`, `./client`, `./permissions`, `./schema` and `./testing` exports, the scripts below                   |
 | `src/auth.config.ts`                | `createAuth(options)`: the Better Auth instance, with no environment read and nothing built at import                           |
 | `src/auth.module.ts`                | `authModule` (the handler mounted on the app) and `authMacro` (`{ auth: true }` on a route)                                     |
+| `src/permissions.ts`                | `ac`, `roles` and `OrganizationRole`: the organization's access control, safe to import from a front                            |
+| `src/permission.macro.ts`           | the `{ permission: { ... } }` macro both modules mount                                                                          |
 | `src/schema.ts`                     | the Drizzle tables and relations, **generator output** (see below)                                                              |
 | `src/env.ts`                        | `resolveAuthEnv`: `BETTER_AUTH_SECRET`, read from `readRuntimeEnv()`                                                            |
 | `src/mailer.ts`                     | `AuthMailer`, and the `mailer` an `email` module replaces                                                                       |
@@ -96,7 +98,7 @@ else a missing one fails the first request that needs auth, naming the key.
 
 ## Email
 
-Auth does not send email. It asks an `AuthMailer` (`sendVerificationEmail`, `sendPasswordReset`), and
+Auth does not send email. It asks an `AuthMailer` (`sendVerificationEmail`, `sendPasswordReset`, and the optional `sendInvitation`), and
 the `mailer` exported by `src/mailer.ts` is what `auth.module.ts` hands it. With no `email` module that
 is `unconfiguredMailer`: it sends nothing and logs a warning that names the user and never the link,
 which carries a one-time token. `requireEmailVerification` stays on, so **a user who signs up in a
@@ -208,23 +210,77 @@ them to `wrangler d1 execute DB --local` from `apps/api` (the `wrangler` it depe
 table, runs `db:reset`, runs `db:seed` again, and once more on the seeded database, where it has to say so and
 leave every table with the rows it had.
 
+## Roles and permissions
+
+`src/permissions.ts` is the one file that says what a role may do. It builds `ac` (`createAccessControl`)
+over `statements`, which start as the organization plugin's own (`organization`, `member`, `invitation`, `team`,
+`ac`), and `roles = { owner, admin, member }` from the plugin's default definitions, so nothing changes until you
+edit it. `createAuth` hands both to `organization({ ac, roles })`, and the SPA's `organizationClient` takes the
+same two from `{{SCOPE}}/auth/permissions`, so the server and the front check the same table. The file imports
+nothing server-side.
+
+To add a resource, put it in `statements` (`projects: ["create", "update", "delete"]`) and grant it to a role in
+`roles` (`admin: ac.newRole({ ...adminAc.statements, projects: ["create", "update"] })`). The roles are fixed:
+`owner`, `admin` and `member` stay the only names.
+
+A route asks for a permission with the macro beside `auth`:
+
+```ts
+app.post("/projects", handler, { permission: { projects: ["create"] } });
+```
+
+It answers 401 with no session, 403 when the role of the member in the session's active organization lacks any of
+the statements (also when there is no active organization or the user is not a member of it), and runs the handler
+otherwise. It checks with `auth.api.hasPermission`, so it reads the same role table as Better Auth's own endpoints.
+It adds nothing to the context: combine it with `auth: true` to get `user` and `session`. Both variants mount the
+same macro from `permission.macro.ts`.
+
+## Invitations
+
+`organization/invite-member` stores an invitation and mails it: `createAuth` builds `<SPA_URL>/invitations/<invitation id>`
+and hands `{ to, inviterName, organizationName, url }` to `mailer.sendInvitation`. The id is the token: Better Auth
+refuses an accept from another email or after expiry, so nothing is hashed. An invitation expires 7 days after it is made
+(`invitationExpiresIn`). The page at that path is the front-end's.
+
+`sendInvitation` is **optional** on `AuthMailer`, so a project whose `mailer` is its own adapter keeps compiling. Without
+it (`unconfiguredMailer` has one that only logs, a custom mailer may have none) the invitation is stored, nothing is sent,
+and auth logs a warning that never contains the link; the invite does not fail. When a mailer's `sendInvitation`
+throws, the error is rethrown and the invitation row stays: it can still be accepted at sign-in.
+
+Signing in accepts what is pending, in `databaseHooks.session.create.before`: every `pending` invitation to the user's
+email (case-insensitive), not expired, of an organization with no `deletedAt`, becomes a `member` row with the invited role
+and is marked `accepted`. The user's email has to be verified (always true with `requireEmailVerification`). D1 has no
+transaction, so each step can run twice: a user who already is a member gets no second row and the invitation is still
+marked accepted. The membership is one `INSERT … WHERE NOT EXISTS` (`src/invitations.ts`), not a read then an insert:
+`member` has no unique index on user and organization, and two sign-ins at once would both have passed the read. The session's active organization is the one of the most recent invitation accepted at that sign-in,
+else the first live one. `auth.invitation.test.ts` pins each case, including the four that are refused.
+
 ## Organizations marked deleted
 
-`organization.deletedAt` is the soft delete: server-side only (`input: false`), read by the macro and the
-session hook, written by nothing in this module. Better Auth's organization endpoints do not know it.
-Observed on real SQLite, an organization with `deletedAt` set was still returned by `organization/list`,
-fetched with its members by `get-full-organization` (by id, by slug, or as the active one), and accepted
-by `set-active`, which scopes what a route reads. Now `list` drops it, `get-full-organization` and
-`set-active` answer 404 (`set-active` before it touches the session), and the `auth: true` macro treats a
-session whose active organization was deleted since as having none: it falls back to the user's first live
-one and keeps that in the session (one primary-key read per authenticated request). `auth.organization.test.ts`
-pins each. The hooks match on Better Auth's paths, as the rate-limit rules do; the tests are what notice a
-rename.
+`organization.deletedAt` is the soft delete: server-side only (`input: false`), written by `organization/delete`,
+read everywhere else. Better Auth's own endpoints do not know it. Observed on real SQLite, an organization with
+`deletedAt` set was still returned by `organization/list`, fetched with its members by `get-full-organization`
+(by id, by slug, or as the active one), and accepted by `set-active`, which scopes what a route reads. Now `list`
+drops it, `get-full-organization` and `set-active` answer 404 (`set-active` before it touches the session), and the
+`auth: true` macro treats a session whose active organization was deleted since as having none: it falls back to the
+user's first live one and keeps that in the session (one primary-key read per authenticated request).
+`auth.organization.test.ts` pins each. The hooks match on Better Auth's paths, as the rate-limit rules do; the tests
+are what notice a rename.
 
-**Not changed: `organization/delete` hard-deletes.** It removes the row, and the members with it (foreign
-key cascade), for any owner who calls it. The legacy SPA never calls it, and nothing in the repo writes
-`deletedAt`, so which of the two is the product's delete is not decided here. `disableOrganizationDeletion`
-would close it; it is a behaviour change and waits for whoever writes `deletedAt`.
+**`organization/delete` marks the organization deleted and removes nothing.** Better Auth's endpoint deletes the
+row, and its members and invitations with it (foreign key cascade). Here the `before` hook of `createAuth` answers
+the path itself: same checks as the endpoint (a session, a membership, `organization: ["delete"]` in the member's
+role, so the owner by default; refusals are its 401, 400 and 403), then `deletedAt = now` and the organization in
+the response. Members and invitations stay. An organization already deleted answers 404. The session's active
+organization is left as it is: the macro already steps over a deleted one. An invitation to a deleted organization
+answers 404 on `organization/accept-invitation`, as sign-in already skips it. `auth.organization-delete.test.ts` pins
+each.
+
+Why the hook and not `disableOrganizationDeletion` plus a route of the module: the hook keeps Better Auth's path, so
+the client's `organization.delete()` and the front-ends keep working, and there is no second route to mount in both
+variants. The price is that the permission check is written twice (here and in the endpoint, which a hook answering
+the request never reaches); it goes through Better Auth's own `hasPermission`, so roles stay the one in
+`permissions.ts`. Nothing restores or purges a deleted organization.
 
 ## Rate limit and the client's address
 

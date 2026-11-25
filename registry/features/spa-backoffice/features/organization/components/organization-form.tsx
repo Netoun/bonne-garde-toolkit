@@ -23,6 +23,7 @@ interface OrganizationFormProps {
   }) => Promise<void>;
   submitLabel: string;
   isEdit?: boolean;
+  readOnly?: boolean;
 }
 
 function generateSlug(name: string): string {
@@ -39,6 +40,7 @@ export function OrganizationForm({
   onSubmit,
   submitLabel,
   isEdit = false,
+  readOnly = false,
 }: OrganizationFormProps) {
   const form = useForm({
     defaultValues: {
@@ -97,6 +99,7 @@ export function OrganizationForm({
               }}
               onBlur={field.handleBlur}
               placeholder="My organization"
+              disabled={readOnly}
             />
             {field.state.meta.errors.length > 0 && (
               <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -127,6 +130,7 @@ export function OrganizationForm({
               onChange={(e) => field.handleChange(e.target.value)}
               onBlur={field.handleBlur}
               placeholder="mon-organisation"
+              disabled={readOnly}
             />
             <p className="text-xs text-muted-foreground">
               Utilisé dans l&apos;URL : {publicHost}/o/{field.state.value || "your-slug"}
@@ -149,6 +153,7 @@ export function OrganizationForm({
               onChange={(e) => field.handleChange(e.target.value)}
               onBlur={field.handleBlur}
               placeholder="Organization description..."
+              disabled={readOnly}
             />
           </div>
         )}
@@ -169,12 +174,14 @@ export function OrganizationForm({
                     onChange={(e) => field.handleChange(e.target.value)}
                     onBlur={field.handleBlur}
                     className="w-12 h-10 p-1"
+                    disabled={readOnly}
                   />
                   <Input
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
                     placeholder="#3b82f6"
                     className="flex-1"
+                    disabled={readOnly}
                   />
                 </div>
               </div>
@@ -194,12 +201,14 @@ export function OrganizationForm({
                     onChange={(e) => field.handleChange(e.target.value)}
                     onBlur={field.handleBlur}
                     className="w-12 h-10 p-1"
+                    disabled={readOnly}
                   />
                   <Input
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
                     placeholder="#8b5cf6"
                     className="flex-1"
+                    disabled={readOnly}
                   />
                 </div>
               </div>
@@ -213,13 +222,15 @@ export function OrganizationForm({
             Cancel
           </Button>
         </Link>
-        <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting]}>
-          {([canSubmit, isSubmitting]) => (
-            <Button type="submit" disabled={!canSubmit || isSubmitting}>
-              {isSubmitting ? "Saving..." : submitLabel}
-            </Button>
-          )}
-        </form.Subscribe>
+        {!readOnly ? (
+          <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting]}>
+            {([canSubmit, isSubmitting]) => (
+              <Button type="submit" disabled={!canSubmit || isSubmitting}>
+                {isSubmitting ? "Saving..." : submitLabel}
+              </Button>
+            )}
+          </form.Subscribe>
+        ) : null}
       </div>
     </form>
   );

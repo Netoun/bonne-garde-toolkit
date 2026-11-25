@@ -112,7 +112,13 @@
         "react",
         "react-router"
       ],
-      "devDependencies": ["@react-router/dev"],
+      "devDependencies": [
+        "@react-router/dev",
+        "@testing-library/react",
+        "@testing-library/user-event@14.6.3",
+        "msw@2.15.0",
+        "vite-plus"
+      ],
       "registryDependencies": [
         "spa-auth",
         "avatar",
@@ -225,6 +231,11 @@
           "target": "apps/spa/src/features/organization/components/organization-invite-member-dialog.tsx"
         },
         {
+          "path": "spa-backoffice/features/organization/components/organization-invitations-table.tsx",
+          "type": "registry:component",
+          "target": "apps/spa/src/features/organization/components/organization-invitations-table.tsx"
+        },
+        {
           "path": "spa-backoffice/features/organization/components/organization-members-table.tsx",
           "type": "registry:component",
           "target": "apps/spa/src/features/organization/components/organization-members-table.tsx"
@@ -238,6 +249,21 @@
           "path": "spa-backoffice/features/organization/hooks/use-organization.ts",
           "type": "registry:hook",
           "target": "apps/spa/src/features/organization/hooks/use-organization.ts"
+        },
+        {
+          "path": "spa-backoffice/features/organization/pages/organization-invitation-page.test.tsx",
+          "type": "registry:file",
+          "target": "apps/spa/src/features/organization/pages/organization-invitation-page.test.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/organization/pages/organization-invitation-page.tsx",
+          "type": "registry:page",
+          "target": "apps/spa/src/features/organization/pages/organization-invitation-page.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/organization/pages/organization-members-page.test.tsx",
+          "type": "registry:file",
+          "target": "apps/spa/src/features/organization/pages/organization-members-page.test.tsx"
         },
         {
           "path": "spa-backoffice/features/organization/pages/organization-members-page.tsx",
@@ -255,9 +281,29 @@
           "target": "apps/spa/src/features/organization/pages/organization-page.tsx"
         },
         {
+          "path": "spa-backoffice/features/organization/pages/organization-settings-page.test.tsx",
+          "type": "registry:file",
+          "target": "apps/spa/src/features/organization/pages/organization-settings-page.test.tsx"
+        },
+        {
           "path": "spa-backoffice/features/organization/pages/organization-settings-page.tsx",
           "type": "registry:page",
           "target": "apps/spa/src/features/organization/pages/organization-settings-page.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/organization/lib/organization-msw-server.test.ts",
+          "type": "registry:file",
+          "target": "apps/spa/src/features/organization/lib/organization-msw-server.test.ts"
+        },
+        {
+          "path": "spa-backoffice/features/organization/lib/organization-msw-handlers.test.ts",
+          "type": "registry:file",
+          "target": "apps/spa/src/features/organization/lib/organization-msw-handlers.test.ts"
+        },
+        {
+          "path": "spa-backoffice/features/organization/lib/render-with-providers.test.tsx",
+          "type": "registry:file",
+          "target": "apps/spa/src/features/organization/lib/render-with-providers.test.tsx"
         }
       ]
     }

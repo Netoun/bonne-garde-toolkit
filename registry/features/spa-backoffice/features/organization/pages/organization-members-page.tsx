@@ -5,25 +5,35 @@ import { Users, ArrowLeft } from "lucide-react";
 // oxfmt-ignore
 import { Card, CardContent, CardHeader, CardTitle } from "@acme/ui/components/card";
 import { Button } from "@acme/ui/components/button";
+import { useSession } from "@acme/spa/features/auth/hooks/use-session";
 import { OrganizationMembersTable } from "../components/organization-members-table";
+import { OrganizationInvitationsTable } from "../components/organization-invitations-table";
 import { OrganizationInviteMemberDialog } from "../components/organization-invite-member-dialog";
 import {
   useOrganization,
   useOrganizationMembers,
+  useOrganizationPermissions,
+  useOrganizationInvitations,
   useAddMember,
   useRemoveMember,
+  useCancelInvitation,
 } from "../hooks/use-organization";
 
 export default function OrganizationMembers({ params }: Route.ComponentProps) {
   const { organizationSlug } = params;
+  const { data: session } = useSession();
+  const currentUserId = session?.user.id ?? "";
   const { data: organization, isLoading: orgLoading } = useOrganization(organizationSlug || "");
-  const { data: members = [], isLoading: membersLoading } = useOrganizationMembers(
-    organization?.id ?? "",
-  );
+  const organizationId = organization?.id ?? "";
+  const { data: members = [], isLoading: membersLoading } = useOrganizationMembers(organizationId);
+  const { permissions, isLoading: permissionsLoading } = useOrganizationPermissions(organizationId);
+  const { data: invitations = [], isLoading: invitationsLoading } =
+    useOrganizationInvitations(organizationId);
   const addMember = useAddMember();
   const removeMember = useRemoveMember();
+  const cancelInvitation = useCancelInvitation();
 
-  if (orgLoading) {
+  if (orgLoading || permissionsLoading) {
     return (
       <div className="max-w-4xl mx-auto space-y-4">
         <div className="h-8 w-48 bg-muted animate-pulse rounded" />
@@ -44,17 +54,16 @@ export default function OrganizationMembers({ params }: Route.ComponentProps) {
     );
   }
 
-  // Check if current user can manage members (simplified - should use actual auth)
-  const canManageMembers = true; // TODO: Check actual user role
-
   const handleInvite = async (email: string, role: "member" | "admin") => {
-    if (!organization?.id) return;
     await addMember.mutateAsync({ orgId: organization.id, data: { email, role } });
   };
 
   const handleRemove = async (memberId: string) => {
-    if (!organization?.id) return;
     await removeMember.mutateAsync({ orgId: organization.id, memberId });
+  };
+
+  const handleCancelInvitation = async (invitationId: string) => {
+    await cancelInvitation.mutateAsync({ orgId: organization.id, invitationId });
   };
 
   return (
@@ -74,7 +83,9 @@ export default function OrganizationMembers({ params }: Route.ComponentProps) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Members ({members.length})</CardTitle>
-          {canManageMembers && <OrganizationInviteMemberDialog onInvite={handleInvite} />}
+          {permissions.canCreateMember ? (
+            <OrganizationInviteMemberDialog onInvite={handleInvite} />
+          ) : null}
         </CardHeader>
         <CardContent>
           {membersLoading ? (
@@ -82,13 +93,35 @@ export default function OrganizationMembers({ params }: Route.ComponentProps) {
           ) : (
             <OrganizationMembersTable
               members={members}
-              currentUserId="" // TODO: Get from auth
+              currentUserId={currentUserId}
               onRemoveMember={handleRemove}
-              canRemove={canManageMembers}
+              canRemove={permissions.canDeleteMember}
             />
           )}
         </CardContent>
       </Card>
+
+      {invitations.length > 0 || invitationsLoading ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Pending invitations</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {invitationsLoading ? (
+              <div className="h-32 bg-muted animate-pulse rounded" />
+            ) : (
+              <OrganizationInvitationsTable
+                invitations={invitations}
+                canCancel={permissions.canCancelInvitation}
+                onCancelInvitation={handleCancelInvitation}
+                cancelingId={
+                  cancelInvitation.isPending ? cancelInvitation.variables?.invitationId : null
+                }
+              />
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

@@ -23,3 +23,5 @@ export { VerifyEmailEmail } from "./templates/verify-email.template";
 export type { VerifyEmailTemplateProps } from "./templates/verify-email.template";
 export { ResetPasswordEmail } from "./templates/reset-password.template";
 export type { ResetPasswordTemplateProps } from "./templates/reset-password.template";
+export { InvitationEmail } from "./templates/invitation.template";
+export type { InvitationTemplateProps } from "./templates/invitation.template";

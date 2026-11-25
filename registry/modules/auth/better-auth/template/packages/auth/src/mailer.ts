@@ -4,10 +4,23 @@ import type { AuthLogger } from "./auth.config";
 /** One message auth asks an email module to deliver. `url` is the page of the front-end the link opens. */
 export type AuthEmail = { userId: string; to: string; name: string; url: string };
 
+/** One organization invitation auth asks an email module to deliver. `url` is the page of the front-end that accepts it. */
+export type AuthInvitationEmail = {
+  to: string;
+  inviterName: string;
+  organizationName: string;
+  url: string;
+};
+
 /** The seam between auth and whatever delivers its emails. Auth owns the interface and nothing past it. */
 export interface AuthMailer {
   sendVerificationEmail(email: AuthEmail): Promise<void>;
   sendPasswordReset(email: AuthEmail): Promise<void>;
+  /**
+   * Optional so that a project whose `mailer` is its own adapter keeps compiling. Without it, an
+   * invitation is stored and nothing is sent: auth logs that, and the invite does not fail.
+   */
+  sendInvitation?(email: AuthInvitationEmail): Promise<void>;
 }
 
 /**
@@ -30,6 +43,13 @@ export function unconfiguredMailer(logger: Pick<AuthLogger, "warn">): AuthMailer
         event: "email_not_sent",
         kind: "password_reset",
         userId,
+      });
+    },
+    async sendInvitation() {
+      logger.warn("No email module is installed: the invitation email was not sent", {
+        scope: "auth",
+        event: "email_not_sent",
+        kind: "invitation",
       });
     },
   };

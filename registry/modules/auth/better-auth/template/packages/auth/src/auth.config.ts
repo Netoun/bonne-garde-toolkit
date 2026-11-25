@@ -1,15 +1,20 @@
 import { betterAuth } from "better-auth";
-import { APIError, createAuthMiddleware } from "better-auth/api";
-import { organization } from "better-auth/plugins";
+import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
+import { hasPermission, organization } from "better-auth/plugins";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { and, eq, isNull } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { AUTH_BASE_PATH } from "./base-path";
+import { acceptPendingInvitations } from "./invitations";
 import type { AuthMailer } from "./mailer";
 import { hashPassword, verifyPassword } from "./password";
+import { ac, roles } from "./permissions";
 import * as schema from "./schema";
 
 const { member, organization: orgTable } = schema;
+
+/** How long an organization invitation can be accepted. */
+const INVITATION_EXPIRES_IN = 60 * 60 * 24 * 7; // 7 days, in seconds
 
 /** A Drizzle SQLite database, whichever driver is behind it: D1 in a Worker, `node:sqlite` in a test. */
 export type AuthDatabase = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;
@@ -199,7 +204,21 @@ export function createAuth({
       session: {
         create: {
           before: async (session) => {
+            let invitedOrgId: string | null = null;
             try {
+              invitedOrgId = await acceptPendingInvitations(db, session.userId);
+            } catch (error) {
+              logger.error("Failed to accept pending invitations", error, {
+                scope: "auth",
+                event: "invitations_accept_failed",
+                userId: session.userId,
+              });
+              // Don't throw - signing in must not fail because an invitation could not be accepted.
+            }
+            try {
+              if (invitedOrgId !== null) {
+                return { data: { ...session, activeOrganizationId: invitedOrgId } };
+              }
               // Get first organization for this user
               const userOrg = await db
                 .select({
@@ -242,8 +261,72 @@ export function createAuth({
     hooks: {
       // `organization.deletedAt` is the app's soft delete, and Better Auth's organization endpoints do
       // not know it. Making a deleted organization the active one is refused before it changes the
-      // session; fetching it, and listing it, are filtered after.
+      // session; fetching it, and listing it, are filtered after. `organization/delete` is answered
+      // here, with the same checks as the endpoint, so that it writes `deletedAt` and removes nothing.
       before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === "/organization/delete") {
+          const session = await getSessionFromCtx(ctx);
+          if (!session) throw new APIError("UNAUTHORIZED");
+          const { organizationId } = ctx.body ?? {};
+          // Left to the endpoint, which answers 400 and has nothing to delete.
+          if (typeof organizationId !== "string") return;
+          const membership = await ctx.context.adapter.findOne<{ role: string }>({
+            model: "member",
+            where: [
+              { field: "userId", value: session.user.id },
+              { field: "organizationId", value: organizationId },
+            ],
+          });
+          if (!membership) {
+            throw new APIError("BAD_REQUEST", {
+              message: "User is not a member of the organization",
+            });
+          }
+          const allowed = await hasPermission(
+            {
+              role: membership.role,
+              permissions: { organization: ["delete"] },
+              organizationId,
+              options: { ac, roles },
+            },
+            ctx,
+          );
+          if (!allowed) {
+            throw new APIError("FORBIDDEN", {
+              message: "You are not allowed to delete this organization",
+            });
+          }
+          const found = await ctx.context.adapter.findOne<{ deletedAt: Date | null }>({
+            model: "organization",
+            where: [{ field: "id", value: organizationId }],
+          });
+          if (!found || found.deletedAt) {
+            throw new APIError("NOT_FOUND", { message: "Organization not found" });
+          }
+          await ctx.context.adapter.update({
+            model: "organization",
+            where: [{ field: "id", value: organizationId }],
+            update: { deletedAt: new Date() },
+          });
+          return ctx.json(found);
+        }
+        if (ctx.path === "/organization/accept-invitation") {
+          const { invitationId } = ctx.body ?? {};
+          if (typeof invitationId !== "string") return;
+          const invited = await ctx.context.adapter.findOne<{ organizationId: string }>({
+            model: "invitation",
+            where: [{ field: "id", value: invitationId }],
+          });
+          if (!invited) return;
+          const target = await ctx.context.adapter.findOne<{ deletedAt: Date | null }>({
+            model: "organization",
+            where: [{ field: "id", value: invited.organizationId }],
+          });
+          if (target?.deletedAt) {
+            throw new APIError("NOT_FOUND", { message: "Organization not found" });
+          }
+          return;
+        }
         if (ctx.path !== "/organization/set-active") return;
         const { organizationId, organizationSlug } = ctx.body ?? {};
         const where =
@@ -296,6 +379,36 @@ export function createAuth({
     },
     plugins: [
       organization({
+        ac,
+        roles,
+        invitationExpiresIn: INVITATION_EXPIRES_IN,
+        // The invitation id is the token: Better Auth refuses an accept by another email or after expiry.
+        sendInvitationEmail: async ({ id, email, inviter, organization }) => {
+          const invitationEmail = {
+            to: email,
+            inviterName: inviter.user.name || inviter.user.email,
+            organizationName: organization.name,
+            url: new URL(`/invitations/${id}`, appURL).toString(),
+          };
+          if (mailer.sendInvitation === undefined) {
+            logger.warn("The mailer has no sendInvitation: the invitation email was not sent", {
+              scope: "auth",
+              event: "email_not_sent",
+              kind: "invitation",
+            });
+            return;
+          }
+          try {
+            await mailer.sendInvitation(invitationEmail);
+          } catch (error) {
+            logger.error("Failed to send invitation email", error, {
+              scope: "auth",
+              event: "send_invitation_email",
+              invitationId: id,
+            });
+            throw error;
+          }
+        },
         // `schema.ts` is generated by `vp run auth:generate` from these options, so a column
         // declared only there is dropped by the next regeneration. The session hook above and
         // `auth.module.ts` filter on `deletedAt`. `input: false` keeps both server-only: the

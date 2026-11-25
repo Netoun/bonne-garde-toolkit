@@ -61,5 +61,22 @@ describe("the mailer auth is wired to", () => {
       ]);
       expect(outbox[0]?.html).toContain(URL_WITH_TOKEN);
     });
+
+    test("sendInvitation sends one invitation to the invitee, naming the organization, with the accept link", async () => {
+      const url = "http://spa.test/invitations/invitation-id";
+
+      await emailMailer.sendInvitation({
+        to: "grace@example.com",
+        inviterName: "Ada",
+        organizationName: "Analytical Engines",
+        url,
+      });
+
+      expect(outbox.map(({ to, subject }) => [to, subject])).toEqual([
+        ["grace@example.com", "You're invited to join Analytical Engines"],
+      ]);
+      expect(outbox[0]?.html).toContain("Ada invited you to join Analytical Engines");
+      expect(outbox[0]?.html).toContain(`href="${url}"`);
+    });
   });
 });
