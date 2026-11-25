@@ -62,11 +62,14 @@ describe("SiteLayout", () => {
     expect(sidebar).toBeTruthy();
     const sidebarScope = within(sidebar as HTMLElement);
 
-    const groupTitles = [
-      ...(sidebar as HTMLElement).querySelectorAll('[data-slot="sidebar-group-label"]'),
-    ].map((el) => el.textContent);
     for (const section of SECTIONS) {
-      expect(groupTitles).toContain(section.title);
+      const firstLink = sidebarScope.getByRole("link", { name: section.links[0]!.title });
+      const header = firstLink
+        .closest('[data-sidebar="menu-sub"]')
+        ?.closest('[data-sidebar="menu-item"]')
+        ?.querySelector('[data-sidebar="menu-button"]');
+      expect(header).toBeTruthy();
+      expect(within(header as HTMLElement).getByText(section.title)).toBeInTheDocument();
       for (const link of section.links) {
         expect(sidebarScope.getByRole("link", { name: link.title })).toHaveAttribute(
           "href",
@@ -125,6 +128,61 @@ describe("SiteLayout", () => {
       );
       expect(screen.getByRole("note", { name: "Unreleased version" })).toBeInTheDocument();
     });
+  });
+
+  it("renders doc sidebar sections with icons, nested sub-menus, and an active link state", () => {
+    render(
+      <MemoryRouter initialEntries={["/docs/introduction"]}>
+        <SiteLayout sections={SECTIONS} showSidebar>
+          <div>Guide</div>
+        </SiteLayout>
+      </MemoryRouter>,
+    );
+
+    const sidebar = document.querySelector('[data-slot="sidebar-container"]');
+    expect(sidebar).toBeTruthy();
+    const sidebarScope = within(sidebar as HTMLElement);
+
+    for (const section of SECTIONS) {
+      const firstLink = sidebarScope.getByRole("link", { name: section.links[0]!.title });
+      const header = firstLink
+        .closest('[data-sidebar="menu-sub"]')
+        ?.closest('[data-sidebar="menu-item"]')
+        ?.querySelector('[data-sidebar="menu-button"]');
+      expect(header?.querySelector("svg")).toBeTruthy();
+
+      for (const link of section.links) {
+        const anchor = sidebarScope.getByRole("link", { name: link.title });
+        expect(anchor.closest('[data-sidebar="menu-sub"]')).toBeTruthy();
+      }
+    }
+
+    expect(sidebarScope.getByRole("link", { name: "Introduction" })).toHaveAttribute("data-active");
+  });
+
+  it("uses the fallback icon for section titles missing from the icon map", () => {
+    const sectionsWithMystery: NavSection[] = [
+      ...SECTIONS,
+      { title: "Mystery", links: [{ title: "Unknown", href: "/docs/unknown" }] },
+    ];
+
+    render(
+      <MemoryRouter initialEntries={["/docs/unknown"]}>
+        <SiteLayout sections={sectionsWithMystery} showSidebar>
+          <div>Guide</div>
+        </SiteLayout>
+      </MemoryRouter>,
+    );
+
+    const sidebar = document.querySelector('[data-slot="sidebar-container"]');
+    const mysteryLink = within(sidebar as HTMLElement).getByRole("link", { name: "Unknown" });
+    const header = mysteryLink
+      .closest('[data-sidebar="menu-sub"]')
+      ?.closest('[data-sidebar="menu-item"]')
+      ?.querySelector('[data-sidebar="menu-button"]');
+    const icon = header?.querySelector("svg");
+    expect(icon).toBeTruthy();
+    expect(icon?.querySelector('[d*="M20 20a2 2 0 0 0 2-2V8"]')).toBeTruthy();
   });
 
   it("renders no pager on /", () => {
