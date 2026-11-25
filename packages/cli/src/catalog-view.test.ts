@@ -12,7 +12,15 @@ const catalog = () => loadLocalRegistry(join(REGISTRY_DIR, "registry.json"));
 const plain = (text: string) => stripVTControlCharacters(text);
 
 const restores: (() => void)[] = [];
-afterEach(() => restores.splice(0).forEach((restore) => restore()));
+// Read before any test overrides it: a later read may already see a leaked `true`.
+const pristineIsTTY = process.stdout.isTTY;
+// Last in, first out: a second override captures the first one as "before", so the first must be undone last.
+const restoreAll = () =>
+  restores
+    .splice(0)
+    .reverse()
+    .forEach((restore) => restore());
+afterEach(restoreAll);
 
 async function render(installed: string[] = [], width = 80) {
   const { items, modules } = await catalog();
@@ -155,6 +163,14 @@ describe("bonne-garde list on a terminal", () => {
     expect(hit.out).toContain("UI (");
     expect(hit.out).toContain("button");
     expect(miss.out).toBe('No match for "zzzqqq"\n');
+  });
+
+  test("two runs in one test leave stdout as it was found", async () => {
+    await ttyRun(["list", "--source", `local:${REGISTRY_DIR}`], 80);
+    await ttyRun(["list", "--source", `local:${REGISTRY_DIR}`], 100);
+    restoreAll();
+
+    expect(process.stdout.isTTY).toBe(pristineIsTTY);
   });
 
   test("view renders the item, not JSON", async () => {
