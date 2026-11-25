@@ -4,6 +4,16 @@ import { SQLiteSyncDialect, SQLiteTable } from "drizzle-orm/sqlite-core";
 import * as authSchema from "./schema";
 import { createTestAuth } from "./testing";
 
+/** The resolved tables keyed by the SQL name the generator gives them: `signupInvitation` is `signup_invitation`. */
+function bySqlName<T>(tables: Record<string, T>): Record<string, T> {
+  return Object.fromEntries(
+    Object.entries(tables).map(([model, table]) => [
+      model.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`),
+      table,
+    ]),
+  );
+}
+
 // `schema.ts` is what `vp run auth:generate` rewrites, from the schema Better Auth resolves out of
 // the options in `auth.config.ts`. A column that exists in the Drizzle file but not in that
 // resolved schema is silently dropped by the next regeneration, and the migration that follows
@@ -27,7 +37,8 @@ describe("auth schema", () => {
   });
 
   it("declares every column of every Drizzle auth table, with the same nullability", async () => {
-    const { tables } = await (await createTestAuth()).auth.$context;
+    const { tables: resolvedByModel } = await (await createTestAuth()).auth.$context;
+    const tables = bySqlName(resolvedByModel);
 
     const drizzleTables = Object.values(authSchema).filter((value) => is(value, SQLiteTable));
     const drizzleNames: string[] = drizzleTables.map(getTableName);
@@ -68,7 +79,8 @@ describe("auth schema", () => {
     // `() => new Date`. Run by Bun it drops every one of these defaults without an error, and
     // `db:generate` then rebuilds five tables without them. The script runs the CLI's bin, whose
     // shebang is Node's.
-    const { tables } = await (await createTestAuth()).auth.$context;
+    const { tables: resolvedByModel } = await (await createTestAuth()).auth.$context;
+    const tables = bySqlName(resolvedByModel);
     const dialect = new SQLiteSyncDialect();
     const checked: string[] = [];
     const withoutDefault: string[] = [];

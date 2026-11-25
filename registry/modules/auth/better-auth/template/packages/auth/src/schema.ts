@@ -86,6 +86,20 @@ export const verification = sqliteTable(
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
 
+export const signupInvitation = sqliteTable("signup_invitation", {
+  id: text("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  email: text("email"),
+  status: text("status").default("pending").notNull(),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+  consumedByUserId: text("consumed_by_user_id").references(() => user.id, {
+    onDelete: "set null",
+  }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .notNull(),
+});
+
 export const organization = sqliteTable("organization", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -143,6 +157,7 @@ export const invitation = sqliteTable(
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
+  signupInvitations: many(signupInvitation),
   members: many(member),
   invitations: many(invitation),
 }));
@@ -157,6 +172,13 @@ export const sessionRelations = relations(session, ({ one }) => ({
 export const accountRelations = relations(account, ({ one }) => ({
   user: one(user, {
     fields: [account.userId],
+    references: [user.id],
+  }),
+}));
+
+export const signupInvitationRelations = relations(signupInvitation, ({ one }) => ({
+  user: one(user, {
+    fields: [signupInvitation.consumedByUserId],
     references: [user.id],
   }),
 }));

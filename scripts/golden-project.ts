@@ -786,6 +786,7 @@ export const AUTH_TABLES: readonly string[] = [
   "member",
   "organization",
   "session",
+  "signup_invitation",
   "user",
   "verification",
 ];

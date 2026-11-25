@@ -94,6 +94,8 @@ The dockerfile runtime's generation is container behaviour inside its `readRunti
 value there and an operator's own wins. Under `NODE_ENV=test` a missing secret gets a fixture. Anywhere
 else a missing one fails the first request that needs auth, naming the key.
 
+`AUTH_SIGNUP` (`open` when unset, or `invite`) is optional; any other value fails `resolveAuthEnv`. See [Invite-only sign-up](#invite-only-sign-up).
+
 `RESEND_API_KEY` is not auth's: it is the `email` module's.
 
 ## Email
@@ -254,6 +256,19 @@ transaction, so each step can run twice: a user who already is a member gets no 
 marked accepted. The membership is one `INSERT … WHERE NOT EXISTS` (`src/invitations.ts`), not a read then an insert:
 `member` has no unique index on user and organization, and two sign-ins at once would both have passed the read. The session's active organization is the one of the most recent invitation accepted at that sign-in,
 else the first live one. `auth.invitation.test.ts` pins each case, including the four that are refused.
+
+## Invite-only sign-up
+
+With `AUTH_SIGNUP=invite`, `databaseHooks.user.create.before` refuses every account creation (`403`, code `SIGNUP_INVITE_REQUIRED`)
+unless the request body carries an `inviteCode` that is `pending`, not expired and bound to no email or to the new user's
+(case-insensitive), or a pending, unexpired organization invitation exists for that email on an organization with no
+`deletedAt`. A code that is given and invalid is refused even when an organization invitation exists. After creation the
+code becomes `accepted` with `consumedByUserId`; the Personal organization is created as ever. With `open`, nothing changes.
+
+`issueSignupInvitation({ db, mailer, appURL, logger }, { email? })` (exported from `{{SCOPE}}/auth`) stores a code
+(`signup_invitation` table, 8 characters without `0 1 I O`, shown `XXXX-XXXX`, valid 7 days) and returns
+`{ code, url }`, `url` being `<appURL>/auth/register?code=<code>`. With an email it also calls the optional
+`mailer.sendSignupInvitation({ to, code, url })`; `unconfiguredMailer` only logs, never the code or the link.
 
 ## Organizations marked deleted
 

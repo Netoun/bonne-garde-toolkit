@@ -49,6 +49,7 @@
         "packages/auth/src/auth.rate-limit.test.ts",
         "packages/auth/src/auth.schema.test.ts",
         "packages/auth/src/auth.seed.test.ts",
+        "packages/auth/src/auth.signup-invite.test.ts",
         "packages/auth/src/base-path.ts",
         "packages/auth/src/client.ts",
         "packages/auth/src/env.test.ts",
@@ -64,6 +65,8 @@
         "packages/auth/src/permissions.ts",
         "packages/auth/src/schema.ts",
         "packages/auth/src/seed.ts",
+        "packages/auth/src/signup-invitations.test.ts",
+        "packages/auth/src/signup-invitations.ts",
         "packages/auth/src/testing.ts",
         "packages/auth/tsconfig.json",
         "packages/auth/tsconfig.test.json"
@@ -73,6 +76,11 @@
           "name": "BETTER_AUTH_SECRET",
           "required": true,
           "example": ""
+        },
+        {
+          "name": "AUTH_SIGNUP",
+          "required": false,
+          "example": "open"
         }
       ],
       "patch": [
@@ -121,6 +129,8 @@
             "organizationRelations",
             "session",
             "sessionRelations",
+            "signupInvitation",
+            "signupInvitationRelations",
             "user",
             "userRelations",
             "verification"
@@ -158,6 +168,7 @@
         "packages/auth/src/auth.invitation.test.ts",
         "packages/auth/src/auth.rate-limit.test.ts",
         "packages/auth/src/auth.schema.test.ts",
+        "packages/auth/src/auth.signup-invite.test.ts",
         "packages/auth/src/base-path.ts",
         "packages/auth/src/client.ts",
         "packages/auth/src/env.test.ts",
@@ -180,6 +191,8 @@
         "packages/auth/src/permission.macro.ts",
         "packages/auth/src/permissions.ts",
         "packages/auth/src/schema.ts",
+        "packages/auth/src/signup-invitations.test.ts",
+        "packages/auth/src/signup-invitations.ts",
         "packages/auth/src/testing.ts",
         "packages/auth/tsconfig.json",
         "packages/auth/tsconfig.test.json"
@@ -189,6 +202,11 @@
           "name": "BETTER_AUTH_SECRET",
           "required": true,
           "example": ""
+        },
+        {
+          "name": "AUTH_SIGNUP",
+          "required": false,
+          "example": "open"
         }
       ],
       "patch": [
@@ -263,6 +281,8 @@
             "organizationRelations",
             "session",
             "sessionRelations",
+            "signupInvitation",
+            "signupInvitationRelations",
             "user",
             "userRelations",
             "verification"

@@ -1,20 +1,47 @@
-import { betterAuth } from "better-auth";
+import { betterAuth, type BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { hasPermission, organization } from "better-auth/plugins";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { and, eq, isNull } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { AUTH_BASE_PATH } from "./base-path";
+import type { AuthSignup } from "./env";
 import { acceptPendingInvitations } from "./invitations";
 import type { AuthMailer } from "./mailer";
 import { hashPassword, verifyPassword } from "./password";
 import { ac, roles } from "./permissions";
 import * as schema from "./schema";
+import { consumeSignupCode, inviteCodeOf, resolveSignupGrant } from "./signup-invitations";
 
 const { member, organization: orgTable } = schema;
 
 /** How long an organization invitation can be accepted. */
 const INVITATION_EXPIRES_IN = 60 * 60 * 24 * 7; // 7 days, in seconds
+
+/**
+ * Declares the `signup_invitation` table to Better Auth and does nothing else. `schema.ts` is
+ * generated from what Better Auth resolves out of the options, so a table that only `schema.ts`
+ * holds is dropped by the next `auth:generate`; the gate and the code's life are in `signup-invitations.ts`.
+ */
+const signupInvitationTable = {
+  id: "signup-invitation",
+  schema: {
+    signupInvitation: {
+      fields: {
+        code: { type: "string", required: true, unique: true },
+        email: { type: "string", required: false },
+        status: { type: "string", required: true, defaultValue: "pending" },
+        expiresAt: { type: "date", required: true },
+        consumedByUserId: {
+          type: "string",
+          required: false,
+          references: { model: "user", field: "id", onDelete: "set null" },
+        },
+        createdAt: { type: "date", required: true, defaultValue: () => new Date() },
+      },
+    },
+  },
+} satisfies BetterAuthPlugin;
 
 /** A Drizzle SQLite database, whichever driver is behind it: D1 in a Worker, `node:sqlite` in a test. */
 export type AuthDatabase = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;
@@ -42,6 +69,8 @@ export type AuthOptions = {
   clientIpHeaders: readonly string[];
   mailer: AuthMailer;
   logger: AuthLogger;
+  /** `AUTH_SIGNUP`: `open` when omitted. */
+  signup?: AuthSignup;
 };
 
 function generateSlug(name: string): string {
@@ -62,6 +91,7 @@ export function createAuth({
   clientIpHeaders,
   mailer,
   logger,
+  signup = "open",
 }: AuthOptions) {
   // `https` in production, plain `http` on localhost, where a Secure cookie would be dropped.
   const secureCookies = baseURL.startsWith("https://");
@@ -158,7 +188,33 @@ export function createAuth({
       // Hook: Create default organization after user signup
       user: {
         create: {
-          after: async (user) => {
+          // Every way of creating an account goes through here, so that a sign-in method added later
+          // is gated without being told. Under `invite`, the sign-up must carry a signup code (the
+          // `inviteCode` of the body) or have a pending organization invitation.
+          before: async (user, context) => {
+            if (signup !== "invite") return;
+            const grant = await resolveSignupGrant(db, {
+              email: user.email,
+              inviteCode: inviteCodeOf(context),
+            });
+            if (!grant.allowed) {
+              throw new APIError("FORBIDDEN", { code: "SIGNUP_INVITE_REQUIRED" });
+            }
+          },
+          after: async (user, context) => {
+            const inviteCode = inviteCodeOf(context);
+            if (signup === "invite" && typeof inviteCode === "string") {
+              try {
+                await consumeSignupCode(db, inviteCode, user.id);
+              } catch (error) {
+                logger.error("Failed to consume the signup code", error, {
+                  scope: "auth",
+                  event: "signup_code_consume_failed",
+                  userId: user.id,
+                });
+                // Don't throw - the account exists, and the code expires on its own.
+              }
+            }
             try {
               const orgId = crypto.randomUUID();
               const orgName = "Personal";
@@ -378,6 +434,7 @@ export function createAuth({
       },
     },
     plugins: [
+      signupInvitationTable,
       organization({
         ac,
         roles,

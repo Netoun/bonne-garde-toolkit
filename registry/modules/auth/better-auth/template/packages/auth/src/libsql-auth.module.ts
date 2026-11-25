@@ -108,7 +108,7 @@ export function authPlugin(resolveAuth: ResolveAuth) {
 }
 
 async function buildContext(client: Awaited<ReturnType<typeof readLibsql>>): Promise<AuthContext> {
-  const { BETTER_AUTH_SECRET } = resolveAuthEnv(await readRuntimeEnv(), {
+  const { BETTER_AUTH_SECRET, AUTH_SIGNUP } = resolveAuthEnv(await readRuntimeEnv(), {
     test: process.env.NODE_ENV === "test",
   });
   const db = createDB(client);
@@ -123,6 +123,7 @@ async function buildContext(client: Awaited<ReturnType<typeof readLibsql>>): Pro
       clientIpHeaders,
       mailer,
       logger,
+      signup: AUTH_SIGNUP,
     }),
   };
 }
