@@ -8,6 +8,13 @@ export type WelcomeTemplateProps = {
   locale?: EmailLocale;
 };
 
+/** Sample props for the preview script (`preview.ts`). */
+export const welcomePreviewProps: WelcomeTemplateProps = {
+  appName: "Acme",
+  userName: "Ada",
+  ctaUrl: "https://app.example.com/",
+};
+
 export function WelcomeTemplate(props: WelcomeTemplateProps) {
   const t = emailMessages(props.locale).welcome;
   const title = t.heading(props.appName);

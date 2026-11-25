@@ -77,6 +77,8 @@ Everything in `packages/email`, from explicit paths:
 | `src/components/email-kit.tsx`             | `EmailLayout`, `EmailHeading`, `EmailText`, `EmailButton`: the frame and parts every template is built on, themed from `branding`   |
 | `src/templates/*.template.tsx`             | `VerifyEmailEmail`, `ResetPasswordEmail`, `InvitationEmail` and `WelcomeTemplate`, on the kit, each taking `locale?`                |
 | `src/messages/{en,fr,index}.ts`            | the strings of every email per locale, `EmailLocale`, `DEFAULT_EMAIL_LOCALE` and `emailMessages(locale)`                            |
+| `src/preview.ts`                           | `writePreviews(outDir?)`: every template × locale to static `html` and `txt` files and an `index.html`; the `preview` script        |
+| `.gitignore`                               | `.preview/`, where the preview script writes                                                                                        |
 | `src/providers/memory.provider.ts`         | `createMemoryEmailProvider(store)`: keeps what it is asked to send, sends nothing                                                   |
 | `src/providers/resend.provider.ts`         | `createResendEmailProvider({ apiKey, from?, baseUrl? })`: `POST /emails`, plain `fetch`                                             |
 | `src/providers/smtp.provider.ts`           | `dockerfile` only: `createSmtpEmailProvider({ url, from? })`, nodemailer, `html` and `text`                                         |
@@ -128,8 +130,21 @@ await emailMailer.sendPasswordReset({ to, name, url, locale: "fr" }); // French 
 ```
 
 **Adding a locale.** Create `src/messages/<code>.ts` exporting `const <code>: EmailMessages` (the compiler
-lists what is missing), add the code to `EmailLocale` and the file to `MESSAGES` in `messages/index.ts`.
+lists what is missing), add the code to `EMAIL_LOCALES` (it defines `EmailLocale`) and the file to `MESSAGES` in `messages/index.ts`. The preview renders it with no other change.
 Subjects and templates need no change.
+
+## Preview
+
+```bash
+cd packages/email && vp run preview   # then open .preview/index.html
+```
+
+`src/preview.ts` renders every registered template in every locale, with its sample props, to
+`.preview/<template>.<locale>.html` and `.txt`, and an `index.html` linking them. It is a script, not a
+react-email dev server (`email dev` pulls Next.js), run with `tsx` so it works under any package manager.
+`.preview/` is git-ignored by the package. Each template exports its sample props beside it
+(`verifyEmailPreviewProps`, …); previewing a new template means exporting its props and adding one `entry(...)`
+line to `PREVIEWS` in `preview.ts`.
 
 ## Resend, and why not the SDK
 

@@ -10,6 +10,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --project tsconfig.test.json --noEmit",
-    "test": "vp test"
+    "test": "vp test",
+    "preview": "tsx src/preview.ts"
   }
 }

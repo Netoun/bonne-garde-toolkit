@@ -1716,7 +1716,7 @@ export function hasEmail(configuration: Configuration): boolean {
 }
 
 /** How many tests the email package runs in the project; fewer means the root `test` stopped reaching it. */
-export const EMAIL_MIN_TESTS = 28;
+export const EMAIL_MIN_TESTS = 31;
 
 /** The region of the patch that points the email package's `./transport` export at its variant's file. */
 const TRANSPORT_REGION: string = 'exports."./transport"';

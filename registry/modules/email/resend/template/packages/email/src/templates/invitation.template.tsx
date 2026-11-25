@@ -8,6 +8,13 @@ export type InvitationTemplateProps = {
   locale?: EmailLocale;
 };
 
+/** Sample props for the preview script (`preview.ts`). */
+export const invitationPreviewProps: InvitationTemplateProps = {
+  inviterName: "Ada",
+  organizationName: "Analytical Engines",
+  acceptUrl: "https://app.example.com/auth/accept-invitation?id=sample",
+};
+
 export function InvitationEmail(props: InvitationTemplateProps) {
   const t = emailMessages(props.locale).invitation;
   const title = t.heading(props.inviterName, props.organizationName);

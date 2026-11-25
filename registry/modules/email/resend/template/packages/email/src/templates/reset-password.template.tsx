@@ -7,6 +7,12 @@ export type ResetPasswordTemplateProps = {
   locale?: EmailLocale;
 };
 
+/** Sample props for the preview script (`preview.ts`). */
+export const resetPasswordPreviewProps: ResetPasswordTemplateProps = {
+  name: "Ada",
+  resetUrl: "https://app.example.com/auth/reset-password?token=sample",
+};
+
 export function ResetPasswordEmail(props: ResetPasswordTemplateProps) {
   const t = emailMessages(props.locale).resetPassword;
   return (

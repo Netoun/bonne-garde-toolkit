@@ -7,6 +7,12 @@ export type VerifyEmailTemplateProps = {
   locale?: EmailLocale;
 };
 
+/** Sample props for the preview script (`preview.ts`). */
+export const verifyEmailPreviewProps: VerifyEmailTemplateProps = {
+  name: "Ada",
+  verificationUrl: "https://app.example.com/auth/verify-email?token=sample",
+};
+
 export function VerifyEmailEmail(props: VerifyEmailTemplateProps) {
   const t = emailMessages(props.locale).verifyEmail;
   return (

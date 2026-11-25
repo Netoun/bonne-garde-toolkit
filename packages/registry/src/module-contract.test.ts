@@ -3946,7 +3946,11 @@ describe("module contract", () => {
       const imported = new Set<string>();
       for (const [, source] of await sources()) {
         for (const specifier of specifiers(source)) {
-          if (!specifier.startsWith(".") && !specifier.startsWith("{{SCOPE}}/")) {
+          if (
+            !specifier.startsWith(".") &&
+            !specifier.startsWith("{{SCOPE}}/") &&
+            !specifier.startsWith("node:")
+          ) {
             imported.add(packagesImportedBy(`from "${specifier}"`)[0] ?? specifier);
           }
         }

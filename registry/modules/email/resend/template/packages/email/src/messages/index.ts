@@ -4,7 +4,9 @@ import { fr } from "./fr";
 export type { EmailMessages } from "./en";
 
 /** The languages emails are written in: the same identity, and default, as the i18n module's. */
-export type EmailLocale = "en" | "fr";
+export const EMAIL_LOCALES = ["en", "fr"] as const;
+
+export type EmailLocale = (typeof EMAIL_LOCALES)[number];
 
 export const DEFAULT_EMAIL_LOCALE: EmailLocale = "en";
 

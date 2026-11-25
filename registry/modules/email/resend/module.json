@@ -29,6 +29,7 @@
         "@types/react": "19.2.18"
       },
       "copy": [
+        "packages/email/.gitignore",
         "packages/email/package.json",
         "packages/email/src/auth-mailer.test.ts",
         "packages/email/src/auth-mailer.ts",
@@ -40,6 +41,8 @@
         "packages/email/src/messages/en.ts",
         "packages/email/src/messages/fr.ts",
         "packages/email/src/messages/index.ts",
+        "packages/email/src/preview.test.ts",
+        "packages/email/src/preview.ts",
         "packages/email/src/providers/memory.provider.ts",
         "packages/email/src/providers/resend.provider.test.ts",
         "packages/email/src/providers/resend.provider.ts",
@@ -98,6 +101,7 @@
         "@types/react": "19.2.18"
       },
       "copy": [
+        "packages/email/.gitignore",
         "packages/email/package.json",
         "packages/email/src/auth-mailer.test.ts",
         "packages/email/src/auth-mailer.ts",
@@ -109,6 +113,8 @@
         "packages/email/src/messages/en.ts",
         "packages/email/src/messages/fr.ts",
         "packages/email/src/messages/index.ts",
+        "packages/email/src/preview.test.ts",
+        "packages/email/src/preview.ts",
         "packages/email/src/providers/memory.provider.ts",
         "packages/email/src/providers/resend.provider.test.ts",
         "packages/email/src/providers/resend.provider.ts",
@@ -180,6 +186,7 @@
         "smtp-server": "3.21.7"
       },
       "copy": [
+        "packages/email/.gitignore",
         "packages/email/compose.mailpit.yaml",
         "packages/email/package.json",
         "packages/email/src/auth-mailer.test.ts",
@@ -192,6 +199,8 @@
         "packages/email/src/messages/en.ts",
         "packages/email/src/messages/fr.ts",
         "packages/email/src/messages/index.ts",
+        "packages/email/src/preview.test.ts",
+        "packages/email/src/preview.ts",
         "packages/email/src/providers/memory.provider.ts",
         "packages/email/src/providers/resend.provider.test.ts",
         "packages/email/src/providers/resend.provider.ts",
@@ -263,6 +272,7 @@
         "smtp-server": "3.21.7"
       },
       "copy": [
+        "packages/email/.gitignore",
         "packages/email/compose.mailpit.yaml",
         "packages/email/package.json",
         "packages/email/src/auth-mailer.test.ts",
@@ -275,6 +285,8 @@
         "packages/email/src/messages/en.ts",
         "packages/email/src/messages/fr.ts",
         "packages/email/src/messages/index.ts",
+        "packages/email/src/preview.test.ts",
+        "packages/email/src/preview.ts",
         "packages/email/src/providers/memory.provider.ts",
         "packages/email/src/providers/resend.provider.test.ts",
         "packages/email/src/providers/resend.provider.ts",
