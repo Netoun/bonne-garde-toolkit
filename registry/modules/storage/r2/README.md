@@ -59,18 +59,23 @@ module does not wait for one, because the path is stored: `medias.url` is `<R2_P
 Moving the routes would break every url already written to a database. A front calls them through
 Eden as `api.v1.media`.
 
-| Route                  | Auth    | Does                                                                                                                                     |
-| ---------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /v1/media/file/*` | none    | serves an object by key, cached for a year, with `X-Content-Type-Options: nosniff`; `400 INVALID_KEY` for an unsafe key                  |
-| `POST /v1/media`       | session | uploads an image (jpeg, png, webp, gif, 10 MB at most) and records it; `400 INVALID_FILE_TYPE` if its bytes are not the type it declares |
-| `DELETE /v1/media/:id` | session | deletes the object and the record, for its author or an admin or owner of its organization                                               |
-| `GET /v1/media/:id`    | session | the record, with its author and organization                                                                                             |
+| Route                  | Auth    | Does                                                                                                                                                                                                              |
+| ---------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /v1/media/file/*` | none    | serves an object by key, cached for a year, with `X-Content-Type-Options: nosniff`; `400 INVALID_KEY` for an unsafe key                                                                                           |
+| `POST /v1/media`       | session | uploads an image (jpeg, png, webp, gif, 10 MB at most) and records it; `400 INVALID_FILE_TYPE` if its bytes are not the type it declares; `403 UNAUTHORIZED` with an `organizationId` the user is not a member of |
+| `DELETE /v1/media/:id` | session | deletes the object and the record, for its author or an admin or owner of the organization stored on the media; `403` for anyone else, and no body                                                                |
+| `GET /v1/media/:id`    | session | the record, with its author and organization, for its author or a member of its organization; `404` for anyone else, as for a media that does not exist                                                           |
 
 An upload is checked on its content, not on the type the client declares: `validateFile` reads the first bytes
 (hand-written signatures for JPEG, PNG, GIF and WebP, so the same code runs on Workers and Node) and refuses, with
 `INVALID_FILE_TYPE` (`400`), a file that is none of them or whose type is not the declared one. The detected type is
 what `medias.mime_type` and the object's content type hold. The key is `medias/<folder>/<uuid>.<ext>`, with no
 trace of the client's filename (it stays in `medias.name`), and the file route sends `nosniff`.
+
+Access follows the media's author and organization. An upload to an organization is refused to a user who is not
+one of its members (any role). A media is read by its author or a member of its organization, and deleted by its
+author or an `owner` or `admin` of its organization; the organization is the one stored on the row, never one the
+request names. `GET /v1/media/file/*` stays public: the random key is what protects it.
 
 The routes are given the `auth` macro: `mediaModule` is built with `authMacro` from `{{SCOPE}}/auth`, and
 `mediaPlugin(resolveStorage, macro)` takes another, which is how the tests run the real routes behind a real

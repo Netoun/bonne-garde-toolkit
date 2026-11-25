@@ -8,9 +8,3 @@ export const uploadMediaBody = t.Object({
   folder: t.Optional(t.String()),
   organizationId: t.Optional(t.String()),
 });
-
-export const deleteMediaBody = t.Optional(
-  t.Object({
-    organizationId: t.Optional(t.String()),
-  }),
-);

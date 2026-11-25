@@ -2,7 +2,7 @@ import { Elysia } from "elysia";
 // `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import type { authMacroPlugin } from "{{SCOPE}}/auth";
-import { deleteMediaBody, mediaParams, uploadMediaBody } from "./media.contract";
+import { mediaParams, uploadMediaBody } from "./media.contract";
 import { mediaServicePlugin, type ResolveStorage } from "./media.service";
 import { R2Error } from "./r2";
 
@@ -67,6 +67,9 @@ export function mediaRoutes(resolveStorage: ResolveStorage, macro: AuthMacro) {
             ) {
               return status(400, { error: error.message, code: error.code });
             }
+            if (error instanceof R2Error && error.code === "UNAUTHORIZED") {
+              return status(403, { error: error.message, code: error.code });
+            }
             throw error;
           }
         },
@@ -74,13 +77,9 @@ export function mediaRoutes(resolveStorage: ResolveStorage, macro: AuthMacro) {
       )
       .delete(
         "/:id",
-        async ({ params, mediaService, user, body, set }) => {
+        async ({ params, mediaService, user, set }) => {
           try {
-            return await mediaService.deleteMedia({
-              id: params.id,
-              userId: user.id,
-              organizationId: body?.organizationId,
-            });
+            return await mediaService.deleteMedia({ id: params.id, userId: user.id });
           } catch (error) {
             if (error instanceof R2Error) {
               switch (error.code) {
@@ -110,12 +109,12 @@ export function mediaRoutes(resolveStorage: ResolveStorage, macro: AuthMacro) {
             throw error;
           }
         },
-        { params: mediaParams, body: deleteMediaBody },
+        { params: mediaParams },
       )
       .get(
         "/:id",
-        async ({ params, mediaService, set }) => {
-          const media = await mediaService.getMediaById(params.id);
+        async ({ params, mediaService, user, set }) => {
+          const media = await mediaService.getMediaById(params.id, user.id);
 
           if (!media) {
             set.status = 404;

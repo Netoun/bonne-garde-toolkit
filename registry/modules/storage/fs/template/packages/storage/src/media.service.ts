@@ -40,7 +40,6 @@ export interface UploadMediaInput {
 export interface DeleteMediaInput {
   id: string;
   userId: string;
-  organizationId?: string;
 }
 
 export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
@@ -48,40 +47,40 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
     return [];
   };
 
-  const verifyOwnership = async (
-    mediaId: string,
-    userId: string,
-    organizationId?: string,
-  ): Promise<boolean> => {
+  /** The role of `userId` in the organization, or `undefined` when it is not a member. */
+  const memberRole = async (userId: string, organizationId: string) => {
+    const membership = await db.query.member.findFirst({
+      where: (member, { eq, and }) =>
+        and(eq(member.userId, userId), eq(member.organizationId, organizationId)),
+      columns: { role: true },
+    });
+    return membership?.role;
+  };
+
+  /** The author of a media, or an admin or owner of the organization the media belongs to (read from the row). */
+  const verifyOwnership = async (mediaId: string, userId: string): Promise<boolean> => {
     const media = await db.query.medias.findFirst({
       where: eq(medias.id, mediaId),
       columns: { authorId: true, organizationId: true },
     });
 
     if (!media) return false;
-
-    // Media owner can always delete
     if (media.authorId === userId) return true;
+    if (!media.organizationId) return false;
 
-    // Organization admin can delete organization's media
-    if (organizationId && media.organizationId === organizationId) {
-      // Check if user is admin of the organization
-      const membership = await db.query.member.findFirst({
-        where: (member, { eq, and }) =>
-          and(eq(member.userId, userId), eq(member.organizationId, organizationId)),
-        columns: { role: true },
-      });
-
-      return membership?.role === "admin" || membership?.role === "owner";
-    }
-
-    return false;
+    const role = await memberRole(userId, media.organizationId);
+    return role === "admin" || role === "owner";
   };
 
   const uploadMedia = async (
     input: UploadMediaInput,
   ): Promise<Pick<UploadResult, "key" | "url"> & { id: string; name: string }> => {
     try {
+      // An organization takes uploads from its members only, any role.
+      if (input.organizationId && !(await memberRole(input.userId, input.organizationId))) {
+        throw new R2Error("Not a member of this organization", "UNAUTHORIZED");
+      }
+
       // Write the file first
       const { key, url, mimeType } = await uploadFile(bucket, publicUrl, {
         folder: input.folder,
@@ -131,7 +130,7 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
     }
 
     // Verify ownership
-    const hasPermission = await verifyOwnership(input.id, input.userId, input.organizationId);
+    const hasPermission = await verifyOwnership(input.id, input.userId);
     if (!hasPermission) {
       throw new R2Error("Unauthorized to delete this media", "UNAUTHORIZED");
     }
@@ -156,8 +155,9 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
     return { success: true, id: input.id };
   };
 
-  const getMediaById = async (id: string) => {
-    return db.query.medias.findFirst({
+  /** The media with its author and organization, for its author or a member of its organization; `undefined` for anyone else, as for a media that does not exist. */
+  const getMediaById = async (id: string, userId: string) => {
+    const media = await db.query.medias.findFirst({
       where: eq(medias.id, id),
       with: {
         author: {
@@ -168,6 +168,11 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
         },
       },
     });
+
+    if (!media) return undefined;
+    if (media.authorId === userId) return media;
+    if (media.organizationId && (await memberRole(userId, media.organizationId))) return media;
+    return undefined;
   };
 
   const getFile = async (key: string): Promise<{ blob: Blob; contentType: string } | null> => {

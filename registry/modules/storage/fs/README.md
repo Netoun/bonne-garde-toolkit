@@ -42,6 +42,11 @@ An upload is checked on its content, as in `storage/r2`: the first bytes must be
 matches the declared type, else `400 INVALID_FILE_TYPE`; `medias.mime_type` holds the detected type, and the file
 route sends `X-Content-Type-Options: nosniff`.
 
+Access follows the media's author and organization, as in `storage/r2`: an upload to an organization needs
+membership (`403 UNAUTHORIZED` otherwise), a media is read by its author or a member of its organization (`404`
+for anyone else), and deleted by its author or an `owner` or `admin` of the organization stored on the row. The
+file route stays public by its random key.
+
 ## Where the files are
 
 `<DATA_DIR>/media/<key>`, with `DATA_DIR` read as `db/libsql` reads it (`.data` by default, `/data` in the

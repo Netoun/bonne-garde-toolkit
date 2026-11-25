@@ -150,6 +150,36 @@ describe("the media routes", () => {
       expect(await test.db.select().from(medias)).toEqual([]);
     });
 
+    it("answers 403 to a user who is not a member of the organization, and writes no row nor file", async () => {
+      const outsider = await test.signUp("outsider@example.com");
+
+      const { error } = await test.client(outsider.cookie).v1.media.post({
+        file: createImageFile("test-content", "test.jpg"),
+        organizationId: orgId,
+      });
+
+      expect(statusOf(error)).toBe(403);
+      expect(await filesUnder(testBucket.dataDir)).toEqual([]);
+      expect(await test.db.select().from(medias)).toEqual([]);
+    });
+
+    it("lets a plain member of the organization upload to it", async () => {
+      const member = await test.signUp("member@example.com");
+      await test.addMember(orgId, member.userId, "member");
+
+      const { data, error } = await test.client(member.cookie).v1.media.post({
+        file: createImageFile("test-content", "test.jpg"),
+        organizationId: orgId,
+      });
+
+      expect(error).toBeNull();
+      const [row] = await test.db
+        .select()
+        .from(medias)
+        .where(eq(medias.id, data?.id ?? ""));
+      expect(row).toMatchObject({ authorId: member.userId, organizationId: orgId });
+    });
+
     it("answers 401 without a session, and stores nothing", async () => {
       const { error } = await test
         .client()
@@ -213,9 +243,7 @@ describe("the media routes", () => {
       if (!uploaded) throw new Error("Expected uploaded media");
       expect(await filesUnder(testBucket.root)).toEqual([uploaded.key]);
 
-      const { data, error } = await api.v1.media({ id: uploaded.id }).delete({
-        organizationId: orgId,
-      });
+      const { data, error } = await api.v1.media({ id: uploaded.id }).delete();
 
       expect(error).toBeNull();
       expect(data).toEqual({ success: true, id: uploaded.id });
@@ -238,13 +266,26 @@ describe("the media routes", () => {
       const other = await test.signUp("user-2@example.com");
       await test.addOrganization("org-2", other.userId, "owner");
 
-      const { error } = await test
-        .client(other.cookie)
-        .v1.media({ id: uploaded.id })
-        .delete({ organizationId: "org-2" });
+      const { error } = await test.client(other.cookie).v1.media({ id: uploaded.id }).delete();
 
       expect(statusOf(error)).toBe(403);
       expect(await filesUnder(testBucket.root)).toEqual([uploaded.key]);
+    });
+
+    it("returns 403 to a plain member who is not the author, and keeps the file", async () => {
+      const { data: uploaded } = await api.v1.media.post({
+        file: createImageFile("test-content", "test.jpg"),
+        organizationId: orgId,
+      });
+      if (!uploaded) throw new Error("Expected uploaded media");
+      const member = await test.signUp("member@example.com");
+      await test.addMember(orgId, member.userId, "member");
+
+      const { error } = await test.client(member.cookie).v1.media({ id: uploaded.id }).delete();
+
+      expect(statusOf(error)).toBe(403);
+      expect(await filesUnder(testBucket.root)).toEqual([uploaded.key]);
+      expect(await test.db.select().from(medias).where(eq(medias.id, uploaded.id))).toHaveLength(1);
     });
 
     it("lets an admin of the organization delete a member's media", async () => {
@@ -256,10 +297,7 @@ describe("the media routes", () => {
       const admin = await test.signUp("admin@example.com");
       await test.addMember(orgId, admin.userId, "admin");
 
-      const { error } = await test
-        .client(admin.cookie)
-        .v1.media({ id: uploaded.id })
-        .delete({ organizationId: orgId });
+      const { error } = await test.client(admin.cookie).v1.media({ id: uploaded.id }).delete();
 
       expect(error).toBeNull();
       expect(await filesUnder(testBucket.root)).toEqual([]);
@@ -279,7 +317,7 @@ describe("the media routes", () => {
   });
 
   describe("GET /v1/media/:id", () => {
-    it("returns the media with its author and organization, and 404 for none", async () => {
+    it("returns the media with its author and organization to its author, and 404 for none", async () => {
       const { data: uploaded } = await api.v1.media.post({
         file: createImageFile("test", "test.jpg"),
         organizationId: orgId,
@@ -296,6 +334,38 @@ describe("the media routes", () => {
         organization: { id: orgId },
       });
       expect(statusOf(missing)).toBe(404);
+    });
+
+    it("returns it to a member of the media's organization, whatever the role", async () => {
+      const { data: uploaded } = await api.v1.media.post({
+        file: createImageFile("test", "test.jpg"),
+        organizationId: orgId,
+      });
+      if (!uploaded) throw new Error("Expected uploaded media");
+      const member = await test.signUp("member@example.com");
+      await test.addMember(orgId, member.userId, "member");
+
+      const { data, error } = await test.client(member.cookie).v1.media({ id: uploaded.id }).get();
+
+      expect(error).toBeNull();
+      expect(data).toMatchObject({ id: uploaded.id });
+    });
+
+    it("answers 404 to a user who shares no organization with the author, for a media of an organization or of none", async () => {
+      const { data: inOrg } = await api.v1.media.post({
+        file: createImageFile("test", "test.jpg"),
+        organizationId: orgId,
+      });
+      const { data: alone } = await api.v1.media.post({
+        file: createImageFile("test", "alone.jpg"),
+      });
+      if (!inOrg || !alone) throw new Error("Expected uploaded media");
+      const other = await test.signUp("user-2@example.com");
+      await test.addOrganization("org-2", other.userId, "owner");
+      const otherApi = test.client(other.cookie);
+
+      expect(statusOf((await otherApi.v1.media({ id: inOrg.id }).get()).error)).toBe(404);
+      expect(statusOf((await otherApi.v1.media({ id: alone.id }).get()).error)).toBe(404);
     });
   });
 });
