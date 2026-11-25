@@ -7,12 +7,14 @@ import {
 // `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { AUTH_BASE_PATH, type Auth } from "@acme/auth/client";
+// oxfmt-ignore
+import { ac, roles } from "@acme/auth/permissions";
 
 export const authClient = createAuthClient({
   baseURL: import.meta.env.VITE_API_URL,
   basePath: AUTH_BASE_PATH,
   plugins: [
     inferAdditionalFields<Auth>(),
-    organizationClient({ schema: inferOrgAdditionalFields<Auth>() }),
+    organizationClient({ ac, roles, schema: inferOrgAdditionalFields<Auth>() }),
   ],
 });

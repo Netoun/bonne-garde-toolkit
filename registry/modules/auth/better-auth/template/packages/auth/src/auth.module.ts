@@ -13,6 +13,7 @@ import { readD1 } from "{{SCOPE}}/db/d1";
 import { createAuth, type Auth, type AuthDatabase } from "./auth.config";
 import { resolveAuthEnv } from "./env";
 import { mailer } from "./mailer";
+import { permissionMacroPlugin } from "./permission.macro";
 import { member, organization, session as sessionTable } from "./schema";
 
 /** An auth instance and the database it was built over. */
@@ -92,10 +93,11 @@ export function authMacroPlugin(resolveAuth: ResolveAuth) {
   });
 }
 
-/** The Better Auth handler mounted on the app, and the `auth` macro beside it. */
+/** The Better Auth handler mounted on the app, and the `auth` and `permission` macros beside it. */
 export function authPlugin(resolveAuth: ResolveAuth) {
   return new Elysia({ name: "auth.module" })
     .use(authMacroPlugin(resolveAuth))
+    .use(permissionMacroPlugin(resolveAuth))
     .mount(async (request) => {
       if (request.method === "OPTIONS") {
         return applyCorsHeaders(request, new Response(null, { status: 204 }));

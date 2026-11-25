@@ -43,6 +43,7 @@
         "packages/auth/src/auth.flow.test.ts",
         "packages/auth/src/auth.module.ts",
         "packages/auth/src/auth.organization.test.ts",
+        "packages/auth/src/auth.permission.test.ts",
         "packages/auth/src/auth.rate-limit.test.ts",
         "packages/auth/src/auth.schema.test.ts",
         "packages/auth/src/auth.seed.test.ts",
@@ -56,6 +57,8 @@
         "packages/auth/src/mailer.ts",
         "packages/auth/src/password.test.ts",
         "packages/auth/src/password.ts",
+        "packages/auth/src/permission.macro.ts",
+        "packages/auth/src/permissions.ts",
         "packages/auth/src/schema.ts",
         "packages/auth/src/seed.ts",
         "packages/auth/src/testing.ts",
@@ -160,6 +163,7 @@
         "packages/auth/src/libsql-auth.flow.test.ts",
         "packages/auth/src/libsql-auth.module.ts",
         "packages/auth/src/libsql-auth.organization.test.ts",
+        "packages/auth/src/libsql-auth.permission.test.ts",
         "packages/auth/src/libsql-index.ts",
         "packages/auth/src/libsql-seed.test.ts",
         "packages/auth/src/libsql-seed.ts",
@@ -167,6 +171,8 @@
         "packages/auth/src/mailer.ts",
         "packages/auth/src/password.test.ts",
         "packages/auth/src/password.ts",
+        "packages/auth/src/permission.macro.ts",
+        "packages/auth/src/permissions.ts",
         "packages/auth/src/schema.ts",
         "packages/auth/src/testing.ts",
         "packages/auth/tsconfig.json",
@@ -187,6 +193,7 @@
             "exports": {
               ".": "./src/libsql-index.ts",
               "./client": "./src/client.ts",
+              "./permissions": "./src/permissions.ts",
               "./schema": "./src/schema.ts",
               "./testing": "./src/testing.ts"
             }

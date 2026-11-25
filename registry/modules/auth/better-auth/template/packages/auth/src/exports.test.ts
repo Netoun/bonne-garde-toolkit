@@ -5,6 +5,8 @@ import { authModule, createAuth, type Auth } from "{{SCOPE}}/auth";
 // oxfmt-ignore
 import { AUTH_BASE_PATH, type Auth as ClientAuth } from "{{SCOPE}}/auth/client";
 // oxfmt-ignore
+import { ac, roles, type OrganizationRole } from "{{SCOPE}}/auth/permissions";
+// oxfmt-ignore
 import { user } from "{{SCOPE}}/auth/schema";
 // oxfmt-ignore
 import { createTestAuth } from "{{SCOPE}}/auth/testing";
@@ -32,5 +34,12 @@ describe("the subpaths the rest of the project imports", () => {
   it("resolves ./schema to the tables and ./testing to the helper", () => {
     expect(user).toBeDefined();
     expect(typeof createTestAuth).toBe("function");
+  });
+
+  it("resolves ./permissions to the access control and the roles, with no server import", () => {
+    const role: OrganizationRole = "admin";
+
+    expect(ac.statements.member).toContain("create");
+    expect(roles[role]).toBeDefined();
   });
 });
