@@ -25,6 +25,7 @@ export const MODULE_CATEGORIES = [
   "realtime",
   "payments",
   "observability",
+  "launch",
   "web",
   "testing",
   "deploy",
@@ -50,6 +51,7 @@ const SINGLE_CATEGORIES = new Set<ModuleCategory>([
   "realtime",
   "payments",
   "observability",
+  "launch",
 ]);
 
 const ID_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

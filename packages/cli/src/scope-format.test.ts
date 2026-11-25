@@ -52,6 +52,7 @@ const OTHER_PROVIDER_STACK = [
   "storage/fs",
   "realtime/rooms",
   "observability/sentry",
+  "launch/waitlist",
   "web/spa",
 ];
 /**
@@ -61,17 +62,18 @@ const OTHER_PROVIDER_STACK = [
 const OTHER_PROVIDER_POSTGRES_STACK = OTHER_PROVIDER_STACK.flatMap((key) =>
   key === "db/libsql"
     ? ["db/postgres"]
-    : ["orm/drizzle", "auth/better-auth", "storage/fs"].includes(key)
+    : ["orm/drizzle", "auth/better-auth", "storage/fs", "launch/waitlist"].includes(key)
       ? []
       : [key],
 );
-/** What needs that provider's tree: `db/libsql`, `db/postgres`, `storage/fs`, `realtime/rooms` and `observability/sentry` peer on `dockerfile`, so they are never installed alone. */
+/** What needs that provider's tree: `db/libsql`, `db/postgres`, `storage/fs`, `realtime/rooms`, `observability/sentry` and `launch/waitlist` peer on `dockerfile`, so they are never installed alone. */
 const OTHER_PROVIDER_ONLY = [
   "db/libsql",
   "db/postgres",
   "storage/fs",
   "realtime/rooms",
   "observability/sentry",
+  "launch/waitlist",
 ];
 
 const dirs: string[] = [];

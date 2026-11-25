@@ -41,4 +41,23 @@ describe("the mailer an email module replaces", () => {
     expect(lines[0]).not.toContain("invitation-id");
     expect(lines[0]).not.toContain("a@example.com");
   });
+
+  it("does not send a signup invitation either, and never logs its code or link", async () => {
+    const lines: string[] = [];
+    const mailer = unconfiguredMailer({
+      warn: (message, context) => lines.push(JSON.stringify({ message, ...context })),
+    });
+
+    await mailer.sendSignupInvitation?.({
+      to: "a@example.com",
+      code: "ABCD-2345",
+      url: "http://spa.test/auth/register?code=ABCD-2345",
+    });
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('"event":"email_not_sent"');
+    expect(lines[0]).toContain('"kind":"signup_invitation"');
+    expect(lines[0]).not.toContain("ABCD");
+    expect(lines[0]).not.toContain("a@example.com");
+  });
 });

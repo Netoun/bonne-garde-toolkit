@@ -93,6 +93,7 @@
           "realtime",
           "payments",
           "observability",
+          "launch",
           "web",
           "testing",
           "deploy",

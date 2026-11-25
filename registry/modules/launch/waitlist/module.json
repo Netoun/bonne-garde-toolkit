@@ -1,0 +1,93 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "waitlist",
+  "category": "launch",
+  "version": "0.1.0",
+  "title": "Launch stage and waiting list",
+  "description": "A launch stage (waiting or launched) that routes can guard on, and a waiting list people join with an email address, in packages/launch, for the dockerfile provider.",
+  "peers": {
+    "provider": ["dockerfile"],
+    "api": ["elysia"],
+    "db": ["libsql"],
+    "orm": ["drizzle"],
+    "auth": ["better-auth"]
+  },
+  "checks": ["cd packages/launch && vp run typecheck && vp run test"],
+  "variants": [
+    {
+      "key": "libsql",
+      "match": { "db": "libsql" },
+      "workspace": {
+        "name": "{{SCOPE}}/launch",
+        "path": "packages/launch"
+      },
+      "dependencies": {
+        "drizzle-orm": "0.45.2",
+        "elysia": "1.4.29",
+        "{{SCOPE}}/api-runtime": "workspace:*",
+        "{{SCOPE}}/db": "workspace:*"
+      },
+      "devDependencies": {
+        "@elysiajs/eden": "1.4.9"
+      },
+      "env": [
+        { "name": "LAUNCH_STAGE", "required": true, "example": "waiting" },
+        { "name": "LAUNCH_WAITLIST_MAX_PER_HOUR", "required": false, "example": "5" }
+      ],
+      "copy": [
+        "packages/launch/package.json",
+        "packages/launch/src/env.test.ts",
+        "packages/launch/src/env.ts",
+        "packages/launch/src/exports.test.ts",
+        "packages/launch/src/index.ts",
+        "packages/launch/src/launch.module.test.ts",
+        "packages/launch/src/launch.module.ts",
+        "packages/launch/src/launch.routes.test.ts",
+        "packages/launch/src/schema.ts",
+        "packages/launch/src/testing.ts",
+        "packages/launch/src/waitlist.service.ts",
+        "packages/launch/tsconfig.json",
+        "packages/launch/tsconfig.test.json"
+      ],
+      "patch": [
+        {
+          "type": "package.dependencies",
+          "file": "apps/api/package.json",
+          "dependencies": {
+            "{{SCOPE}}/launch": "workspace:*"
+          },
+          "intent": "Declare the project's launch package as a dependency of the API app."
+        },
+        {
+          "type": "ts.addImport",
+          "file": "apps/api/src/app.ts",
+          "moduleSpecifier": "{{SCOPE}}/launch",
+          "namedImports": ["launchModule"],
+          "intent": "Import launchModule from the project's launch package in the API app."
+        },
+        {
+          "type": "ts.elysiaUse",
+          "file": "apps/api/src/app.ts",
+          "targetName": "app",
+          "argument": "launchModule",
+          "intent": "Register launchModule on the API app after its last .use and before its routes: it serves the launch stage and the waiting list under /launch."
+        },
+        {
+          "type": "package.dependencies",
+          "file": "packages/db/package.json",
+          "dependencies": {
+            "{{SCOPE}}/launch": "workspace:*"
+          },
+          "intent": "Declare the project's launch package as a dependency of the db package, whose schema barrel re-exports its tables."
+        },
+        {
+          "type": "ts.addNamedExport",
+          "file": "packages/db/src/schema/index.ts",
+          "moduleSpecifier": "{{SCOPE}}/launch/schema",
+          "exports": ["waitlistEntry", "waitlistJoin"],
+          "intent": "Re-export the waiting list tables of the launch package from the schema barrel, so db:generate and createDB see them."
+        }
+      ]
+    }
+  ]
+}

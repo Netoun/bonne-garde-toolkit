@@ -2927,10 +2927,13 @@ describe("module contract", () => {
       // Golden regenerates it with the pinned CLI and compares: this is only the cheap half.
     });
 
-    test("BETTER_AUTH_SECRET is its env key, and the only one", async () => {
+    test("BETTER_AUTH_SECRET and AUTH_SIGNUP are its env keys, and the only ones", async () => {
       const { variant } = await authModule();
 
-      expect(variant.env).toEqual([{ name: "BETTER_AUTH_SECRET", required: true, example: "" }]);
+      expect(variant.env).toEqual([
+        { name: "BETTER_AUTH_SECRET", required: true, example: "" },
+        { name: "AUTH_SIGNUP", required: false, example: "open" },
+      ]);
     });
 
     test("the installed peers pick the variant, and a missing peer is named before anything is written", async () => {

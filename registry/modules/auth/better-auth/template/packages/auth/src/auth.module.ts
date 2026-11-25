@@ -108,7 +108,7 @@ export function authPlugin(resolveAuth: ResolveAuth) {
 }
 
 async function buildContext(binding: Awaited<ReturnType<typeof readD1>>): Promise<AuthContext> {
-  const { BETTER_AUTH_SECRET } = resolveAuthEnv(await readRuntimeEnv(), {
+  const { BETTER_AUTH_SECRET, AUTH_SIGNUP } = resolveAuthEnv(await readRuntimeEnv(), {
     test: process.env.NODE_ENV === "test",
   });
   const db = createDB(binding);
@@ -123,6 +123,7 @@ async function buildContext(binding: Awaited<ReturnType<typeof readD1>>): Promis
       clientIpHeaders,
       mailer,
       logger,
+      signup: AUTH_SIGNUP,
     }),
   };
 }

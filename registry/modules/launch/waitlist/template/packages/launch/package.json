@@ -1,0 +1,15 @@
+{
+  "name": "{{SCOPE}}/launch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The project's pre-launch kit: the launch stage and the waiting list",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc --project tsconfig.test.json --noEmit",
+    "test": "vp test"
+  }
+}

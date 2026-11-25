@@ -163,7 +163,7 @@ export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
 export const ADDED_AFTER_CREATE: Readonly<Record<string, readonly string[]>> = {
   // `create` offers neither realtime nor observability: each provider's set adds its variants.
   cloudflare: ["realtime/rooms", "observability/sentry"],
-  dockerfile: ["realtime/rooms", "observability/sentry"],
+  dockerfile: ["realtime/rooms", "observability/sentry", "launch/waitlist"],
   "dockerfile-postgres": ["db/postgres", "orm/drizzle"],
 };
 
@@ -762,6 +762,7 @@ export function goldenSchema(configuration: Configuration): string {
 export const MODULE_TABLES: Readonly<Record<string, readonly string[]>> = {
   "storage/r2": ["medias"],
   "storage/fs": ["medias"],
+  "launch/waitlist": ["waitlist_entry", "waitlist_join"],
 };
 
 /** What the migration has to create in a configuration: the table golden adds, and each module's own. */
@@ -786,6 +787,7 @@ export const AUTH_TABLES: readonly string[] = [
   "member",
   "organization",
   "session",
+  "signup_invitation",
   "user",
   "verification",
 ];
@@ -1088,6 +1090,13 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "imports[@app/observability]",
       "scripts.test",
       "scripts.typecheck",
+    ],
+    "launch/waitlist": [
+      "dependencies.@app/launch",
+      "dependencies.@app/launch",
+      "elysia[app].use[launchModule]",
+      "exports[@app/launch/schema]",
+      "imports[@app/launch]",
     ],
     // Not the import into mailer.ts: that is the intention's edit, as on cloudflare. The export is the
     // dockerfile transport's: SMTP or Resend, behind `./transport`.

@@ -12,6 +12,9 @@ export type AuthInvitationEmail = {
   url: string;
 };
 
+/** One signup invitation auth asks an email module to deliver. `url` is the front-end's register page, with the code in it. */
+export type AuthSignupInvitationEmail = { to: string; code: string; url: string };
+
 /** The seam between auth and whatever delivers its emails. Auth owns the interface and nothing past it. */
 export interface AuthMailer {
   sendVerificationEmail(email: AuthEmail): Promise<void>;
@@ -21,11 +24,13 @@ export interface AuthMailer {
    * invitation is stored and nothing is sent: auth logs that, and the invite does not fail.
    */
   sendInvitation?(email: AuthInvitationEmail): Promise<void>;
+  /** Optional for the same reason: a signup invitation issued for an email is stored, and the caller still gets its code. */
+  sendSignupInvitation?(email: AuthSignupInvitationEmail): Promise<void>;
 }
 
 /**
- * The mailer for a project with no email module: it sends nothing and says so. It never logs `url`:
- * the link carries a one-time token, and a log line is readable by more people than the inbox.
+ * The mailer for a project with no email module: it sends nothing and says so. It never logs `url`
+ * or a signup code: the link carries a one-time token, and a log line is readable by more people than the inbox.
  */
 export function unconfiguredMailer(logger: Pick<AuthLogger, "warn">): AuthMailer {
   return {
@@ -50,6 +55,13 @@ export function unconfiguredMailer(logger: Pick<AuthLogger, "warn">): AuthMailer
         scope: "auth",
         event: "email_not_sent",
         kind: "invitation",
+      });
+    },
+    async sendSignupInvitation() {
+      logger.warn("No email module is installed: the signup invitation email was not sent", {
+        scope: "auth",
+        event: "email_not_sent",
+        kind: "signup_invitation",
       });
     },
   };
