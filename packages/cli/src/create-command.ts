@@ -21,6 +21,8 @@ import {
   resolveChoices,
 } from "./choices";
 import { createProject } from "./create";
+import { clackErrorText, unknownName } from "./errors";
+import { flagsOf } from "./help";
 import {
   installDependencies,
   invokingPackageManager,
@@ -98,7 +100,7 @@ export async function createCommand(rest: readonly string[]): Promise<number> {
   // What is left is the directory: an option no flag above took is a typo, never a directory to create.
   const unknown = args.find((arg) => arg.startsWith("-"));
   if (unknown !== undefined) {
-    throw new Error(`create: unknown option ${unknown}`);
+    throw unknownName("flag", unknown, flagsOf("create"), "bonne-garde create --help");
   }
   const source = registry ?? defaultRegistrySource();
   const defaultPm = invokingPackageManager() ?? "bun";
@@ -233,7 +235,7 @@ export async function createCommand(rest: readonly string[]): Promise<number> {
       clack.cancel("Cancelled: nothing was written.");
       return 130;
     }
-    clack.cancel(error instanceof Error ? error.message : String(error));
+    clack.cancel(clackErrorText(error));
     return 1;
   }
 }

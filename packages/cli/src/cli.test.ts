@@ -358,7 +358,7 @@ describe("bonne-garde record", () => {
       [["record"], /requires an intention id/],
       [["record", "v0.2.0/x", "--skip"], /missing value for --skip/],
       [["record", "v0.2.0/x", "--skip", ""], /missing value for --skip/],
-      [["record", "v0.2.0/x", "extra"], /unexpected argument: extra/],
+      [["record", "v0.2.0/x", "extra"], /Unexpected argument: extra/],
     ];
     for (const [args, message] of cases) {
       const { stderr, code } = await runBonneGarde(target, ...args);
@@ -845,7 +845,7 @@ describe("bonne-garde add <module>", () => {
     });
   });
 
-  test("a second provider fails on cardinality, pointing at bonne-garde replace, and changes nothing", async () => {
+  test("a second provider fails on cardinality, without pointing at replace, and changes nothing", async () => {
     const target = await freshProject("bg-cli-mod-card-");
     await runBonneGarde(target, "add", "cloudflare", "--yes", "--no-install");
     const before = await snapshot(target);
@@ -860,7 +860,8 @@ describe("bonne-garde add <module>", () => {
 
     expect(code).toBe(1);
     expect(stderr).toContain("provider is already filled by provider/cloudflare");
-    expect(stderr).toContain("bonne-garde replace provider/dockerfile");
+    expect(stderr).toContain("replace is not available yet");
+    expect(stderr).not.toContain("bonne-garde replace provider/dockerfile");
     expect(await snapshot(target)).toEqual(before);
   });
 
@@ -2302,7 +2303,7 @@ describe("bg create with choices (040)", () => {
     }
     const unknown = await runBonneGarde(parent, "create", "--bogus", "--yes", "--no-install");
     expect(unknown.code).toBe(1);
-    expect(unknown.stderr).toContain("create: unknown option --bogus");
+    expect(unknown.stderr).toContain("Unknown flag: --bogus");
     expect(await readdir(parent)).toEqual([]);
   });
 

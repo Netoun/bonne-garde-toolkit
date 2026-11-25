@@ -39,4 +39,12 @@ describe("the base template and the tooling module", () => {
   test("ships no hook of its own: .husky/pre-commit belongs to tooling/vite-plus", () => {
     expect(existsSync(join(templateBaseDir(), ".husky"))).toBe(false);
   });
+
+  test("its README does not call the project empty, whatever apps and features it gets", async () => {
+    const readme = await readFile(join(templateBaseDir(), "README.md"), "utf8");
+
+    expect(readme).not.toContain("Empty");
+    expect(readme).toContain("bg.json");
+    expect(readme).toContain("bunx bonne-garde list");
+  });
 });
