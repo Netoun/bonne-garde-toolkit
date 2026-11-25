@@ -4,7 +4,10 @@ export { createMemoryEmailProvider } from "./providers/memory.provider";
 export { createResendEmailProvider, type ResendProviderOptions } from "./providers/resend.provider";
 
 export { renderEmailTemplate } from "./render";
-export type { EmailTemplate } from "./render";
+export type { EmailTemplate, RenderedEmail } from "./render";
+
+export { DEFAULT_EMAIL_LOCALE, emailMessages } from "./messages";
+export type { EmailLocale, EmailMessages } from "./messages";
 
 export { sendEmail } from "./send";
 

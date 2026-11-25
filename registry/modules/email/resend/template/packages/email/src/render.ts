@@ -1,14 +1,19 @@
-import { render } from "@react-email/render";
-import React from "react";
+import { render } from "@react-email/components";
+import { createElement, type ReactElement } from "react";
 import type { EmailTemplateProps } from "./types";
 
 export type EmailTemplate<P extends EmailTemplateProps = EmailTemplateProps> = (
   props: P,
-) => React.ReactElement;
+) => ReactElement;
+
+/** What a template renders to: the html part and the plain-text one, which carries the same links. */
+export type RenderedEmail = { html: string; text: string };
 
 export async function renderEmailTemplate<P extends EmailTemplateProps>(
   template: EmailTemplate<P>,
   props: P,
-): Promise<string> {
-  return render(React.createElement(template, props));
+): Promise<RenderedEmail> {
+  const element = createElement(template, props);
+  const [html, text] = await Promise.all([render(element), render(element, { plainText: true })]);
+  return { html, text };
 }

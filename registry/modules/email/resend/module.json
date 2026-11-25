@@ -3,8 +3,8 @@
   "id": "resend",
   "category": "email",
   "version": "0.1.0",
-  "title": "Resend",
-  "description": "Transactional email: React templates for auth's verification and password reset, a memory adapter for tests and Resend over its HTTP API.",
+  "title": "Email (Resend)",
+  "description": "Transactional email: a react-email kit themed from the project's branding, templates for auth's verification, password reset and invitations in English and French rendered to html and plain text, a memory adapter for tests, and a transport per provider: Resend over its HTTP API, plus SMTP (nodemailer, Mailpit in development) on the dockerfile provider.",
   "peers": {
     "provider": [],
     "config": ["branding"]
@@ -14,9 +14,12 @@
     {
       "key": "default",
       "match": {},
-      "workspace": { "name": "{{SCOPE}}/email", "path": "packages/email" },
+      "workspace": {
+        "name": "{{SCOPE}}/email",
+        "path": "packages/email"
+      },
       "dependencies": {
-        "@react-email/render": "2.1.0",
+        "@react-email/components": "1.0.12",
         "react": "19.2.8",
         "react-dom": "19.2.8",
         "{{SCOPE}}/api-runtime": "workspace:*",
@@ -26,37 +29,69 @@
         "@types/react": "19.2.18"
       },
       "copy": [
+        "packages/email/.gitignore",
         "packages/email/package.json",
-        "packages/email/tsconfig.json",
-        "packages/email/tsconfig.test.json",
         "packages/email/src/auth-mailer.test.ts",
         "packages/email/src/auth-mailer.ts",
+        "packages/email/src/components/email-kit.tsx",
         "packages/email/src/env.test.ts",
         "packages/email/src/env.ts",
         "packages/email/src/index.test.ts",
         "packages/email/src/index.ts",
+        "packages/email/src/messages/en.ts",
+        "packages/email/src/messages/fr.ts",
+        "packages/email/src/messages/index.ts",
+        "packages/email/src/preview.test.ts",
+        "packages/email/src/preview.ts",
         "packages/email/src/providers/memory.provider.ts",
         "packages/email/src/providers/resend.provider.test.ts",
         "packages/email/src/providers/resend.provider.ts",
+        "packages/email/src/render.test.ts",
         "packages/email/src/render.ts",
         "packages/email/src/runtime.test.ts",
         "packages/email/src/runtime.ts",
         "packages/email/src/send.ts",
-        "packages/email/src/templates/invitation.template.ts",
-        "packages/email/src/templates/reset-password.template.ts",
-        "packages/email/src/templates/verify-email.template.ts",
-        "packages/email/src/templates/welcome.template.ts",
+        "packages/email/src/templates/invitation.template.tsx",
+        "packages/email/src/templates/reset-password.template.tsx",
+        "packages/email/src/templates/verify-email.template.tsx",
+        "packages/email/src/templates/welcome.template.tsx",
         "packages/email/src/testing.ts",
-        "packages/email/src/types.ts"
+        "packages/email/src/transport.ts",
+        "packages/email/src/types.ts",
+        "packages/email/tsconfig.json",
+        "packages/email/tsconfig.test.json"
       ],
-      "env": [{ "name": "RESEND_API_KEY", "required": true, "example": "" }]
+      "env": [
+        {
+          "name": "RESEND_API_KEY",
+          "required": true,
+          "example": ""
+        }
+      ],
+      "patch": [
+        {
+          "type": "jsonc.merge",
+          "file": "packages/email/package.json",
+          "value": {
+            "exports": {
+              "./transport": "./src/transport.ts"
+            }
+          },
+          "intent": "Point the package's ./transport export at the Resend file: the transport of the cloudflare provider."
+        }
+      ]
     },
     {
       "key": "better-auth",
-      "match": { "auth": "better-auth" },
-      "workspace": { "name": "{{SCOPE}}/email", "path": "packages/email" },
+      "match": {
+        "auth": "better-auth"
+      },
+      "workspace": {
+        "name": "{{SCOPE}}/email",
+        "path": "packages/email"
+      },
       "dependencies": {
-        "@react-email/render": "2.1.0",
+        "@react-email/components": "1.0.12",
         "react": "19.2.8",
         "react-dom": "19.2.8",
         "{{SCOPE}}/api-runtime": "workspace:*",
@@ -66,35 +101,242 @@
         "@types/react": "19.2.18"
       },
       "copy": [
+        "packages/email/.gitignore",
         "packages/email/package.json",
-        "packages/email/tsconfig.json",
-        "packages/email/tsconfig.test.json",
         "packages/email/src/auth-mailer.test.ts",
         "packages/email/src/auth-mailer.ts",
+        "packages/email/src/components/email-kit.tsx",
         "packages/email/src/env.test.ts",
         "packages/email/src/env.ts",
         "packages/email/src/index.test.ts",
         "packages/email/src/index.ts",
+        "packages/email/src/messages/en.ts",
+        "packages/email/src/messages/fr.ts",
+        "packages/email/src/messages/index.ts",
+        "packages/email/src/preview.test.ts",
+        "packages/email/src/preview.ts",
         "packages/email/src/providers/memory.provider.ts",
         "packages/email/src/providers/resend.provider.test.ts",
         "packages/email/src/providers/resend.provider.ts",
+        "packages/email/src/render.test.ts",
         "packages/email/src/render.ts",
         "packages/email/src/runtime.test.ts",
         "packages/email/src/runtime.ts",
         "packages/email/src/send.ts",
-        "packages/email/src/templates/invitation.template.ts",
-        "packages/email/src/templates/reset-password.template.ts",
-        "packages/email/src/templates/verify-email.template.ts",
-        "packages/email/src/templates/welcome.template.ts",
+        "packages/email/src/templates/invitation.template.tsx",
+        "packages/email/src/templates/reset-password.template.tsx",
+        "packages/email/src/templates/verify-email.template.tsx",
+        "packages/email/src/templates/welcome.template.tsx",
         "packages/email/src/testing.ts",
-        "packages/email/src/types.ts"
+        "packages/email/src/transport.ts",
+        "packages/email/src/types.ts",
+        "packages/email/tsconfig.json",
+        "packages/email/tsconfig.test.json"
       ],
-      "env": [{ "name": "RESEND_API_KEY", "required": true, "example": "" }],
+      "env": [
+        {
+          "name": "RESEND_API_KEY",
+          "required": true,
+          "example": ""
+        }
+      ],
       "patch": [
+        {
+          "type": "jsonc.merge",
+          "file": "packages/email/package.json",
+          "value": {
+            "exports": {
+              "./transport": "./src/transport.ts"
+            }
+          },
+          "intent": "Point the package's ./transport export at the Resend file: the transport of the cloudflare provider."
+        },
         {
           "type": "package.dependencies",
           "file": "packages/auth/package.json",
-          "dependencies": { "{{SCOPE}}/email": "workspace:*" },
+          "dependencies": {
+            "{{SCOPE}}/email": "workspace:*"
+          },
+          "intent": "Declare the project's email package as a dependency of the auth package, whose mailer is sent through it."
+        }
+      ],
+      "intent": ["01-wire-email-into-auth.md"]
+    },
+    {
+      "key": "dockerfile",
+      "match": {
+        "provider": "dockerfile"
+      },
+      "workspace": {
+        "name": "{{SCOPE}}/email",
+        "path": "packages/email"
+      },
+      "dependencies": {
+        "@react-email/components": "1.0.12",
+        "nodemailer": "10.6.1",
+        "react": "19.2.8",
+        "react-dom": "19.2.8",
+        "{{SCOPE}}/api-runtime": "workspace:*",
+        "{{SCOPE}}/config": "workspace:*"
+      },
+      "devDependencies": {
+        "@types/nodemailer": "8.0.2",
+        "@types/react": "19.2.18",
+        "@types/smtp-server": "3.5.13",
+        "smtp-server": "3.21.7"
+      },
+      "copy": [
+        "packages/email/.gitignore",
+        "packages/email/compose.mailpit.yaml",
+        "packages/email/package.json",
+        "packages/email/src/auth-mailer.test.ts",
+        "packages/email/src/auth-mailer.ts",
+        "packages/email/src/components/email-kit.tsx",
+        "packages/email/src/env.test.ts",
+        "packages/email/src/env.ts",
+        "packages/email/src/index.test.ts",
+        "packages/email/src/index.ts",
+        "packages/email/src/messages/en.ts",
+        "packages/email/src/messages/fr.ts",
+        "packages/email/src/messages/index.ts",
+        "packages/email/src/preview.test.ts",
+        "packages/email/src/preview.ts",
+        "packages/email/src/providers/memory.provider.ts",
+        "packages/email/src/providers/resend.provider.test.ts",
+        "packages/email/src/providers/resend.provider.ts",
+        "packages/email/src/providers/smtp.provider.test.ts",
+        "packages/email/src/providers/smtp.provider.ts",
+        "packages/email/src/render.test.ts",
+        "packages/email/src/render.ts",
+        "packages/email/src/runtime.test.ts",
+        "packages/email/src/runtime.ts",
+        "packages/email/src/send.ts",
+        "packages/email/src/templates/invitation.template.tsx",
+        "packages/email/src/templates/reset-password.template.tsx",
+        "packages/email/src/templates/verify-email.template.tsx",
+        "packages/email/src/templates/welcome.template.tsx",
+        "packages/email/src/testing.ts",
+        "packages/email/src/transport.node.test.ts",
+        "packages/email/src/transport.node.ts",
+        "packages/email/src/types.ts",
+        "packages/email/tsconfig.json",
+        "packages/email/tsconfig.test.json"
+      ],
+      "env": [
+        {
+          "name": "SMTP_URL",
+          "required": false,
+          "example": "smtp://mailpit:1025"
+        },
+        {
+          "name": "RESEND_API_KEY",
+          "required": false,
+          "example": ""
+        }
+      ],
+      "patch": [
+        {
+          "type": "jsonc.merge",
+          "file": "packages/email/package.json",
+          "value": {
+            "exports": {
+              "./transport": "./src/transport.node.ts"
+            }
+          },
+          "intent": "Point the package's ./transport export at the Node file, SMTP or Resend: the transport of the dockerfile provider."
+        }
+      ]
+    },
+    {
+      "key": "dockerfile-better-auth",
+      "match": {
+        "provider": "dockerfile",
+        "auth": "better-auth"
+      },
+      "workspace": {
+        "name": "{{SCOPE}}/email",
+        "path": "packages/email"
+      },
+      "dependencies": {
+        "@react-email/components": "1.0.12",
+        "nodemailer": "10.6.1",
+        "react": "19.2.8",
+        "react-dom": "19.2.8",
+        "{{SCOPE}}/api-runtime": "workspace:*",
+        "{{SCOPE}}/config": "workspace:*"
+      },
+      "devDependencies": {
+        "@types/nodemailer": "8.0.2",
+        "@types/react": "19.2.18",
+        "@types/smtp-server": "3.5.13",
+        "smtp-server": "3.21.7"
+      },
+      "copy": [
+        "packages/email/.gitignore",
+        "packages/email/compose.mailpit.yaml",
+        "packages/email/package.json",
+        "packages/email/src/auth-mailer.test.ts",
+        "packages/email/src/auth-mailer.ts",
+        "packages/email/src/components/email-kit.tsx",
+        "packages/email/src/env.test.ts",
+        "packages/email/src/env.ts",
+        "packages/email/src/index.test.ts",
+        "packages/email/src/index.ts",
+        "packages/email/src/messages/en.ts",
+        "packages/email/src/messages/fr.ts",
+        "packages/email/src/messages/index.ts",
+        "packages/email/src/preview.test.ts",
+        "packages/email/src/preview.ts",
+        "packages/email/src/providers/memory.provider.ts",
+        "packages/email/src/providers/resend.provider.test.ts",
+        "packages/email/src/providers/resend.provider.ts",
+        "packages/email/src/providers/smtp.provider.test.ts",
+        "packages/email/src/providers/smtp.provider.ts",
+        "packages/email/src/render.test.ts",
+        "packages/email/src/render.ts",
+        "packages/email/src/runtime.test.ts",
+        "packages/email/src/runtime.ts",
+        "packages/email/src/send.ts",
+        "packages/email/src/templates/invitation.template.tsx",
+        "packages/email/src/templates/reset-password.template.tsx",
+        "packages/email/src/templates/verify-email.template.tsx",
+        "packages/email/src/templates/welcome.template.tsx",
+        "packages/email/src/testing.ts",
+        "packages/email/src/transport.node.test.ts",
+        "packages/email/src/transport.node.ts",
+        "packages/email/src/types.ts",
+        "packages/email/tsconfig.json",
+        "packages/email/tsconfig.test.json"
+      ],
+      "env": [
+        {
+          "name": "SMTP_URL",
+          "required": false,
+          "example": "smtp://mailpit:1025"
+        },
+        {
+          "name": "RESEND_API_KEY",
+          "required": false,
+          "example": ""
+        }
+      ],
+      "patch": [
+        {
+          "type": "jsonc.merge",
+          "file": "packages/email/package.json",
+          "value": {
+            "exports": {
+              "./transport": "./src/transport.node.ts"
+            }
+          },
+          "intent": "Point the package's ./transport export at the Node file, SMTP or Resend: the transport of the dockerfile provider."
+        },
+        {
+          "type": "package.dependencies",
+          "file": "packages/auth/package.json",
+          "dependencies": {
+            "{{SCOPE}}/email": "workspace:*"
+          },
           "intent": "Declare the project's email package as a dependency of the auth package, whose mailer is sent through it."
         }
       ],

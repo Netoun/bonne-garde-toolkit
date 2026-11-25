@@ -2,7 +2,7 @@
   "name": "{{SCOPE}}/email",
   "version": "0.1.0",
   "private": true,
-  "description": "The project's transactional email: React templates, a memory adapter and Resend",
+  "description": "The project's transactional email: react-email templates in English and French (html and text), themed from the branding, a memory adapter and the transport the provider sends through",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
@@ -10,6 +10,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --project tsconfig.test.json --noEmit",
-    "test": "vp test"
+    "test": "vp test",
+    "preview": "tsx src/preview.ts"
   }
 }
