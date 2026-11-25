@@ -7,6 +7,10 @@ const repoRoot = `${resolve(process.cwd(), "../..")}/`;
 /** User guides under `docs/guides/`, in sidebar order. Missing files are skipped. */
 const USER_GUIDE_FILES = ["getting-started", "adding-modules", "troubleshooting"] as const;
 
+export function hasUserGuideFiles(): boolean {
+  return USER_GUIDE_FILES.some((name) => existsSync(`${repoRoot}docs/guides/${name}.md`));
+}
+
 /** Internal contributor spec pages, in sidebar order. */
 const GUIDE_FILES = [
   "CONCEPTS",

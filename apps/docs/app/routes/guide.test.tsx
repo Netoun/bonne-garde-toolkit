@@ -1,10 +1,16 @@
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, createRoutesStub, RouterProvider } from "react-router";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { listGuides } from "../content/guides";
 import type { Route } from "./+types/guide";
 import Guide, { loader, meta } from "./guide";
+import { loader as userGuideLoader } from "./user-guide";
+
+const userGuideDir = resolve(process.cwd(), "../../docs/guides");
+const gettingStarted = resolve(userGuideDir, "getting-started.md");
 
 async function renderPage(href: string) {
   const Stub = createRoutesStub([{ path: href, Component: Guide, loader }]);
@@ -20,6 +26,32 @@ async function renderPage(href: string) {
 }
 
 describe("guide page", () => {
+  afterEach(() => {
+    rmSync(gettingStarted, { force: true });
+  });
+
+  it("renders a user guide page with the shared loader", async () => {
+    mkdirSync(userGuideDir, { recursive: true });
+    writeFileSync(gettingStarted, "# Getting started\n\nHello from the guide.\n");
+
+    await renderPage("/docs/guides/getting-started");
+
+    expect(screen.getByRole("heading", { name: "Getting started" })).toBeInTheDocument();
+    expect(screen.getByText("Hello from the guide.")).toBeInTheDocument();
+  });
+
+  it("loads user guide markdown in the prerender loader", async () => {
+    mkdirSync(userGuideDir, { recursive: true });
+    writeFileSync(gettingStarted, "# Getting started\n\nHello from the guide.\n");
+
+    const data = await userGuideLoader({
+      request: new Request("http://localhost/docs/guides/getting-started"),
+    });
+
+    expect(data.title).toBe("Getting started");
+    expect(data.markdown).toContain("Hello from the guide.");
+  });
+
   it("lists the h2 and h3 of a page in an On this page navigation", async () => {
     const Stub = createRoutesStub([
       {
