@@ -5,12 +5,21 @@ bunx bonne-garde create my-app
 ```
 
 ```text
-…
-+ typescript@7.0.2
-+ vite-plus@0.2.8
-
-95 packages installed [403.00ms]
-created …/my-app with bun
+┌   bonne-garde create
+│
+◇  Created my-app: 1 module
+│
+◇  Installed with bun in 2s
+│
+◇  Next steps ─────────────────────────────╮
+│                                          │
+│  cd my-app                               │
+│  bun run dev    every app, side by side  │
+│  bun run test   every package's tests    │
+│                                          │
+├──────────────────────────────────────────╯
+│
+└  En garde.
 ```
 
 That is a new project: an empty base, with Bun as its package manager, its dependencies installed and a git repository. It holds no app yet. Check it with `doctor`:
@@ -23,13 +32,17 @@ bunx bonne-garde doctor
 ```text
 bonne-garde doctor
 
-manifest    ok       version 2, 1 module, 0 items, 1 file
-files       ok       1 tracked: 1 intact
-…
-result: ok
+✓ manifest    version 2, 1 module, 0 items, 1 file
+✓ files       1 tracked: 1 intact
+✓ regions     1 region in 1 file, 1 read
+✓ patches     1 applied, 0 skipped, 0 failed
+✓ intentions  0 applied, 0 skipped, 0 pending
+✓ peers       1 module checked, 0 not checked
+
+All good.
 ```
 
-`ok` on every line means what `bg.json` says is installed matches what is on disk. Run `doctor` again whenever something looks off.
+`✓` on every line means what `bg.json` says is installed matches what is on disk. Run `doctor` again whenever something looks off.
 
 ## An API, a SPA, a database and auth
 
@@ -40,13 +53,21 @@ bunx bonne-garde create my-app --apps api,spa --features db,auth --yes
 ```
 
 ```text
-…
-401 packages installed [3.07s]
-created …/my-app with api, spa on cloudflare, and db, auth, installed with bun
-bonne-garde: checks were not run: add does not run them yet:
-  provider/cloudflare: cd packages/api-runtime && vp run typecheck && vp run test
-  tooling/vite-plus: vp run check
-  …
+┌   bonne-garde create
+│
+◇  Created my-app: 10 modules, 8 items
+│
+◇  Installed with bun in 7s
+│
+◇  Next steps ─────────────────────────────╮
+│                                          │
+│  cd my-app                               │
+│  bun run dev    every app, side by side  │
+│  bun run test   every package's tests    │
+│                                          │
+├──────────────────────────────────────────╯
+│
+└  En garde.
 ```
 
 `--apps` picks the apps (`api`, `spa`, `ssr`, `static`) and `--features` picks what they use (`db`, `auth`, `storage`, `email`, `deploy`, `backoffice`, `portless`). Run `bunx bonne-garde create --help` for the full list. Without `--yes`, on a terminal, the CLI asks the questions the flags leave open.
