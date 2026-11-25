@@ -1027,6 +1027,12 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
     // region-checked by the `intent[<id>]` region `bonne-garde record` leaves.
     "email/resend": ["dependencies.@app/email"],
     "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
+    "i18n/i18next": [
+      "dependencies.@app/i18n",
+      "elysia[app].use[i18nModule]",
+      'exports."./elysia"',
+      "imports[@app/i18n/elysia]",
+    ],
     "observability/sentry": [
       "dependencies.@app/observability",
       "elysia[app].use[observabilityModule]",
@@ -1080,6 +1086,12 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "elysia[app].use[mediaModule]",
       "exports[@app/storage/schema]",
       "imports[@app/storage]",
+    ],
+    "i18n/i18next": [
+      "dependencies.@app/i18n",
+      "elysia[app].use[i18nModule]",
+      'exports."./elysia"',
+      "imports[@app/i18n/elysia]",
     ],
     "observability/sentry": [
       "dependencies.@app/observability",
