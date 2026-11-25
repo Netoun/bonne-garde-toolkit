@@ -1025,7 +1025,7 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
     ],
     // Not the import into mailer.ts: that is the intention's edit, and the file it edits is
     // region-checked by the `intent[<id>]` region `bonne-garde record` leaves.
-    "email/resend": ["dependencies.@app/email"],
+    "email/resend": ["dependencies.@app/email", 'exports."./transport"'],
     "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
     "observability/sentry": [
       "dependencies.@app/observability",
@@ -1089,8 +1089,9 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "scripts.test",
       "scripts.typecheck",
     ],
-    // Not the import into mailer.ts: that is the intention's edit, as on cloudflare.
-    "email/resend": ["dependencies.@app/email"],
+    // Not the import into mailer.ts: that is the intention's edit, as on cloudflare. The export is the
+    // dockerfile transport's: SMTP or Resend, behind `./transport`.
+    "email/resend": ["dependencies.@app/email", 'exports."./transport"'],
     "web/spa": ["scripts.dev"],
     "dev/portless": [
       "devDependencies.portless",
@@ -1113,6 +1114,7 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "imports[@app/db]",
       "scripts.db:generate",
     ],
+    "email/resend": ['exports."./transport"'],
     "web/spa": ["scripts.dev"],
     "dev/portless": [
       "devDependencies.portless",
@@ -1715,6 +1717,47 @@ export function hasEmail(configuration: Configuration): boolean {
 
 /** How many tests the email package runs in the project; fewer means the root `test` stopped reaching it. */
 export const EMAIL_MIN_TESTS = 23;
+
+/** The region of the patch that points the email package's `./transport` export at its variant's file. */
+const TRANSPORT_REGION = 'exports."./transport"';
+
+/** The tests only the dockerfile variants of email ship: the SMTP adapter's, and the transport's. */
+export const EMAIL_DOCKERFILE_EXTRA_TESTS = 7;
+
+/** The floor of the email package's test count: the dockerfile provider's variants ship the SMTP tests too. */
+export function emailMinTests(configuration: Configuration): number {
+  return providerOf(configuration) === "dockerfile"
+    ? EMAIL_MIN_TESTS + EMAIL_DOCKERFILE_EXTRA_TESTS
+    : EMAIL_MIN_TESTS;
+}
+
+/**
+ * SMTP is the dockerfile provider's transport (ADR 0009): its package has the adapter, Mailpit's
+ * compose file and `nodemailer`, and a cloudflare project has none of them, as it has no SMTP to send through.
+ */
+export async function expectEmailTransport(
+  project: string,
+  configuration: Configuration,
+): Promise<void> {
+  const dockerfile = providerOf(configuration) === "dockerfile";
+  const dir = join(project, "packages/email");
+  const manifest: unknown = JSON.parse(await Bun.file(join(dir, "package.json")).text());
+  const dependencies =
+    isRecord(manifest) && isRecord(manifest.dependencies) ? manifest.dependencies : {};
+  const present = {
+    "src/providers/smtp.provider.ts": await Bun.file(
+      join(dir, "src/providers/smtp.provider.ts"),
+    ).exists(),
+    "compose.mailpit.yaml": await Bun.file(join(dir, "compose.mailpit.yaml")).exists(),
+    "nodemailer in package.json": "nodemailer" in dependencies,
+  };
+  const wrong = Object.entries(present).filter(([, here]) => here !== dockerfile);
+  if (wrong.length > 0) {
+    throw new Error(
+      `the ${configuration.name} configuration ${dockerfile ? "lacks" : "has"} the SMTP transport: ${wrong.map(([what]) => what).join(", ")}`,
+    );
+  }
+}
 
 /** The file auth documents as the one place an email module wires itself in, and the proof golden adds beside it. */
 export const MAILER_FILE = "packages/auth/src/mailer.ts";
@@ -2809,7 +2852,8 @@ async function configured(
       expectRan(ran, `${SCOPE}/auth`, authMinTests(configuration));
     }
     if (hasEmail(configuration)) {
-      expectRan(ran, `${SCOPE}/email`, EMAIL_MIN_TESTS);
+      await expectEmailTransport(project, configuration);
+      expectRan(ran, `${SCOPE}/email`, emailMinTests(configuration));
     }
     if (hasStorage(configuration)) {
       expectRan(ran, `${SCOPE}/storage`, storageMinTests(configuration));
@@ -3098,10 +3142,37 @@ async function reselected(
     expectPending(readPendingIntentions(stdout), [wired]);
     const reported = readAddedModules(stdout, [AUTH_MODULE, EMAIL_MODULE]);
     const patched = PATCHED.cloudflare ?? {};
-    expectPatches(reported, "applied", {
-      [AUTH_MODULE]: patched[AUTH_MODULE] ?? [],
-      [EMAIL_MODULE]: patched[EMAIL_MODULE] ?? [],
-    });
+    // Email's first install wrote its `./transport` export, so planned again it skips that patch and
+    // applies the one into auth's package.json.
+    const emailPatches = reported.find(({ module }) => module === EMAIL_MODULE)?.patches ?? [];
+    const emailRegions = patched[EMAIL_MODULE] ?? [];
+    const written = emailRegions.filter((region) => region === TRANSPORT_REGION);
+    expectPatches(
+      [
+        ...reported.filter(({ module }) => module !== EMAIL_MODULE),
+        {
+          module: EMAIL_MODULE,
+          checks: [],
+          patches: emailPatches.filter(({ status }) => status === "applied"),
+        },
+      ],
+      "applied",
+      {
+        [AUTH_MODULE]: patched[AUTH_MODULE] ?? [],
+        [EMAIL_MODULE]: emailRegions.filter((region) => !written.includes(region)),
+      },
+    );
+    expectPatches(
+      [
+        {
+          module: EMAIL_MODULE,
+          checks: [],
+          patches: emailPatches.filter(({ status }) => status === "skipped"),
+        },
+      ],
+      "skipped",
+      { [EMAIL_MODULE]: written },
+    );
     const manifest: unknown = JSON.parse(await Bun.file(join(project, "bg.json")).text());
     expectRegionsRecorded(manifest, reported);
     expectNoIntentRegion(manifest, wired);

@@ -71,6 +71,9 @@ import {
   storageMinTests,
   VERIFY_EMAIL_SCRIPT,
   EMAIL_MIN_TESTS,
+  EMAIL_DOCKERFILE_EXTRA_TESTS,
+  emailMinTests,
+  expectEmailTransport,
   expectPending,
   hasAuth,
   hasDatabase,
@@ -832,7 +835,7 @@ describe("the golden project and patches", () => {
         ],
         // The import into mailer.ts is the intention's: the file an intention edits is region-checked
         // by the `intent[<id>]` region `bonne-garde record` leaves, not by a patch that imports for it.
-        "email/resend": ["dependencies.@app/email"],
+        "email/resend": ["dependencies.@app/email", 'exports."./transport"'],
         "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
         "observability/sentry": [
           "dependencies.@app/observability",
@@ -896,7 +899,7 @@ describe("the golden project and patches", () => {
           "scripts.test",
           "scripts.typecheck",
         ],
-        "email/resend": ["dependencies.@app/email"],
+        "email/resend": ["dependencies.@app/email", 'exports."./transport"'],
         "web/spa": ["scripts.dev"],
         "dev/portless": [
           "devDependencies.portless",
@@ -926,6 +929,7 @@ describe("the golden project and patches", () => {
           "imports[@app/db]",
           "scripts.db:generate",
         ],
+        "email/resend": ['exports."./transport"'],
         "web/spa": ["scripts.dev"],
         "dev/portless": [
           "devDependencies.portless",
@@ -2183,6 +2187,52 @@ describe("the email phases", () => {
     expect(EMAIL_MIN_TESTS).toBeGreaterThan(0);
     // `test.each` counts its rows at run time: the floor is what the project ran, never more than that.
     expect(tests).toBeGreaterThanOrEqual(EMAIL_MIN_TESTS - 2);
+  });
+
+  test("the dockerfile provider's email variants ship more tests, so its floor is higher than cloudflare's", () => {
+    const [cloudflare, dockerfile] = CONFIGURATIONS as [Configuration, Configuration];
+
+    expect(emailMinTests(cloudflare)).toBe(EMAIL_MIN_TESTS);
+    expect(emailMinTests(dockerfile)).toBe(EMAIL_MIN_TESTS + EMAIL_DOCKERFILE_EXTRA_TESTS);
+  });
+
+  describe("expectEmailTransport (SMTP is the dockerfile provider's transport, and only its)", () => {
+    const made: string[] = [];
+    afterAll(async () => {
+      await Promise.all(made.map((dir) => rm(dir, { recursive: true, force: true })));
+    });
+    const project = async (smtp: boolean) => {
+      const dir = await mkdtemp(join(tmpdir(), "golden-email-"));
+      made.push(dir);
+      await mkdir(join(dir, "packages/email/src/providers"), { recursive: true });
+      await Bun.write(
+        join(dir, "packages/email/package.json"),
+        JSON.stringify({ dependencies: smtp ? { nodemailer: "1.0.0" } : {} }),
+      );
+      if (smtp) {
+        await Bun.write(join(dir, "packages/email/src/providers/smtp.provider.ts"), "");
+        await Bun.write(join(dir, "packages/email/compose.mailpit.yaml"), "");
+      }
+      return dir;
+    };
+
+    test("passes for a dockerfile project that has the adapter, the compose file and nodemailer, and a cloudflare one that has none", async () => {
+      const [cloudflare, dockerfile] = CONFIGURATIONS as [Configuration, Configuration];
+
+      await expect(expectEmailTransport(await project(true), dockerfile)).resolves.toBeUndefined();
+      await expect(expectEmailTransport(await project(false), cloudflare)).resolves.toBeUndefined();
+    });
+
+    test("names what is missing on dockerfile, and what is there on cloudflare", async () => {
+      const [cloudflare, dockerfile] = CONFIGURATIONS as [Configuration, Configuration];
+
+      await expect(expectEmailTransport(await project(false), dockerfile)).rejects.toThrow(
+        /dockerfile configuration lacks the SMTP transport: src\/providers\/smtp\.provider\.ts, compose\.mailpit\.yaml, nodemailer/,
+      );
+      await expect(expectEmailTransport(await project(true), cloudflare)).rejects.toThrow(
+        /cloudflare configuration has the SMTP transport/,
+      );
+    });
   });
 
   describe("PENDING (050 step 14: what `bonne-garde add` leaves for an executor, per configuration)", () => {

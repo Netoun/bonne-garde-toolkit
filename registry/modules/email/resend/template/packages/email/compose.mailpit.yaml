@@ -1,0 +1,10 @@
+# Mailpit, a mail catcher for development: SMTP on 1025, the inbox at http://localhost:8025.
+# Run it beside the project's compose file:
+#   docker compose -f compose.yaml -f packages/email/compose.mailpit.yaml up
+# and set SMTP_URL=smtp://mailpit:1025 in the project's .env.
+services:
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "1025:1025"
+      - "8025:8025"

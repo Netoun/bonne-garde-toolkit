@@ -1,16 +1,17 @@
 // `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { readRuntimeEnv } from "{{SCOPE}}/api-runtime";
-import { resolveEmailEnv } from "./env";
+// The provider's transport: the package's `./transport` export points at the file of its variant.
+// oxfmt-ignore
+import { createTransport } from "{{SCOPE}}/email/transport";
 import { createMemoryEmailProvider } from "./providers/memory.provider";
-import { createResendEmailProvider } from "./providers/resend.provider";
 import { outbox } from "./testing";
 import type { EmailMessage, EmailProvider } from "./types";
 
 export type RuntimeProviderOptions = {
   /** The environment record: `readRuntimeEnv` in a project. */
   readEnv: () => Promise<Record<string, unknown>>;
-  /** Whether this is a test: the memory adapter stands in for Resend, and nothing reaches the network. */
+  /** Whether this is a test: the memory adapter stands in for the transport, and nothing reaches the network. */
   test: () => boolean;
   /** Where the memory adapter keeps what it is asked to send. */
   store?: EmailMessage[];
@@ -19,9 +20,10 @@ export type RuntimeProviderOptions = {
 /**
  * The adapter the runtime sends through, chosen at the first email and not at import: the project
  * boots with no key, and an email asked for with none fails there, naming it. Under test it is the
- * memory adapter; anywhere else it is Resend, and a missing key is an error and never a quiet
- * fallback to memory (a production project would send nothing and say so nowhere). A failed read is
- * not remembered: the next email tries again.
+ * memory adapter; anywhere else it is the variant's transport (`./transport`: Resend, or SMTP on the
+ * dockerfile provider), and a missing key is an error and never a quiet fallback to memory (a
+ * production project would send nothing and say so nowhere). A failed read is not remembered: the
+ * next email tries again.
  */
 export function createRuntimeProvider(
   options: RuntimeProviderOptions,
@@ -33,7 +35,7 @@ export function createRuntimeProvider(
     if (test()) {
       return createMemoryEmailProvider(store);
     }
-    return createResendEmailProvider({ apiKey: resolveEmailEnv(await readEnv()).RESEND_API_KEY });
+    return createTransport(await readEnv());
   }
 
   return () => {

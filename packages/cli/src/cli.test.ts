@@ -1775,8 +1775,10 @@ describe("bonne-garde add: an installed module is selected again when a module i
       ["email/resend", "better-auth"],
     ]);
     // The patch that declares the email package in auth's package.json lands in the same apply,
-    // on the file auth writes in this very call.
+    // on the file auth writes in this very call. The transport export, which the first install
+    // already wrote, is skipped.
     expect(out.modules.find(({ module }) => module === "email/resend")?.patches).toMatchObject([
+      { type: "jsonc.merge", file: "packages/email/package.json", status: "skipped" },
       { type: "package.dependencies", file: "packages/auth/package.json", status: "applied" },
     ]);
     expect(await readFile(join(target, "packages/auth/package.json"), "utf8")).toContain(

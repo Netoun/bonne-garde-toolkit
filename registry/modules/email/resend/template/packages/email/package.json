@@ -2,7 +2,7 @@
   "name": "{{SCOPE}}/email",
   "version": "0.1.0",
   "private": true,
-  "description": "The project's transactional email: themed react-email templates (html and text), a memory adapter and Resend",
+  "description": "The project's transactional email: themed react-email templates (html and text), a memory adapter and the provider's transport (Resend, or SMTP on dockerfile)",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",

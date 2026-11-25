@@ -3749,10 +3749,14 @@ describe("module contract", () => {
       );
       const standalone = found?.manifest.variants.find(({ key }) => key === "default");
       const wired = found?.manifest.variants.find(({ key }) => key === "better-auth");
-      if (!found || !standalone || !wired) {
+      const node = found?.manifest.variants.find(({ key }) => key === "dockerfile");
+      const nodeWired = found?.manifest.variants.find(
+        ({ key }) => key === "dockerfile-better-auth",
+      );
+      if (!found || !standalone || !wired || !node || !nodeWired) {
         throw new Error("registry/modules/email/resend is missing, or lacks a variant");
       }
-      return { catalog, manifest: found.manifest, standalone, wired };
+      return { catalog, manifest: found.manifest, standalone, wired, node, nodeWired };
     };
     /** Every source the package ships that is not a test, comment lines dropped: a comment may quote an import. */
     const sources = async (): Promise<[string, string][]> => {
@@ -3776,30 +3780,124 @@ describe("module contract", () => {
         specifier === undefined ? [] : [specifier],
       );
 
-    test("two variants own the workspace `{{SCOPE}}/email` at packages/email: the package alone, and the package wired into auth", async () => {
-      const { manifest, standalone, wired } = await emailModule();
+    test("four variants own the workspace `{{SCOPE}}/email` at packages/email: per provider, the package alone and the package wired into auth", async () => {
+      const { manifest, standalone, wired, node, nodeWired } = await emailModule();
 
-      expect(manifest.variants.map(({ key }) => key)).toEqual(["default", "better-auth"]);
+      expect(manifest.variants.map(({ key }) => key)).toEqual([
+        "default",
+        "better-auth",
+        "dockerfile",
+        "dockerfile-better-auth",
+      ]);
       expect(standalone.match).toEqual({});
       // Auth is an optional peer: a `match` names it and `peers` does not, so email
       // installs without it, and the variant that matches on it applies only when it is installed.
       expect(wired.match).toEqual({ auth: "better-auth" });
+      expect(node.match).toEqual({ provider: "dockerfile" });
+      expect(nodeWired.match).toEqual({ provider: "dockerfile", auth: "better-auth" });
       expect(Object.keys(manifest.peers)).not.toContain("auth");
-      for (const variant of [standalone, wired]) {
+      for (const variant of [standalone, wired, node, nodeWired]) {
         expect(variant.workspace).toEqual({ name: "{{SCOPE}}/email", path: "packages/email" });
       }
       expect(manifest.options).toBeUndefined();
     });
 
-    test("the variants differ in the wiring and in nothing else: the same files, dependencies and env key", async () => {
-      const { standalone, wired } = await emailModule();
+    test("the variants of a provider differ in the wiring and in nothing else: the same files, dependencies and env", async () => {
+      const { standalone, wired, node, nodeWired } = await emailModule();
 
-      expect(wired.copy).toEqual(standalone.copy);
-      expect(wired.dependencies).toEqual(standalone.dependencies);
-      expect(wired.devDependencies).toEqual(standalone.devDependencies);
-      expect(wired.env).toEqual(standalone.env);
-      expect(standalone.patch).toBeUndefined();
+      for (const [alone, withAuth] of [
+        [standalone, wired],
+        [node, nodeWired],
+      ] as const) {
+        expect(withAuth.copy).toEqual(alone.copy);
+        expect(withAuth.dependencies).toEqual(alone.dependencies);
+        expect(withAuth.devDependencies).toEqual(alone.devDependencies);
+        expect(withAuth.env).toEqual(alone.env);
+        // The transport patch first, then auth's, the same on both providers.
+        expect(withAuth.patch?.slice(0, 1)).toEqual(alone.patch);
+        expect(withAuth.patch?.slice(1)).toEqual(wired.patch?.slice(1));
+        expect(withAuth.intent).toEqual(["01-wire-email-into-auth.md"]);
+      }
       expect(standalone.intent).toBeUndefined();
+      expect(node.intent).toBeUndefined();
+    });
+
+    test("no two variants are equally specific for any set of installed peers, and `{}` is what the cloudflare project without auth selects", async () => {
+      const { manifest } = await emailModule();
+      const providers = ["cloudflare", "dockerfile"];
+      const auths = [undefined, "better-auth"];
+      const selected: string[] = [];
+
+      for (const provider of providers) {
+        for (const auth of auths) {
+          const installed = [`provider/${provider}`, ...(auth ? [`auth/${auth}`] : [])];
+          const satisfied = manifest.variants.filter((variant) =>
+            Object.entries(variant.match).every(([category, id]) =>
+              installed.includes(`${category}/${id}`),
+            ),
+          );
+          const best = Math.max(...satisfied.map(({ match }) => Object.keys(match).length));
+          const top = satisfied.filter(({ match }) => Object.keys(match).length === best);
+          expect(top.map(({ key }) => key)).toHaveLength(1);
+          selected.push(`${provider} ${auth ?? "none"}: ${top[0]?.key}`);
+        }
+      }
+
+      expect(selected).toEqual([
+        "cloudflare none: default",
+        "cloudflare better-auth: better-auth",
+        "dockerfile none: dockerfile",
+        "dockerfile better-auth: dockerfile-better-auth",
+      ]);
+    });
+
+    test("the dockerfile variants add the SMTP transport to the package and nothing to the other variants: nodemailer, its server for tests, Mailpit's compose file", async () => {
+      const { standalone, node } = await emailModule();
+      const added = (variant: typeof node) =>
+        (variant.copy ?? []).filter((path) => !(standalone.copy ?? []).includes(path)).sort();
+
+      expect(added(node)).toEqual([
+        "packages/email/compose.mailpit.yaml",
+        "packages/email/src/providers/smtp.provider.test.ts",
+        "packages/email/src/providers/smtp.provider.ts",
+        "packages/email/src/transport.node.test.ts",
+        "packages/email/src/transport.node.ts",
+      ]);
+      expect(node.copy).not.toContain("packages/email/src/transport.ts");
+      expect(standalone.copy).not.toContain("packages/email/src/transport.node.ts");
+      expect(Object.keys(node.dependencies ?? {})).toContain("nodemailer");
+      expect(Object.keys(node.devDependencies ?? {}).sort()).toEqual([
+        "@types/nodemailer",
+        "@types/react",
+        "@types/smtp-server",
+        "smtp-server",
+      ]);
+      for (const name of ["nodemailer", "@types/nodemailer", "smtp-server", "@types/smtp-server"]) {
+        expect(
+          standalone.dependencies?.[name] ?? standalone.devDependencies?.[name],
+        ).toBeUndefined();
+      }
+      expect(node.patch?.[0]).toMatchObject({
+        type: "jsonc.merge",
+        file: "packages/email/package.json",
+        value: { exports: { "./transport": "./src/transport.node.ts" } },
+      });
+    });
+
+    test("no source of any variant reaches a Cloudflare API: the transports are plain HTTP and SMTP", async () => {
+      const found: string[] = [];
+      for (const path of [
+        "packages/email/src/transport.ts",
+        "packages/email/src/transport.node.ts",
+        "packages/email/src/providers/smtp.provider.ts",
+        "packages/email/src/providers/resend.provider.ts",
+        "packages/email/src/runtime.ts",
+      ]) {
+        const source = await emailText(path);
+        if (/cloudflare:|@cloudflare\/|send_email|env\.EMAIL\b/.test(source)) found.push(path);
+      }
+
+      expect(found).toEqual([]);
     });
 
     test("it peers on the provider and the branding config, and on nothing else: auth is wired to it, never the reverse", async () => {
@@ -3811,6 +3909,8 @@ describe("module contract", () => {
     test("a peer is declared exactly when a source reaches its package, and no source reaches auth or the api shell", async () => {
       const { manifest, standalone } = await emailModule();
       const peerOf = (specifier: string): string | null => {
+        // The package's own `./transport` export, which each variant points at its file.
+        if (specifier === "{{SCOPE}}/email/transport") return "self";
         if (specifier === "{{SCOPE}}/api-runtime") return "provider";
         if (specifier === "{{SCOPE}}/config") return "config";
         return null;
@@ -3821,6 +3921,7 @@ describe("module contract", () => {
       for (const [path, source] of await sources()) {
         for (const specifier of specifiers(source)) {
           const peer = peerOf(specifier);
+          if (peer === "self") continue;
           if (peer !== null) reached.add(peer);
           if (specifier.startsWith("{{SCOPE}}/")) {
             workspaces.add(specifier.split("/").slice(0, 2).join("/"));
@@ -3855,10 +3956,18 @@ describe("module contract", () => {
       expect(Object.keys(standalone.devDependencies ?? {})).toEqual(["@types/react"]);
     });
 
-    test("RESEND_API_KEY is its env key and the only one, and no other category declares it", async () => {
-      const { catalog, standalone } = await emailModule();
+    test("RESEND_API_KEY is its env key, required where Resend is the only transport; the dockerfile variants add SMTP_URL and require neither; no other category declares them", async () => {
+      const { catalog, standalone, wired, node, nodeWired } = await emailModule();
 
-      expect(standalone.env).toEqual([{ name: "RESEND_API_KEY", required: true, example: "" }]);
+      for (const variant of [standalone, wired]) {
+        expect(variant.env).toEqual([{ name: "RESEND_API_KEY", required: true, example: "" }]);
+      }
+      for (const variant of [node, nodeWired]) {
+        expect(variant.env).toEqual([
+          { name: "SMTP_URL", required: false, example: "smtp://mailpit:1025" },
+          { name: "RESEND_API_KEY", required: false, example: "" },
+        ]);
+      }
       const declaring = catalog.modules
         .filter(({ manifest }) =>
           manifest.variants.some(({ env }) =>
@@ -3867,6 +3976,15 @@ describe("module contract", () => {
         )
         .map(({ manifest }) => `${manifest.category}/${manifest.id}`);
       expect(declaring).toEqual(["email/resend"]);
+      expect(
+        catalog.modules
+          .filter(({ manifest }) =>
+            manifest.variants.some(({ env }) =>
+              (env ?? []).some(({ name }) => name === "SMTP_URL"),
+            ),
+          )
+          .map(({ manifest }) => `${manifest.category}/${manifest.id}`),
+      ).toEqual(["email/resend"]);
     });
 
     test("no source reads the environment at import: the project boots with no key, and an email asked for with none fails naming it", async () => {
@@ -3880,10 +3998,10 @@ describe("module contract", () => {
       }
     });
 
-    test("the wired variant patches auth's package.json only, and says why: mailer.ts is the intention's whole, with no patch to import for it", async () => {
+    test("the wired variant patches auth's package.json only (after its own transport export), and says why: mailer.ts is the intention's whole, with no patch to import for it", async () => {
       const { wired } = await emailModule();
 
-      expect(wired.patch).toEqual([
+      expect(wired.patch?.slice(1)).toEqual([
         {
           type: "package.dependencies",
           file: "packages/auth/package.json",
@@ -3892,7 +4010,7 @@ describe("module contract", () => {
         },
       ]);
       const auth = join(MODULES, "auth/better-auth/template");
-      for (const patch of wired.patch ?? []) {
+      for (const patch of (wired.patch ?? []).slice(1)) {
         expect(existsSync(join(auth, String(patch.file)))).toBe(true);
       }
       // A patch there would put a region in the file only to keep it out of `doctor`'s user-modified
@@ -3950,9 +4068,30 @@ describe("module contract", () => {
       for (const map of ["dependencies", "devDependencies", "peerDependencies"]) {
         expect(map in record ? map : null).toBeNull();
       }
+      // `./transport` is each variant's: a patch points it at that variant's file, which it copies.
       expect(Object.keys(exported).sort()).toEqual([".", "./testing"]);
       for (const target of Object.values(exported)) {
         expect(existsSync(join(EMAIL, "packages/email", String(target)))).toBe(true);
+      }
+    });
+
+    test("each variant points `./transport` at a file it copies: Resend's on cloudflare, the Node one on dockerfile", async () => {
+      const { manifest } = await emailModule();
+      const targets = manifest.variants.map((variant) => {
+        const patch = variant.patch?.find(({ file }) => file === "packages/email/package.json");
+        const value = isRecord(patch?.value) ? patch.value : {};
+        const exported = isRecord(value.exports) ? value.exports : {};
+        return [variant.key, exported["./transport"], variant.copy] as const;
+      });
+
+      expect(targets.map(([key, target]) => `${key}: ${String(target)}`)).toEqual([
+        "default: ./src/transport.ts",
+        "better-auth: ./src/transport.ts",
+        "dockerfile: ./src/transport.node.ts",
+        "dockerfile-better-auth: ./src/transport.node.ts",
+      ]);
+      for (const [, target, copy] of targets) {
+        expect(copy).toContain(`packages/email/${String(target).replace("./", "")}`);
       }
     });
 
@@ -3971,7 +4110,9 @@ describe("module contract", () => {
 
       const alone = await planned([...stack, email]);
       expect(alone?.variant).toBe("default");
-      expect(alone?.patches).toEqual([]);
+      expect(alone?.patches.map(({ type, file }) => `${type} ${file}`)).toEqual([
+        "jsonc.merge packages/email/package.json",
+      ]);
       expect(alone?.intentions).toEqual([]);
 
       const withAuth = await planned([
@@ -3984,6 +4125,7 @@ describe("module contract", () => {
       ]);
       expect(withAuth?.variant).toBe("better-auth");
       expect(withAuth?.patches.map(({ type, file }) => `${type} ${file}`)).toEqual([
+        "jsonc.merge packages/email/package.json",
         "package.dependencies packages/auth/package.json",
       ]);
       expect(withAuth?.intentions.map(({ id }) => id)).toEqual([
