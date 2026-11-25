@@ -2,7 +2,7 @@ import { betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { organization } from "better-auth/plugins";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { AUTH_BASE_PATH } from "./base-path";
 import type { AuthMailer } from "./mailer";
@@ -10,7 +10,10 @@ import { hashPassword, verifyPassword } from "./password";
 import { ac, roles } from "./permissions";
 import * as schema from "./schema";
 
-const { member, organization: orgTable } = schema;
+const { invitation, member, organization: orgTable, user: userTable } = schema;
+
+/** How long an organization invitation can be accepted. */
+const INVITATION_EXPIRES_IN = 60 * 60 * 24 * 7; // 7 days, in seconds
 
 /** A Drizzle SQLite database, whichever driver is behind it: D1 in a Worker, `node:sqlite` in a test. */
 export type AuthDatabase = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;
@@ -61,6 +64,60 @@ export function createAuth({
 }: AuthOptions) {
   // `https` in production, plain `http` on localhost, where a Secure cookie would be dropped.
   const secureCookies = baseURL.startsWith("https://");
+
+  /**
+   * Turns the pending invitations addressed to this user into memberships, and returns the
+   * organization of the most recent one accepted (null when none was). D1 has no transaction, so
+   * each step is safe to run twice: a user who already is a member gets no second row, and the
+   * invitation is still marked accepted. A sign-in that dies half way is finished by the next one.
+   */
+  async function acceptPendingInvitations(userId: string): Promise<string | null> {
+    const [found] = await db
+      .select({ email: userTable.email, emailVerified: userTable.emailVerified })
+      .from(userTable)
+      .where(eq(userTable.id, userId));
+    // The session exists only once the address is verified while `requireEmailVerification` is on;
+    // this keeps it true if a project turns that off, as an invitation proves the address is theirs.
+    if (found === undefined || !found.emailVerified) return null;
+
+    const pending = await db
+      .select({
+        id: invitation.id,
+        organizationId: invitation.organizationId,
+        role: invitation.role,
+      })
+      .from(invitation)
+      .innerJoin(orgTable, eq(invitation.organizationId, orgTable.id))
+      .where(
+        and(
+          eq(invitation.status, "pending"),
+          sql`lower(${invitation.email}) = lower(${found.email})`,
+          gt(invitation.expiresAt, new Date()),
+          isNull(orgTable.deletedAt),
+        ),
+      )
+      .orderBy(asc(invitation.createdAt));
+
+    let accepted: string | null = null;
+    for (const { id, organizationId, role } of pending) {
+      const [existing] = await db
+        .select({ id: member.id })
+        .from(member)
+        .where(and(eq(member.userId, userId), eq(member.organizationId, organizationId)));
+      if (existing === undefined) {
+        await db.insert(member).values({
+          id: crypto.randomUUID(),
+          organizationId,
+          userId,
+          role: role ?? "member",
+          createdAt: new Date(),
+        });
+      }
+      await db.update(invitation).set({ status: "accepted" }).where(eq(invitation.id, id));
+      accepted = organizationId;
+    }
+    return accepted;
+  }
 
   return betterAuth({
     database: drizzleAdapter(db, {
@@ -200,7 +257,21 @@ export function createAuth({
       session: {
         create: {
           before: async (session) => {
+            let invitedOrgId: string | null = null;
             try {
+              invitedOrgId = await acceptPendingInvitations(session.userId);
+            } catch (error) {
+              logger.error("Failed to accept pending invitations", error, {
+                scope: "auth",
+                event: "invitations_accept_failed",
+                userId: session.userId,
+              });
+              // Don't throw - signing in must not fail because an invitation could not be accepted.
+            }
+            try {
+              if (invitedOrgId !== null) {
+                return { data: { ...session, activeOrganizationId: invitedOrgId } };
+              }
               // Get first organization for this user
               const userOrg = await db
                 .select({
@@ -299,6 +370,34 @@ export function createAuth({
       organization({
         ac,
         roles,
+        invitationExpiresIn: INVITATION_EXPIRES_IN,
+        // The invitation id is the token: Better Auth refuses an accept by another email or after expiry.
+        sendInvitationEmail: async ({ id, email, inviter, organization }) => {
+          const invitationEmail = {
+            to: email,
+            inviterName: inviter.user.name || inviter.user.email,
+            organizationName: organization.name,
+            url: new URL(`/invitations/${id}`, appURL).toString(),
+          };
+          if (mailer.sendInvitation === undefined) {
+            logger.warn("The mailer has no sendInvitation: the invitation email was not sent", {
+              scope: "auth",
+              event: "email_not_sent",
+              kind: "invitation",
+            });
+            return;
+          }
+          try {
+            await mailer.sendInvitation(invitationEmail);
+          } catch (error) {
+            logger.error("Failed to send invitation email", error, {
+              scope: "auth",
+              event: "send_invitation_email",
+              invitationId: id,
+            });
+            throw error;
+          }
+        },
         // `schema.ts` is generated by `vp run auth:generate` from these options, so a column
         // declared only there is dropped by the next regeneration. The session hook above and
         // `auth.module.ts` filter on `deletedAt`. `input: false` keeps both server-only: the

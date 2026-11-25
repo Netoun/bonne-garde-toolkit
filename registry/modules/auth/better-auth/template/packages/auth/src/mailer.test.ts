@@ -22,4 +22,23 @@ describe("the mailer an email module replaces", () => {
       expect(line).not.toContain("a@example.com");
     }
   });
+
+  it("does not send an invitation either, and never logs its link", async () => {
+    const lines: string[] = [];
+    const mailer = unconfiguredMailer({
+      warn: (message, context) => lines.push(JSON.stringify({ message, ...context })),
+    });
+
+    await mailer.sendInvitation?.({
+      to: "a@example.com",
+      inviterName: "B",
+      organizationName: "Team",
+      url: "http://spa.test/invitations/invitation-id",
+    });
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("the invitation email was not sent");
+    expect(lines[0]).not.toContain("invitation-id");
+    expect(lines[0]).not.toContain("a@example.com");
+  });
 });

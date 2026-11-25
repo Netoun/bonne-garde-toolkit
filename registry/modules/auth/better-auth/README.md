@@ -98,7 +98,7 @@ else a missing one fails the first request that needs auth, naming the key.
 
 ## Email
 
-Auth does not send email. It asks an `AuthMailer` (`sendVerificationEmail`, `sendPasswordReset`), and
+Auth does not send email. It asks an `AuthMailer` (`sendVerificationEmail`, `sendPasswordReset`, and the optional `sendInvitation`), and
 the `mailer` exported by `src/mailer.ts` is what `auth.module.ts` hands it. With no `email` module that
 is `unconfiguredMailer`: it sends nothing and logs a warning that names the user and never the link,
 which carries a one-time token. `requireEmailVerification` stays on, so **a user who signs up in a
@@ -234,6 +234,24 @@ the statements (also when there is no active organization or the user is not a m
 otherwise. It checks with `auth.api.hasPermission`, so it reads the same role table as Better Auth's own endpoints.
 It adds nothing to the context: combine it with `auth: true` to get `user` and `session`. Both variants mount the
 same macro from `permission.macro.ts`.
+
+## Invitations
+
+`organization/invite-member` stores an invitation and mails it: `createAuth` builds `<SPA_URL>/invitations/<invitation id>`
+and hands `{ to, inviterName, organizationName, url }` to `mailer.sendInvitation`. The id is the token: Better Auth
+refuses an accept from another email or after expiry, so nothing is hashed. An invitation expires 7 days after it is made
+(`invitationExpiresIn`). The page at that path is the front-end's.
+
+`sendInvitation` is **optional** on `AuthMailer`, so a project whose `mailer` is its own adapter keeps compiling. Without
+it (`unconfiguredMailer` has one that only logs, a custom mailer may have none) the invitation is stored, nothing is sent,
+and auth logs a warning that never contains the link; the invite does not fail.
+
+Signing in accepts what is pending, in `databaseHooks.session.create.before`: every `pending` invitation to the user's
+email (case-insensitive), not expired, of an organization with no `deletedAt`, becomes a `member` row with the invited role
+and is marked `accepted`. The user's email has to be verified (always true with `requireEmailVerification`). D1 has no
+transaction, so each step can run twice: a user who already is a member gets no second row and the invitation is still
+marked accepted. The session's active organization is the one of the most recent invitation accepted at that sign-in,
+else the first live one. `auth.invitation.test.ts` pins each case, including the four that are refused.
 
 ## Organizations marked deleted
 
