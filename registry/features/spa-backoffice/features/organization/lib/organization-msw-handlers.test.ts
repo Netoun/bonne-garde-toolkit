@@ -127,3 +127,141 @@ export function pendingInvitation(overrides?: Partial<InvitationRow>): Invitatio
     ...overrides,
   };
 }
+
+const INVITER = {
+  id: "user-inviter",
+  email: "owner@example.com",
+  name: "Org Owner",
+};
+
+interface InvitationPageHandlerOptions {
+  signedIn?: boolean;
+  sessionEmail?: string;
+  invitation?: InvitationRow;
+  getInvitationMode?: "ok" | "not-found" | "wrong-email";
+  memberOfInvitedOrganization?: boolean;
+  acceptInvitationMode?: "ok" | "error";
+  acceptInvitationErrorMessage?: string;
+  onAcceptInvitation?: (invitationId: string) => void;
+  onRejectInvitation?: (invitationId: string) => void;
+}
+
+export function organizationInvitationHandlers(options: InvitationPageHandlerOptions) {
+  const invitation =
+    options.invitation ??
+    pendingInvitation({ email: options.sessionEmail ?? "invitee@example.com" });
+  const sessionEmail = options.sessionEmail ?? invitation.email;
+  const sessionUser = {
+    id: "user-invitee",
+    email: sessionEmail,
+    name: "Invitee User",
+    emailVerified: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    image: null,
+  };
+
+  return [
+    http.all(/.*/, async ({ request }) => {
+      if (!request.url.includes("/api/auth")) {
+        return;
+      }
+
+      if (request.method === "GET" && isAuthPath(request.url, "/get-session")) {
+        if (options.signedIn === false) {
+          return HttpResponse.json(null);
+        }
+        return HttpResponse.json({
+          session: {
+            id: "session-invitee",
+            userId: sessionUser.id,
+            token: "token",
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            activeOrganizationId: ORG.id,
+          },
+          user: sessionUser,
+        });
+      }
+
+      if (request.method === "GET" && isAuthPath(request.url, "/organization/get-invitation")) {
+        const id = new URL(request.url).searchParams.get("id");
+        if (options.getInvitationMode === "not-found" || id !== invitation.id) {
+          return HttpResponse.json(
+            { message: "Invitation not found!", code: "INVITATION_NOT_FOUND" },
+            { status: 400 },
+          );
+        }
+        if (
+          options.getInvitationMode === "wrong-email" ||
+          sessionEmail.toLowerCase() !== invitation.email.toLowerCase()
+        ) {
+          return HttpResponse.json(
+            {
+              message: "You are not the recipient of the invitation",
+              code: "YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION",
+            },
+            { status: 403 },
+          );
+        }
+        return HttpResponse.json({
+          ...invitation,
+          organizationName: ORG.name,
+          organizationSlug: ORG.slug,
+          inviterId: INVITER.id,
+          inviterEmail: INVITER.email,
+        });
+      }
+
+      if (request.method === "GET" && isAuthPath(request.url, "/organization/list")) {
+        if (options.memberOfInvitedOrganization) {
+          return HttpResponse.json([{ ...ORG, role: "member" }]);
+        }
+        return HttpResponse.json([]);
+      }
+
+      if (request.method === "POST" && isAuthPath(request.url, "/organization/accept-invitation")) {
+        const body = (await request.json()) as { invitationId: string };
+        if (options.acceptInvitationMode === "error") {
+          return HttpResponse.json(
+            {
+              message: options.acceptInvitationErrorMessage ?? "Invitation not found!",
+              code: "INVITATION_NOT_FOUND",
+            },
+            { status: 400 },
+          );
+        }
+        options.onAcceptInvitation?.(body.invitationId);
+        return HttpResponse.json({
+          invitation: { ...invitation, status: "accepted" },
+          member: {
+            id: "member-new",
+            userId: sessionUser.id,
+            organizationId: ORG.id,
+            role: invitation.role,
+          },
+        });
+      }
+
+      if (request.method === "POST" && isAuthPath(request.url, "/organization/reject-invitation")) {
+        const body = (await request.json()) as { invitationId: string };
+        options.onRejectInvitation?.(body.invitationId);
+        return HttpResponse.json({
+          invitation: { ...invitation, status: "rejected" },
+          member: null,
+        });
+      }
+
+      if (request.method === "POST" && isAuthPath(request.url, "/organization/set-active")) {
+        return HttpResponse.json({ success: true });
+      }
+
+      if (request.method === "POST" && isAuthPath(request.url, "/sign-out")) {
+        return HttpResponse.json({ success: true });
+      }
+
+      return;
+    }),
+  ];
+}

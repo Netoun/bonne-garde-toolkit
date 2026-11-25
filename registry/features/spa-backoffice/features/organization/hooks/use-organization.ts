@@ -428,6 +428,110 @@ export function useCancelInvitation() {
   });
 }
 
+interface OrganizationInvitationDetails {
+  id: string;
+  email: string;
+  role: OrganizationRole;
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  inviterEmail: string;
+  status: string;
+  expiresAt: string;
+}
+
+function isAuthError(value: unknown): value is { message?: string; code?: string } {
+  return isRecord(value);
+}
+
+export function classifyInvitationLoadError(
+  error: unknown,
+): "not-found" | "wrong-recipient" | "other" {
+  if (!isAuthError(error)) return "other";
+  const message = error.message?.toLowerCase() ?? "";
+  const code = error.code ?? "";
+  if (
+    code === "YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION" ||
+    message.includes("not the recipient")
+  ) {
+    return "wrong-recipient";
+  }
+  if (code === "INVITATION_NOT_FOUND" || message.includes("not found")) {
+    return "not-found";
+  }
+  return "other";
+}
+
+export function useOrganizationInvitation(invitationId: string) {
+  return useQuery({
+    queryKey: ["organization-invitation", invitationId],
+    queryFn: async (): Promise<OrganizationInvitationDetails> => {
+      const response = await authClient.organization.getInvitation({
+        query: { id: invitationId },
+      });
+      if (response.error) throw response.error;
+      const data = response.data;
+      if (!data || typeof data !== "object") {
+        throw new Error("Invitation not found");
+      }
+      const role =
+        "role" in data && typeof data.role === "string" && isRole(data.role) ? data.role : "member";
+      return {
+        id: String(data.id),
+        email: String(data.email),
+        role,
+        organizationId: String(data.organizationId),
+        organizationName: String(data.organizationName),
+        organizationSlug: String(data.organizationSlug),
+        inviterEmail: String(data.inviterEmail),
+        status: String(data.status),
+        expiresAt: new Date(data.expiresAt).toISOString(),
+      };
+    },
+    enabled: !!invitationId,
+    retry: false,
+  });
+}
+
+export function useAcceptOrganizationInvitation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      invitationId,
+      organizationId,
+      organizationSlug,
+    }: {
+      invitationId: string;
+      organizationId: string;
+      organizationSlug: string;
+    }) => {
+      const response = await authClient.organization.acceptInvitation({ invitationId });
+      if (response.error) throw response.error;
+
+      const active = await authClient.organization.setActive({ organizationId });
+      if (active.error) throw active.error;
+
+      return { organizationSlug };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.organizations });
+    },
+  });
+}
+
+export function useRejectOrganizationInvitation() {
+  return useMutation({
+    mutationFn: async (invitationId: string) => {
+      const response = await authClient.organization.rejectInvitation({ invitationId });
+      if (response.error) throw response.error;
+      return response.data;
+    },
+  });
+}
+
+export type { OrganizationInvitationDetails };
+
 export type {
   Organization,
   OrganizationDetail,
