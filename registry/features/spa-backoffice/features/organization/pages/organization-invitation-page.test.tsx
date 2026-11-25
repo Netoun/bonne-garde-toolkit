@@ -7,8 +7,8 @@ import {
   organizationInvitationHandlers,
   pendingInvitation,
   server,
-} from "../lib/organization-msw-handlers.test";
-import { renderWithProviders } from "../lib/render-with-providers.test";
+} from "../lib/organization-msw-handlers";
+import { renderWithProviders } from "../lib/render-with-providers";
 import type { Route as InvitationRoute } from "./+types/organization-invitation-page";
 import OrganizationInvitationPage from "./organization-invitation-page";
 

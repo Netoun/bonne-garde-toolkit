@@ -1,7 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vite-plus/test";
-import { organizationAuthHandlers, server } from "../lib/organization-msw-handlers.test";
-import { renderWithProviders } from "../lib/render-with-providers.test";
+import { organizationAuthHandlers, server } from "../lib/organization-msw-handlers";
+import { renderWithProviders } from "../lib/render-with-providers";
 import type { Route } from "./+types/organization-settings-page";
 import OrganizationSettings from "./organization-settings-page";
 

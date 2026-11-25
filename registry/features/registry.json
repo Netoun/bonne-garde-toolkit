@@ -116,7 +116,7 @@
         "@react-router/dev",
         "@testing-library/react",
         "@testing-library/user-event@14.6.3",
-        "msw@2.15.0",
+        "msw",
         "vite-plus"
       ],
       "registryDependencies": [
@@ -291,19 +291,14 @@
           "target": "apps/spa/src/features/organization/pages/organization-settings-page.tsx"
         },
         {
-          "path": "spa-backoffice/features/organization/lib/organization-msw-server.test.ts",
+          "path": "spa-backoffice/features/organization/lib/organization-msw-handlers.ts",
           "type": "registry:file",
-          "target": "apps/spa/src/features/organization/lib/organization-msw-server.test.ts"
+          "target": "apps/spa/src/features/organization/lib/organization-msw-handlers.ts"
         },
         {
-          "path": "spa-backoffice/features/organization/lib/organization-msw-handlers.test.ts",
+          "path": "spa-backoffice/features/organization/lib/render-with-providers.tsx",
           "type": "registry:file",
-          "target": "apps/spa/src/features/organization/lib/organization-msw-handlers.test.ts"
-        },
-        {
-          "path": "spa-backoffice/features/organization/lib/render-with-providers.test.tsx",
-          "type": "registry:file",
-          "target": "apps/spa/src/features/organization/lib/render-with-providers.test.tsx"
+          "target": "apps/spa/src/features/organization/lib/render-with-providers.tsx"
         }
       ]
     }

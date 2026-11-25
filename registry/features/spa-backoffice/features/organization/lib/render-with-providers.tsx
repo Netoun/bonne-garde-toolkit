@@ -1,7 +1,4 @@
-import { describe } from "vite-plus/test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-
-describe.skip("render test helpers", () => {});
 import { render, type RenderOptions } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router";
