@@ -113,7 +113,7 @@ describe("registry contract", () => {
       return [...names].sort();
     };
 
-    test("the catalog is the legacy packages/ui: 29 components, lib/animations, lib/utils, hooks/use-mobile", async () => {
+    test("the catalog is the legacy packages/ui: 30 components, lib/animations, lib/utils, hooks/use-mobile", async () => {
       expect((await uiItems()).map((item) => item.name).sort()).toEqual(UI_ITEMS);
     });
 
@@ -163,13 +163,23 @@ describe("registry contract", () => {
             imported.add(name);
           }
         }
-        const declared = [...(item.dependencies ?? [])].sort();
+        const declared = [...(item.dependencies ?? [])].map(dependencyName).sort();
         if (JSON.stringify(declared) !== JSON.stringify([...imported].sort())) {
           wrong.push(`${item.name}: lists [${declared}], imports [${[...imported].sort()}]`);
         }
       }
       expect(wrong).toEqual([]);
     });
+
+    /** `name@version` in the catalog is the install pin; imports use the bare package name. */
+    const dependencyName = (spec: string): string => {
+      const at = spec.lastIndexOf("@");
+      if (at <= 0) {
+        return spec;
+      }
+      const version = spec.slice(at + 1);
+      return version.length > 0 ? spec.slice(0, at) : spec;
+    };
 
     /** The npm packages a file imports from: `@scope/name` or `name`, subpaths folded, `@acme/ui` not one. */
     const packagesOf = (source: string): string[] => [
@@ -184,7 +194,7 @@ describe("registry contract", () => {
   });
 });
 
-/** The UI items: the 29 components of the legacy `packages/ui`, its lib and its hook. */
+/** The UI items: the 30 components of the legacy `packages/ui`, its lib and its hook. */
 const UI_ITEMS = [
   "alert",
   "alert-dialog",
@@ -196,6 +206,7 @@ const UI_ITEMS = [
   "card",
   "checkbox",
   "context-menu",
+  "data-table",
   "dialog",
   "drawer",
   "dropdown-menu",

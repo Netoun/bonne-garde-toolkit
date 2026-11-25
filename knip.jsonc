@@ -16,6 +16,7 @@
       "ignoreDependencies": [
         "@base-ui/react",
         "@react-router/node",
+        "@tanstack/react-table",
         "class-variance-authority",
         "clsx",
         "motion",

@@ -179,6 +179,21 @@
       ]
     },
     {
+      "name": "data-table",
+      "type": "registry:ui",
+      "title": "Data Table",
+      "description": "Sortable, paginated table with a column text filter, on TanStack Table v9.",
+      "dependencies": ["@tanstack/react-table", "lucide-react", "react"],
+      "registryDependencies": ["button", "input", "table", "utils"],
+      "files": [
+        {
+          "path": "data-table.tsx",
+          "type": "registry:ui",
+          "target": "packages/ui/src/components/data-table.tsx"
+        }
+      ]
+    },
+    {
       "name": "dialog",
       "type": "registry:ui",
       "title": "Dialog",
