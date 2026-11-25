@@ -1,58 +1,62 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { styleText } from "node:util";
-import { ApplyError } from "@bonne-garde/registry";
-import { type IntentionOutcome } from "@bonne-garde/schema";
-import { addItems, searchItems, viewItem } from "./add";
+import { ApplyError, searchCatalog } from "@bonne-garde/registry";
+import { cliRunner, type IntentionOutcome } from "@bonne-garde/schema";
+import { addItems, openCatalog, pickItem } from "./add";
 import { takeFlag, takeOption } from "./args";
-import { APPS, FEATURES, PROVIDERS } from "./choices";
+import { readInstalled, renderCatalog, renderItem, renderNoMatch } from "./catalog-view";
 import { createCommand } from "./create-command";
-import { doctorExitCode, formatDoctor, runDoctor } from "./doctor";
+import { doctorExitCode, formatDoctor, renderDoctor, runDoctor } from "./doctor";
+import { CliError, clackErrorText, errorText, notAProject, unknownName } from "./errors";
 import { addNamingCommand } from "./force-command";
+import { COMMANDS, commandHelp, flagsOf, usage } from "./help";
 import { lintIntentions } from "./intentions/lint";
 import { lintModuleIntentions } from "./intentions/lint-modules";
-import { listRegistry } from "./list";
-import { missingPackageManager, PACKAGE_MANAGERS, packageManagerOf } from "./package-manager";
-import { migrationsDir, registryDir } from "./paths";
+import { listCatalog, listRegistry } from "./list";
+import { missingPackageManager, packageManagerOf } from "./package-manager";
+import { cliVersion, migrationsDir, registryDir } from "./paths";
 import { recordIntentionOutcome } from "./record";
 import { manifestMigrationNotice, reportAdd } from "./report";
-import { clack, logo, showAdd, step } from "./terminal";
+import { addPhases, clack, showAdd } from "./terminal";
 
-function usage(): string {
-  const section = (title: string) => styleText("bold", title);
-  return `
-${logo("compose a full-stack project from a registry of modules")}
-
-${section("Start")}
-  bonne-garde create [dir] [--pm <name>] [--apps <a,b>] [--provider <name>] [--features <a,b>]
-                           [--yes] [--no-git] [--no-install] [--scope @name] [--registry <source>]
-      asks, on a terminal, what no flag says; with --yes or no terminal it takes the defaults:
-      the package manager create was started from (bun otherwise), and no app (the base alone)
-      pm: ${PACKAGE_MANAGERS.join(", ")} · apps: ${APPS.join(", ")} · provider: ${PROVIDERS.join(", ")}
-      features: ${FEATURES.join(", ")}
-
-${section("Compose")}
-  bonne-garde add <name...> [--dry-run] [--force] [--no-install] [--yes] [--json] [--source <source>]
-      <name> is an item, a module id, or <category>/<id> (provider/cloudflare); prints a summary
-      on a terminal, and JSON to a pipe, to an agent, or with --json
-  bonne-garde list [--items | --category <category>] [--source <source>]
-      with no flag: the items, then the modules as <category>/<id>; --items is the items alone
-  bonne-garde search <query> [--source <source>]
-  bonne-garde view <item> [--source <source>]
-      <source> is local:<path> or github:owner/repo[@ref]; a github source reads raw.githubusercontent.com
-      (set GITHUB_TOKEN to lift the rate limit); with no @ref it reads the tag v<platform.version> of bg.json
-
-${section("Keep it healthy")}
-  bonne-garde doctor [--json] [--strict]
-  bonne-garde record <intention-id> [--skip "<reason>"]
-  bonne-garde intentions lint [--dir <migrations-dir>] [--registry <registry-dir>]
-      the release migrations, and the intentions each module ships under its intent/
-`;
+/** A flag the command does not know is a typo: it fails with the nearest flag, never as a name or a query. */
+function refuseUnknownFlag(command: string, args: readonly string[]): void {
+  const flag = args.find((arg) => arg.startsWith("-"));
+  if (flag !== undefined) {
+    throw unknownName("flag", flag, flagsOf(command), `bonne-garde ${command} --help`);
+  }
 }
 
+/** For the commands that take no positional argument: whatever is left is wrong. */
+function refuseLeftovers(command: string, args: readonly string[]): void {
+  refuseUnknownFlag(command, args);
+  if (args.length > 0) {
+    throw new CliError(`Unexpected argument: ${args.join(" ")}`, {
+      fix: `Usage: bonne-garde ${command} --help`,
+    });
+  }
+}
+
+/** Every failure ends here, in one shape, with the exit code it always had. */
 export async function runCli(argv: string[]): Promise<number> {
+  try {
+    return await dispatch(argv);
+  } catch (error) {
+    console.error(errorText(error));
+    return 1;
+  }
+}
+
+async function dispatch(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
+  if (command === "--version") {
+    console.log(cliVersion());
+    return 0;
+  }
   // `--help` asks for the usage whatever the command: never a directory to create or an item to add.
   if (!command || [command, ...rest].some((arg) => arg === "-h" || arg === "--help")) {
-    console.log(usage());
+    console.log((command && commandHelp(command)) || usage());
     return 0;
   }
 
@@ -65,11 +69,27 @@ export async function runCli(argv: string[]): Promise<number> {
     const itemsOnly = takeFlag(args, "--items");
     const category = takeOption(args, "--category");
     const source = takeOption(args, "--source");
+    const json = takeFlag(args, "--json") || process.stdout.isTTY !== true;
     // A flag it did not recognise must fail: `list --itmes` would print the modules it meant to leave out.
-    if (args.length > 0) {
-      throw new Error(`list: unexpected argument: ${args.join(" ")}\n${usage()}`);
+    refuseLeftovers("list", args);
+    const query = { itemsOnly, category, source };
+    if (!json) {
+      const { items, modules, notes } = await listCatalog(process.cwd(), query);
+      for (const note of notes) {
+        console.error(note);
+      }
+      console.log(
+        renderCatalog({
+          items,
+          modules,
+          ...(await readInstalled(process.cwd())),
+          width: process.stdout.columns || 80,
+          runner: cliRunner(),
+        }),
+      );
+      return 0;
     }
-    const { lines, notes } = await listRegistry(process.cwd(), { itemsOnly, category, source });
+    const { lines, notes } = await listRegistry(process.cwd(), query);
     for (const note of notes) {
       console.error(note);
     }
@@ -82,11 +102,28 @@ export async function runCli(argv: string[]): Promise<number> {
   if (command === "search") {
     const args = [...rest];
     const source = takeOption(args, "--source");
+    const json = takeFlag(args, "--json") || process.stdout.isTTY !== true;
+    refuseUnknownFlag("search", args);
     const query = args[0];
     if (!query) {
       throw new Error("search requires a query");
     }
-    const items = await searchItems(process.cwd(), query, source);
+    const catalog = await openCatalog(process.cwd(), source);
+    const items = searchCatalog(catalog, query);
+    if (!json) {
+      console.log(
+        items.length === 0
+          ? renderNoMatch(query)
+          : renderCatalog({
+              items,
+              modules: [],
+              ...(await readInstalled(process.cwd())),
+              width: process.stdout.columns || 80,
+              runner: cliRunner(),
+            }),
+      );
+      return 0;
+    }
     for (const item of items) {
       console.log(`${item.name}\t${item.type}\t${item.description ?? ""}`);
     }
@@ -96,12 +133,23 @@ export async function runCli(argv: string[]): Promise<number> {
   if (command === "view") {
     const args = [...rest];
     const source = takeOption(args, "--source");
+    const json = takeFlag(args, "--json") || process.stdout.isTTY !== true;
+    refuseUnknownFlag("view", args);
     const name = args[0];
     if (!name) {
       throw new Error("view requires an item name");
     }
-    const item = await viewItem(process.cwd(), name, source);
-    console.log(JSON.stringify(item, null, 2));
+    const catalog = await openCatalog(process.cwd(), source);
+    const item = pickItem(catalog.items, name);
+    console.log(
+      json
+        ? JSON.stringify(item, null, 2)
+        : renderItem(item, {
+            rootDir: catalog.rootDir,
+            runner: cliRunner(),
+            installed: (await readInstalled(process.cwd())).installed.has(name),
+          }),
+    );
     return 0;
   }
 
@@ -121,6 +169,7 @@ export async function runCli(argv: string[]): Promise<number> {
     }
     // JSON on stdout for an agent, a pipe, or --json; a summary for a person at a terminal.
     const json = takeFlag(args, "--json") || process.stdout.isTTY !== true;
+    refuseUnknownFlag("add", args);
     if (args.length === 0) {
       throw new Error("add requires at least one item or module");
     }
@@ -137,38 +186,31 @@ export async function runCli(argv: string[]): Promise<number> {
     if (!json) {
       clack.intro(styleText("inverse", " bonne-garde add "));
       try {
-        const outcome = await step(
-          `${dryRun ? "Planning" : "Adding"} ${args.join(", ")}`,
-          () =>
-            addItems({
-              items: args,
-              source,
-              dryRun,
-              force,
-              install: !noInstall,
-              installOutput: "capture",
-            }).catch(forceHint),
-          ({ modulePlans, plan }) => {
-            const names = [
-              ...modulePlans.map(({ key }) => key),
-              ...plan.items.map(({ name }) => name),
-            ];
-            const shown =
-              names.length > 4
-                ? `${names.slice(0, 4).join(", ")} and ${names.length - 4} more`
-                : names.join(", ");
-            return `${dryRun ? "Planned" : "Added"} ${shown}`;
-          },
-        );
-        showAdd(outcome, dryRun, await packageManagerOf(process.cwd()).catch(() => null));
+        const pm = await packageManagerOf(process.cwd()).catch(() => null);
+        const outcome = await addItems({
+          items: args,
+          source,
+          dryRun,
+          force,
+          install: !noInstall,
+          installOutput: "capture",
+          phase: addPhases(args, dryRun, pm),
+        }).catch(forceHint);
+        showAdd(outcome, dryRun, pm);
         if (outcome.installMissing !== null) {
           clack.cancel(missingPackageManager(outcome.installMissing));
           return 1;
         }
-        clack.outro(dryRun ? "Nothing written: --dry-run." : "En garde.");
+        clack.outro(
+          dryRun
+            ? "Nothing written. Run it again without --dry-run to apply."
+            : outcome.unchanged.length > 0 && outcome.unchanged.length === args.length
+              ? "Nothing to do."
+              : "Done.",
+        );
         return 0;
       } catch (error) {
-        clack.cancel(error instanceof Error ? error.message : String(error));
+        clack.cancel(clackErrorText(error));
         return 1;
       }
     }
@@ -263,13 +305,12 @@ export async function runCli(argv: string[]): Promise<number> {
   if (command === "record") {
     const args = [...rest];
     const reason = takeOption(args, "--skip");
+    refuseUnknownFlag("record", args);
     const id = args.shift();
     if (!id) {
       throw new Error("record requires an intention id");
     }
-    if (args.length > 0) {
-      throw new Error(`record: unexpected argument: ${args.join(" ")}\n${usage()}`);
-    }
+    refuseLeftovers("record", args);
     const outcome: IntentionOutcome =
       reason === undefined ? { status: "applied" } : { status: "skipped", reason };
     const { recordedIn, migratedFrom, staged, marked, notFiles } = await recordIntentionOutcome(
@@ -304,22 +345,33 @@ export async function runCli(argv: string[]): Promise<number> {
     const json = takeFlag(args, "--json");
     const strict = takeFlag(args, "--strict");
     // A flag it did not recognise must fail: `doctor --strcit` passing in CI is a gate that is off.
-    if (args.length > 0) {
-      throw new Error(`doctor: unexpected argument: ${args.join(" ")}\n${usage()}`);
+    refuseLeftovers("doctor", args);
+    // The JSON report has a verdict for a missing `bg.json` that agents read; a person gets the plain error.
+    if (!json && !existsSync(join(process.cwd(), "bg.json"))) {
+      throw notAProject(process.cwd());
     }
     const doctor = await runDoctor(process.cwd());
-    console.log(json ? JSON.stringify(doctor, null, 2) : formatDoctor(doctor));
+    console.log(
+      json
+        ? JSON.stringify(doctor, null, 2)
+        : process.stdout.isTTY === true
+          ? renderDoctor(doctor)
+          : formatDoctor(doctor),
+    );
     return doctorExitCode(doctor, strict);
   }
 
   if (command === "intentions") {
     const [sub, ...restArgs] = rest;
     if (sub !== "lint") {
-      throw new Error(`unknown intentions subcommand: ${sub ?? "(missing)"}\n${usage()}`);
+      throw new CliError(`Unknown intentions subcommand: ${sub ?? "(missing)"}`, {
+        fix: "Usage: bonne-garde intentions --help",
+      });
     }
     const args = [...restArgs];
     const dirOpt = takeOption(args, "--dir");
     const registryOpt = takeOption(args, "--registry");
+    refuseUnknownFlag("intentions", args);
     const dir = dirOpt ?? migrationsDir();
     if (!dir) {
       throw new Error("migrations directory not found (pass --dir)");
@@ -345,5 +397,5 @@ export async function runCli(argv: string[]): Promise<number> {
     return 0;
   }
 
-  throw new Error(`unknown command: ${command}\n${usage()}`);
+  throw unknownName("command", command, COMMANDS, "bonne-garde --help");
 }

@@ -1,7 +1,8 @@
 /**
  * The Worker the module's tests run in workerd: the real seam (`serve`), the real driver, rooms defined
  * the way an app defines them, and the routes a test cannot reach from Node (a publish from server
- * code, the sockets of an object read back after a fresh instance of it took over).
+ * code, the sockets of an object read back after a fresh instance of it took over, the state of a room read
+ * and written from server code).
  */
 /// <reference types="@cloudflare/workers-types" />
 // `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
@@ -10,13 +11,25 @@ import { serve } from "{{SCOPE}}/api-runtime";
 import { RealtimeRoom as Room } from "./driver.cloudflare";
 import { ROOM_BINDING } from "./names.cloudflare";
 import { encode, PROTOCOL_VERSION } from "./protocol";
-import { defineRoom, publishToRoom } from "./rooms";
+import { defineRoom, publishToRoom, roomState } from "./rooms";
 
 // What a room does with a message from one of its peers: say it to the whole room.
 for (const room of ["r1", "r2"]) {
   defineRoom(room, {
     onMessage: (peer, message) =>
       publishToRoom(peer.room, { type: message.type, data: message.data }),
+  });
+}
+
+// A room that keeps what a peer tells it and tells it back: the state as a hook reaches it.
+for (const room of ["s1", "s2"]) {
+  defineRoom(room, {
+    onMessage: async (peer, message) => {
+      const { key, value } = message.data as { key: string; value?: unknown };
+      const state = roomState(peer.room);
+      if (message.type === "set") await state.set(key, value);
+      peer.send({ type: message.type === "set" ? "stored" : "value", data: await state.get(key) });
+    },
   });
 }
 
@@ -60,6 +73,29 @@ const app = {
       }>();
       await publishToRoom(room, message, { tags });
       return new Response("ok");
+    }
+    if (url.pathname === "/__state") {
+      const { op, key, value } = await request.json<{
+        op: string;
+        key?: string;
+        value?: unknown;
+      }>();
+      const state = roomState(room);
+      switch (op) {
+        case "get":
+          return Response.json({ value: (await state.get(key ?? "")) ?? null });
+        case "set":
+          await state.set(key ?? "", value);
+          return Response.json({});
+        case "delete":
+          await state.delete(key ?? "");
+          return Response.json({});
+        case "list":
+          return Response.json({ value: await state.list() });
+        default:
+          await state.clear();
+          return Response.json({});
+      }
     }
     if (url.pathname === "/__rehydrated") {
       const namespace = roomsOf(env);

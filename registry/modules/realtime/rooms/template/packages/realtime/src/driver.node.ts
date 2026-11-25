@@ -1,6 +1,6 @@
 /**
  * The rooms on Node: crossws behind the upgrade seam of `{{SCOPE}}/api-runtime`, one instance, peers
- * kept in memory. Selected by the package's `./driver` export; `apps/api/src/index.ts` imports it so the
+ * kept in memory, their state in a libsql file (`state.node.ts`). Selected by the package's `./driver` export; `apps/api/src/index.ts` imports it so the
  * upgrade is registered. A second instance would not see the first one's peers: a shared bus belongs
  * here, behind `Transport`, the day a project runs more than one.
  */
@@ -9,7 +9,16 @@
 import { registerUpgrade } from "{{SCOPE}}/api-runtime";
 import type { Hooks, Peer } from "crossws";
 import { decode } from "./protocol";
-import { frameOf, roomHooks, useTransport, type Message, type RoomPeer } from "./rooms";
+import {
+  frameOf,
+  roomHooks,
+  useStateStore,
+  useTransport,
+  type Message,
+  type RoomPeer,
+} from "./rooms";
+// The extension stays: the container runs this file on Node, which does not resolve `./state.node` to `state.node.ts`.
+import { lazyStateStore } from "./state.node.ts";
 import { isTicketClaims, readTicketSecret, verifyTicket, type TicketClaims } from "./ticket";
 
 /** The path prefix the upgrade is registered under; a socket opens `/realtime/<room>?ticket=<ticket>`. */
@@ -97,6 +106,9 @@ useTransport({
     }
   },
 });
+
+// The state of the rooms: `<DATA_DIR>/realtime.sqlite`, opened by the first `roomState` call.
+useStateStore(lazyStateStore());
 
 /** Takes the upgrade registration back: the API stops accepting rooms. */
 export const unregisterRealtime: () => void = registerUpgrade(REALTIME_PREFIX, hooks);

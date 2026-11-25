@@ -8,6 +8,10 @@
  * A hibernating object is evicted from memory while its sockets stay open, then built again on the next
  * frame: a peer is therefore never kept in a field or a closure. Its ticket claims are the attachment
  * of its socket and its tags are the runtime's, and both are read back on every frame.
+ *
+ * The state of the room (`roomState`) is the object's own SQLite storage, one table of JSON text: it is
+ * on disk, so it outlives the object's eviction and a deploy. Every caller, a hook included, reaches it
+ * through the room's stub, so there is one path and no state on the peer.
  */
 /// <reference types="@cloudflare/workers-types" />
 import { DurableObject, env } from "cloudflare:workers";
@@ -16,7 +20,14 @@ import { DurableObject, env } from "cloudflare:workers";
 import { registerUpgrade } from "{{SCOPE}}/api-runtime";
 import { REALTIME_PREFIX, ROOM_BINDING } from "./names.cloudflare";
 import { decode } from "./protocol";
-import { frameOf, roomHooks, useTransport, type Message, type RoomPeer } from "./rooms";
+import {
+  frameOf,
+  roomHooks,
+  useStateStore,
+  useTransport,
+  type Message,
+  type RoomPeer,
+} from "./rooms";
 import { isTicketClaims, verifyTicket, type TicketClaims } from "./ticket";
 
 /** The header the Worker forwards the verified claims in. A client's own copy is overwritten there. */
@@ -57,6 +68,10 @@ export class RealtimeRoom extends DurableObject {
     super(ctx, env);
     // Answered by the runtime, without waking the object: the client's heartbeat costs it nothing.
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+    // The object is the room, so the table needs no room column; no migration, the class is SQLite-backed.
+    ctx.storage.sql.exec(
+      "create table if not exists room_state (key text primary key, value text not null)",
+    );
   }
 
   /** The upgrade the Worker forwarded, with the claims it verified. */
@@ -96,6 +111,38 @@ export class RealtimeRoom extends DurableObject {
         ? this.ctx.getWebSockets()
         : new Set(tags.flatMap((tag) => this.ctx.getWebSockets(tag)));
     for (const ws of sockets) ws.send(frame);
+  }
+
+  /** The state of this room, as JSON text: the `StateStore` of `rooms.ts` with the room taken out. */
+  stateGet(key: string): string | undefined {
+    const rows = this.ctx.storage.sql.exec<{ value: string }>(
+      "select value from room_state where key = ?",
+      key,
+    );
+    return rows.toArray()[0]?.value;
+  }
+
+  stateSet(key: string, value: string): void {
+    this.ctx.storage.sql.exec(
+      "insert into room_state (key, value) values (?, ?) on conflict (key) do update set value = excluded.value",
+      key,
+      value,
+    );
+  }
+
+  stateDelete(key: string): void {
+    this.ctx.storage.sql.exec("delete from room_state where key = ?", key);
+  }
+
+  stateList(): Record<string, string> {
+    const rows = this.ctx.storage.sql.exec<{ key: string; value: string }>(
+      "select key, value from room_state",
+    );
+    return Object.fromEntries(rows.toArray().map((row) => [row.key, row.value]));
+  }
+
+  stateClear(): void {
+    this.ctx.storage.sql.exec("delete from room_state");
   }
 }
 
@@ -142,4 +189,12 @@ registerUpgrade(REALTIME_PREFIX, async (request, bindings) => {
 useTransport({
   // A server-side publish cannot reach the sockets from here: they belong to the room's object.
   publish: (room, frame, tags) => roomStub(env, room).publish(frame, tags && [...tags]),
+});
+
+useStateStore({
+  get: (room, key) => roomStub(env, room).stateGet(key),
+  set: (room, key, value) => roomStub(env, room).stateSet(key, value),
+  delete: (room, key) => roomStub(env, room).stateDelete(key),
+  list: (room) => roomStub(env, room).stateList(),
+  clear: (room) => roomStub(env, room).stateClear(),
 });

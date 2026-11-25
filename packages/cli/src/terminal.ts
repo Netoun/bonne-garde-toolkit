@@ -6,7 +6,9 @@
 import { styleText } from "node:util";
 import * as clack from "@clack/prompts";
 import { cliRunner } from "@bonne-garde/schema";
-import type { AddOutcome } from "./add";
+import type { AddOutcome, AddPhase, AddPhaseRunner, AddPhaseValues } from "./add";
+import { packagesOf } from "./add";
+import { CliError } from "./errors";
 import type { Choice, Prompter } from "./choices";
 import { manifestMigrationNotice } from "./report";
 import type { PackageManager } from "./package-manager";
@@ -156,25 +158,174 @@ export function runnableCheck(check: string, pm: PackageManager | null): string 
     .join("");
 }
 
-/** What `bonne-garde add` did, on a terminal: per module and item, then what is left to the user. */
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+const bold = (text: string) => styleText("bold", text);
+const dim = (text: string) => styleText("dim", text);
+const done = (text: string) => clack.log.message(text, { symbol: styleText("green", "●") });
+
+/** Lines printed as they are, outside any clack box: what a person copies has no border or prefix. */
+function plainBlock(title: string, lines: readonly string[]): void {
+  process.stdout.write(`\n${bold(title)}\n${lines.map((line) => `  ${line}`).join("\n")}\n`);
+}
+
+function commonDir(files: readonly string[]): string {
+  const dirs = files.map((file) => file.split("/").slice(0, -1));
+  let common = dirs[0] ?? [];
+  for (const dir of dirs) {
+    let length = 0;
+    while (length < common.length && common[length] === dir[length]) {
+      length++;
+    }
+    common = common.slice(0, length);
+  }
+  return common.join("/");
+}
+
+/** The first two files, then how many more and the directory they share. */
+function fileLines(files: readonly string[]): string[] {
+  const shown = files.slice(0, 2).map((file) => `  ${dim(file)}`);
+  const rest = files.slice(2);
+  if (rest.length === 0) {
+    return shown;
+  }
+  const shared = commonDir(rest);
+  return [...shown, `  ${dim(`… ${rest.length} more${shared === "" ? "" : ` under ${shared}`}`)}`];
+}
+
+const quoted = (names: readonly string[]) => {
+  const shown = names.slice(0, 3).join(", ");
+  return names.length > 3 ? `${shown} and ${names.length - 3} more` : shown;
+};
+
+/**
+ * `addItems` one step at a time under a spinner each, as `create` shows its own: what a step did
+ * once it has, and the step by name when it fails.
+ */
+export function addPhases(
+  names: readonly string[],
+  dryRun: boolean,
+  pm: PackageManager | null,
+): AddPhaseRunner {
+  let packages = 0;
+  const started: Partial<Record<AddPhase, number>> = {};
+  const labels: Record<AddPhase, () => string> = {
+    plan: () => `Planning ${quoted(names)}`,
+    write: () => (dryRun ? "Checking what would be written" : "Writing files"),
+    install: () => `Installing ${plural(packages, "package")}${pm === null ? "" : ` with ${pm}`}`,
+  };
+  const outcomes: { [P in AddPhase]: (value: AddPhaseValues[P]) => string } = {
+    plan: (planned) => {
+      const { plan, modulePlans } = planned;
+      packages = packagesOf(planned).length;
+      const counts = [
+        ...(modulePlans.length > 0 ? [plural(modulePlans.length, "module")] : []),
+        ...(plan.items.length > 0 ? [plural(plan.items.length, "item")] : []),
+      ];
+      return `Planned ${quoted(names)} (${counts.join(", ")})`;
+    },
+    write: ({ written, patches }) => {
+      const applied = patches.filter(({ status }) => status === "applied").length;
+      const patched =
+        applied > 0 ? `, ${dryRun ? "apply" : "applied"} ${plural(applied, "patch")}` : "";
+      return dryRun
+        ? `Dry run: would write ${plural(written.length, "file")}${patched}`
+        : `Wrote ${plural(written.length, "file")}${patched}`;
+    },
+    install: () =>
+      `Installed${pm === null ? "" : ` with ${pm}`} in ${Math.round((Date.now() - (started.install ?? Date.now())) / 1000)}s`,
+  };
+  return async (name, run) => {
+    const label = labels[name]();
+    const spinner = clack.spinner();
+    spinner.start(label);
+    started[name] = Date.now();
+    try {
+      const value = await run();
+      if (name === "install" && "missing" in value && value.missing) {
+        spinner.error(`${label}: failed`);
+      } else {
+        spinner.stop(outcomes[name](value));
+      }
+      return value;
+    } catch (error) {
+      spinner.error(`${label}: failed`);
+      if (name !== "install" || !(error instanceof Error)) {
+        throw error;
+      }
+      throw new CliError(`${label} failed`, { cause: error.message });
+    }
+  };
+}
+
+/** What `bonne-garde add` did, on a terminal: per name what it brought, then what is left to the user. */
 export function showAdd(outcome: AddOutcome, dryRun: boolean, pm: PackageManager | null): void {
-  const { modulePlans, plan, result, staged, migratedFrom } = outcome;
-  const dim = (text: string) => styleText("dim", text);
+  const { modulePlans, plan, result, staged, migratedFrom, unchanged, requestedItems } = outcome;
   if (migratedFrom !== null) {
     clack.log.info(manifestMigrationNotice(dryRun).replace(/^bonne-garde: /, ""));
   }
+  const filesOf = (owners: readonly string[]) =>
+    result.written.filter((path) => owners.includes(result.manifest.files[path]?.owner ?? ""));
+  const appliedBy = (owner: string) =>
+    result.patches.filter((patch) => patch.module === owner && patch.status === "applied").length;
+  const summary = (files: readonly string[], patches: number, extra: readonly string[]) =>
+    [
+      dryRun ? `would write ${plural(files.length, "file")}` : plural(files.length, "file"),
+      ...(patches > 0
+        ? [
+            dryRun
+              ? `would apply ${plural(patches, "patch")}`
+              : `${plural(patches, "patch")} applied`,
+          ]
+        : []),
+      ...extra,
+    ].join(" · ");
+
   for (const module of modulePlans) {
-    const patches = result.patches.filter((patch) => patch.module === module.key);
-    const applied = patches.filter((patch) => patch.status === "applied").length;
-    const parts = [
-      `${module.files.length} file${module.files.length === 1 ? "" : "s"}`,
-      ...(patches.length > 0 ? [`${applied}/${patches.length} patches applied`] : []),
-      ...(module.workspace ? [module.workspace] : []),
-    ];
-    clack.log.success(`${module.key} ${dim(`(${module.variant})`)}  ${dim(parts.join(" · "))}`);
+    if (unchanged.includes(module.key)) {
+      done(`${bold(module.key)} is already installed: nothing to do`);
+      continue;
+    }
+    const files = filesOf([module.key]);
+    const extra = module.workspace ? [module.workspace] : [];
+    clack.log.success(
+      [
+        `${bold(module.key)} ${dim(`(${module.variant})`)}  ${dim(summary(files, appliedBy(module.key), extra))}`,
+        ...fileLines(files),
+      ].join("\n"),
+    );
   }
-  if (plan.items.length > 0) {
-    clack.log.success(`${plan.items.map((item) => item.name).join(", ")} ${dim("(items)")}`);
+  // What an item brings along stays with the name the user typed: the items it needs are listed once.
+  const needed = plan.items
+    .map(({ name }) => name)
+    .filter((name) => !requestedItems.includes(name));
+  requestedItems.forEach((name, index) => {
+    if (unchanged.includes(name)) {
+      done(`${bold(name)} is already installed: nothing to do`);
+      return;
+    }
+    const needs = index === 0 ? needed : [];
+    const files = filesOf([name, ...needs]);
+    const brings = needs.length > 0 ? `+ ${needs.length} it needs: ${needs.join(", ")}` : "";
+    const head = dryRun ? [`would write ${plural(files.length, "file")}`] : [];
+    clack.log.success(
+      [
+        `${bold(name)}  ${dim(
+          brings === "" ? summary(files, appliedBy(name), []) : [...head, brings].join(" · "),
+        )}`,
+        ...fileLines(files),
+      ].join("\n"),
+    );
+  });
+  const nothingNew =
+    modulePlans.every(({ key }) => unchanged.includes(key)) &&
+    requestedItems.every((name) => unchanged.includes(name));
+  if (outcome.packages.length > 0 && !nothingNew) {
+    const shown = outcome.packages.slice(0, 8).join(", ");
+    const more = outcome.packages.length - 8;
+    const installed = outcome.installedWith !== null && outcome.installMissing === null;
+    done(
+      `${installed ? "Installed" : dryRun ? "Would install" : "To install"}: ${shown}${more > 0 ? ` and ${more} more` : ""}`,
+    );
   }
   for (const { ref, from, to } of outcome.reselected) {
     clack.log.info(`${ref.category}/${ref.id} planned again: variant ${from} → ${to}`);
@@ -198,27 +349,21 @@ export function showAdd(outcome: AddOutcome, dryRun: boolean, pm: PackageManager
   }
   const intentions = [...result.pending, ...result.authored];
   if (staged !== null && intentions.length > 0) {
-    clack.note(
-      [
-        ...intentions.map(({ id }) => `• ${id}`),
-        "",
-        `Hand ${staged.session} to your coding agent: it applies each one,`,
-        `then ${cliRunner()} record <id> (or ${cliRunner()} record <id> --skip "<reason>").`,
-      ].join("\n"),
-      `${intentions.length} intention${intentions.length === 1 ? "" : "s"} to apply`,
-    );
+    plainBlock(`${plural(intentions.length, "intention")} to apply`, [
+      ...intentions.map(({ id }) => `• ${id}`),
+      `Hand ${staged.session} to your coding agent. Once it applied one, run:`,
+      `  ${cliRunner()} record <id>`,
+      `  ${cliRunner()} record <id> --skip "<reason>"`,
+    ]);
   }
   const checks = modulePlans.filter(({ checks }) => checks.length > 0);
   if (checks.length > 0 && !dryRun) {
-    const width = Math.max(...checks.map(({ key }) => key.length));
-    clack.note(
-      checks
-        .map(
-          ({ key, checks }) =>
-            `${dim(key.padEnd(width))}   ${styleText("cyan", runnableCheck(checks.join(" && "), pm))}`,
-        )
-        .join("\n"),
+    plainBlock(
       intentions.length > 0 ? "Checks, once the intentions are applied" : "Checks to run",
+      checks.flatMap(({ key, checks }) => [
+        dim(key),
+        `  ${styleText("cyan", runnableCheck(checks.join(" && "), pm))}`,
+      ]),
     );
   }
 }

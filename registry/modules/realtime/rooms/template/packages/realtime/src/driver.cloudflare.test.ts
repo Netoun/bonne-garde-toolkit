@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
@@ -143,4 +145,60 @@ describe("the upgrade", () => {
       await expect(realtime.connect("r1", { ticket })).rejects.toThrow(/refused/);
     }
   });
+});
+
+describe("the state of a room", () => {
+  it("is read by server code when a hook wrote it, and by a hook when server code wrote it", async () => {
+    const peer = await realtime.connect("s1");
+
+    peer.send(
+      JSON.stringify({ v: 1, type: "set", room: "s1", data: { key: "score", value: { n: 3 } } }),
+    );
+    expect((await peer.next()).data).toEqual({ n: 3 });
+    expect(await realtime.state("s1").get("score")).toEqual({ n: 3 });
+
+    await realtime.state("s1").set("mode", "open");
+    peer.send(JSON.stringify({ v: 1, type: "get", room: "s1", data: { key: "mode" } }));
+    expect((await peer.next()).data).toBe("open");
+    expect(await realtime.state("s1").list()).toEqual({ score: { n: 3 }, mode: "open" });
+  });
+
+  it("deletes a key, and gives undefined for one that is absent", async () => {
+    const state = realtime.state("s-delete");
+
+    await state.set("a", 1);
+    await state.delete("a");
+
+    expect(await state.get("a")).toBeUndefined();
+    expect(await state.list()).toEqual({});
+  });
+
+  it("empties its room on clear and leaves the keys of another room", async () => {
+    await realtime.state("s-one").set("k", 1);
+    await realtime.state("s-two").set("k", 2);
+
+    await realtime.state("s-one").clear();
+
+    expect(await realtime.state("s-one").list()).toEqual({});
+    expect(await realtime.state("s-two").list()).toEqual({ k: 2 });
+  });
+
+  it("survives workerd: a value set before it was disposed is there when it starts again over the same storage", async () => {
+    const persist = await mkdtemp(join(tmpdir(), "realtime-persist-"));
+    const entry = join(dirname(fileURLToPath(import.meta.url)), "test-worker.cloudflare.ts");
+    try {
+      const first = await startTestRealtime({ entry, persist });
+      await first.state("s-durable").set("k", { kept: true });
+      await first.close();
+
+      const second = await startTestRealtime({ entry, persist });
+      try {
+        expect(await second.state("s-durable").get("k")).toEqual({ kept: true });
+      } finally {
+        await second.close();
+      }
+    } finally {
+      await rm(persist, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

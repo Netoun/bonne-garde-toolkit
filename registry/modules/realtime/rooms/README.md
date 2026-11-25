@@ -11,10 +11,10 @@ bunx bonne-garde add provider/cloudflare api/elysia realtime/rooms   # or provid
 One module, a driver per provider behind the package's `./driver` export, both reached through the upgrade
 seam of `{{SCOPE}}/api-runtime` (`registerUpgrade`):
 
-| Provider     | Driver                                                                                                                   |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `dockerfile` | [crossws](https://crossws.h3.dev), one instance, peers and publish in memory                                             |
-| `cloudflare` | One Durable Object per room (`RealtimeRoom`, `idFromName(room)`) on the hibernation API, SQLite-backed class, no crossws |
+| Provider     | Driver                                                                                                                                                                 |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dockerfile` | [crossws](https://crossws.h3.dev), one instance, peers and publish in memory                                                                                           |
+| `cloudflare` | One Durable Object per room (`RealtimeRoom`, `idFromName(room)`) on the hibernation API, SQLite-backed class, no crossws; its state is the object's own SQLite storage |
 
 ## Peers
 
@@ -35,7 +35,8 @@ environment and in `production`. A project that already has `migrations` in `wra
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `src/protocol.ts`               | The envelope `{ v: 1, type, room, data }` (TypeBox), `encode` and `decode`, which returns null on anything else                 |
 | `src/ticket.ts`                 | `issueTicket`, `verifyTicket`, HMAC-SHA256 over Web Crypto, secret `REALTIME_TICKET_SECRET`                                     |
-| `src/rooms.ts`                  | `defineRoom(name, { onJoin, onMessage, onLeave })` and `publishToRoom(room, message, { tags })`                                 |
+| `src/rooms.ts`                  | `defineRoom(name, { onJoin, onMessage, onLeave })`, `publishToRoom(room, message, { tags })` and `roomState(room)`              |
+| `src/state.node.ts`             | `dockerfile`: the store of `roomState`, a libsql file `<DATA_DIR>/realtime.sqlite`, opened by the first call                    |
 | `src/client.ts`                 | The browser client, `./client` export, no server code: `connectRoom` with backoff, heartbeat and a fresh ticket per connection  |
 | `src/driver.node.ts`            | `dockerfile`: the `./driver` export, the upgrade under `/realtime/`, the ping answer, the peers in memory                       |
 | `src/driver.cloudflare.ts`      | `cloudflare`: the `./driver` export, the `RealtimeRoom` object, the upgrade that forwards to it, `ping` answered by the runtime |
@@ -110,20 +111,67 @@ On `dockerfile` the API refuses to start without it, and `compose.yaml` passes t
 `cloudflare` the first upgrade fails without it: put it in `.dev.vars` for `wrangler dev` and run
 `wrangler secret put REALTIME_TICKET_SECRET` when deployed.
 
+## State
+
+`roomState(room)` is a persistent key-value store per room, the same from a hook and from server code (a route):
+no state on `RoomPeer`, no extra hook argument. Values are JSON: what `JSON.stringify` keeps is what `get` returns
+(`get` gives `undefined` for an absent key; `set` throws a `TypeError` for what JSON cannot hold, `undefined`
+included: `delete` the key instead).
+
+```ts
+import { defineRoom, roomState } from "{{SCOPE}}/realtime";
+
+// A counter kept across reconnects: the peers come and go, the state stays.
+defineRoom("lobby", {
+  onJoin: async (peer) => {
+    const state = roomState(peer.room);
+    const visits = (((await state.get("visits")) as number | undefined) ?? 0) + 1;
+    await state.set("visits", visits);
+    peer.send({ type: "visits", data: visits });
+  },
+});
+
+await roomState("lobby").get("visits"); // from a route
+await roomState("lobby").list(); // { visits: 3 }
+await roomState("lobby").delete("visits");
+await roomState("lobby").clear(); // the only way a room's state goes: the last peer leaving keeps it
+```
+
+**Last write wins.** There is no `update` and no transaction: a `get` then a `set` across an `await` is not atomic
+between two hooks of the same room, so the counter above can lose an increment under concurrent joins. Keep in
+state what one writer owns, or what a lost write does not hurt.
+
+`roomState` throws without a driver loaded, like `publishToRoom`.
+
+On `dockerfile` the state is the file `<DATA_DIR>/realtime.sqlite` (`DATA_DIR` read like `db/libsql` does, `.data` by
+default, directory created when missing), opened by the first call, table `realtime_room_state (room, key, value)`
+with `(room, key)` as primary key, values stored as JSON text. It is **not** `db.sqlite`: the module has no `db`
+peer and a project on `db/postgres` runs it as is; with `db/libsql` both files sit side by side under `DATA_DIR`.
+No migration: the table is created when the file is opened. Keep `DATA_DIR` on the volume, as for `db.sqlite`.
+
+On `cloudflare` the state is the room's own Durable Object storage: table `room_state (key, value)` in the object's
+SQLite database (JSON text, as on `dockerfile`), created when the object is built. Every call, a hook's included,
+goes through the room's stub (RPC `stateGet`, `stateSet`, `stateDelete`, `stateList`, `stateClear`), so the state is
+on disk and survives the object's eviction and a deploy. No new migration: `RealtimeRoom` is already in
+`new_sqlite_classes` (`realtime-rooms-v1`), and no D1 or `db` peer is involved. Each object serialises its own
+calls, so two writes of one room never interleave inside a call; a `get` then a `set` is still not atomic.
+
 ## Tests on Workers
 
 Rooms are defined in the Worker, which workerd runs apart from the test, so a test of yours writes a Worker
 entry beside it (see `test-worker.cloudflare.ts`) and hands it to `startTestRealtime({ entry })`. The harness
 bundles it with `vite-plus/pack`, **replaces Elysia's Cloudflare adapter by an empty one in that bundle**
 (Miniflare refuses its dynamic `import()`, and a test never reads what the adapter configures), and serves it.
-`publish()` runs `publishToRoom` inside workerd. On Cloudflare the runtime answers `ping` itself, so
+`startTestRealtime({ entry, persist })` takes a directory the objects keep their storage in: start it again over the
+same one to find the state of a room after a restart (you remove the directory). `state(room)` is `roomState(room)`
+as server code runs it, inside workerd. `publish()` runs `publishToRoom` inside workerd. On Cloudflare the runtime answers `ping` itself, so
 `settled()` only orders what a completed publish already sent.
 
 ## Limits
 
 `dockerfile`: one instance; a second one has its own peers, so a publish reaches only the sockets of the instance
-that made it. A Valkey adapter belongs behind `Transport` in `rooms.ts`, to write at the first need. Nothing is
-persisted: a room's state is what its peers hold.
+that made it, and the state file belongs to one instance (a SQLite file under one volume). A Valkey adapter belongs
+behind `Transport` in `rooms.ts`, to write at the first need.
 
 `cloudflare`: a Durable Object accepts at most 10 tags per socket, and an attachment holds 2 KiB, so a ticket
 carries a few short tags. A server-side `publishToRoom` is a call to the room's object, one per room.

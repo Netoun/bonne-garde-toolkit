@@ -153,6 +153,29 @@ describe("classifyNames (050 step 3)", () => {
     );
   });
 
+  test("a typo suggests the closest names by edit distance, on items and on modules", async () => {
+    const catalog = await registry([CLOUDFLARE, { category: "realtime", id: "rooms" }], ["button"]);
+
+    expect(() => classifyNames(catalog, ["buton"])).toThrow(
+      /unknown name: buton.*did you mean: button\?/s,
+    );
+    expect(() => classifyNames(catalog, ["cloudflre"])).toThrow(
+      /did you mean: provider\/cloudflare/,
+    );
+  });
+
+  test("a name that matches nothing, near or far, says so", async () => {
+    const catalog = await registry([CLOUDFLARE], ["button"]);
+
+    expect(() => classifyNames(catalog, ["zzzzzzzz"])).toThrow(/no item or module matches/);
+  });
+
+  test("a name inside a module's qualified form still suggests it", async () => {
+    const catalog = await registry([{ category: "realtime", id: "rooms" }]);
+
+    expect(() => classifyNames(catalog, ["realtime"])).toThrow(/did you mean: realtime\/rooms\?/);
+  });
+
   test("an unknown module in a known category lists that category's modules", async () => {
     const catalog = await registry([CLOUDFLARE, DOCKERFILE]);
 
@@ -307,7 +330,7 @@ describe("resolveModulePlans: peers (050 step 4)", () => {
 });
 
 describe("resolveModulePlans: cardinality (050 step 5)", () => {
-  test("a filled `one` category fails naming the installed module and pointing at bonne-garde replace", async () => {
+  test("a filled `one` category fails naming the installed module and does not point at replace", async () => {
     const catalog = await registry([CLOUDFLARE, DOCKERFILE]);
 
     await expect(
@@ -317,7 +340,7 @@ describe("resolveModulePlans: cardinality (050 step 5)", () => {
         project({ provider: ["cloudflare"] }),
       ),
     ).rejects.toThrow(
-      /provider is already filled by provider\/cloudflare.*bonne-garde replace provider\/dockerfile/s,
+      "provider is already filled by provider/cloudflare. A project has one provider module, and replace is not available yet. Nothing was written.",
     );
   });
 
@@ -1810,6 +1833,37 @@ describe("resolveModulePlans: the intentions a module authors under intent/ (065
   });
 });
 
+describe("reselectedModules: cardinality first", () => {
+  test("a second db fails on cardinality, not on the variant of an installed module that matches both", async () => {
+    const ormDrizzle: ModuleSpec = {
+      category: "orm",
+      id: "drizzle",
+      json: {
+        variants: [
+          { key: "d1", match: { db: "d1" } },
+          { key: "postgres", match: { db: "postgres" } },
+        ],
+      },
+    };
+    const catalog = await registry([
+      { category: "db", id: "d1" },
+      { category: "db", id: "postgres" },
+      ormDrizzle,
+    ]);
+    const manifest = project({ db: ["d1"], orm: ["drizzle"] }, "@demo", { "orm/drizzle": "d1" });
+
+    let message = "";
+    try {
+      reselectedModules(catalog, [{ category: "db", id: "postgres" }], manifest);
+    } catch (error) {
+      message = (error as Error).message;
+    }
+
+    expect(message).toContain("db is already filled by db/d1");
+    expect(message).not.toContain("registry authoring error");
+  });
+});
+
 describe("reselectedModules: an installed module whose variant a module this call adds changes (050 step 7, 035 Variants)", () => {
   // The email module of the real registry in miniature: `auth` is an optional peer, and the variant that
   // matches on it comes with the wiring a project with no auth has no use for.
@@ -1875,7 +1929,7 @@ describe("reselectedModules: an installed module whose variant a module this cal
       reselectedModules(
         catalog,
         [DOCKERFILE_REF],
-        project(INSTALLED, "@demo", { "email/resend": "old" }),
+        project({ email: ["resend"] }, "@demo", { "email/resend": "old" }),
       ),
     ).toEqual([]);
   });
