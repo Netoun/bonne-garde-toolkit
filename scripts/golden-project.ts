@@ -162,8 +162,8 @@ export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
 /** The modules `bonne-garde add` installs after what `create` produced for the set, in that order. */
 export const ADDED_AFTER_CREATE: Readonly<Record<string, readonly string[]>> = {
   // `create` offers neither realtime nor observability: each provider's set adds its variants.
-  cloudflare: ["realtime/rooms", "observability/sentry"],
-  dockerfile: ["realtime/rooms", "observability/sentry"],
+  cloudflare: ["realtime/rooms", "observability/sentry", "dev/agent-hooks"],
+  dockerfile: ["realtime/rooms", "observability/sentry", "dev/agent-hooks"],
   "dockerfile-postgres": ["db/postgres", "orm/drizzle"],
 };
 

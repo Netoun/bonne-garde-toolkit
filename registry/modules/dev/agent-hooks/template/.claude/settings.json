@@ -1,0 +1,39 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./node_modules/.bin/tsx scripts/agent-hooks/run.ts claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./node_modules/.bin/tsx scripts/agent-hooks/run.ts claude",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./node_modules/.bin/tsx scripts/agent-hooks/run.ts claude",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}

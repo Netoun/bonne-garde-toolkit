@@ -1,0 +1,33 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "agent-hooks",
+  "category": "dev",
+  "version": "0.1.0",
+  "title": "Agent hooks",
+  "description": "Claude Code, Cursor and OpenCode hooks on one contract: a guard (generated files, other package managers, git push), a format after each edit and an end-of-turn check.",
+  "peers": { "tooling": ["vite-plus"] },
+  "checks": [
+    "tsc --project scripts/agent-hooks/tsconfig.json",
+    "vp test scripts/agent-hooks/agent-hooks.test.ts"
+  ],
+  "variants": [
+    {
+      "key": "default",
+      "match": {},
+      "copy": [
+        "scripts/agent-hooks/contract.ts",
+        "scripts/agent-hooks/guard.ts",
+        "scripts/agent-hooks/format.ts",
+        "scripts/agent-hooks/stop-check.ts",
+        "scripts/agent-hooks/adapters.ts",
+        "scripts/agent-hooks/deps.ts",
+        "scripts/agent-hooks/run.ts",
+        "scripts/agent-hooks/tsconfig.json",
+        "scripts/agent-hooks/agent-hooks.test.ts",
+        ".claude/settings.json",
+        ".cursor/hooks.json",
+        ".opencode/plugins/agent-hooks.ts"
+      ]
+    }
+  ]
+}

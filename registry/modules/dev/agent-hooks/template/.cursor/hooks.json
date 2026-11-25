@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      { "command": "./node_modules/.bin/tsx scripts/agent-hooks/run.ts cursor" }
+    ],
+    "preToolUse": [
+      { "command": "./node_modules/.bin/tsx scripts/agent-hooks/run.ts cursor", "matcher": "Write" }
+    ],
+    "afterFileEdit": [{ "command": "./node_modules/.bin/tsx scripts/agent-hooks/run.ts cursor" }],
+    "stop": [{ "command": "./node_modules/.bin/tsx scripts/agent-hooks/run.ts cursor" }]
+  }
+}
