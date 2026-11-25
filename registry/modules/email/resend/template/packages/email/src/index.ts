@@ -6,6 +6,9 @@ export { createResendEmailProvider, type ResendProviderOptions } from "./provide
 export { renderEmailTemplate } from "./render";
 export type { EmailTemplate, RenderedEmail } from "./render";
 
+export { DEFAULT_EMAIL_LOCALE, emailMessages } from "./messages";
+export type { EmailLocale, EmailMessages } from "./messages";
+
 export { sendEmail } from "./send";
 
 export { resolveEmailEnv, type EmailEnv } from "./env";

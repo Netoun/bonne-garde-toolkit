@@ -14,6 +14,7 @@ import type { CSSProperties, ReactNode } from "react";
 // `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import { branding } from "{{SCOPE}}/config";
+import { DEFAULT_EMAIL_LOCALE, emailMessages, type EmailLocale } from "../messages";
 
 const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
@@ -47,11 +48,20 @@ const styles = {
 /**
  * The frame every email shares: the brand's name on top, the content, then the support address.
  * The brand comes from `branding` (`displayName`, `themeColor`, `supportEmail`), so a project
- * restyles its emails by editing `branding.json` and nothing here.
+ * restyles its emails by editing `branding.json` and nothing here. `<html lang>` and the footer
+ * follow `locale`, not `branding.lang`: the language of an email is the recipient's.
  */
-export function EmailLayout({ preview, children }: { preview: string; children: ReactNode }) {
+export function EmailLayout({
+  preview,
+  locale = DEFAULT_EMAIL_LOCALE,
+  children,
+}: {
+  preview: string;
+  locale?: EmailLocale;
+  children: ReactNode;
+}) {
   return (
-    <Html lang={branding.lang}>
+    <Html lang={locale}>
       <Head />
       <Preview>{preview}</Preview>
       <Body style={styles.body}>
@@ -60,7 +70,7 @@ export function EmailLayout({ preview, children }: { preview: string; children: 
           {children}
           <Hr style={styles.divider} />
           <Text style={styles.footer}>
-            {`${branding.displayName} · Questions? `}
+            {`${branding.displayName} · ${emailMessages(locale).footer.questions} `}
             <Link href={`mailto:${branding.supportEmail}`} style={styles.link}>
               {branding.supportEmail}
             </Link>

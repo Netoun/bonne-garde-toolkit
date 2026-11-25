@@ -1,3 +1,4 @@
+import { emailMessages, type EmailLocale } from "./messages";
 import { renderEmailTemplate } from "./render";
 import { emailProvider } from "./runtime";
 import { sendEmail } from "./send";
@@ -8,10 +9,10 @@ import type { EmailProvider } from "./types";
 
 /**
  * What auth hands a mailer for one message: the recipient, the name to greet and the page of the
- * front-end the link opens. It is the shape of auth's `AuthEmail` without the `userId` that this
+ * front-end the link opens, and the language to write it in (English when absent: auth passes none yet). It is the shape of auth's `AuthEmail` without the `userId` that this
  * package has no use for, so the two stay compatible without this package importing auth's.
  */
-export type AuthEmailMessage = { to: string; name: string; url: string };
+export type AuthEmailMessage = { to: string; name: string; url: string; locale?: EmailLocale };
 
 /**
  * What auth hands a mailer for one organization invitation: the invitee, who invited them, the
@@ -22,6 +23,7 @@ export type AuthInvitationMessage = {
   inviterName: string;
   organizationName: string;
   url: string;
+  locale?: EmailLocale;
 };
 
 /** The messages auth asks for; auth's `AuthMailer` is assignable from it. */
@@ -37,36 +39,42 @@ export type AuthMailer = {
  */
 export function createAuthMailer(resolveProvider: () => Promise<EmailProvider>): AuthMailer {
   return {
-    async sendVerificationEmail({ to, name, url }) {
+    async sendVerificationEmail({ to, name, url, locale }) {
       const { html, text } = await renderEmailTemplate(VerifyEmailEmail, {
         name,
         verificationUrl: url,
+        locale,
       });
       await sendEmail(await resolveProvider(), {
         to,
-        subject: "Verify your email address",
+        subject: emailMessages(locale).verifyEmail.subject,
         html,
         text,
       });
     },
-    async sendPasswordReset({ to, name, url }) {
-      const { html, text } = await renderEmailTemplate(ResetPasswordEmail, { name, resetUrl: url });
+    async sendPasswordReset({ to, name, url, locale }) {
+      const { html, text } = await renderEmailTemplate(ResetPasswordEmail, {
+        name,
+        resetUrl: url,
+        locale,
+      });
       await sendEmail(await resolveProvider(), {
         to,
-        subject: "Reset your password",
+        subject: emailMessages(locale).resetPassword.subject,
         html,
         text,
       });
     },
-    async sendInvitation({ to, inviterName, organizationName, url }) {
+    async sendInvitation({ to, inviterName, organizationName, url, locale }) {
       const { html, text } = await renderEmailTemplate(InvitationEmail, {
         inviterName,
         organizationName,
         acceptUrl: url,
+        locale,
       });
       await sendEmail(await resolveProvider(), {
         to,
-        subject: `You're invited to join ${organizationName}`,
+        subject: emailMessages(locale).invitation.subject(organizationName),
         html,
         text,
       });

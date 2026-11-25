@@ -1,18 +1,21 @@
 import { EmailButton, EmailHeading, EmailLayout, EmailText } from "../components/email-kit";
+import { emailMessages, type EmailLocale } from "../messages";
 
 export type WelcomeTemplateProps = {
   appName: string;
   userName: string;
   ctaUrl: string;
+  locale?: EmailLocale;
 };
 
 export function WelcomeTemplate(props: WelcomeTemplateProps) {
-  const title = `Welcome to ${props.appName}`;
+  const t = emailMessages(props.locale).welcome;
+  const title = t.heading(props.appName);
   return (
-    <EmailLayout preview={title}>
+    <EmailLayout preview={title} locale={props.locale}>
       <EmailHeading>{title}</EmailHeading>
-      <EmailText>{`Hi ${props.userName}, your account is ready.`}</EmailText>
-      <EmailButton href={props.ctaUrl}>Go to app</EmailButton>
+      <EmailText>{t.body(props.userName)}</EmailText>
+      <EmailButton href={props.ctaUrl}>{t.button}</EmailButton>
     </EmailLayout>
   );
 }

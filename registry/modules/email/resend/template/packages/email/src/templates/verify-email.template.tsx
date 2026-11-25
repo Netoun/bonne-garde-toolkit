@@ -1,17 +1,20 @@
 import { EmailButton, EmailHeading, EmailLayout, EmailText } from "../components/email-kit";
+import { emailMessages, type EmailLocale } from "../messages";
 
 export type VerifyEmailTemplateProps = {
   name: string;
   verificationUrl: string;
+  locale?: EmailLocale;
 };
 
 export function VerifyEmailEmail(props: VerifyEmailTemplateProps) {
+  const t = emailMessages(props.locale).verifyEmail;
   return (
-    <EmailLayout preview="Verify your email address">
-      <EmailHeading>Verify your email address</EmailHeading>
-      <EmailText>{`Hi ${props.name},`}</EmailText>
-      <EmailText>Please click the link below to verify your email address:</EmailText>
-      <EmailButton href={props.verificationUrl}>Verify email</EmailButton>
+    <EmailLayout preview={t.heading} locale={props.locale}>
+      <EmailHeading>{t.heading}</EmailHeading>
+      <EmailText>{t.greeting(props.name)}</EmailText>
+      <EmailText>{t.body}</EmailText>
+      <EmailButton href={props.verificationUrl}>{t.button}</EmailButton>
     </EmailLayout>
   );
 }

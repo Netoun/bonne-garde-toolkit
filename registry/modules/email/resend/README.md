@@ -2,7 +2,7 @@
 
 Transactional email over the project's provider: a react-email kit themed from the project's branding, the
 templates auth needs (verification, password reset and organization invitations) rendered to html and
-plain text, a `memory` adapter for tests, and a transport per provider: Resend over its HTTP API, and SMTP
+plain text in English and French, a `memory` adapter for tests, and a transport per provider: Resend over its HTTP API, and SMTP
 (nodemailer, Mailpit in development) on `dockerfile`. It is the legacy
 `packages/emails` and `apps/api/src/lib/email.ts` extracted into `packages/email`.
 
@@ -75,7 +75,8 @@ Everything in `packages/email`, from explicit paths:
 | `package.json`                             | `{{SCOPE}}/email`: the `.`, `./testing` and `./transport` exports, the scripts                                                      |
 | `src/types.ts`, `render.ts`, `send.ts`     | `EmailMessage` (`to`, `subject`, `html`, `text`), `EmailProvider`, `renderEmailTemplate` (returns `{ html, text }`) and `sendEmail` |
 | `src/components/email-kit.tsx`             | `EmailLayout`, `EmailHeading`, `EmailText`, `EmailButton`: the frame and parts every template is built on, themed from `branding`   |
-| `src/templates/*.template.tsx`             | `VerifyEmailEmail`, `ResetPasswordEmail`, `InvitationEmail` and `WelcomeTemplate`, on the kit                                       |
+| `src/templates/*.template.tsx`             | `VerifyEmailEmail`, `ResetPasswordEmail`, `InvitationEmail` and `WelcomeTemplate`, on the kit, each taking `locale?`                |
+| `src/messages/{en,fr,index}.ts`            | the strings of every email per locale, `EmailLocale`, `DEFAULT_EMAIL_LOCALE` and `emailMessages(locale)`                            |
 | `src/providers/memory.provider.ts`         | `createMemoryEmailProvider(store)`: keeps what it is asked to send, sends nothing                                                   |
 | `src/providers/resend.provider.ts`         | `createResendEmailProvider({ apiKey, from?, baseUrl? })`: `POST /emails`, plain `fetch`                                             |
 | `src/providers/smtp.provider.ts`           | `dockerfile` only: `createSmtpEmailProvider({ url, from? })`, nodemailer, `html` and `text`                                         |
@@ -98,7 +99,8 @@ process, so nothing is mocked.
 `EmailLayout` is the `<html lang>`, head, preview text, body and a centred container, with the brand's
 name above the content and the support address under it. It reads `branding` from `{{SCOPE}}/config`:
 `displayName` in the header and footer, `themeColor` for the brand name, the button and the links,
-`backgroundColor` for the page, `supportEmail` in the footer, `lang` for `<html lang>`. A project
+`backgroundColor` for the page, `supportEmail` in the footer. `<html lang>` and the footer's wording follow the
+template's `locale`, not `branding.lang`: an email's language is its recipient's. A project
 restyles its emails by editing `branding.json`; the kit has no key of its own. Styles are inline (mail
 clients ignore classes and `<style>` unevenly), so there is no Tailwind in the package.
 
@@ -107,6 +109,27 @@ A template is a function of its props returning an `EmailLayout`: `VerifyEmailEm
 sits beside them the same way. `renderEmailTemplate` renders it twice, to `html` and, with
 `plainText: true`, to `text`; the button's link is in both. Every `EmailMessage` carries both parts, and
 Resend gets them as `html` and `text` in one request.
+
+## Languages
+
+The package owns its strings: `src/messages/en.ts` holds every subject, heading, body, button and footer
+line, and `fr.ts` is typed against the shape of `en` (`EmailMessages`), so a key missing from French is a
+type error, not an English line in a French email. There is no i18next and no peer on the `i18n` module
+(still being built, BG-36); the locale identity, `"en" | "fr"` with `en` the default, is the one that
+module chose, so the API's resolved locale can be passed straight in later.
+
+Every template takes `locale?: EmailLocale` and so does each message auth hands the mailer
+(`AuthEmailMessage`, `AuthInvitationMessage`); absent means English. Auth passes none today: wiring the
+request's locale into it is not done here.
+
+```ts
+await renderEmailTemplate(VerifyEmailEmail, { name: "Ada", verificationUrl, locale: "fr" });
+await emailMailer.sendPasswordReset({ to, name, url, locale: "fr" }); // French subject and body
+```
+
+**Adding a locale.** Create `src/messages/<code>.ts` exporting `const <code>: EmailMessages` (the compiler
+lists what is missing), add the code to `EmailLocale` and the file to `MESSAGES` in `messages/index.ts`.
+Subjects and templates need no change.
 
 ## Resend, and why not the SDK
 

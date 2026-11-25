@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from "vite-plus/test";
 import { createAuthMailer, emailMailer } from "./auth-mailer";
+import { emailMessages } from "./messages";
 import { createMemoryEmailProvider } from "./providers/memory.provider";
 import { clearOutbox, outbox } from "./testing";
 import type { EmailMessage } from "./types";
@@ -31,6 +32,58 @@ describe("the mailer auth is wired to", () => {
     expect(sent[0]?.subject).toBe("Reset your password");
     expect(sent[0]?.html).toContain("Hi Ada,");
     expect(sent[0]?.html).toContain(`href="${url}"`);
+  });
+
+  test("sends the verification email, the password reset and the invitation in French when asked for locale fr", async () => {
+    const sent: EmailMessage[] = [];
+    const mailer = createAuthMailer(async () => createMemoryEmailProvider(sent));
+    const fr = emailMessages("fr");
+
+    await mailer.sendVerificationEmail({
+      to: "ada@example.com",
+      name: "Ada",
+      url: URL_WITH_TOKEN,
+      locale: "fr",
+    });
+    await mailer.sendPasswordReset({
+      to: "ada@example.com",
+      name: "Ada",
+      url: URL_WITH_TOKEN,
+      locale: "fr",
+    });
+    await mailer.sendInvitation({
+      to: "grace@example.com",
+      inviterName: "Ada",
+      organizationName: "Analytical Engines",
+      url: URL_WITH_TOKEN,
+      locale: "fr",
+    });
+
+    expect(sent.map(({ subject }) => subject)).toEqual([
+      fr.verifyEmail.subject,
+      fr.resetPassword.subject,
+      fr.invitation.subject("Analytical Engines"),
+    ]);
+    expect(fr.resetPassword.subject).not.toBe("Reset your password");
+    for (const message of sent) {
+      expect(message.html).toContain('lang="fr"');
+      expect(message.text).toContain(URL_WITH_TOKEN);
+    }
+  });
+
+  test("puts a French subject in the test outbox for sendPasswordReset with locale fr", async () => {
+    clearOutbox();
+
+    await emailMailer.sendPasswordReset({
+      to: "ada@example.com",
+      name: "Ada",
+      url: URL_WITH_TOKEN,
+      locale: "fr",
+    });
+
+    expect(outbox.map(({ subject }) => subject)).toEqual([
+      emailMessages("fr").resetPassword.subject,
+    ]);
   });
 
   test("asks for the adapter when it sends, not when it is made, and lets what the adapter throws through", async () => {
