@@ -35,6 +35,7 @@ const SHARED_MODULES = [
   "web/static",
   "deploy/cloudflare-actions",
   "email/resend",
+  "i18n/i18next",
 ];
 /**
  * The project on the other provider. `provider` admits one module, and the variant of `api/elysia`
@@ -50,6 +51,7 @@ const OTHER_PROVIDER_STACK = [
   "orm/drizzle",
   "auth/better-auth",
   "storage/fs",
+  "i18n/i18next",
   "realtime/rooms",
   "observability/sentry",
   "web/spa",
@@ -65,11 +67,12 @@ const OTHER_PROVIDER_POSTGRES_STACK = OTHER_PROVIDER_STACK.flatMap((key) =>
       ? []
       : [key],
 );
-/** What needs that provider's tree: `db/libsql`, `db/postgres`, `storage/fs`, `realtime/rooms` and `observability/sentry` peer on `dockerfile`, so they are never installed alone. */
+/** What needs that provider's tree: `db/libsql`, `db/postgres`, `storage/fs`, `realtime/rooms` and `observability/sentry` peer on `dockerfile`, so they are never installed alone; `i18n/i18next` peers on any provider, and the two stacks above have one. */
 const OTHER_PROVIDER_ONLY = [
   "db/libsql",
   "db/postgres",
   "storage/fs",
+  "i18n/i18next",
   "realtime/rooms",
   "observability/sentry",
 ];

@@ -89,7 +89,7 @@ describe("loadNamedModules", () => {
 
     expect(raw.requested.length).toBeGreaterThan(10);
     expect(
-      raw.requested.every((path) => /^modules\/[a-z]+\/cloudflare\/module\.json$/.test(path)),
+      raw.requested.every((path) => /^modules\/[a-z0-9]+\/cloudflare\/module\.json$/.test(path)),
     ).toBe(true);
     expect(loaded.modules.map(({ manifest }) => manifest.category)).toEqual(["provider"]);
   });

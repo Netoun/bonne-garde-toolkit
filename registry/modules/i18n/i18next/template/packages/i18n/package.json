@@ -1,0 +1,14 @@
+{
+  "name": "{{SCOPE}}/i18n",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The project's languages: the supported locales, the language of a request and the i18next resources of an app",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc --project tsconfig.test.json --noEmit",
+    "test": "vp test"
+  }
+}

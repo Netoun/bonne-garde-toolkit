@@ -1,0 +1,35 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "i18next",
+  "category": "i18n",
+  "version": "0.1.0",
+  "title": "i18next",
+  "description": "Languages: English and French, the language of a request resolved from its cookie then Accept-Language, and the i18next resources of an app's locale files, in packages/i18n.",
+  "peers": {
+    "provider": []
+  },
+  "checks": ["cd packages/i18n && vp run typecheck && vp run test"],
+  "variants": [
+    {
+      "key": "default",
+      "match": {},
+      "workspace": { "name": "{{SCOPE}}/i18n", "path": "packages/i18n" },
+      "dependencies": {
+        "i18next": "27.2.9"
+      },
+      "copy": [
+        "packages/i18n/package.json",
+        "packages/i18n/tsconfig.json",
+        "packages/i18n/tsconfig.test.json",
+        "packages/i18n/src/config.test.ts",
+        "packages/i18n/src/config.ts",
+        "packages/i18n/src/index.test.ts",
+        "packages/i18n/src/index.ts",
+        "packages/i18n/src/locale.test.ts",
+        "packages/i18n/src/locale.ts",
+        "packages/i18n/src/resources.test.ts",
+        "packages/i18n/src/resources.ts"
+      ]
+    }
+  ]
+}

@@ -11,6 +11,7 @@ export const CATEGORY_HOME = {
   tooling: "repo",
   config: "package packages/config",
   api: "app apps/api",
+  i18n: "package packages/i18n",
   db: "package packages/db",
   orm: "package packages/db",
   auth: "package packages/auth",
