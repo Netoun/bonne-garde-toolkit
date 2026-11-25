@@ -54,7 +54,7 @@ export function SiteSidebar({ sections }: { sections: NavSection[] }) {
         </SidebarGroup>
         {sections.map((section) => (
           <SidebarGroup key={section.title} className="py-1">
-            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground">
+            <SidebarGroupLabel className="text-[0.6875rem] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
               {section.title}
             </SidebarGroupLabel>
             <SidebarGroupContent>
@@ -65,7 +65,10 @@ export function SiteSidebar({ sections }: { sections: NavSection[] }) {
                     <SidebarMenuItem key={link.href}>
                       <SidebarMenuButton
                         isActive={active}
-                        className={cn("h-7 py-0 text-sm", active && "font-medium")}
+                        className={cn(
+                          "h-auto min-h-7 rounded-l-none border-l-2 py-1 text-sm",
+                          active ? "border-docs-accent" : "border-transparent",
+                        )}
                         render={
                           <Link
                             to={link.href}

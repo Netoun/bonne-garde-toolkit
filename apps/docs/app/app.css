@@ -11,6 +11,31 @@
 
 @import "../../../registry/modules/ui/shadcn/template/packages/ui/src/styles/themes/default.css";
 
+/* Docs-only tokens (apps/docs/DESIGN.md). Never redeclare a default theme token: previews share this page. */
+:root {
+  --docs-code: oklch(0.23 0.02 265);
+  --docs-code-foreground: oklch(0.93 0.01 285);
+  --docs-code-muted: oklch(0.72 0.02 275);
+  --docs-code-border: oklch(0.32 0.02 270);
+  --docs-accent: oklch(0.55 0.12 250);
+  --docs-measure: 70ch;
+}
+
+.dark {
+  --docs-code: oklch(0.13 0.015 280);
+  --docs-code-muted: oklch(0.7 0.02 275);
+  --docs-code-border: oklch(0.28 0.02 280);
+  --docs-accent: oklch(0.75 0.09 241);
+}
+
+@theme inline {
+  --color-docs-code: var(--docs-code);
+  --color-docs-code-foreground: var(--docs-code-foreground);
+  --color-docs-code-muted: var(--docs-code-muted);
+  --color-docs-code-border: var(--docs-code-border);
+  --color-docs-accent: var(--docs-accent);
+}
+
 @layer base {
   * {
     @apply border-border;
@@ -22,7 +47,9 @@
 }
 
 html.dark .shiki,
-html.dark .shiki span {
+html.dark .shiki span,
+.docs-code .shiki,
+.docs-code .shiki span {
   color: var(--shiki-dark) !important;
   background-color: var(--shiki-dark-bg) !important;
   font-style: var(--shiki-dark-font-style) !important;
@@ -30,13 +57,24 @@ html.dark .shiki span {
   text-decoration: var(--shiki-dark-text-decoration) !important;
 }
 
+/* `html` matches the specificity of the rule above, so the code panel shows through each line. */
+html .docs-code .shiki span {
+  background-color: transparent !important;
+}
+
 /* Markdown pages (guides, ADRs): Tailwind's preflight strips every element, restore a reading style. */
 @layer components {
+  .prose-docs > p,
+  .prose-docs > ul,
+  .prose-docs > ol,
+  .prose-docs > blockquote {
+    max-width: var(--docs-measure);
+  }
   .prose-docs h1 {
     @apply font-heading text-4xl font-bold tracking-tight;
   }
   .prose-docs h2 {
-    @apply mt-10 border-b pb-2 font-heading text-2xl font-semibold tracking-tight;
+    @apply mt-12 border-b pb-2 font-heading text-2xl font-semibold tracking-tight;
   }
   .prose-docs h3 {
     @apply mt-8 font-heading text-xl font-semibold tracking-tight;
@@ -64,7 +102,7 @@ html.dark .shiki span {
     @apply mt-1;
   }
   .prose-docs a {
-    @apply font-medium text-foreground underline decoration-primary decoration-2 underline-offset-4 hover:decoration-foreground;
+    @apply font-medium text-foreground underline decoration-docs-accent decoration-2 underline-offset-4 transition-colors duration-150 hover:decoration-foreground motion-reduce:transition-none;
   }
   .prose-docs blockquote {
     @apply my-2 border-l-2 pl-4 text-muted-foreground italic;

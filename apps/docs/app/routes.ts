@@ -1,7 +1,12 @@
 import { index, route, type RouteConfig } from "@react-router/dev/routes";
 
+import { hasUserGuideFiles } from "./lib/guide-source";
+
 export default [
   index("routes/home.tsx"),
+  ...(hasUserGuideFiles()
+    ? [route("docs/guides/:slug", "routes/user-guide.tsx", { id: "user-guide" })]
+    : []),
   route("docs/:slug", "routes/guide.tsx", { id: "guide" }),
   route("docs/adr/:slug", "routes/guide.tsx", { id: "adr" }),
   route("components/:name", "routes/item.tsx", { id: "component" }),

@@ -6,7 +6,7 @@
       "project": ["scripts/**/*.ts"],
     },
     "apps/docs": {
-      "entry": ["app/demos/*.tsx"],
+      "entry": ["app/demos/*.tsx", "app/routes.ts", "app/routes/*.tsx"],
       // `react-router typegen` (pretypecheck) writes the ./+types/* route types. They do not exist
       // before typegen runs, so knip must not report them.
       "ignoreUnresolved": ["^\\./\\+types/"],

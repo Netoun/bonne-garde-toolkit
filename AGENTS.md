@@ -115,6 +115,13 @@ Most module and feature code imports packages that exist only after install, so 
 
 If a choice is questionable → ask **before** implementing.
 
+### User guides (`docs/guides/`)
+
+- A user guide lives in `docs/guides/` and is published under "Guides".
+- It opens with a command a user can paste, then its real output, copied from a terminal run.
+- It explains with the example first, the rule after. No internal path, no algorithm step, no ADR vocabulary without a one-line definition.
+- When a CLI change alters an output shown in a guide, the same PR updates the guide.
+
 ---
 
 ## Verification checklist

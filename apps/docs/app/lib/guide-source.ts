@@ -1,10 +1,26 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 /** Repository root. Docs commands (`build`, `test`) run from `apps/docs`; plain Node, no Vite-only API, so `react-router.config.ts` can import it. */
 const repoRoot = `${resolve(process.cwd(), "../..")}/`;
 
-/** The user-facing guides, in sidebar order. Contributor-only files are not published. */
+/** User guides under `docs/guides/`, in sidebar order. Missing files are skipped. */
+const USER_GUIDE_FILES = ["getting-started", "adding-modules", "troubleshooting"] as const;
+
+/** Directory read for user guides. `BG_DOCS_GUIDES_DIR` points tests at a temp folder, never at the real `docs/guides/`. */
+function userGuideDir(): string {
+  return process.env.BG_DOCS_GUIDES_DIR ?? `${repoRoot}docs/guides`;
+}
+
+function userGuideNames(): string[] {
+  return USER_GUIDE_FILES.filter((name) => existsSync(`${userGuideDir()}/${name}.md`));
+}
+
+export function hasUserGuideFiles(): boolean {
+  return userGuideNames().length > 0;
+}
+
+/** Internal contributor spec pages, in sidebar order. */
 const GUIDE_FILES = [
   "CONCEPTS",
   "CLI",
@@ -25,11 +41,17 @@ export type GuideSource = {
   markdown: string;
 };
 
-function readSource(file: string, href: string): GuideSource {
-  const markdown = readFileSync(`${repoRoot}${file}`, "utf8");
+function readSource(file: string, href: string, path = `${repoRoot}${file}`): GuideSource {
+  const markdown = readFileSync(path, "utf8");
   const title = /^# (.+)$/m.exec(markdown)?.[1];
   if (!title) throw new Error(`${file} has no "#" heading`);
   return { file, href, title, markdown };
+}
+
+export function listUserGuideSources(): GuideSource[] {
+  return userGuideNames().map((name) =>
+    readSource(`docs/guides/${name}.md`, `/docs/guides/${name}`, `${userGuideDir()}/${name}.md`),
+  );
 }
 
 export function listGuideSources(): GuideSource[] {
@@ -44,7 +66,7 @@ export function listAdrSources(): GuideSource[] {
 }
 
 export function listPublishedSources(): GuideSource[] {
-  return [...listGuideSources(), ...listAdrSources()];
+  return [...listUserGuideSources(), ...listGuideSources(), ...listAdrSources()];
 }
 
 export function repositoryVersion(): string {

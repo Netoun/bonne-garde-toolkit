@@ -78,6 +78,24 @@ describe("SiteLayout", () => {
     expect(sidebar).toHaveClass("h-[calc(100svh-3.5rem)]");
   });
 
+  it("marks the current sidebar link with the docs accent bar", () => {
+    render(
+      <MemoryRouter initialEntries={["/docs/cli"]}>
+        <SiteLayout sections={SECTIONS} showSidebar>
+          <div>Guide</div>
+        </SiteLayout>
+      </MemoryRouter>,
+    );
+
+    const sidebar = within(
+      document.querySelector('[data-slot="sidebar-container"]') as HTMLElement,
+    );
+    expect(sidebar.getByRole("link", { name: "CLI" })).toHaveClass("border-docs-accent");
+    expect(sidebar.getByRole("link", { name: "Introduction" })).not.toHaveClass(
+      "border-docs-accent",
+    );
+  });
+
   it("ends a doc page with links to its neighbours, in sidebar order", () => {
     render(
       <MemoryRouter initialEntries={["/docs/cli"]}>
