@@ -7,4 +7,5 @@ export const uploadMediaBody = t.Object({
   file: t.File({ maxSize: "10m" }),
   folder: t.Optional(t.String()),
   organizationId: t.Optional(t.String()),
+  visibility: t.Optional(t.Union([t.Literal("public"), t.Literal("private")])),
 });

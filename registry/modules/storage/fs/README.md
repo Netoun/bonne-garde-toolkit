@@ -31,7 +31,8 @@ imports its types from `storage.ts`, where `r2.ts` has them); a contract test co
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `src/bucket.ts`        | `MediaBucket` (`put`, `get`, `delete`), `createFsBucket(root)` over `node:fs/promises`, and `readBucket()`             |
 | `src/storage.ts`       | `R2Error`, `detectImageType`, `validateFile`, `validateKey`, `generateKey`, `publicUrlFor`, `uploadFile`, `deleteFile` |
-| `src/env.ts`           | `resolvePublicUrl`: `<APP_URL>/v1/media/file`                                                                          |
+| `src/env.ts`           | `resolvePublicUrl`: `<APP_URL>/v1/media/file`, and `resolveMediaSecret`                                                |
+| `src/signed-url.ts`    | `signMediaUrl` and `verifyMediaSignature`: the short-lived urls of private media                                       |
 | `src/media.service.ts` | `createMediaService(context)`: `uploadMedia`, `deleteMedia`, `getMediaById`, `getFile`                                 |
 | `src/media.module.ts`  | `mediaModule`, which `apps/api` mounts, and `resolveRuntimeStorage()`                                                  |
 
@@ -45,7 +46,17 @@ route sends `X-Content-Type-Options: nosniff`.
 Access follows the media's author and organization, as in `storage/r2`: an upload to an organization needs
 membership (`403 UNAUTHORIZED` otherwise), a media is read by its author or a member of its organization (`404`
 for anyone else), and deleted by its author or an `owner` or `admin` of the organization stored on the row. The
-file route stays public by its random key.
+file route stays public by its random key for a public media.
+
+A media can be private: `visibility` (`public` by default, in the upload body and in `medias.visibility`) set to
+`private` keeps it off the public cache. `GET /v1/media/file/<key>` then answers `404` unless the url carries a valid,
+unexpired `?expires=<unix seconds>&signature=<hex>`, and serves the file with `Cache-Control: private, max-age=<seconds
+left>`; a public media, and its url, are unchanged. `GET /v1/media/:id` (same access rule as above) returns, for a
+private media, a `url` signed at that moment, valid for 15 minutes, and so does the upload response; `medias.url`
+keeps the plain url. The signature is the HMAC-SHA-256 of `<key>\n<expires>` (`signed-url.ts`, Web Crypto only) under
+a key derived from the `BETTER_AUTH_SECRET` auth already owns (HMAC of the label `bonne-garde:media-url`), so no key
+is added to the environment, and it is compared in constant time. Rotating `BETTER_AUTH_SECRET` invalidates the
+urls in flight, and nothing else.
 
 A media that another row points at cannot be deleted, and the database says so: a table of the project or of a module
 that references `medias.id` with a plain `references()` (no `onDelete`) blocks the delete, `cascade` or `set null` let

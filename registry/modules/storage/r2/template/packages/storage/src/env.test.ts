@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vite-plus/test";
-import { resolveStorageEnv } from "./env";
+import { TEST_SECRET, resolveMediaSecret, resolveStorageEnv } from "./env";
 
 describe("resolveStorageEnv", () => {
   it("returns the public url the runtime holds", () => {
@@ -84,5 +84,26 @@ describe("resolveStorageEnv", () => {
         );
       }
     });
+  });
+});
+
+describe("resolveMediaSecret", () => {
+  it("is the BETTER_AUTH_SECRET of the record, which auth owns", () => {
+    expect(resolveMediaSecret({ BETTER_AUTH_SECRET: "s3cret-of-the-project" })).toBe(
+      "s3cret-of-the-project",
+    );
+  });
+
+  it("fails naming the key when it is missing or blank", () => {
+    for (const source of [{}, { BETTER_AUTH_SECRET: "" }, { BETTER_AUTH_SECRET: 1 }]) {
+      expect(() => resolveMediaSecret(source)).toThrow(
+        /Missing required environment variables: BETTER_AUTH_SECRET/,
+      );
+    }
+  });
+
+  it("gets a fixture under test, and keeps the secret it is given", () => {
+    expect(resolveMediaSecret({}, { nodeEnv: "test" })).toBe(TEST_SECRET);
+    expect(resolveMediaSecret({ BETTER_AUTH_SECRET: "real" }, { nodeEnv: "test" })).toBe("real");
   });
 });

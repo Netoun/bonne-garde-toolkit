@@ -36,7 +36,8 @@ Everything in `packages/storage`, from explicit paths:
 | `package.json`          | `{{SCOPE}}/storage`: the `.` and `./schema` exports, the `typecheck` and `test` scripts                                  |
 | `src/r2.ts`             | `R2Error`, `detectImageType`, `validateFile`, `validateKey`, `generateKey`, `publicUrlFor`, `uploadToR2`, `deleteFromR2` |
 | `src/bucket.ts`         | `bindR2(env)` and `readR2()`: the `BUCKET` binding, or `undefined` (see below)                                           |
-| `src/env.ts`            | `resolveStorageEnv`: `R2_PUBLIC_URL`, read from `readRuntimeEnv()`, and its default in development                       |
+| `src/env.ts`            | `resolveStorageEnv`: `R2_PUBLIC_URL`, read from `readRuntimeEnv()`, and its default in development; `resolveMediaSecret` |
+| `src/signed-url.ts`     | `signMediaUrl` and `verifyMediaSignature`: the short-lived urls of private media                                         |
 | `src/schema.ts`         | the `medias` table and its relations                                                                                     |
 | `src/media.contract.ts` | the Elysia body and params of the routes                                                                                 |
 | `src/media.service.ts`  | `createMediaService(context)` and the plugin that puts `mediaService` on a route's context                               |
@@ -75,7 +76,17 @@ trace of the client's filename (it stays in `medias.name`), and the file route s
 Access follows the media's author and organization. An upload to an organization is refused to a user who is not
 one of its members (any role). A media is read by its author or a member of its organization, and deleted by its
 author or an `owner` or `admin` of its organization; the organization is the one stored on the row, never one the
-request names. `GET /v1/media/file/*` stays public: the random key is what protects it.
+request names. `GET /v1/media/file/*` stays public for a public media: the random key is what protects it.
+
+A media can be private: `visibility` (`public` by default, in the upload body and in `medias.visibility`) set to
+`private` keeps it off the public cache. `GET /v1/media/file/<key>` then answers `404` unless the url carries a valid,
+unexpired `?expires=<unix seconds>&signature=<hex>`, and serves the file with `Cache-Control: private, max-age=<seconds
+left>`; a public media, and its url, are unchanged. `GET /v1/media/:id` (same access rule as above) returns, for a
+private media, a `url` signed at that moment, valid for 15 minutes, and so does the upload response; `medias.url`
+keeps the plain url. The signature is the HMAC-SHA-256 of `<key>\n<expires>` (`signed-url.ts`, Web Crypto only) under
+a key derived from the `BETTER_AUTH_SECRET` auth already owns (HMAC of the label `bonne-garde:media-url`), so no key
+is added to the environment, and it is compared in constant time. Rotating `BETTER_AUTH_SECRET` invalidates the
+urls in flight, and nothing else.
 
 A media that another row points at cannot be deleted, and the database says so: a table of the project or of a module
 that references `medias.id` with a plain `references()` (no `onDelete`) blocks the delete, `cascade` or `set null` let

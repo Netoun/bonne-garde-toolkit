@@ -9,14 +9,15 @@ import { createDB } from "{{SCOPE}}/db";
 // oxfmt-ignore
 import { bindD1 } from "{{SCOPE}}/db/d1";
 import { bindR2 } from "./bucket";
-import { resolveStorageEnv } from "./env";
+import { resolveMediaSecret, resolveStorageEnv } from "./env";
 import { mediaRoutes, type AuthMacro } from "./media.routes";
 import type { ResolveStorage, StorageContext } from "./media.service";
 
 /**
  * What a request runs against, read from the runtime's environment when it is made: the D1 and R2
  * bindings, and `R2_PUBLIC_URL`, which a missing value fails the request that needs it, naming the
- * key, except under `wrangler dev` (and test), where it has a default. Nothing is read at import time,
+ * key, except under `wrangler dev` (and test), where it has a default. It reads the
+ * `BETTER_AUTH_SECRET` too, which signs the urls of private media (a fixture under test). Nothing is read at import time,
  * so the API shell boots and answers `/health` without it.
  *
  * `process.env.NODE_ENV` is written out in full: wrangler replaces that expression in the bundle, by
@@ -25,7 +26,12 @@ import type { ResolveStorage, StorageContext } from "./media.service";
 export async function resolveRuntimeStorage(): Promise<StorageContext> {
   const env = await readRuntimeEnv();
   const { R2_PUBLIC_URL } = resolveStorageEnv(env, { nodeEnv: process.env.NODE_ENV });
-  return { db: createDB(bindD1(env)), bucket: bindR2(env), publicUrl: R2_PUBLIC_URL };
+  return {
+    db: createDB(bindD1(env)),
+    bucket: bindR2(env),
+    publicUrl: R2_PUBLIC_URL,
+    secret: resolveMediaSecret(env, { nodeEnv: process.env.NODE_ENV }),
+  };
 }
 
 /**

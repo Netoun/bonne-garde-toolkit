@@ -49,6 +49,8 @@
         "packages/storage/src/r2.test.ts",
         "packages/storage/src/r2.ts",
         "packages/storage/src/schema.ts",
+        "packages/storage/src/signed-url.test.ts",
+        "packages/storage/src/signed-url.ts",
         "packages/storage/src/testing.ts"
       ],
       "env": [{ "name": "R2_PUBLIC_URL", "required": true, "example": "" }],

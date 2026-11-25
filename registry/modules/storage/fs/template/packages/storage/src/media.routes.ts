@@ -16,11 +16,11 @@ export function mediaRoutes(resolveStorage: ResolveStorage, macro: AuthMacro) {
       .use(mediaServicePlugin(resolveStorage))
       // Public route to serve the files (no auth required for viewing images)
       // Using * to capture the full path including slashes (e.g., "medias/nodes/uuid.png")
-      .get("/file/*", async ({ params, mediaService, set }) => {
+      .get("/file/*", async ({ params, query, mediaService, set }) => {
         try {
           // Decode URL-encoded characters in the key (e.g., %20 -> space, %C3%A9 -> é)
           const key = decodeURIComponent(params["*"]);
-          const result = await mediaService.getFile(key);
+          const result = await mediaService.getFile(key, query);
 
           if (!result) {
             set.status = 404;
@@ -30,7 +30,7 @@ export function mediaRoutes(resolveStorage: ResolveStorage, macro: AuthMacro) {
           return new Response(result.blob, {
             headers: {
               "Content-Type": result.contentType,
-              "Cache-Control": "public, max-age=31536000", // Cache for 1 year
+              "Cache-Control": result.cacheControl,
               // The stored type is the detected one, and a browser must not second-guess it.
               "X-Content-Type-Options": "nosniff",
             },
@@ -47,7 +47,7 @@ export function mediaRoutes(resolveStorage: ResolveStorage, macro: AuthMacro) {
       .post(
         "/",
         async ({ body, mediaService, user, status }) => {
-          const { file, folder = "uploads", organizationId } = body;
+          const { file, folder = "uploads", organizationId, visibility } = body;
 
           try {
             return await mediaService.uploadMedia({
@@ -55,6 +55,7 @@ export function mediaRoutes(resolveStorage: ResolveStorage, macro: AuthMacro) {
               folder,
               userId: user.id,
               organizationId,
+              visibility,
             });
           } catch (error) {
             if (

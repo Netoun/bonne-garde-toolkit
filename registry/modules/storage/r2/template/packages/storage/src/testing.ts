@@ -12,9 +12,12 @@ import * as authSchema from "{{SCOPE}}/auth/schema";
 import { createTestAuth } from "{{SCOPE}}/auth/testing";
 import { R2_BINDING, bindR2 } from "./bucket";
 import { mediaPlugin } from "./media.module";
+import { TEST_SECRET } from "./env";
 import * as storageSchema from "./schema";
 
 /** The public url a test serves files under: the `R2_PUBLIC_URL` of a test project. */
+export { TEST_SECRET };
+
 export const TEST_PUBLIC_URL = "https://media.example.com";
 
 /**
@@ -55,7 +58,7 @@ export async function createTestStorage<
   const { auth, db, signIn } = await createTestAuth({}, { ...storageSchema, ...tables });
   const app = new Elysia().use(
     mediaPlugin(
-      async () => ({ db, bucket, publicUrl: TEST_PUBLIC_URL }),
+      async () => ({ db, bucket, publicUrl: TEST_PUBLIC_URL, secret: TEST_SECRET }),
       authMacroPlugin(async () => ({ auth, db })),
     ),
   );

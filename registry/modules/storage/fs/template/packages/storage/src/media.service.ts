@@ -5,8 +5,16 @@ import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 // oxfmt-ignore
 import type * as authSchema from "{{SCOPE}}/auth/schema";
 import type { MediaBucket } from "./bucket";
-import { R2Error, deleteFile, uploadFile, validateKey, type UploadResult } from "./storage";
+import {
+  R2Error,
+  deleteFile,
+  publicUrlFor,
+  uploadFile,
+  validateKey,
+  type UploadResult,
+} from "./storage";
 import * as storageSchema from "./schema";
+import { signMediaUrl, verifyMediaSignature } from "./signed-url";
 
 const { medias } = storageSchema;
 
@@ -20,11 +28,12 @@ export type StorageDatabase = BaseSQLiteDatabase<
   typeof authSchema & typeof storageSchema
 >;
 
-/** What the media service runs against: the database, the bucket of the files, and the public url of a file. */
+/** What the media service runs against: the database, the bucket of the files, the public url of a file, and the secret that signs the urls of private media. */
 export type StorageContext = {
   db: StorageDatabase;
   bucket: MediaBucket;
   publicUrl: string;
+  secret: string;
 };
 
 /** How the routes get the context: a function, so that nothing is read at import time. */
@@ -35,7 +44,13 @@ export interface UploadMediaInput {
   folder: string;
   userId: string;
   organizationId?: string;
+  visibility?: "public" | "private";
 }
+
+/** What a private media's url carries in its query. */
+export type FileSignature = { expires?: string; signature?: string };
+
+const PUBLIC_CACHE_CONTROL = "public, max-age=31536000"; // Cache for 1 year
 
 export interface DeleteMediaInput {
   id: string;
@@ -50,7 +65,7 @@ function isForeignKeyViolation(error: unknown): boolean {
   return false;
 }
 
-export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
+export function createMediaService({ db, bucket, publicUrl, secret }: StorageContext) {
   /** The role of `userId` in the organization, or `undefined` when it is not a member. */
   const memberRole = async (userId: string, organizationId: string) => {
     const membership = await db.query.member.findFirst({
@@ -76,9 +91,27 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
     return role === "admin" || role === "owner";
   };
 
+  /**
+   * The `Cache-Control` a file is served with, or `null` when it must not be served: a private media
+   * needs a valid, unexpired signature in the query of the request, and is then cached for what is
+   * left of it. A public media, or a file nobody recorded, is cached for a year as before.
+   */
+  const cacheControlFor = async (key: string, signature: FileSignature): Promise<string | null> => {
+    const media = await db.query.medias.findFirst({
+      where: eq(medias.key, key),
+      columns: { visibility: true },
+    });
+    if (media?.visibility !== "private") return PUBLIC_CACHE_CONTROL;
+
+    const secondsLeft = await verifyMediaSignature({ secret, key, ...signature });
+    return secondsLeft === null ? null : `private, max-age=${secondsLeft}`;
+  };
+
   const uploadMedia = async (
     input: UploadMediaInput,
   ): Promise<Pick<UploadResult, "key" | "url"> & { id: string; name: string }> => {
+    const visibility = input.visibility ?? "public";
+
     try {
       // An organization takes uploads from its members only, any role.
       if (input.organizationId && !(await memberRole(input.userId, input.organizationId))) {
@@ -102,10 +135,17 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
         mimeType,
         authorId: input.userId,
         organizationId: input.organizationId,
+        visibility,
         createdAt: new Date(),
       });
 
-      return { id: mediaId, url, key, name: input.file.name };
+      // What is stored is the plain url; a private one only works signed.
+      return {
+        id: mediaId,
+        url: visibility === "private" ? await signMediaUrl({ secret, key, url }) : url,
+        key,
+        name: input.file.name,
+      };
     } catch (error) {
       // If it's already an R2Error, rethrow it
       if (error instanceof R2Error) {
@@ -173,14 +213,29 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
     });
 
     if (!media) return undefined;
-    if (media.authorId === userId) return media;
-    if (media.organizationId && (await memberRole(userId, media.organizationId))) return media;
-    return undefined;
+    const allowed =
+      media.authorId === userId ||
+      (media.organizationId !== null &&
+        (await memberRole(userId, media.organizationId)) !== undefined);
+    if (!allowed) return undefined;
+
+    // A private media gets a url signed now: the stored one does not serve it.
+    if (media.visibility !== "private") return media;
+    return {
+      ...media,
+      url: await signMediaUrl({ secret, key: media.key, url: publicUrlFor(publicUrl, media.key) }),
+    };
   };
 
-  const getFile = async (key: string): Promise<{ blob: Blob; contentType: string } | null> => {
+  const getFile = async (
+    key: string,
+    signature: FileSignature = {},
+  ): Promise<{ blob: Blob; contentType: string; cacheControl: string } | null> => {
     // The key comes straight from the request URL.
     validateKey(key);
+
+    const cacheControl = await cacheControlFor(key, signature);
+    if (cacheControl === null) return null;
 
     try {
       const bytes = await bucket.get(key);
@@ -197,6 +252,7 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
       return {
         blob: new Blob([bytes]),
         contentType: media?.mimeType ?? "application/octet-stream",
+        cacheControl,
       };
     } catch (error) {
       // An unsafe key is the caller's, whatever the bucket made of it.

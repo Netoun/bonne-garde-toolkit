@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { resolvePublicUrl } from "./env";
+import { TEST_SECRET, resolveMediaSecret, resolvePublicUrl } from "./env";
 
 describe("resolvePublicUrl", () => {
   it("serves the files under APP_URL, the origin the provider owns", () => {
@@ -22,5 +22,26 @@ describe("resolvePublicUrl", () => {
 
   it("falls back on the local origin of the provider when the record holds neither", () => {
     expect(resolvePublicUrl({})).toBe("http://localhost:5172/v1/media/file");
+  });
+});
+
+describe("resolveMediaSecret", () => {
+  it("is the BETTER_AUTH_SECRET of the record, which auth owns", () => {
+    expect(resolveMediaSecret({ BETTER_AUTH_SECRET: "s3cret-of-the-project" })).toBe(
+      "s3cret-of-the-project",
+    );
+  });
+
+  it("fails naming the key when it is missing or blank", () => {
+    for (const source of [{}, { BETTER_AUTH_SECRET: "" }, { BETTER_AUTH_SECRET: 1 }]) {
+      expect(() => resolveMediaSecret(source)).toThrow(
+        /Missing required environment variables: BETTER_AUTH_SECRET/,
+      );
+    }
+  });
+
+  it("gets a fixture under test, and keeps the secret it is given", () => {
+    expect(resolveMediaSecret({}, { nodeEnv: "test" })).toBe(TEST_SECRET);
+    expect(resolveMediaSecret({ BETTER_AUTH_SECRET: "real" }, { nodeEnv: "test" })).toBe("real");
   });
 });

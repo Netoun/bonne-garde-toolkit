@@ -46,6 +46,8 @@
         "packages/storage/src/media.routes.ts",
         "packages/storage/src/media.service.ts",
         "packages/storage/src/schema.ts",
+        "packages/storage/src/signed-url.test.ts",
+        "packages/storage/src/signed-url.ts",
         "packages/storage/src/storage.test.ts",
         "packages/storage/src/storage.ts",
         "packages/storage/src/testing.ts",

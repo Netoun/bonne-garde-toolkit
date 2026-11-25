@@ -18,3 +18,24 @@ export function resolvePublicUrl(source: Record<string, unknown>): string {
   const origin = text(source.APP_URL) ?? text(source.API_URL) ?? LOCAL_APP_URL;
   return `${origin.replace(/\/+$/, "")}${MEDIA_FILE_PATH}`;
 }
+
+/** What a test gets in place of a missing secret, so that no test needs a real one. */
+export const TEST_SECRET = "test-auth-secret-min-32-chars-long!!";
+
+/**
+ * The secret that signs the urls of private media: the `BETTER_AUTH_SECRET` of auth, read from a plain
+ * record as `readRuntimeEnv()` returns it. No key of its own. Pure. Throws when it is missing or
+ * empty, unless the code runs under `nodeEnv: "test"`, which gets a fixture.
+ */
+export function resolveMediaSecret(
+  source: Record<string, unknown>,
+  options: { nodeEnv?: string } = {},
+): string {
+  const secret = source.BETTER_AUTH_SECRET;
+  if (typeof secret === "string" && secret !== "") return secret;
+  if (options.nodeEnv === "test") return TEST_SECRET;
+  throw new Error(
+    "Missing required environment variables: BETTER_AUTH_SECRET. " +
+      "Private media urls are signed with the secret auth uses.",
+  );
+}

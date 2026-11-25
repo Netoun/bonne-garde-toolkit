@@ -10,7 +10,8 @@ import { resetStatements } from "{{SCOPE}}/db/reset";
 import { deleteFromR2, extractKeyFromUrl, uploadToR2 } from "./r2";
 import * as storageSchema from "./schema";
 import { medias } from "./schema";
-import { TEST_PUBLIC_URL, createTestStorage, startTestBucket } from "./testing";
+import { signMediaUrl } from "./signed-url";
+import { TEST_PUBLIC_URL, TEST_SECRET, createTestStorage, startTestBucket } from "./testing";
 
 /** A table of a project that points at a media with a plain foreign key: no `onDelete`, so the media stays while a row holds it. */
 const attachments = sqliteTable("attachments", {
@@ -297,6 +298,113 @@ describe("the media routes", () => {
 
       expect(statusOf(error)).toBe(401);
       expect((await bucket.list()).objects).toEqual([]);
+      expect(await test.db.select().from(medias)).toEqual([]);
+    });
+  });
+
+  describe("private media", () => {
+    /** The api's own address for a url the module hands out: the test serves files under TEST_PUBLIC_URL. */
+    const onApi = (url: string) => url.replace(TEST_PUBLIC_URL, "http://api.test/v1/media/file");
+
+    async function uploadPrivate() {
+      const file = createPngFile("contract.png");
+      const { data, error } = await api.v1.media.post({
+        file,
+        visibility: "private",
+        organizationId: orgId,
+      });
+      expect(error).toBeNull();
+      if (!data) throw new Error("Expected uploaded media");
+      return { file, uploaded: data };
+    }
+
+    it("stores the visibility, and is not served with no signature", async () => {
+      const { uploaded } = await uploadPrivate();
+
+      const [row] = await test.db.select().from(medias).where(eq(medias.id, uploaded.id));
+      const response = await test.app.handle(
+        new Request(`http://api.test/v1/media/file/${uploaded.key}`),
+      );
+
+      expect(row?.visibility).toBe("private");
+      expect(response.status).toBe(404);
+    });
+
+    it("answers 404 to an expired signature, one for another key, and a forged one", async () => {
+      const { uploaded } = await uploadPrivate();
+      const { uploaded: other } = await uploadPrivate();
+      const url = `${TEST_PUBLIC_URL}/${uploaded.key}`;
+      const expired = await signMediaUrl({
+        secret: TEST_SECRET,
+        key: uploaded.key,
+        url,
+        now: Date.now() - 16 * 60 * 1000,
+      });
+      const forOther = await signMediaUrl({
+        secret: TEST_SECRET,
+        key: other.key,
+        url,
+      });
+      const forged = `${url}?expires=${Math.floor(Date.now() / 1000) + 600}&signature=${"0".repeat(64)}`;
+
+      for (const signed of [expired, forOther, forged]) {
+        const response = await test.app.handle(new Request(onApi(signed)));
+        expect(response.status).toBe(404);
+      }
+    });
+
+    it("hands out, on GET /v1/media/:id, a fresh signed url that serves the file with a private cache", async () => {
+      const { file, uploaded } = await uploadPrivate();
+
+      const { data, error } = await api.v1.media({ id: uploaded.id }).get();
+      if (!data || !("url" in data)) throw new Error("Expected the media");
+      const response = await test.app.handle(new Request(onApi(data.url)));
+
+      expect(error).toBeNull();
+      expect(data.url).toMatch(
+        new RegExp(`^${TEST_PUBLIC_URL}/${uploaded.key}\\?expires=\\d+&signature=[0-9a-f]{64}$`),
+      );
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toMatch(/^private, max-age=(?:899|900)$/);
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(response.headers.get("content-type")).toContain("image/png");
+      expect(new Uint8Array(await response.arrayBuffer())).toEqual(
+        new Uint8Array(await file.arrayBuffer()),
+      );
+    });
+
+    it("stores the url with no signature in it", async () => {
+      const { uploaded } = await uploadPrivate();
+
+      const [row] = await test.db.select().from(medias).where(eq(medias.id, uploaded.id));
+
+      expect(row?.url).toBe(`${TEST_PUBLIC_URL}/${uploaded.key}`);
+    });
+
+    it("keeps a media with no visibility public: served with no signature, with its stored url", async () => {
+      const { data: uploaded } = await api.v1.media.post({ file: createPngFile("a.png") });
+      if (!uploaded) throw new Error("Expected uploaded media");
+
+      const [row] = await test.db.select().from(medias).where(eq(medias.id, uploaded.id));
+      const { data } = await api.v1.media({ id: uploaded.id }).get();
+      const response = await test.app.handle(
+        new Request(`http://api.test/v1/media/file/${uploaded.key}`),
+      );
+
+      expect(row?.visibility).toBe("public");
+      expect(data).toMatchObject({ url: uploaded.url });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("public, max-age=31536000");
+    });
+
+    it("refuses a visibility that is neither public nor private", async () => {
+      const { error } = await api.v1.media.post({
+        file: createPngFile("a.png"),
+        // The contract types the literal; the point is what a client that ignores it gets.
+        visibility: "secret" as "private",
+      });
+
+      expect(statusOf(error)).toBe(422);
       expect(await test.db.select().from(medias)).toEqual([]);
     });
   });
