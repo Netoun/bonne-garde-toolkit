@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
-import { APIError, createAuthMiddleware } from "better-auth/api";
-import { organization } from "better-auth/plugins";
+import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
+import { hasPermission, organization } from "better-auth/plugins";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { and, eq, isNull } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
@@ -261,8 +261,72 @@ export function createAuth({
     hooks: {
       // `organization.deletedAt` is the app's soft delete, and Better Auth's organization endpoints do
       // not know it. Making a deleted organization the active one is refused before it changes the
-      // session; fetching it, and listing it, are filtered after.
+      // session; fetching it, and listing it, are filtered after. `organization/delete` is answered
+      // here, with the same checks as the endpoint, so that it writes `deletedAt` and removes nothing.
       before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === "/organization/delete") {
+          const session = await getSessionFromCtx(ctx);
+          if (!session) throw new APIError("UNAUTHORIZED");
+          const { organizationId } = ctx.body ?? {};
+          // Left to the endpoint, which answers 400 and has nothing to delete.
+          if (typeof organizationId !== "string") return;
+          const membership = await ctx.context.adapter.findOne<{ role: string }>({
+            model: "member",
+            where: [
+              { field: "userId", value: session.user.id },
+              { field: "organizationId", value: organizationId },
+            ],
+          });
+          if (!membership) {
+            throw new APIError("BAD_REQUEST", {
+              message: "User is not a member of the organization",
+            });
+          }
+          const allowed = await hasPermission(
+            {
+              role: membership.role,
+              permissions: { organization: ["delete"] },
+              organizationId,
+              options: { ac, roles },
+            },
+            ctx,
+          );
+          if (!allowed) {
+            throw new APIError("FORBIDDEN", {
+              message: "You are not allowed to delete this organization",
+            });
+          }
+          const found = await ctx.context.adapter.findOne<{ deletedAt: Date | null }>({
+            model: "organization",
+            where: [{ field: "id", value: organizationId }],
+          });
+          if (!found || found.deletedAt) {
+            throw new APIError("NOT_FOUND", { message: "Organization not found" });
+          }
+          await ctx.context.adapter.update({
+            model: "organization",
+            where: [{ field: "id", value: organizationId }],
+            update: { deletedAt: new Date() },
+          });
+          return ctx.json(found);
+        }
+        if (ctx.path === "/organization/accept-invitation") {
+          const { invitationId } = ctx.body ?? {};
+          if (typeof invitationId !== "string") return;
+          const invited = await ctx.context.adapter.findOne<{ organizationId: string }>({
+            model: "invitation",
+            where: [{ field: "id", value: invitationId }],
+          });
+          if (!invited) return;
+          const target = await ctx.context.adapter.findOne<{ deletedAt: Date | null }>({
+            model: "organization",
+            where: [{ field: "id", value: invited.organizationId }],
+          });
+          if (target?.deletedAt) {
+            throw new APIError("NOT_FOUND", { message: "Organization not found" });
+          }
+          return;
+        }
         if (ctx.path !== "/organization/set-active") return;
         const { organizationId, organizationSlug } = ctx.body ?? {};
         const where =

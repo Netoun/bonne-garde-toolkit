@@ -2719,7 +2719,7 @@ describe("module contract", () => {
       }
     });
 
-    test("the libsql variant copies what the d1 one does, except the files bound to D1 (module, CLI entry, seed, barrel, and the three tests that import the module), which it replaces at paths of their own, and package.json, which it leaves to the planner", async () => {
+    test("the libsql variant copies what the d1 one does, except the files bound to D1 (module, CLI entry, seed, barrel, and the four tests that import the module), which it replaces at paths of their own, and package.json, which it leaves to the planner", async () => {
       const { manifest, variant: d1 } = await authModule();
       const libsql = manifest.variants.find(({ key }) => key === "libsql");
       const bound = [
@@ -2727,6 +2727,7 @@ describe("module contract", () => {
         "packages/auth/src/auth.cli.ts",
         "packages/auth/src/auth.flow.test.ts",
         "packages/auth/src/auth.module.ts",
+        "packages/auth/src/auth.organization-delete.test.ts",
         "packages/auth/src/auth.organization.test.ts",
         "packages/auth/src/auth.permission.test.ts",
         "packages/auth/src/auth.seed.test.ts",
@@ -2742,6 +2743,7 @@ describe("module contract", () => {
         "packages/auth/src/libsql-auth.cli.ts",
         "packages/auth/src/libsql-auth.flow.test.ts",
         "packages/auth/src/libsql-auth.module.ts",
+        "packages/auth/src/libsql-auth.organization-delete.test.ts",
         "packages/auth/src/libsql-auth.organization.test.ts",
         "packages/auth/src/libsql-auth.permission.test.ts",
         "packages/auth/src/libsql-index.ts",

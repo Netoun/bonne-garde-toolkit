@@ -257,21 +257,30 @@ else the first live one. `auth.invitation.test.ts` pins each case, including the
 
 ## Organizations marked deleted
 
-`organization.deletedAt` is the soft delete: server-side only (`input: false`), read by the macro and the
-session hook, written by nothing in this module. Better Auth's organization endpoints do not know it.
-Observed on real SQLite, an organization with `deletedAt` set was still returned by `organization/list`,
-fetched with its members by `get-full-organization` (by id, by slug, or as the active one), and accepted
-by `set-active`, which scopes what a route reads. Now `list` drops it, `get-full-organization` and
-`set-active` answer 404 (`set-active` before it touches the session), and the `auth: true` macro treats a
-session whose active organization was deleted since as having none: it falls back to the user's first live
-one and keeps that in the session (one primary-key read per authenticated request). `auth.organization.test.ts`
-pins each. The hooks match on Better Auth's paths, as the rate-limit rules do; the tests are what notice a
-rename.
+`organization.deletedAt` is the soft delete: server-side only (`input: false`), written by `organization/delete`,
+read everywhere else. Better Auth's own endpoints do not know it. Observed on real SQLite, an organization with
+`deletedAt` set was still returned by `organization/list`, fetched with its members by `get-full-organization`
+(by id, by slug, or as the active one), and accepted by `set-active`, which scopes what a route reads. Now `list`
+drops it, `get-full-organization` and `set-active` answer 404 (`set-active` before it touches the session), and the
+`auth: true` macro treats a session whose active organization was deleted since as having none: it falls back to the
+user's first live one and keeps that in the session (one primary-key read per authenticated request).
+`auth.organization.test.ts` pins each. The hooks match on Better Auth's paths, as the rate-limit rules do; the tests
+are what notice a rename.
 
-**Not changed: `organization/delete` hard-deletes.** It removes the row, and the members with it (foreign
-key cascade), for any owner who calls it. The legacy SPA never calls it, and nothing in the repo writes
-`deletedAt`, so which of the two is the product's delete is not decided here. `disableOrganizationDeletion`
-would close it; it is a behaviour change and waits for whoever writes `deletedAt`.
+**`organization/delete` marks the organization deleted and removes nothing.** Better Auth's endpoint deletes the
+row, and its members and invitations with it (foreign key cascade). Here the `before` hook of `createAuth` answers
+the path itself: same checks as the endpoint (a session, a membership, `organization: ["delete"]` in the member's
+role, so the owner by default; refusals are its 401, 400 and 403), then `deletedAt = now` and the organization in
+the response. Members and invitations stay. An organization already deleted answers 404. The session's active
+organization is left as it is: the macro already steps over a deleted one. An invitation to a deleted organization
+answers 404 on `organization/accept-invitation`, as sign-in already skips it. `auth.organization-delete.test.ts` pins
+each.
+
+Why the hook and not `disableOrganizationDeletion` plus a route of the module: the hook keeps Better Auth's path, so
+the client's `organization.delete()` and the front-ends keep working, and there is no second route to mount in both
+variants. The price is that the permission check is written twice (here and in the endpoint, which a hook answering
+the request never reaches); it goes through Better Auth's own `hasPermission`, so roles stay the one in
+`permissions.ts`. Nothing restores or purges a deleted organization.
 
 ## Rate limit and the client's address
 
