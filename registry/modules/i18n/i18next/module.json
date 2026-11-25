@@ -1,0 +1,101 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "i18next",
+  "category": "i18n",
+  "version": "0.1.0",
+  "title": "i18next",
+  "description": "Languages: English and French, the language of a request resolved from its cookie then Accept-Language, and the i18next resources of an app's locale files, in packages/i18n.",
+  "peers": {
+    "provider": []
+  },
+  "checks": ["cd packages/i18n && vp run typecheck && vp run test"],
+  "variants": [
+    {
+      "key": "default",
+      "match": {},
+      "workspace": {
+        "name": "{{SCOPE}}/i18n",
+        "path": "packages/i18n"
+      },
+      "dependencies": {
+        "i18next": "27.2.5"
+      },
+      "copy": [
+        "packages/i18n/package.json",
+        "packages/i18n/tsconfig.json",
+        "packages/i18n/tsconfig.test.json",
+        "packages/i18n/src/config.test.ts",
+        "packages/i18n/src/config.ts",
+        "packages/i18n/src/index.test.ts",
+        "packages/i18n/src/index.ts",
+        "packages/i18n/src/locale.test.ts",
+        "packages/i18n/src/locale.ts",
+        "packages/i18n/src/resources.test.ts",
+        "packages/i18n/src/resources.ts"
+      ]
+    },
+    {
+      "key": "api",
+      "match": {
+        "api": "elysia"
+      },
+      "workspace": {
+        "name": "{{SCOPE}}/i18n",
+        "path": "packages/i18n"
+      },
+      "dependencies": {
+        "elysia": "1.4.29",
+        "i18next": "27.2.5"
+      },
+      "copy": [
+        "packages/i18n/package.json",
+        "packages/i18n/src/config.test.ts",
+        "packages/i18n/src/config.ts",
+        "packages/i18n/src/elysia.test.ts",
+        "packages/i18n/src/elysia.ts",
+        "packages/i18n/src/index.test.ts",
+        "packages/i18n/src/index.ts",
+        "packages/i18n/src/locale.test.ts",
+        "packages/i18n/src/locale.ts",
+        "packages/i18n/src/resources.test.ts",
+        "packages/i18n/src/resources.ts",
+        "packages/i18n/tsconfig.json",
+        "packages/i18n/tsconfig.test.json"
+      ],
+      "patch": [
+        {
+          "type": "jsonc.merge",
+          "file": "packages/i18n/package.json",
+          "value": {
+            "exports": {
+              "./elysia": "./src/elysia.ts"
+            }
+          },
+          "intent": "Export the Elysia plugin from the package."
+        },
+        {
+          "type": "package.dependencies",
+          "file": "apps/api/package.json",
+          "dependencies": {
+            "{{SCOPE}}/i18n": "workspace:*"
+          },
+          "intent": "Declare the project's i18n package as a dependency of the API app."
+        },
+        {
+          "type": "ts.addImport",
+          "file": "apps/api/src/app.ts",
+          "moduleSpecifier": "{{SCOPE}}/i18n/elysia",
+          "namedImports": ["i18nModule"],
+          "intent": "Import i18nModule from the project's i18n package in the API app."
+        },
+        {
+          "type": "ts.elysiaUse",
+          "file": "apps/api/src/app.ts",
+          "targetName": "app",
+          "argument": "i18nModule",
+          "intent": "Register i18nModule on the API app, so every route reads the request's language as `locale`."
+        }
+      ]
+    }
+  ]
+}

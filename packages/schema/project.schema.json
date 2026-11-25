@@ -83,6 +83,7 @@
           "tooling",
           "config",
           "api",
+          "i18n",
           "db",
           "orm",
           "auth",

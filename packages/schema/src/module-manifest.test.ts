@@ -266,6 +266,7 @@ describe("the category table", () => {
     expect(categoryCardinality("config")).toBe("one");
     expect(categoryCardinality("observability")).toBe("one");
     expect(categoryCardinality("api")).toBe("one");
+    expect(categoryCardinality("i18n")).toBe("one");
     expect(categoryCardinality("web")).toBe("many");
     expect(categoryCardinality("deploy")).toBe("many");
     expect(categoryCardinality("dev")).toBe("many");
@@ -278,6 +279,7 @@ describe("the category table", () => {
       "tooling",
       "config",
       "api",
+      "i18n",
       "db",
       "orm",
       "auth",

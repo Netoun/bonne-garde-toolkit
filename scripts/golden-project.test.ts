@@ -262,6 +262,7 @@ describe("the golden project", () => {
             "orm/drizzle",
             "auth/better-auth",
             "storage/fs",
+            "i18n/i18next",
             "realtime/rooms",
             "observability/sentry",
           ].includes(name),
@@ -412,6 +413,7 @@ describe("the golden project and modules", () => {
       "dev/portless",
       "email/resend",
       "deploy/cloudflare-actions",
+      "i18n/i18next",
       "realtime/rooms",
       "observability/sentry",
       "pm/bun",
@@ -837,6 +839,12 @@ describe("the golden project and patches", () => {
         // by the `intent[<id>]` region `bonne-garde record` leaves, not by a patch that imports for it.
         "email/resend": ["dependencies.@app/email", 'exports."./transport"'],
         "deploy/cloudflare-actions": ["devDependencies.jsonc-parser", "scripts.deploy:cloudflare"],
+        "i18n/i18next": [
+          "dependencies.@app/i18n",
+          "elysia[app].use[i18nModule]",
+          'exports."./elysia"',
+          "imports[@app/i18n/elysia]",
+        ],
         "observability/sentry": [
           "dependencies.@app/observability",
           "elysia[app].use[observabilityModule]",
@@ -890,6 +898,12 @@ describe("the golden project and patches", () => {
           "elysia[app].use[mediaModule]",
           "exports[@app/storage/schema]",
           "imports[@app/storage]",
+        ],
+        "i18n/i18next": [
+          "dependencies.@app/i18n",
+          "elysia[app].use[i18nModule]",
+          'exports."./elysia"',
+          "imports[@app/i18n/elysia]",
         ],
         "observability/sentry": [
           "dependencies.@app/observability",

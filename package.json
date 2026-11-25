@@ -21,7 +21,7 @@
     "knip:fix": "knip --fix --allow-remove-files",
     "test": "bun run test:platform",
     "test:platform": "bun run test:scripts && bun run --parallel --filter '@bonne-garde/*' test",
-    "test:scripts": "bun test ./scripts ./registry/modules --path-ignore-patterns 'registry/modules/{api,db,orm,auth,storage,realtime,web,email,observability,deploy,provider/cloudflare,provider/dockerfile/template}/**'",
+    "test:scripts": "bun test ./scripts ./registry/modules --path-ignore-patterns 'registry/modules/{api,i18n,db,orm,auth,storage,realtime,web,email,observability,deploy,provider/cloudflare,provider/dockerfile/template}/**'",
     "verify": "bun run check && bun run knip && bun run typecheck && bun run test && bun run intentions:lint && bun run registry:build && bun run docs:build",
     "prepare": "husky",
     "bonne-garde": "bun packages/cli/src/bin.ts",
