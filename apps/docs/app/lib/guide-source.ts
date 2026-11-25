@@ -7,8 +7,17 @@ const repoRoot = `${resolve(process.cwd(), "../..")}/`;
 /** User guides under `docs/guides/`, in sidebar order. Missing files are skipped. */
 const USER_GUIDE_FILES = ["getting-started", "adding-modules", "troubleshooting"] as const;
 
+/** Directory read for user guides. `BG_DOCS_GUIDES_DIR` points tests at a temp folder, never at the real `docs/guides/`. */
+function userGuideDir(): string {
+  return process.env.BG_DOCS_GUIDES_DIR ?? `${repoRoot}docs/guides`;
+}
+
+function userGuideNames(): string[] {
+  return USER_GUIDE_FILES.filter((name) => existsSync(`${userGuideDir()}/${name}.md`));
+}
+
 export function hasUserGuideFiles(): boolean {
-  return USER_GUIDE_FILES.some((name) => existsSync(`${repoRoot}docs/guides/${name}.md`));
+  return userGuideNames().length > 0;
 }
 
 /** Internal contributor spec pages, in sidebar order. */
@@ -32,16 +41,16 @@ export type GuideSource = {
   markdown: string;
 };
 
-function readSource(file: string, href: string): GuideSource {
-  const markdown = readFileSync(`${repoRoot}${file}`, "utf8");
+function readSource(file: string, href: string, path = `${repoRoot}${file}`): GuideSource {
+  const markdown = readFileSync(path, "utf8");
   const title = /^# (.+)$/m.exec(markdown)?.[1];
   if (!title) throw new Error(`${file} has no "#" heading`);
   return { file, href, title, markdown };
 }
 
 export function listUserGuideSources(): GuideSource[] {
-  return USER_GUIDE_FILES.filter((name) => existsSync(`${repoRoot}docs/guides/${name}.md`)).map(
-    (name) => readSource(`docs/guides/${name}.md`, `/docs/guides/${name}`),
+  return userGuideNames().map((name) =>
+    readSource(`docs/guides/${name}.md`, `/docs/guides/${name}`, `${userGuideDir()}/${name}.md`),
   );
 }
 

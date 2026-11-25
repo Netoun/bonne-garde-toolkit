@@ -1,16 +1,14 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, createRoutesStub, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { listGuides } from "../content/guides";
 import type { Route } from "./+types/guide";
 import Guide, { loader, meta } from "./guide";
 import { loader as userGuideLoader } from "./user-guide";
-
-const userGuideDir = resolve(process.cwd(), "../../docs/guides");
-const gettingStarted = resolve(userGuideDir, "getting-started.md");
 
 async function renderPage(href: string) {
   const Stub = createRoutesStub([{ path: href, Component: Guide, loader }]);
@@ -26,13 +24,23 @@ async function renderPage(href: string) {
 }
 
 describe("guide page", () => {
+  let userGuideDir: string;
+
+  beforeEach(() => {
+    userGuideDir = mkdtempSync(join(tmpdir(), "bg-guides-"));
+    process.env.BG_DOCS_GUIDES_DIR = userGuideDir;
+  });
+
   afterEach(() => {
-    rmSync(gettingStarted, { force: true });
+    delete process.env.BG_DOCS_GUIDES_DIR;
+    rmSync(userGuideDir, { recursive: true, force: true });
   });
 
   it("renders a user guide page with the shared loader", async () => {
-    mkdirSync(userGuideDir, { recursive: true });
-    writeFileSync(gettingStarted, "# Getting started\n\nHello from the guide.\n");
+    writeFileSync(
+      join(userGuideDir, "getting-started.md"),
+      "# Getting started\n\nHello from the guide.\n",
+    );
 
     await renderPage("/docs/guides/getting-started");
 
@@ -41,8 +49,10 @@ describe("guide page", () => {
   });
 
   it("loads user guide markdown in the prerender loader", async () => {
-    mkdirSync(userGuideDir, { recursive: true });
-    writeFileSync(gettingStarted, "# Getting started\n\nHello from the guide.\n");
+    writeFileSync(
+      join(userGuideDir, "getting-started.md"),
+      "# Getting started\n\nHello from the guide.\n",
+    );
 
     const data = await userGuideLoader({
       request: new Request("http://localhost/docs/guides/getting-started"),

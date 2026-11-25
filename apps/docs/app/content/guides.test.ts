@@ -1,16 +1,23 @@
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { listGuides } from "./guides";
 
 const adrDir = resolve(process.cwd(), "../../docs/adr");
-const userGuideDir = resolve(process.cwd(), "../../docs/guides");
-const gettingStarted = resolve(userGuideDir, "getting-started.md");
 
 describe("listGuides", () => {
+  let userGuideDir: string;
+
+  beforeEach(() => {
+    userGuideDir = mkdtempSync(join(tmpdir(), "bg-guides-"));
+    process.env.BG_DOCS_GUIDES_DIR = userGuideDir;
+  });
+
   afterEach(() => {
-    rmSync(gettingStarted, { force: true });
+    delete process.env.BG_DOCS_GUIDES_DIR;
+    rmSync(userGuideDir, { recursive: true, force: true });
   });
 
   it("lists Internals and Decisions only when no user guides exist", async () => {
@@ -22,8 +29,7 @@ describe("listGuides", () => {
   });
 
   it("lists Guides first when a user guide file exists", async () => {
-    mkdirSync(userGuideDir, { recursive: true });
-    writeFileSync(gettingStarted, "# Getting started\n\nHello.\n");
+    writeFileSync(join(userGuideDir, "getting-started.md"), "# Getting started\n\nHello.\n");
 
     const sections = await listGuides();
 
