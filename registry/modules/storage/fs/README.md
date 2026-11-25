@@ -27,21 +27,48 @@ One default variant. `storage/r2` there is refused (`storage/r2 accepts only clo
 Everything in `packages/storage`. `schema.ts` and `media.contract.ts` are those of `storage/r2` (the second
 imports its types from `storage.ts`, where `r2.ts` has them); a contract test compares them.
 
-| File                   | What it is                                                                                                 |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `src/bucket.ts`        | `MediaBucket` (`put`, `get`, `delete`), `createFsBucket(root)` over `node:fs/promises`, and `readBucket()` |
-| `src/storage.ts`       | `R2Error`, `validateFile`, `validateKey`, `generateKey`, `publicUrlFor`, `uploadFile`, `deleteFile`        |
-| `src/env.ts`           | `resolvePublicUrl`: `<APP_URL>/v1/media/file`                                                              |
-| `src/media.service.ts` | `createMediaService(context)`: `uploadMedia`, `deleteMedia`, `getMediaById`, `getFile`                     |
-| `src/media.module.ts`  | `mediaModule`, which `apps/api` mounts, and `resolveRuntimeStorage()`                                      |
+| File                   | What it is                                                                                                             |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `src/bucket.ts`        | `MediaBucket` (`put`, `get`, `delete`), `createFsBucket(root)` over `node:fs/promises`, and `readBucket()`             |
+| `src/storage.ts`       | `R2Error`, `detectImageType`, `validateFile`, `validateKey`, `generateKey`, `publicUrlFor`, `uploadFile`, `deleteFile` |
+| `src/env.ts`           | `resolvePublicUrl`: `<APP_URL>/v1/media/file`, and `resolveMediaSecret`                                                |
+| `src/signed-url.ts`    | `signMediaUrl` and `verifyMediaSignature`: the short-lived urls of private media                                       |
+| `src/media.service.ts` | `createMediaService(context)`: `uploadMedia`, `deleteMedia`, `getMediaById`, `getFile`                                 |
+| `src/media.module.ts`  | `mediaModule`, which `apps/api` mounts, and `resolveRuntimeStorage()`                                                  |
 
 `R2Error` keeps its name and its codes (but `BUCKET_NOT_CONFIGURED`: a directory is always there), so code written
 against one storage module runs against the other.
 
+An upload is checked on its content, as in `storage/r2`: the first bytes must be a JPEG, PNG, GIF or WebP that
+matches the declared type, else `400 INVALID_FILE_TYPE`; `medias.mime_type` holds the detected type, and the file
+route sends `X-Content-Type-Options: nosniff`.
+
+Access follows the media's author and organization, as in `storage/r2`: an upload to an organization needs
+membership (`403 UNAUTHORIZED` otherwise), a media is read by its author or a member of its organization (`404`
+for anyone else), and deleted by its author or an `owner` or `admin` of the organization stored on the row. The
+file route stays public by its random key for a public media.
+
+A media can be private: `visibility` (`public` by default, in the upload body and in `medias.visibility`) set to
+`private` keeps it off the public cache. `GET /v1/media/file/<key>` then answers `404` unless the url carries a valid,
+unexpired `?expires=<unix seconds>&signature=<hex>`, and serves the file with `Cache-Control: private, max-age=<seconds
+left>`; a public media, and its url, are unchanged. `GET /v1/media/:id` (same access rule as above) returns, for a
+private media, a `url` signed at that moment, valid for 15 minutes, and so does the upload response; `medias.url`
+keeps the plain url. The signature is the HMAC-SHA-256 of `<key>\n<expires>` (`signed-url.ts`, Web Crypto only) under
+a key derived from the `BETTER_AUTH_SECRET` auth already owns (HMAC of the label `bonne-garde:media-url`), so no key
+is added to the environment, and it is compared in constant time. Rotating `BETTER_AUTH_SECRET` invalidates the
+urls in flight, and nothing else.
+
+A media that another row points at cannot be deleted, and the database says so: a table of the project or of a module
+that references `medias.id` with a plain `references()` (no `onDelete`) blocks the delete, `cascade` or `set null` let
+it through, and that is the referencing table's choice. `deleteMedia` deletes the row first; a `FOREIGN KEY constraint
+failed` anywhere in the error chain (D1 and libsql word it that way) answers `409 MEDIA_IN_USE` and the file stays.
+The file is removed only after the row is gone.
+
 ## Where the files are
 
 `<DATA_DIR>/media/<key>`, with `DATA_DIR` read as `db/libsql` reads it (`.data` by default, `/data` in the
-container). The directory is created on the first upload. A key is `medias/<folder>/<uuid>-<filename>`.
+container). The directory is created on the first upload. A key is `medias/<folder>/<uuid>.<ext>`, random, with the
+extension of the detected type (`jpg`, `png`, `gif`, `webp`): the client's filename stays in `medias.name`.
 
 Every key goes through `validateKey` (no `..`, no empty segment, so no absolute key, no backslash, no control
 character), and `createFsBucket` then refuses any key whose path already holds a symbolic link, so a link placed

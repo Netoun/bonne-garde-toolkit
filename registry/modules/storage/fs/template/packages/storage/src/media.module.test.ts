@@ -51,6 +51,15 @@ describe("resolveRuntimeStorage", () => {
     expect(await readdir(join(dataDir, "media", "medias"))).toEqual(["a.png"]);
   });
 
+  it("signs private urls with the BETTER_AUTH_SECRET auth owns", async () => {
+    const { secret } = await withEnv(
+      { DATA_DIR: dataDir, BETTER_AUTH_SECRET: "the-project-auth-secret" },
+      resolveRuntimeStorage,
+    );
+
+    expect(secret).toBe("the-project-auth-secret");
+  });
+
   it("opens the database at <DATA_DIR>/db.sqlite: the same one the db module serves", async () => {
     await withEnv({ DATA_DIR: dataDir }, async () => {
       const { db } = await resolveRuntimeStorage();

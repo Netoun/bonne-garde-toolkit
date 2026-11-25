@@ -5,8 +5,16 @@ import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 // `bonne-garde add` rewrites the scope in this line, so the formatter cannot know how wide it is.
 // oxfmt-ignore
 import type * as authSchema from "{{SCOPE}}/auth/schema";
-import { R2Error, deleteFromR2, uploadToR2, validateKey, type UploadResult } from "./r2";
+import {
+  R2Error,
+  deleteFromR2,
+  publicUrlFor,
+  uploadToR2,
+  validateKey,
+  type UploadResult,
+} from "./r2";
 import * as storageSchema from "./schema";
+import { signMediaUrl, verifyMediaSignature } from "./signed-url";
 
 const { medias } = storageSchema;
 
@@ -20,11 +28,12 @@ export type StorageDatabase = BaseSQLiteDatabase<
   typeof authSchema & typeof storageSchema
 >;
 
-/** What the media service runs against: the database, the bucket if the runtime has one, and the public url of a file. */
+/** What the media service runs against: the database, the bucket if the runtime has one, the public url of a file, and the secret that signs the urls of private media. */
 export type StorageContext = {
   db: StorageDatabase;
   bucket: R2Bucket | undefined;
   publicUrl: string;
+  secret: string;
 };
 
 /** How the routes get the context: a function, so that nothing is read at import time. */
@@ -35,59 +44,86 @@ export interface UploadMediaInput {
   folder: string;
   userId: string;
   organizationId?: string;
+  visibility?: "public" | "private";
 }
+
+/** What a private media's url carries in its query. */
+export type FileSignature = { expires?: string; signature?: string };
+
+const PUBLIC_CACHE_CONTROL = "public, max-age=31536000"; // Cache for 1 year
 
 export interface DeleteMediaInput {
   id: string;
   userId: string;
-  organizationId?: string;
 }
 
-export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
-  const checkMediaReferences = async (_mediaId: string): Promise<unknown[]> => {
-    return [];
+/** Whether `error`, or anything in its `cause` chain, is a foreign key violation: D1 and libsql both word it so, under Drizzle's own wrapper. */
+function isForeignKeyViolation(error: unknown): boolean {
+  for (let current = error; current instanceof Error; current = current.cause) {
+    if (/FOREIGN KEY constraint failed/i.test(current.message)) return true;
+  }
+  return false;
+}
+
+export function createMediaService({ db, bucket, publicUrl, secret }: StorageContext) {
+  /** The role of `userId` in the organization, or `undefined` when it is not a member. */
+  const memberRole = async (userId: string, organizationId: string) => {
+    const membership = await db.query.member.findFirst({
+      where: (member, { eq, and }) =>
+        and(eq(member.userId, userId), eq(member.organizationId, organizationId)),
+      columns: { role: true },
+    });
+    return membership?.role;
   };
 
-  const verifyOwnership = async (
-    mediaId: string,
-    userId: string,
-    organizationId?: string,
-  ): Promise<boolean> => {
+  /** The author of a media, or an admin or owner of the organization the media belongs to (read from the row). */
+  const verifyOwnership = async (mediaId: string, userId: string): Promise<boolean> => {
     const media = await db.query.medias.findFirst({
       where: eq(medias.id, mediaId),
       columns: { authorId: true, organizationId: true },
     });
 
     if (!media) return false;
-
-    // Media owner can always delete
     if (media.authorId === userId) return true;
+    if (!media.organizationId) return false;
 
-    // Organization admin can delete organization's media
-    if (organizationId && media.organizationId === organizationId) {
-      // Check if user is admin of the organization
-      const membership = await db.query.member.findFirst({
-        where: (member, { eq, and }) =>
-          and(eq(member.userId, userId), eq(member.organizationId, organizationId)),
-        columns: { role: true },
-      });
+    const role = await memberRole(userId, media.organizationId);
+    return role === "admin" || role === "owner";
+  };
 
-      return membership?.role === "admin" || membership?.role === "owner";
-    }
+  /**
+   * The `Cache-Control` a file is served with, or `null` when it must not be served: a private media
+   * needs a valid, unexpired signature in the query of the request, and is then cached for what is
+   * left of it. A public media, or a file nobody recorded, is cached for a year as before.
+   */
+  const cacheControlFor = async (key: string, signature: FileSignature): Promise<string | null> => {
+    const media = await db.query.medias.findFirst({
+      where: eq(medias.key, key),
+      columns: { visibility: true },
+    });
+    if (media?.visibility !== "private") return PUBLIC_CACHE_CONTROL;
 
-    return false;
+    const secondsLeft = await verifyMediaSignature({ secret, key, ...signature });
+    return secondsLeft === null ? null : `private, max-age=${secondsLeft}`;
   };
 
   const uploadMedia = async (
     input: UploadMediaInput,
-  ): Promise<UploadResult & { id: string; name: string }> => {
+  ): Promise<Pick<UploadResult, "key" | "url"> & { id: string; name: string }> => {
     if (!bucket) {
       throw new R2Error("R2 bucket not configured", "BUCKET_NOT_CONFIGURED");
     }
 
+    const visibility = input.visibility ?? "public";
+
     try {
+      // An organization takes uploads from its members only, any role.
+      if (input.organizationId && !(await memberRole(input.userId, input.organizationId))) {
+        throw new R2Error("Not a member of this organization", "UNAUTHORIZED");
+      }
+
       // Upload to R2 first
-      const { key, url } = await uploadToR2(bucket, publicUrl, {
+      const { key, url, mimeType } = await uploadToR2(bucket, publicUrl, {
         folder: input.folder,
         file: input.file,
       });
@@ -100,13 +136,20 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
         url,
         key,
         size: input.file.size,
-        mimeType: input.file.type,
+        mimeType,
         authorId: input.userId,
         organizationId: input.organizationId,
+        visibility,
         createdAt: new Date(),
       });
 
-      return { id: mediaId, url, key, name: input.file.name };
+      // What is stored is the plain url; a private one only works signed.
+      return {
+        id: mediaId,
+        url: visibility === "private" ? await signMediaUrl({ secret, key, url }) : url,
+        key,
+        name: input.file.name,
+      };
     } catch (error) {
       // If it's already an R2Error, rethrow it
       if (error instanceof R2Error) {
@@ -135,21 +178,23 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
     }
 
     // Verify ownership
-    const hasPermission = await verifyOwnership(input.id, input.userId, input.organizationId);
+    const hasPermission = await verifyOwnership(input.id, input.userId);
     if (!hasPermission) {
       throw new R2Error("Unauthorized to delete this media", "UNAUTHORIZED");
     }
 
-    // Check if media is in use
-    const references = await checkMediaReferences(input.id);
-    if (references.length > 0) {
-      throw new R2Error(
-        `Media is in use by ${references.length} resource(s) and cannot be deleted`,
-        "MEDIA_IN_USE",
-      );
+    // The database decides whether the media is in use: a row of another table that points at it with a
+    // plain foreign key blocks the delete, and `cascade` or `set null` on that table lets it through.
+    try {
+      await db.delete(medias).where(eq(medias.id, input.id));
+    } catch (error) {
+      if (isForeignKeyViolation(error)) {
+        throw new R2Error("Media is in use and cannot be deleted", "MEDIA_IN_USE");
+      }
+      throw error;
     }
 
-    // Delete from R2 if bucket is available
+    // The file goes only once the row is gone, and only if the runtime has a bucket.
     if (bucket && media.key) {
       const deleteResult = await deleteFromR2(bucket, media.key);
       if (!deleteResult.success) {
@@ -159,14 +204,12 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
       }
     }
 
-    // Delete from database
-    await db.delete(medias).where(eq(medias.id, input.id));
-
     return { success: true, id: input.id };
   };
 
-  const getMediaById = async (id: string) => {
-    return db.query.medias.findFirst({
+  /** The media with its author and organization, for its author or a member of its organization; `undefined` for anyone else, as for a media that does not exist. */
+  const getMediaById = async (id: string, userId: string) => {
+    const media = await db.query.medias.findFirst({
       where: eq(medias.id, id),
       with: {
         author: {
@@ -177,17 +220,35 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
         },
       },
     });
+
+    if (!media) return undefined;
+    const allowed =
+      media.authorId === userId ||
+      (media.organizationId !== null &&
+        (await memberRole(userId, media.organizationId)) !== undefined);
+    if (!allowed) return undefined;
+
+    // A private media gets a url signed now: the stored one does not serve it.
+    if (media.visibility !== "private") return media;
+    return {
+      ...media,
+      url: await signMediaUrl({ secret, key: media.key, url: publicUrlFor(publicUrl, media.key) }),
+    };
   };
 
   const getFileFromR2 = async (
     key: string,
-  ): Promise<{ blob: Blob; contentType: string } | null> => {
+    signature: FileSignature = {},
+  ): Promise<{ blob: Blob; contentType: string; cacheControl: string } | null> => {
     // The key comes straight from the request URL.
     validateKey(key);
 
     if (!bucket) {
       throw new R2Error("R2 bucket not configured", "BUCKET_NOT_CONFIGURED");
     }
+
+    const cacheControl = await cacheControlFor(key, signature);
+    if (cacheControl === null) return null;
 
     try {
       const object = await bucket.get(key);
@@ -198,7 +259,7 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
       const blob = await object.blob();
       const contentType = object.httpMetadata?.contentType ?? "application/octet-stream";
 
-      return { blob, contentType };
+      return { blob, contentType, cacheControl };
     } catch (error) {
       throw new R2Error(
         `Failed to fetch from R2: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -212,7 +273,6 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
     deleteMedia,
     getMediaById,
     getFileFromR2,
-    checkMediaReferences,
     verifyOwnership,
   };
 }

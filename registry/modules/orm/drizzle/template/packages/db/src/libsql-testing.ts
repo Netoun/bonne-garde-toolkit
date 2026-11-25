@@ -1,4 +1,4 @@
-import { createClient } from "@libsql/client";
+import { createClient, type Client } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { generateSQLiteDrizzleJson, generateSQLiteMigration } from "drizzle-kit/api";
 import * as barrel from "./schema";
@@ -14,14 +14,18 @@ async function createStatements(schema: Record<string, unknown>): Promise<string
 /**
  * A fresh in-memory libsql database with the tables of the project's schema barrel, or of `schema` when
  * a test brings its own, behind the Drizzle driver the API uses. The tables come from the schema and not
- * from the migrations, so a test does not wait for `vp run db:generate`.
+ * from the migrations, so a test does not wait for `vp run db:generate`. A test that must run over the
+ * database the app opens (`readLibsql()`) brings its `client`, which must be empty.
  */
 export async function createTestDb(): Promise<ReturnType<typeof drizzle<typeof barrel>>>;
 export async function createTestDb<TSchema extends Record<string, unknown>>(
   schema: TSchema,
+  client?: Client,
 ): Promise<ReturnType<typeof drizzle<TSchema>>>;
-export async function createTestDb(schema: Record<string, unknown> = barrel) {
-  const client = createClient({ url: ":memory:" });
+export async function createTestDb(
+  schema: Record<string, unknown> = barrel,
+  client: Client = createClient({ url: ":memory:" }),
+) {
   for (const statement of await createStatements(schema)) {
     await client.execute(statement);
   }

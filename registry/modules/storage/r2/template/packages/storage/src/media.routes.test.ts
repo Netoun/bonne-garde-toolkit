@@ -21,7 +21,8 @@ function fileRequest(encodedKeyPath: string): Request {
 
 describe("GET /v1/media/file/*", () => {
   it("serves an object, with no session, whose filename has spaces, accents, #, % and ?", async () => {
-    const key = generateKey("nodes/1", "é #1 100%?.png");
+    // A key a client can no longer make an upload write (the key is random now), but an object may still hold one.
+    const key = "medias/nodes/1/é #1 100%?.png";
     await bucket.put(key, "pixels", { httpMetadata: { contentType: "image/png" } });
     // What the API hands to clients, reduced to the path the route receives.
     const encodedKeyPath = publicUrlFor(TEST_PUBLIC_URL, key).slice(`${TEST_PUBLIC_URL}/`.length);
@@ -56,7 +57,7 @@ describe("GET /v1/media/file/*", () => {
 
 describe("the module's prefix", () => {
   it("serves the routes under /v1/media and nowhere else", async () => {
-    const key = generateKey("nodes/1", "a.png");
+    const key = generateKey("nodes/1", "image/png");
     await bucket.put(key, "pixels", { httpMetadata: { contentType: "image/png" } });
     const path = publicUrlFor("", key).slice(1);
 

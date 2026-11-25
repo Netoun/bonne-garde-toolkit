@@ -22,6 +22,10 @@ export const medias = sqliteTable("medias", {
   key: text("key").notNull(),
   size: integer("size").notNull(),
   mimeType: text("mime_type").notNull(),
+  // A private media is served only through a short-lived url the API signs.
+  visibility: text("visibility", { enum: ["public", "private"] })
+    .notNull()
+    .default("public"),
   authorId: text("author_id").references(() => user.id),
   organizationId: text("organization_id").references(() => organization.id, {
     onDelete: "cascade",

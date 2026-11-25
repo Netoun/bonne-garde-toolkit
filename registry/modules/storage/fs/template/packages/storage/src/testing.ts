@@ -13,7 +13,10 @@ import * as authSchema from "{{SCOPE}}/auth/schema";
 import { createTestAuth } from "{{SCOPE}}/auth/testing";
 import { MEDIA_DIR, createFsBucket, type MediaBucket } from "./bucket";
 import { mediaPlugin } from "./media.module";
+import { TEST_SECRET } from "./env";
 import * as storageSchema from "./schema";
+
+export { TEST_SECRET };
 
 /** The public url a test serves files under. */
 export const TEST_PUBLIC_URL = "https://media.example.com";
@@ -41,11 +44,13 @@ export async function startTestBucket() {
  * sign-in flow), and the bucket the test brings. Nothing is mocked: the requests go
  * through the plugin `apps/api` mounts, and what it stores lands in the database the test reads back.
  */
-export async function createTestStorage(bucket: MediaBucket) {
-  const { auth, db, signIn } = await createTestAuth({}, storageSchema);
+export async function createTestStorage<
+  TTables extends Record<string, unknown> = Record<never, never>,
+>(bucket: MediaBucket, tables?: TTables) {
+  const { auth, db, signIn } = await createTestAuth({}, { ...storageSchema, ...tables });
   const app = new Elysia().use(
     mediaPlugin(
-      async () => ({ db, bucket, publicUrl: TEST_PUBLIC_URL }),
+      async () => ({ db, bucket, publicUrl: TEST_PUBLIC_URL, secret: TEST_SECRET }),
       authMacroPlugin(async () => ({ auth, db })),
     ),
   );

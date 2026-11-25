@@ -1,5 +1,6 @@
 import { count, eq, getTableName, is, sql } from "drizzle-orm";
 import { integer, SQLiteTable, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { createClient } from "@libsql/client";
 import { describe, expect, it } from "vite-plus/test";
 import * as barrel from "./schema";
 import { createTestDb } from "./libsql-testing";
@@ -17,6 +18,16 @@ describe("createTestDb", () => {
     const rows = await db.select().from(notes).where(eq(notes.body, "first"));
 
     expect(rows).toEqual([{ id: 1, body: "first" }]);
+  });
+
+  it("creates the tables on the client it is given, and the rows stay on it", async () => {
+    const client = createClient({ url: ":memory:" });
+
+    const db = await createTestDb({ notes }, client);
+    await db.insert(notes).values({ body: "kept" });
+
+    const result = await client.execute("select body from notes");
+    expect(result.rows[0]?.body).toBe("kept");
   });
 
   it("gives each call a database of its own", async () => {

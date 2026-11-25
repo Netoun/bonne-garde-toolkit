@@ -1,23 +1,25 @@
 /// <reference types="@cloudflare/workers-types" />
 import { afterAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { eq, getTableName, is, sql } from "drizzle-orm";
-import { SQLiteTable } from "drizzle-orm/sqlite-core";
+import { SQLiteTable, sqliteTable, text } from "drizzle-orm/sqlite-core";
 // `bonne-garde add` rewrites the scope in these lines, so the formatter cannot know how wide they are.
 // oxfmt-ignore
 import * as authSchema from "{{SCOPE}}/auth/schema";
 // oxfmt-ignore
 import { resetStatements } from "{{SCOPE}}/db/reset";
-import {
-  deleteFromR2,
-  extractKeyFromUrl,
-  generateKey,
-  uploadToR2,
-  validateFile,
-  R2Error,
-} from "./r2";
+import { deleteFromR2, extractKeyFromUrl, uploadToR2 } from "./r2";
 import * as storageSchema from "./schema";
 import { medias } from "./schema";
-import { TEST_PUBLIC_URL, createTestStorage, startTestBucket } from "./testing";
+import { signMediaUrl } from "./signed-url";
+import { TEST_PUBLIC_URL, TEST_SECRET, createTestStorage, startTestBucket } from "./testing";
+
+/** A table of a project that points at a media with a plain foreign key: no `onDelete`, so the media stays while a row holds it. */
+const attachments = sqliteTable("attachments", {
+  id: text("id").primaryKey(),
+  mediaId: text("media_id")
+    .notNull()
+    .references(() => medias.id),
+});
 
 const testBucket = await startTestBucket();
 const { bucket } = testBucket;
@@ -44,69 +46,20 @@ function createImageFile(content: string, name: string) {
   });
 }
 
+/** A real 1x1 PNG. */
+const PNG = new Uint8Array(
+  Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==",
+    "base64",
+  ),
+);
+
+function createPngFile(name: string, type = "image/png") {
+  return new File([PNG], name, { type });
+}
+
 describe("R2 Helper Functions", () => {
   const publicUrl = "https://media.example.com";
-
-  describe("validateFile", () => {
-    it("should accept valid image types", () => {
-      const validFiles = [
-        new File([""], "test.jpg", { type: "image/jpeg" }),
-        new File([""], "test.png", { type: "image/png" }),
-        new File([""], "test.webp", { type: "image/webp" }),
-        new File([""], "test.gif", { type: "image/gif" }),
-      ];
-
-      for (const file of validFiles) {
-        expect(() => validateFile(file)).not.toThrow();
-      }
-    });
-
-    it("should reject invalid file types", () => {
-      const invalidFiles = [
-        new File([""], "test.txt", { type: "text/plain" }),
-        new File([""], "test.pdf", { type: "application/pdf" }),
-        new File([""], "test.exe", { type: "application/x-msdownload" }),
-      ];
-
-      for (const file of invalidFiles) {
-        expect(() => validateFile(file)).toThrow(R2Error);
-      }
-    });
-
-    it("should reject files that are too large", () => {
-      const largeContent = new Uint8Array(11 * 1024 * 1024);
-      const largeFile = new File([largeContent], "large.jpg", { type: "image/jpeg" });
-
-      expect(() => validateFile(largeFile)).toThrow(R2Error);
-    });
-  });
-
-  describe("generateKey", () => {
-    it("should generate correct key format", () => {
-      const key = generateKey("nodes/123", "test-image.jpg");
-
-      expect(key).toMatch(/^medias\/nodes\/123\/[a-f0-9-]+-test-image\.jpg$/);
-    });
-
-    it("should sanitize folder paths", () => {
-      const key = generateKey("/test/folder/", "file.jpg");
-
-      expect(key).toMatch(/^medias\/test\/folder\/[a-f0-9-]+-file\.jpg$/);
-    });
-
-    it("should sanitize filenames without destroying unicode", () => {
-      const key = generateKey("test", "file with accents éàè.jpg");
-
-      expect(key).toMatch(/^medias\/test\/[a-f0-9-]+-file with accents éàè\.jpg$/);
-    });
-
-    it("should prevent directory traversal", () => {
-      const key = generateKey("test", "../../../etc/passwd.jpg");
-
-      expect(key).not.toContain("../");
-      expect(key).toMatch(/^medias\/test\/[a-f0-9-]+-_.*etc_passwd\.jpg$/);
-    });
-  });
 
   describe("extractKeyFromUrl", () => {
     it("should extract key from URL", () => {
@@ -136,7 +89,7 @@ describe("R2 Helper Functions", () => {
 
   describe("uploadToR2", () => {
     it("should upload file to R2 bucket", async () => {
-      const file = new File(["test-content"], "test.jpg", { type: "image/jpeg" });
+      const file = createImageFile("test-content", "test.jpg");
 
       const result = await uploadToR2(bucket, publicUrl, {
         folder: "test",
@@ -144,21 +97,22 @@ describe("R2 Helper Functions", () => {
       });
 
       expect(result.url).toMatch(
-        /^https:\/\/media\.example\.com\/medias\/test\/[a-f0-9-]+-test\.jpg$/,
+        /^https:\/\/media\.example\.com\/medias\/test\/[a-f0-9-]{36}\.jpg$/,
       );
-      expect(result.key).toMatch(/^medias\/test\/[a-f0-9-]+-test\.jpg$/);
+      expect(result.key).toMatch(/^medias\/test\/[a-f0-9-]{36}\.jpg$/);
+      expect(result.mimeType).toBe("image/jpeg");
 
       // Verify the object exists in bucket
       const obj = await bucket.head(result.key);
       expect(obj).not.toBeNull();
-      expect(obj?.size).toBe(12); // "test-content".length
+      expect(obj?.size).toBe(file.size);
       expect(obj?.httpMetadata).toHaveProperty("contentType", "image/jpeg");
     });
   });
 
   describe("deleteFromR2", () => {
     it("should delete file from R2 bucket", async () => {
-      const file = new File(["test-content"], "test.jpg", { type: "image/jpeg" });
+      const file = createImageFile("test-content", "test.jpg");
 
       const { key } = await uploadToR2(bucket, publicUrl, {
         folder: "test",
@@ -210,7 +164,7 @@ describe("the media routes", () => {
       expect(data.id).toBeDefined();
       expect(data.name).toBe("test-image.jpg");
       expect(data.url).toMatch(
-        /^https:\/\/media\.example\.com\/medias\/test-folder\/[a-f0-9-]+-test-image\.jpg$/,
+        /^https:\/\/media\.example\.com\/medias\/test-folder\/[a-f0-9-]{36}\.jpg$/,
       );
       expect(data.key).toBeDefined();
 
@@ -238,17 +192,51 @@ describe("the media routes", () => {
       expect(data?.url).toMatch(/\/uploads\//);
     });
 
-    it("should percent-encode the public url and keep the stored key as is", async () => {
+    it("should keep the client filename out of the key and the url, and in the record", async () => {
       const file = createImageFile("test-content", "é #1 100%?.jpg");
 
       const { data, error } = await api.v1.media.post({ file, folder: "test-folder" });
 
       expect(error).toBeNull();
-      expect(data?.key).toMatch(/^medias\/test-folder\/[a-f0-9-]+-é #1 100%\?\.jpg$/);
-      expect(data?.url).toMatch(
-        /^https:\/\/media\.example\.com\/medias\/test-folder\/[a-f0-9-]+-%C3%A9%20%231%20100%25%3F\.jpg$/,
+      if (!data) throw new Error("Expected uploaded media");
+      expect(data.name).toBe("é #1 100%?.jpg");
+      expect(data.key).toMatch(/^medias\/test-folder\/[a-f0-9-]{36}\.jpg$/);
+      expect(data.url).toBe(`${TEST_PUBLIC_URL}/${data.key}`);
+      expect(extractKeyFromUrl(data.url, TEST_PUBLIC_URL)).toBe(data.key);
+      const [row] = await test.db.select().from(medias).where(eq(medias.id, data.id));
+      expect(row?.name).toBe("é #1 100%?.jpg");
+    });
+
+    it("should store a real PNG uploaded as image/png with its detected type and a random .png key", async () => {
+      const { data, error } = await api.v1.media.post({ file: createPngFile("holiday photo.png") });
+
+      expect(error).toBeNull();
+      if (!data) throw new Error("Expected uploaded media");
+      expect(data.key).toMatch(/^medias\/[^/]+\/[0-9a-f-]{36}\.png$/);
+      const [row] = await test.db.select().from(medias).where(eq(medias.id, data.id));
+      expect(row?.mimeType).toBe("image/png");
+      expect((await bucket.head(data.key))?.httpMetadata).toHaveProperty(
+        "contentType",
+        "image/png",
       );
-      expect(extractKeyFromUrl(data?.url ?? "", TEST_PUBLIC_URL)).toBe(data?.key ?? "");
+    });
+
+    it("should refuse a real PNG uploaded as image/jpeg with 400, and store nothing", async () => {
+      const { error } = await api.v1.media.post({ file: createPngFile("photo.jpg", "image/jpeg") });
+
+      expect(statusOf(error)).toBe(400);
+      expect((await bucket.list()).objects).toEqual([]);
+      expect(await test.db.select().from(medias)).toEqual([]);
+    });
+
+    it("should refuse a text file declared image/png with 400, and store nothing", async () => {
+      const file = new File(["not an image"], "fake.png", { type: "image/png" });
+
+      const { error } = await api.v1.media.post({ file });
+
+      expect(statusOf(error)).toBe(400);
+      expect((await bucket.list()).objects).toEqual([]);
+      expect(await test.db.select().from(medias)).toEqual([]);
     });
 
     it("should reject a folder that is not a valid key path and store nothing", async () => {
@@ -273,6 +261,36 @@ describe("the media routes", () => {
       expect(await withoutBucket.db.select().from(medias)).toEqual([]);
     });
 
+    it("should answer 403 to a user who is not a member of the organization, and write no row nor object", async () => {
+      const outsider = await test.signUp("outsider@example.com");
+
+      const { error } = await test.client(outsider.cookie).v1.media.post({
+        file: createImageFile("test-content", "test.jpg"),
+        organizationId: orgId,
+      });
+
+      expect(statusOf(error)).toBe(403);
+      expect((await bucket.list()).objects).toEqual([]);
+      expect(await test.db.select().from(medias)).toEqual([]);
+    });
+
+    it("should let a plain member of the organization upload to it", async () => {
+      const member = await test.signUp("member@example.com");
+      await test.addMember(orgId, member.userId, "member");
+
+      const { data, error } = await test.client(member.cookie).v1.media.post({
+        file: createImageFile("test-content", "test.jpg"),
+        organizationId: orgId,
+      });
+
+      expect(error).toBeNull();
+      const [row] = await test.db
+        .select()
+        .from(medias)
+        .where(eq(medias.id, data?.id ?? ""));
+      expect(row).toMatchObject({ authorId: member.userId, organizationId: orgId });
+    });
+
     it("should answer 401 without a session, and store nothing", async () => {
       const { error } = await test
         .client()
@@ -280,6 +298,113 @@ describe("the media routes", () => {
 
       expect(statusOf(error)).toBe(401);
       expect((await bucket.list()).objects).toEqual([]);
+      expect(await test.db.select().from(medias)).toEqual([]);
+    });
+  });
+
+  describe("private media", () => {
+    /** The api's own address for a url the module hands out: the test serves files under TEST_PUBLIC_URL. */
+    const onApi = (url: string) => url.replace(TEST_PUBLIC_URL, "http://api.test/v1/media/file");
+
+    async function uploadPrivate() {
+      const file = createPngFile("contract.png");
+      const { data, error } = await api.v1.media.post({
+        file,
+        visibility: "private",
+        organizationId: orgId,
+      });
+      expect(error).toBeNull();
+      if (!data) throw new Error("Expected uploaded media");
+      return { file, uploaded: data };
+    }
+
+    it("stores the visibility, and is not served with no signature", async () => {
+      const { uploaded } = await uploadPrivate();
+
+      const [row] = await test.db.select().from(medias).where(eq(medias.id, uploaded.id));
+      const response = await test.app.handle(
+        new Request(`http://api.test/v1/media/file/${uploaded.key}`),
+      );
+
+      expect(row?.visibility).toBe("private");
+      expect(response.status).toBe(404);
+    });
+
+    it("answers 404 to an expired signature, one for another key, and a forged one", async () => {
+      const { uploaded } = await uploadPrivate();
+      const { uploaded: other } = await uploadPrivate();
+      const url = `${TEST_PUBLIC_URL}/${uploaded.key}`;
+      const expired = await signMediaUrl({
+        secret: TEST_SECRET,
+        key: uploaded.key,
+        url,
+        now: Date.now() - 16 * 60 * 1000,
+      });
+      const forOther = await signMediaUrl({
+        secret: TEST_SECRET,
+        key: other.key,
+        url,
+      });
+      const forged = `${url}?expires=${Math.floor(Date.now() / 1000) + 600}&signature=${"0".repeat(64)}`;
+
+      for (const signed of [expired, forOther, forged]) {
+        const response = await test.app.handle(new Request(onApi(signed)));
+        expect(response.status).toBe(404);
+      }
+    });
+
+    it("hands out, on GET /v1/media/:id, a fresh signed url that serves the file with a private cache", async () => {
+      const { file, uploaded } = await uploadPrivate();
+
+      const { data, error } = await api.v1.media({ id: uploaded.id }).get();
+      if (!data || !("url" in data)) throw new Error("Expected the media");
+      const response = await test.app.handle(new Request(onApi(data.url)));
+
+      expect(error).toBeNull();
+      expect(data.url).toMatch(
+        new RegExp(`^${TEST_PUBLIC_URL}/${uploaded.key}\\?expires=\\d+&signature=[0-9a-f]{64}$`),
+      );
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toMatch(/^private, max-age=(?:899|900)$/);
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(response.headers.get("content-type")).toContain("image/png");
+      expect(new Uint8Array(await response.arrayBuffer())).toEqual(
+        new Uint8Array(await file.arrayBuffer()),
+      );
+    });
+
+    it("stores the url with no signature in it", async () => {
+      const { uploaded } = await uploadPrivate();
+
+      const [row] = await test.db.select().from(medias).where(eq(medias.id, uploaded.id));
+
+      expect(row?.url).toBe(`${TEST_PUBLIC_URL}/${uploaded.key}`);
+    });
+
+    it("keeps a media with no visibility public: served with no signature, with its stored url", async () => {
+      const { data: uploaded } = await api.v1.media.post({ file: createPngFile("a.png") });
+      if (!uploaded) throw new Error("Expected uploaded media");
+
+      const [row] = await test.db.select().from(medias).where(eq(medias.id, uploaded.id));
+      const { data } = await api.v1.media({ id: uploaded.id }).get();
+      const response = await test.app.handle(
+        new Request(`http://api.test/v1/media/file/${uploaded.key}`),
+      );
+
+      expect(row?.visibility).toBe("public");
+      expect(data).toMatchObject({ url: uploaded.url });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("public, max-age=31536000");
+    });
+
+    it("refuses a visibility that is neither public nor private", async () => {
+      const { error } = await api.v1.media.post({
+        file: createPngFile("a.png"),
+        // The contract types the literal; the point is what a client that ignores it gets.
+        visibility: "secret" as "private",
+      });
+
+      expect(statusOf(error)).toBe(422);
       expect(await test.db.select().from(medias)).toEqual([]);
     });
   });
@@ -297,9 +422,7 @@ describe("the media routes", () => {
       expect(await bucket.head(uploadData.key)).not.toBeNull();
 
       // Delete it
-      const { data, error } = await api.v1.media({ id: uploadData.id }).delete({
-        organizationId: orgId,
-      });
+      const { data, error } = await api.v1.media({ id: uploadData.id }).delete();
 
       expect(error).toBeNull();
       expect(data).toEqual({ success: true, id: uploadData.id });
@@ -310,6 +433,45 @@ describe("the media routes", () => {
       // Verify it's removed from database
       const mediaRecord = await test.db.select().from(medias).where(eq(medias.id, uploadData.id));
       expect(mediaRecord.length).toBe(0);
+    });
+
+    describe("a media that another table points at", () => {
+      /** A signed-in user's PNG, and the routes over a database that also has the `attachments` table. */
+      async function uploadWithReferrer() {
+        const withTable = await createTestStorage(bucket, { attachments });
+        const owner = await withTable.signUp("owner@example.com");
+        const client = withTable.client(owner.cookie);
+        const { data: uploaded } = await client.v1.media.post({ file: createPngFile("photo.png") });
+        if (!uploaded) throw new Error("Expected uploaded media");
+        return { withTable, client, uploaded };
+      }
+
+      it("answers 409 MEDIA_IN_USE and keeps the row and the file while a row points at it", async () => {
+        const { withTable, client, uploaded } = await uploadWithReferrer();
+        await withTable.db.insert(attachments).values({ id: "attachment-1", mediaId: uploaded.id });
+
+        const { data, error } = await client.v1.media({ id: uploaded.id }).delete();
+
+        expect(data).toBeNull();
+        expect(statusOf(error)).toBe(409);
+        expect(error?.value).toMatchObject({ code: "MEDIA_IN_USE" });
+        expect(
+          await withTable.db.select().from(medias).where(eq(medias.id, uploaded.id)),
+        ).toHaveLength(1);
+        expect(await bucket.head(uploaded.key)).not.toBeNull();
+      });
+
+      it("deletes the row and the file once nothing points at it", async () => {
+        const { withTable, client, uploaded } = await uploadWithReferrer();
+
+        const { error } = await client.v1.media({ id: uploaded.id }).delete();
+
+        expect(error).toBeNull();
+        expect(await withTable.db.select().from(medias).where(eq(medias.id, uploaded.id))).toEqual(
+          [],
+        );
+        expect(await bucket.head(uploaded.key)).toBeNull();
+      });
     });
 
     it("should return 404 for non-existent media", async () => {
@@ -330,14 +492,29 @@ describe("the media routes", () => {
       const other = await test.signUp("user-2@example.com");
       await test.addOrganization("org-2", other.userId, "owner");
 
-      // user-2 tries to delete with their own org (org-2), but media belongs to org-1
-      const { error } = await test
-        .client(other.cookie)
-        .v1.media({ id: uploadData.id })
-        .delete({ organizationId: "org-2" });
+      // user-2 belongs to org-2 only, and the media belongs to org-1
+      const { error } = await test.client(other.cookie).v1.media({ id: uploadData.id }).delete();
 
       expect(statusOf(error)).toBe(403);
       expect(await bucket.head(uploadData.key)).not.toBeNull();
+    });
+
+    it("should return 403 to a plain member who is not the author, and keep the object", async () => {
+      const { data: uploadData } = await api.v1.media.post({
+        file: createImageFile("test-content", "test.jpg"),
+        organizationId: orgId,
+      });
+      if (!uploadData) throw new Error("Expected uploaded media");
+      const member = await test.signUp("member@example.com");
+      await test.addMember(orgId, member.userId, "member");
+
+      const { error } = await test.client(member.cookie).v1.media({ id: uploadData.id }).delete();
+
+      expect(statusOf(error)).toBe(403);
+      expect(await bucket.head(uploadData.key)).not.toBeNull();
+      expect(await test.db.select().from(medias).where(eq(medias.id, uploadData.id))).toHaveLength(
+        1,
+      );
     });
 
     it("should let an admin of the organization delete a member's media", async () => {
@@ -349,10 +526,7 @@ describe("the media routes", () => {
       const admin = await test.signUp("admin@example.com");
       await test.addMember(orgId, admin.userId, "admin");
 
-      const { error } = await test
-        .client(admin.cookie)
-        .v1.media({ id: uploadData.id })
-        .delete({ organizationId: orgId });
+      const { error } = await test.client(admin.cookie).v1.media({ id: uploadData.id }).delete();
 
       expect(error).toBeNull();
       expect(await bucket.head(uploadData.key)).toBeNull();
@@ -389,6 +563,41 @@ describe("the media routes", () => {
       });
     });
 
+    it("should return it to a member of the media's organization, whatever the role", async () => {
+      const { data: uploadData } = await api.v1.media.post({
+        file: createImageFile("test", "test.jpg"),
+        organizationId: orgId,
+      });
+      if (!uploadData) throw new Error("Expected uploaded media");
+      const member = await test.signUp("member@example.com");
+      await test.addMember(orgId, member.userId, "member");
+
+      const { data, error } = await test
+        .client(member.cookie)
+        .v1.media({ id: uploadData.id })
+        .get();
+
+      expect(error).toBeNull();
+      expect(data).toMatchObject({ id: uploadData.id });
+    });
+
+    it("should answer 404 to a user who shares no organization with the author, for a media of an organization or of none", async () => {
+      const { data: inOrg } = await api.v1.media.post({
+        file: createImageFile("test", "test.jpg"),
+        organizationId: orgId,
+      });
+      const { data: alone } = await api.v1.media.post({
+        file: createImageFile("test", "alone.jpg"),
+      });
+      if (!inOrg || !alone) throw new Error("Expected uploaded media");
+      const other = await test.signUp("user-2@example.com");
+      await test.addOrganization("org-2", other.userId, "owner");
+      const otherApi = test.client(other.cookie);
+
+      expect(statusOf((await otherApi.v1.media({ id: inOrg.id }).get()).error)).toBe(404);
+      expect(statusOf((await otherApi.v1.media({ id: alone.id }).get()).error)).toBe(404);
+    });
+
     it("should return 404 for non-existent media", async () => {
       const { error } = await api.v1.media({ id: "non-existent-id" }).get();
 
@@ -396,16 +605,22 @@ describe("the media routes", () => {
     });
   });
 
-  describe("validation", () => {
-    it("should reject invalid file types at Elysia validation level", async () => {
-      const file = new File(["test-content"], "test.txt", { type: "text/plain" });
+  describe("GET /v1/media/file/*", () => {
+    it("should serve the file with X-Content-Type-Options: nosniff", async () => {
+      const { data } = await api.v1.media.post({ file: createPngFile("a.png") });
+      if (!data) throw new Error("Expected uploaded media");
 
-      const { error } = await api.v1.media.post({ file });
+      const response = await test.app.handle(
+        new Request(`http://api.test/v1/media/file/${data.key}`),
+      );
 
-      expect(statusOf(error)).toBe(422);
-      expect((await bucket.list()).objects).toEqual([]);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(response.headers.get("content-type")).toBe("image/png");
     });
+  });
 
+  describe("validation", () => {
     it("should reject files too large at Elysia validation level", async () => {
       const largeContent = new Uint8Array(11 * 1024 * 1024);
       const file = new File([largeContent], "large.jpg", { type: "image/jpeg" });
@@ -423,19 +638,19 @@ describe("R2 Integration - Full Flow", () => {
     const publicUrl = "https://media.example.com";
 
     // Upload
-    const file = new File(["image-data-here"], "my-photo.png", { type: "image/png" });
+    const file = createPngFile("my-photo.png");
     const { key, url } = await uploadToR2(bucket, publicUrl, {
       folder: "nodes/node-123",
       file,
     });
 
     expect(url).toContain("/medias/nodes/node-123/");
-    expect(url).toContain("-my-photo.png");
+    expect(url).toMatch(/\/[a-f0-9-]{36}\.png$/);
 
     // Verify upload
     const uploaded = await bucket.get(key);
     expect(uploaded).not.toBeNull();
-    expect(uploaded?.size).toBe(15); // "image-data-here".length
+    expect(uploaded?.size).toBe(file.size);
     expect(uploaded?.httpMetadata).toHaveProperty("contentType", "image/png");
 
     // List objects
@@ -454,9 +669,9 @@ describe("R2 Integration - Full Flow", () => {
     const publicUrl = "https://media.example.com";
 
     const files = [
-      new File(["content1"], "file1.jpg", { type: "image/jpeg" }),
-      new File(["content2"], "file2.png", { type: "image/png" }),
-      new File(["content3"], "file3.gif", { type: "image/gif" }),
+      createImageFile("content1", "file1.jpg"),
+      createPngFile("file2.png"),
+      new File([new TextEncoder().encode("GIF89a content3")], "file3.gif", { type: "image/gif" }),
     ];
 
     const keys: string[] = [];

@@ -38,9 +38,23 @@ describe("resolveRuntimeStorage", () => {
     expect(context.publicUrl).toBe("http://localhost:5172/v1/media/file");
   });
 
+  it("signs private urls with the BETTER_AUTH_SECRET auth owns", async () => {
+    const { secret } = await withEnv(
+      { BETTER_AUTH_SECRET: "the-project-auth-secret" },
+      resolveRuntimeStorage,
+    );
+
+    expect(secret).toBe("the-project-auth-secret");
+  });
+
   it("serves its files under the origin the API was given in development, with no public url to set", async () => {
     const context = await withEnv(
-      { NODE_ENV: "development", R2_PUBLIC_URL: undefined, API_URL: "https://api.acme.localhost" },
+      {
+        NODE_ENV: "development",
+        BETTER_AUTH_SECRET: "dev-secret",
+        R2_PUBLIC_URL: undefined,
+        API_URL: "https://api.acme.localhost",
+      },
       resolveRuntimeStorage,
     );
 
@@ -51,6 +65,7 @@ describe("resolveRuntimeStorage", () => {
     const context = await withEnv(
       {
         NODE_ENV: "development",
+        BETTER_AUTH_SECRET: "dev-secret",
         R2_PUBLIC_URL: "https://media.acme.com",
         API_URL: "https://api.acme.localhost",
       },

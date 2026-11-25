@@ -5,7 +5,7 @@
  */
 import type { MediaBucket } from "./bucket";
 
-const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -19,6 +19,8 @@ export interface UploadOptions {
 export interface UploadResult {
   key: string;
   url: string;
+  /** The type read from the file's bytes, not the one the client declared. */
+  mimeType: AllowedImageType;
 }
 
 export interface DeleteResult {
@@ -45,20 +47,55 @@ export class R2Error extends Error {
   }
 }
 
-export function validateFile(file: File): void {
-  if (!ALLOWED_IMAGE_TYPES.includes(file.type as AllowedImageType)) {
-    throw new R2Error(
-      `Invalid file type: ${file.type}. Allowed types: ${ALLOWED_IMAGE_TYPES.join(", ")}`,
-      "INVALID_FILE_TYPE",
-    );
-  }
+const IMAGE_EXTENSIONS: Record<AllowedImageType, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/gif": "gif",
+  "image/webp": "webp",
+};
 
+/** Enough bytes to tell every type apart: `RIFF....WEBP` is the longest signature. */
+const SIGNATURE_LENGTH = 12;
+
+const hasBytes = (bytes: Uint8Array, offset: number, expected: readonly number[]) =>
+  expected.every((byte, index) => bytes[offset + index] === byte);
+
+const ascii = (text: string) => [...text].map((char) => char.charCodeAt(0));
+
+/** The image type the first bytes say, or `null`: hand-written signatures, so the same code runs on Workers and Node. */
+export function detectImageType(bytes: Uint8Array): AllowedImageType | null {
+  if (hasBytes(bytes, 0, [0xff, 0xd8, 0xff])) return "image/jpeg";
+  if (hasBytes(bytes, 0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "image/png";
+  if (hasBytes(bytes, 0, ascii("GIF87a")) || hasBytes(bytes, 0, ascii("GIF89a"))) {
+    return "image/gif";
+  }
+  if (hasBytes(bytes, 0, ascii("RIFF")) && hasBytes(bytes, 8, ascii("WEBP"))) return "image/webp";
+  return null;
+}
+
+/**
+ * Checks the size, then the content: the type read from the file's bytes must be an allowed image
+ * and the one the client declared. Returns the detected type, the only one that is stored.
+ */
+export async function validateFile(file: File): Promise<AllowedImageType> {
   if (file.size > MAX_FILE_SIZE) {
     throw new R2Error(
       `File too large: ${file.size} bytes. Maximum size: ${MAX_FILE_SIZE / 1024 / 1024}MB`,
       "FILE_TOO_LARGE",
     );
   }
+
+  const detected = detectImageType(
+    new Uint8Array(await file.slice(0, SIGNATURE_LENGTH).arrayBuffer()),
+  );
+  if (!detected || detected !== file.type) {
+    throw new R2Error(
+      `Invalid file type: the content is ${detected ?? "not an allowed image"}, the file says ${file.type || "nothing"}. Allowed types: ${ALLOWED_IMAGE_TYPES.join(", ")}`,
+      "INVALID_FILE_TYPE",
+    );
+  }
+
+  return detected;
 }
 
 /**
@@ -76,19 +113,11 @@ export function validateKey(key: string): void {
   }
 }
 
-export function generateKey(folder: string, filename: string): string {
+/** `medias/<folder>/<uuid>.<ext>`: the client's filename is not in the key, it stays in `medias.name`. */
+export function generateKey(folder: string, type: AllowedImageType): string {
   const sanitizedFolder = folder.replace(/^\/+|\/+$/g, "");
-  const uuid = crypto.randomUUID();
-
-  // Sanitize filename: remove path separators and prevent directory traversal
-  // Keep Unicode letters, numbers, and safe special characters
-  const sanitizedFilename = filename
-    .replace(/[/\\]/g, "_") // Path separators
-    .replace(/\.{2,}/g, "_") // Directory traversal attempts
-    .replace(/[\0-\x1F\x7F]/g, ""); // eslint-disable-line no-control-regex
-
-  const key = `medias/${sanitizedFolder}/${uuid}-${sanitizedFilename}`;
-  // The filename is sanitized above; only the caller-supplied folder can still be invalid.
+  const key = `medias/${sanitizedFolder}/${crypto.randomUUID()}.${IMAGE_EXTENSIONS[type]}`;
+  // Only the caller-supplied folder can still be invalid.
   validateKey(key);
   return key;
 }
@@ -119,9 +148,9 @@ export async function uploadFile(
   publicUrl: string,
   options: UploadOptions,
 ): Promise<UploadResult> {
-  validateFile(options.file);
+  const mimeType = await validateFile(options.file);
 
-  const key = generateKey(options.folder, options.file.name);
+  const key = generateKey(options.folder, mimeType);
   const bytes = new Uint8Array(await options.file.arrayBuffer());
 
   try {
@@ -135,7 +164,7 @@ export async function uploadFile(
     );
   }
 
-  return { key, url: publicUrlFor(publicUrl, key) };
+  return { key, url: publicUrlFor(publicUrl, key), mimeType };
 }
 
 export async function deleteFile(bucket: MediaBucket, key: string): Promise<DeleteResult> {
