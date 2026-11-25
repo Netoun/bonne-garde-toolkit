@@ -1,7 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Route, Routes, useLocation } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { authClient } from "@acme/spa/features/auth/lib/auth";
 import {
   organizationInvitationHandlers,
@@ -22,7 +22,13 @@ function LocationProbe() {
   );
 }
 
+// Better Auth's session store unmounts 1s after its last listener leaves and then touches
+// `window`; outlast it so that timer fires while jsdom is still alive.
+const SESSION_STORE_UNMOUNT_DELAY_MS = 1100;
+
 describe("OrganizationInvitationPage", () => {
+  afterAll(() => new Promise((resolve) => setTimeout(resolve, SESSION_STORE_UNMOUNT_DELAY_MS)));
+
   afterEach(async () => {
     server.use(...organizationInvitationHandlers({ sessionEmail: "reset@example.com" }));
     await authClient.signOut();
@@ -109,23 +115,22 @@ describe("OrganizationInvitationPage", () => {
     expect(
       await screen.findByText(/this invitation has expired or could not be found/i),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/already a member/i)).not.toBeInTheDocument();
   });
 
-  it("shows already a member when the invitee belongs to the organization", async () => {
+  it("tells a not-found invitee they may already be a member and links to their organizations", async () => {
     server.use(
       ...organizationInvitationHandlers({
         sessionEmail: "invitee@example.com",
-        memberOfInvitedOrganization: true,
+        getInvitationMode: "not-found",
       }),
     );
 
     renderInvitationPage();
 
-    expect(await screen.findByText("Already a member")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /view organization/i })).toHaveAttribute(
+    expect(await screen.findByText(/you may already be a member/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /your organizations/i })).toHaveAttribute(
       "href",
-      "/organizations/acme/members",
+      "/organizations",
     );
   });
 

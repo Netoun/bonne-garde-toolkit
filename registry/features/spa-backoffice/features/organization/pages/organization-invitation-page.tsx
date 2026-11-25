@@ -12,7 +12,6 @@ import {
   classifyInvitationLoadError,
   useAcceptOrganizationInvitation,
   useOrganizationInvitation,
-  useOrganizations,
   useRejectOrganizationInvitation,
 } from "../hooks/use-organization";
 import type { Route } from "./+types/organization-invitation-page";
@@ -39,19 +38,11 @@ export default function OrganizationInvitationPage({ params }: Route.ComponentPr
   const { data: sessionData, isPending: sessionPending } = useSession();
   const invitationId = params.invitationId;
   const { data: invitation, error, isPending, isError } = useOrganizationInvitation(invitationId);
-  const { data: organizations, isPending: organizationsPending } = useOrganizations({
-    enabled: !!sessionData,
-  });
   const acceptInvitation = useAcceptOrganizationInvitation();
   const rejectInvitation = useRejectOrganizationInvitation();
   const [actionError, setActionError] = useState<string | null>(null);
 
   const loadErrorKind = isError ? classifyInvitationLoadError(error) : null;
-
-  const memberOfInvitedOrganization =
-    invitation && organizations
-      ? organizations.find((org) => org.id === invitation.organizationId)
-      : undefined;
 
   const handleAccept = useCallback(async () => {
     if (!invitation) return;
@@ -78,7 +69,7 @@ export default function OrganizationInvitationPage({ params }: Route.ComponentPr
     }
   }, [invitationId, navigate, rejectInvitation]);
 
-  if (sessionPending || (sessionData && (isPending || organizationsPending))) {
+  if (sessionPending || (sessionData && isPending)) {
     return (
       <InvitationPageShell>
         <p className="text-muted-foreground text-sm">Loading invitation...</p>
@@ -123,8 +114,12 @@ export default function OrganizationInvitationPage({ params }: Route.ComponentPr
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground space-y-3">
             <p>This invitation has expired or could not be found.</p>
+            <p>If you were just invited, you may already be a member.</p>
           </CardContent>
           <CardFooter className="flex flex-col gap-2">
+            <Button asChild className="w-full">
+              <Link to="/organizations">View your organizations</Link>
+            </Button>
             <Button asChild variant="outline" className="w-full">
               <Link to="/dashboard">Go to dashboard</Link>
             </Button>
@@ -136,34 +131,6 @@ export default function OrganizationInvitationPage({ params }: Route.ComponentPr
 
   if (!invitation) {
     return null;
-  }
-
-  if (memberOfInvitedOrganization) {
-    return (
-      <InvitationPageShell>
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Already a member</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground space-y-2">
-            <p>
-              You are already a member of{" "}
-              <span className="font-medium text-foreground">
-                {memberOfInvitedOrganization.name}
-              </span>
-              .
-            </p>
-          </CardContent>
-          <CardFooter>
-            <Button asChild className="w-full">
-              <Link to={`/organizations/${memberOfInvitedOrganization.slug}/members`}>
-                View organization
-              </Link>
-            </Button>
-          </CardFooter>
-        </Card>
-      </InvitationPageShell>
-    );
   }
 
   return (
