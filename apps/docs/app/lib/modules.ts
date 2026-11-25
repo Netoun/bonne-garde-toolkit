@@ -21,6 +21,7 @@ export const CATEGORY_HOME = {
   realtime: "package packages/realtime",
   payments: "package packages/payments",
   observability: "package packages/observability",
+  launch: "package packages/launch",
   web: "app apps/<id>",
   testing: "app",
   deploy: "repo",

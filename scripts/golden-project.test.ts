@@ -264,6 +264,7 @@ describe("the golden project", () => {
             "storage/fs",
             "realtime/rooms",
             "observability/sentry",
+            "launch/waitlist",
           ].includes(name),
       ),
     );
@@ -418,6 +419,7 @@ describe("the golden project and modules", () => {
       "provider/dockerfile",
       "db/libsql",
       "storage/fs",
+      "launch/waitlist",
       "db/postgres",
     ]);
   });
@@ -898,6 +900,13 @@ describe("the golden project and patches", () => {
           "imports[@app/observability]",
           "scripts.test",
           "scripts.typecheck",
+        ],
+        "launch/waitlist": [
+          "dependencies.@app/launch",
+          "dependencies.@app/launch",
+          "elysia[app].use[launchModule]",
+          "exports[@app/launch/schema]",
+          "imports[@app/launch]",
         ],
         "email/resend": ["dependencies.@app/email", 'exports."./transport"'],
         "web/spa": ["scripts.dev"],
@@ -2518,7 +2527,11 @@ describe("the storage phases", () => {
   });
 
   test("the migration has to create the table golden adds and the medias table", () => {
-    expect(MODULE_TABLES).toEqual({ "storage/r2": ["medias"], "storage/fs": ["medias"] });
+    expect(MODULE_TABLES).toEqual({
+      "storage/r2": ["medias"],
+      "storage/fs": ["medias"],
+      "launch/waitlist": ["waitlist_entry", "waitlist_join"],
+    });
     expect(expectedTables({ name: "a", modules: ["orm/drizzle"], items: false })).toEqual([
       GOLDEN_TABLE,
     ]);

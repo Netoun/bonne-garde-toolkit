@@ -265,6 +265,7 @@ describe("the category table", () => {
     expect(categoryCardinality("provider")).toBe("one");
     expect(categoryCardinality("config")).toBe("one");
     expect(categoryCardinality("observability")).toBe("one");
+    expect(categoryCardinality("launch")).toBe("one");
     expect(categoryCardinality("api")).toBe("one");
     expect(categoryCardinality("web")).toBe("many");
     expect(categoryCardinality("deploy")).toBe("many");
@@ -288,11 +289,18 @@ describe("the category table", () => {
       "realtime",
       "payments",
       "observability",
+      "launch",
       "web",
       "testing",
       "deploy",
       "dev",
     ]);
+  });
+
+  it("puts launch after auth, the module it peers on, and before the fronts", () => {
+    const order = [...MODULE_CATEGORIES];
+    expect(order.indexOf("launch")).toBeGreaterThan(order.indexOf("auth"));
+    expect(order.indexOf("launch")).toBeLessThan(order.indexOf("web"));
   });
 
   it("is the same list project.schema.json allows as a key of `modules`", async () => {
