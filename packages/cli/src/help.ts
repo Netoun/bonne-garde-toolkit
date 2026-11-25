@@ -14,10 +14,11 @@ const HELP: Record<string, string> = {
   add: `  bonne-garde add <name...> [--dry-run] [--force] [--no-install] [--yes] [--json] [--source <source>]
       <name> is an item, a module id, or <category>/<id> (provider/cloudflare); prints a summary
       on a terminal, and JSON to a pipe, to an agent, or with --json`,
-  list: `  bonne-garde list [--items | --category <category>] [--source <source>]
-      with no flag: the items, then the modules as <category>/<id>; --items is the items alone`,
-  search: "  bonne-garde search <query> [--source <source>]",
-  view: "  bonne-garde view <item> [--source <source>]",
+  list: `  bonne-garde list [--items | --category <category>] [--json] [--source <source>]
+      with no flag: the items, then the modules as <category>/<id>; --items is the items alone;
+      a terminal gets them grouped, a pipe or --json gets name<TAB>type<TAB>description`,
+  search: "  bonne-garde search <query> [--json] [--source <source>]",
+  view: "  bonne-garde view <item> [--json] [--source <source>]",
   doctor: "  bonne-garde doctor [--json] [--strict]",
   record: '  bonne-garde record <intention-id> [--skip "<reason>"]',
   intentions: `  bonne-garde intentions lint [--dir <migrations-dir>] [--registry <registry-dir>]

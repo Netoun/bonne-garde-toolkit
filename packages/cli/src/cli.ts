@@ -1,10 +1,11 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { styleText } from "node:util";
-import { ApplyError } from "@bonne-garde/registry";
-import { type IntentionOutcome } from "@bonne-garde/schema";
-import { addItems, searchItems, viewItem } from "./add";
+import { ApplyError, searchCatalog } from "@bonne-garde/registry";
+import { cliRunner, type IntentionOutcome } from "@bonne-garde/schema";
+import { addItems, openCatalog, pickItem } from "./add";
 import { takeFlag, takeOption } from "./args";
+import { readInstalled, renderCatalog, renderItem, renderNoMatch } from "./catalog-view";
 import { createCommand } from "./create-command";
 import { doctorExitCode, formatDoctor, renderDoctor, runDoctor } from "./doctor";
 import { CliError, clackErrorText, errorText, notAProject, unknownName } from "./errors";
@@ -12,7 +13,7 @@ import { addNamingCommand } from "./force-command";
 import { COMMANDS, commandHelp, flagsOf, usage } from "./help";
 import { lintIntentions } from "./intentions/lint";
 import { lintModuleIntentions } from "./intentions/lint-modules";
-import { listRegistry } from "./list";
+import { listCatalog, listRegistry } from "./list";
 import { missingPackageManager, packageManagerOf } from "./package-manager";
 import { cliVersion, migrationsDir, registryDir } from "./paths";
 import { recordIntentionOutcome } from "./record";
@@ -68,9 +69,27 @@ async function dispatch(argv: string[]): Promise<number> {
     const itemsOnly = takeFlag(args, "--items");
     const category = takeOption(args, "--category");
     const source = takeOption(args, "--source");
+    const json = takeFlag(args, "--json") || process.stdout.isTTY !== true;
     // A flag it did not recognise must fail: `list --itmes` would print the modules it meant to leave out.
     refuseLeftovers("list", args);
-    const { lines, notes } = await listRegistry(process.cwd(), { itemsOnly, category, source });
+    const query = { itemsOnly, category, source };
+    if (!json) {
+      const { items, modules, notes } = await listCatalog(process.cwd(), query);
+      for (const note of notes) {
+        console.error(note);
+      }
+      console.log(
+        renderCatalog({
+          items,
+          modules,
+          ...(await readInstalled(process.cwd())),
+          width: process.stdout.columns || 80,
+          runner: cliRunner(),
+        }),
+      );
+      return 0;
+    }
+    const { lines, notes } = await listRegistry(process.cwd(), query);
     for (const note of notes) {
       console.error(note);
     }
@@ -83,12 +102,28 @@ async function dispatch(argv: string[]): Promise<number> {
   if (command === "search") {
     const args = [...rest];
     const source = takeOption(args, "--source");
+    const json = takeFlag(args, "--json") || process.stdout.isTTY !== true;
     refuseUnknownFlag("search", args);
     const query = args[0];
     if (!query) {
       throw new Error("search requires a query");
     }
-    const items = await searchItems(process.cwd(), query, source);
+    const catalog = await openCatalog(process.cwd(), source);
+    const items = searchCatalog(catalog, query);
+    if (!json) {
+      console.log(
+        items.length === 0
+          ? renderNoMatch(query)
+          : renderCatalog({
+              items,
+              modules: [],
+              ...(await readInstalled(process.cwd())),
+              width: process.stdout.columns || 80,
+              runner: cliRunner(),
+            }),
+      );
+      return 0;
+    }
     for (const item of items) {
       console.log(`${item.name}\t${item.type}\t${item.description ?? ""}`);
     }
@@ -98,13 +133,23 @@ async function dispatch(argv: string[]): Promise<number> {
   if (command === "view") {
     const args = [...rest];
     const source = takeOption(args, "--source");
+    const json = takeFlag(args, "--json") || process.stdout.isTTY !== true;
     refuseUnknownFlag("view", args);
     const name = args[0];
     if (!name) {
       throw new Error("view requires an item name");
     }
-    const item = await viewItem(process.cwd(), name, source);
-    console.log(JSON.stringify(item, null, 2));
+    const catalog = await openCatalog(process.cwd(), source);
+    const item = pickItem(catalog.items, name);
+    console.log(
+      json
+        ? JSON.stringify(item, null, 2)
+        : renderItem(item, {
+            rootDir: catalog.rootDir,
+            runner: cliRunner(),
+            installed: (await readInstalled(process.cwd())).installed.has(name),
+          }),
+    );
     return 0;
   }
 

@@ -1,4 +1,4 @@
-import type { GithubOptions, RegistryModule } from "@bonne-garde/registry";
+import type { GithubOptions, RegistryItem, RegistryModule } from "@bonne-garde/registry";
 import {
   cliRunner,
   isModuleCategory,
@@ -32,35 +32,26 @@ function inCategoryOrder(modules: RegistryModule[]): RegistryModule[] {
 }
 
 /**
- * What `bonne-garde list` prints: `name<TAB>type<TAB>description` for an item and
- * `<category>/<id><TAB>module<TAB>description` for a module, items first. `--items` is the items
- * alone, byte for byte what `list` printed before modules, because `scripts/golden-project.ts`
- * reads it. `notes` go to stderr.
+ * What `bonne-garde list` shows: the items, then the modules in category order. `--items` is the
+ * items alone, `--category` the modules of one category. `notes` go to stderr.
  */
-export async function listRegistry(
+export async function listCatalog(
   projectRoot: string,
   query: ListQuery,
   github?: GithubOptions,
-): Promise<{ lines: string[]; notes: string[] }> {
+): Promise<{ items: RegistryItem[]; modules: RegistryModule[]; rootDir: string; notes: string[] }> {
   if (query.itemsOnly && query.category !== undefined) {
     throw new Error("--items and --category cannot be combined: an item has no category");
   }
   const category = query.category === undefined ? undefined : parseCategory(query.category);
   const catalog = await openCatalog(projectRoot, query.source, github);
 
-  const lines: string[] = [];
-  if (category === undefined) {
-    for (const item of catalog.items) {
-      lines.push(`${item.name}\t${item.type}\t${item.description ?? ""}`);
-    }
-  }
-  if (!query.itemsOnly) {
-    for (const { manifest } of inCategoryOrder(catalog.modules)) {
-      if (category === undefined || manifest.category === category) {
-        lines.push(`${manifest.category}/${manifest.id}\tmodule\t${manifest.description}`);
-      }
-    }
-  }
+  const items = category === undefined ? catalog.items : [];
+  const modules = query.itemsOnly
+    ? []
+    : inCategoryOrder(catalog.modules).filter(
+        ({ manifest }) => category === undefined || manifest.category === category,
+      );
 
   const notes: string[] = [];
   if (!query.itemsOnly && catalog.reader !== undefined) {
@@ -68,5 +59,28 @@ export async function listRegistry(
       `bonne-garde: modules are not listed from ${catalog.reader.label}: raw HTTP has no directory listing. \`${cliRunner()} add <category>/<id>\` still installs one by name.`,
     );
   }
-  return { lines, notes };
+  return { items, modules, rootDir: catalog.rootDir, notes };
+}
+
+/**
+ * What a pipe gets: `name<TAB>type<TAB>description` for an item and
+ * `<category>/<id><TAB>module<TAB>description` for a module, items first. `--items` is the items
+ * alone, byte for byte what `list` printed before modules, because `scripts/golden-project.ts`
+ * reads it.
+ */
+export async function listRegistry(
+  projectRoot: string,
+  query: ListQuery,
+  github?: GithubOptions,
+): Promise<{ lines: string[]; notes: string[] }> {
+  const { items, modules, notes } = await listCatalog(projectRoot, query, github);
+  return {
+    lines: [
+      ...items.map((item) => `${item.name}\t${item.type}\t${item.description ?? ""}`),
+      ...modules.map(
+        ({ manifest }) => `${manifest.category}/${manifest.id}\tmodule\t${manifest.description}`,
+      ),
+    ],
+    notes,
+  };
 }

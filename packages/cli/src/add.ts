@@ -8,6 +8,7 @@ import {
   loadNamedModules,
   loadRegistryFromSource,
   readPlanFiles,
+  type RegistryItem,
   reselectedModules,
   resolveInstallPlan,
   resolveModulePlans,
@@ -76,7 +77,10 @@ export async function viewItem(
   source?: string,
   github?: GithubOptions,
 ) {
-  const items = await listItems(projectRoot, source, github);
+  return pickItem(await listItems(projectRoot, source, github), name);
+}
+
+export function pickItem(items: RegistryItem[], name: string): RegistryItem {
   const item = items.find((i) => i.name === name);
   if (!item) {
     throw new Error(`unknown item: ${name}`);
