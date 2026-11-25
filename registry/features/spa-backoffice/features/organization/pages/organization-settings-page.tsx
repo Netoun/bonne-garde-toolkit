@@ -11,16 +11,17 @@ import { Label } from "@acme/ui/components/label";
 // oxfmt-ignore
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@acme/ui/components/tabs";
 import { api } from "@acme/spa/lib/api";
+import { useSession } from "@acme/spa/features/auth/hooks/use-session";
 import { OrganizationForm } from "../components/organization-form";
 import { OrganizationMembersTable } from "../components/organization-members-table";
 import { OrganizationInviteMemberDialog } from "../components/organization-invite-member-dialog";
 import {
   useOrganization,
   useOrganizationMembers,
+  useOrganizationPermissions,
   useUpdateOrganization,
   useAddMember,
   useRemoveMember,
-  type OrganizationRole,
 } from "../hooks/use-organization";
 
 export default function OrganizationSettings({ params }: Route.ComponentProps) {
@@ -33,14 +34,12 @@ export default function OrganizationSettings({ params }: Route.ComponentProps) {
   const addMember = useAddMember();
   const removeMember = useRemoveMember();
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const { data: session } = useSession();
+  const currentUserId = session?.user.id ?? "";
+  const organizationId = organization?.id ?? "";
+  const { permissions, isLoading: permissionsLoading } = useOrganizationPermissions(organizationId);
 
-  // TODO: Get actual user from auth context
-  const user = { id: "", role: "member" as OrganizationRole };
-  const currentUserMember = members.find((m) => m.userId === user.id);
-  const canManageMembers =
-    currentUserMember?.role === "owner" || currentUserMember?.role === "admin";
-
-  if (isLoading) {
+  if (isLoading || permissionsLoading) {
     return (
       <div className="max-w-4xl mx-auto space-y-4">
         <div className="h-8 w-48 bg-muted animate-pulse rounded" />
@@ -136,6 +135,7 @@ export default function OrganizationSettings({ params }: Route.ComponentProps) {
             onSubmit={handleUpdate}
             submitLabel="Save changes"
             isEdit
+            readOnly={!permissions.canUpdateOrganization}
           />
         </TabsContent>
 
@@ -143,7 +143,9 @@ export default function OrganizationSettings({ params }: Route.ComponentProps) {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Members ({members.length})</CardTitle>
-              {canManageMembers && <OrganizationInviteMemberDialog onInvite={handleInvite} />}
+              {permissions.canCreateMember ? (
+                <OrganizationInviteMemberDialog onInvite={handleInvite} />
+              ) : null}
             </CardHeader>
             <CardContent>
               {membersLoading ? (
@@ -151,9 +153,9 @@ export default function OrganizationSettings({ params }: Route.ComponentProps) {
               ) : (
                 <OrganizationMembersTable
                   members={members}
-                  currentUserId={user.id}
+                  currentUserId={currentUserId}
                   onRemoveMember={handleRemoveMember}
-                  canRemove={canManageMembers}
+                  canRemove={permissions.canDeleteMember}
                 />
               )}
             </CardContent>
@@ -218,6 +220,7 @@ export default function OrganizationSettings({ params }: Route.ComponentProps) {
             onSubmit={handleUpdate}
             submitLabel="Save changes"
             isEdit
+            readOnly={!permissions.canUpdateOrganization}
           />
         </TabsContent>
       </Tabs>

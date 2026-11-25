@@ -120,6 +120,7 @@ export function OrganizationMembersTable({
             variant="ghost"
             size="icon"
             onClick={() => onRemoveMember(member.memberId)}
+            aria-label={`Remove member ${member.name}`}
             className="text-destructive hover:text-destructive"
           >
             <Trash2 className="h-4 w-4" />

@@ -65,7 +65,8 @@ export function OrganizationInviteMemberDialog({ onInvite }: OrganizationInviteM
           <DialogHeader>
             <DialogTitle>Invite a member</DialogTitle>
             <DialogDescription>
-              Invite an existing user to join your organization.
+              Invite someone by email. They do not need an account yet; they can sign up when they
+              accept.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">

@@ -13,6 +13,10 @@ import { ac, roles } from "@acme/auth/permissions";
 export const authClient = createAuthClient({
   baseURL: import.meta.env.VITE_API_URL,
   basePath: AUTH_BASE_PATH,
+  fetchOptions: {
+    // Resolve fetch at request time so Vitest + MSW can patch global fetch in setupFiles.
+    customFetchImpl: (...args) => globalThis.fetch(...args),
+  },
   plugins: [
     inferAdditionalFields<Auth>(),
     organizationClient({ ac, roles, schema: inferOrgAdditionalFields<Auth>() }),

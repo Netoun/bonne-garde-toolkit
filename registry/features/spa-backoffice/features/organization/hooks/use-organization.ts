@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { authClient } from "@acme/spa/features/auth/lib/auth";
 
 const QUERY_KEYS = {
   organizations: ["organizations"],
   organization: (slug: string) => ["organization", slug],
   members: (organizationId: string) => ["organization-members", organizationId],
+  memberRole: (organizationId: string) => ["organization-member-role", organizationId],
+  invitations: (organizationId: string) => ["organization-invitations", organizationId],
 };
 
 type OrganizationRole = "owner" | "admin" | "member";
@@ -40,6 +43,21 @@ interface OrganizationMember {
   name: string;
   email: string;
   image: string | null;
+}
+
+interface OrganizationInvitation {
+  id: string;
+  email: string;
+  role: OrganizationRole;
+  expiresAt: string;
+  status: string;
+}
+
+interface OrganizationPermissions {
+  canCreateMember: boolean;
+  canDeleteMember: boolean;
+  canUpdateOrganization: boolean;
+  canCancelInvitation: boolean;
 }
 
 interface BetterAuthMember {
@@ -94,6 +112,53 @@ function parseSettings(metadata: unknown): OrganizationSettings {
 
 function isRole(value: string): value is OrganizationRole {
   return value === "owner" || value === "admin" || value === "member";
+}
+
+function isInvitation(value: unknown): value is {
+  id: string;
+  email: string;
+  role: string;
+  expiresAt: string | Date;
+  status: string;
+} {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === "string" &&
+    typeof value.email === "string" &&
+    typeof value.role === "string" &&
+    typeof value.status === "string" &&
+    (typeof value.expiresAt === "string" || value.expiresAt instanceof Date)
+  );
+}
+
+function permissionsForRole(role: OrganizationRole | undefined): OrganizationPermissions {
+  if (!role) {
+    return {
+      canCreateMember: false,
+      canDeleteMember: false,
+      canUpdateOrganization: false,
+      canCancelInvitation: false,
+    };
+  }
+
+  return {
+    canCreateMember: authClient.organization.checkRolePermission({
+      role,
+      permissions: { member: ["create"] },
+    }),
+    canDeleteMember: authClient.organization.checkRolePermission({
+      role,
+      permissions: { member: ["delete"] },
+    }),
+    canUpdateOrganization: authClient.organization.checkRolePermission({
+      role,
+      permissions: { organization: ["update"] },
+    }),
+    canCancelInvitation: authClient.organization.checkRolePermission({
+      role,
+      permissions: { invitation: ["cancel"] },
+    }),
+  };
 }
 
 async function fetchOrganizations(): Promise<Organization[]> {
@@ -255,6 +320,9 @@ export function useAddMember() {
       queryClient.invalidateQueries({
         queryKey: QUERY_KEYS.members(variables.orgId),
       });
+      queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.invitations(variables.orgId),
+      });
     },
   });
 }
@@ -280,4 +348,91 @@ export function useRemoveMember() {
   });
 }
 
-export type { Organization, OrganizationDetail, OrganizationMember, OrganizationRole };
+async function fetchMemberRole(organizationId: string): Promise<OrganizationRole> {
+  const response = await authClient.organization.getActiveMemberRole({
+    query: { organizationId },
+  });
+  if (response.error) throw response.error;
+  const role = response.data?.role;
+  if (typeof role !== "string" || !isRole(role)) {
+    throw new Error("Could not resolve organization role");
+  }
+  return role;
+}
+
+export function useOrganizationMemberRole(organizationId: string) {
+  return useQuery({
+    queryKey: QUERY_KEYS.memberRole(organizationId),
+    queryFn: () => fetchMemberRole(organizationId),
+    enabled: !!organizationId,
+  });
+}
+
+export function useOrganizationPermissions(organizationId: string) {
+  const { data: role, isLoading, isError } = useOrganizationMemberRole(organizationId);
+  const permissions = useMemo(() => permissionsForRole(role), [role]);
+  return { role, permissions, isLoading, isError };
+}
+
+async function fetchInvitations(organizationId: string): Promise<OrganizationInvitation[]> {
+  const response = await authClient.organization.listInvitations({
+    query: { organizationId },
+  });
+  if (response.error) throw response.error;
+
+  const rows = Array.isArray(response.data) ? response.data : [];
+  return rows.filter(isInvitation).flatMap((row) => {
+    if (row.status !== "pending") return [];
+    return [
+      {
+        id: row.id,
+        email: row.email,
+        role: isRole(row.role) ? row.role : "member",
+        expiresAt: new Date(row.expiresAt).toISOString(),
+        status: row.status,
+      },
+    ];
+  });
+}
+
+export function useOrganizationInvitations(organizationId: string) {
+  return useQuery({
+    queryKey: QUERY_KEYS.invitations(organizationId),
+    queryFn: () => fetchInvitations(organizationId),
+    enabled: !!organizationId,
+  });
+}
+
+export function useCancelInvitation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      orgId: _orgId,
+      invitationId,
+    }: {
+      orgId: string;
+      invitationId: string;
+    }) => {
+      const response = await authClient.organization.cancelInvitation({
+        invitationId,
+      });
+      if (response.error) throw response.error;
+      return response.data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.invitations(variables.orgId),
+      });
+    },
+  });
+}
+
+export type {
+  Organization,
+  OrganizationDetail,
+  OrganizationInvitation,
+  OrganizationMember,
+  OrganizationPermissions,
+  OrganizationRole,
+};

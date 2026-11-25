@@ -29,6 +29,7 @@
     // Source material the registry ships. It runs in a generated project, where its imports and
     // dependencies exist; golden verifies it there (070), and knip cannot resolve it here.
     "registry/**/template/**",
+    "registry/features/**",
   ],
 
   // A type a file uses itself is part of its contract even when nobody imports it by name: the type

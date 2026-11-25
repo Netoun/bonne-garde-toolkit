@@ -110,9 +110,11 @@
         "@tanstack/react-virtual@3.14.9",
         "lucide-react",
         "react",
-        "react-router"
+        "react-router",
+        "@testing-library/react",
+        "msw"
       ],
-      "devDependencies": ["@react-router/dev"],
+      "devDependencies": ["@react-router/dev", "@testing-library/user-event@14.6.3", "vite-plus"],
       "registryDependencies": [
         "spa-auth",
         "avatar",
@@ -225,6 +227,11 @@
           "target": "apps/spa/src/features/organization/components/organization-invite-member-dialog.tsx"
         },
         {
+          "path": "spa-backoffice/features/organization/components/organization-invitations-table.tsx",
+          "type": "registry:component",
+          "target": "apps/spa/src/features/organization/components/organization-invitations-table.tsx"
+        },
+        {
           "path": "spa-backoffice/features/organization/components/organization-members-table.tsx",
           "type": "registry:component",
           "target": "apps/spa/src/features/organization/components/organization-members-table.tsx"
@@ -238,6 +245,11 @@
           "path": "spa-backoffice/features/organization/hooks/use-organization.ts",
           "type": "registry:hook",
           "target": "apps/spa/src/features/organization/hooks/use-organization.ts"
+        },
+        {
+          "path": "spa-backoffice/features/organization/pages/organization-members-page.test.tsx",
+          "type": "registry:file",
+          "target": "apps/spa/src/features/organization/pages/organization-members-page.test.tsx"
         },
         {
           "path": "spa-backoffice/features/organization/pages/organization-members-page.tsx",
@@ -255,9 +267,24 @@
           "target": "apps/spa/src/features/organization/pages/organization-page.tsx"
         },
         {
+          "path": "spa-backoffice/features/organization/pages/organization-settings-page.test.tsx",
+          "type": "registry:file",
+          "target": "apps/spa/src/features/organization/pages/organization-settings-page.test.tsx"
+        },
+        {
           "path": "spa-backoffice/features/organization/pages/organization-settings-page.tsx",
           "type": "registry:page",
           "target": "apps/spa/src/features/organization/pages/organization-settings-page.tsx"
+        },
+        {
+          "path": "spa-backoffice/features/organization/lib/organization-msw-handlers.ts",
+          "type": "registry:lib",
+          "target": "apps/spa/src/features/organization/lib/organization-msw-handlers.ts"
+        },
+        {
+          "path": "spa-backoffice/features/organization/lib/render-with-providers.tsx",
+          "type": "registry:lib",
+          "target": "apps/spa/src/features/organization/lib/render-with-providers.tsx"
         }
       ]
     }
