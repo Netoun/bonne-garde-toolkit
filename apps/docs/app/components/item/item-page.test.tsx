@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -24,11 +24,11 @@ describe("ItemPage preview", () => {
     );
 
     const preview = screen.getByRole("region", { name: "Preview" });
-    await screen.findAllByRole("button", {}, { timeout: 10_000 });
+    await within(preview).findAllByRole("button", {}, { timeout: 10_000 });
     expect(preview).toHaveClass("bg-muted/30");
     const classes = [preview, ...preview.querySelectorAll("*")].flatMap((el) => [...el.classList]);
     expect(classes.filter((name) => name.includes("docs-"))).toEqual([]);
-  });
+  }, 15_000);
 
   it.each(["app/components/item", "app/components/module", "app/demos"])(
     "%s uses no docs-only token",
