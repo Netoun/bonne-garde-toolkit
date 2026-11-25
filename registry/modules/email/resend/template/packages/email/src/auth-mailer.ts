@@ -1,6 +1,7 @@
 import { renderEmailTemplate } from "./render";
 import { emailProvider } from "./runtime";
 import { sendEmail } from "./send";
+import { InvitationEmail } from "./templates/invitation.template";
 import { ResetPasswordEmail } from "./templates/reset-password.template";
 import { VerifyEmailEmail } from "./templates/verify-email.template";
 import type { EmailProvider } from "./types";
@@ -12,10 +13,22 @@ import type { EmailProvider } from "./types";
  */
 export type AuthEmailMessage = { to: string; name: string; url: string };
 
-/** The two messages auth asks for; auth's `AuthMailer` is assignable from it. */
+/**
+ * What auth hands a mailer for one organization invitation: the invitee, who invited them, the
+ * organization's name and the page of the front-end that accepts it.
+ */
+export type AuthInvitationMessage = {
+  to: string;
+  inviterName: string;
+  organizationName: string;
+  url: string;
+};
+
+/** The messages auth asks for; auth's `AuthMailer` is assignable from it. */
 export type AuthMailer = {
   sendVerificationEmail(email: AuthEmailMessage): Promise<void>;
   sendPasswordReset(email: AuthEmailMessage): Promise<void>;
+  sendInvitation(invitation: AuthInvitationMessage): Promise<void>;
 };
 
 /**
@@ -35,6 +48,18 @@ export function createAuthMailer(resolveProvider: () => Promise<EmailProvider>):
     async sendPasswordReset({ to, name, url }) {
       const html = await renderEmailTemplate(ResetPasswordEmail, { name, resetUrl: url });
       await sendEmail(await resolveProvider(), { to, subject: "Reset your password", html });
+    },
+    async sendInvitation({ to, inviterName, organizationName, url }) {
+      const html = await renderEmailTemplate(InvitationEmail, {
+        inviterName,
+        organizationName,
+        acceptUrl: url,
+      });
+      await sendEmail(await resolveProvider(), {
+        to,
+        subject: `You're invited to join ${organizationName}`,
+        html,
+      });
     },
   };
 }
