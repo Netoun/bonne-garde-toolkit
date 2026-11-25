@@ -63,7 +63,7 @@ Eden as `api.v1.media`.
 | ---------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /v1/media/file/*` | none    | serves an object by key, cached for a year, with `X-Content-Type-Options: nosniff`; `400 INVALID_KEY` for an unsafe key                                                                                           |
 | `POST /v1/media`       | session | uploads an image (jpeg, png, webp, gif, 10 MB at most) and records it; `400 INVALID_FILE_TYPE` if its bytes are not the type it declares; `403 UNAUTHORIZED` with an `organizationId` the user is not a member of |
-| `DELETE /v1/media/:id` | session | deletes the object and the record, for its author or an admin or owner of the organization stored on the media; `403` for anyone else, and no body                                                                |
+| `DELETE /v1/media/:id` | session | deletes the record, then the object, for its author or an admin or owner of the organization stored on the media; `403` for anyone else; `409 MEDIA_IN_USE` while another row points at it                        |
 | `GET /v1/media/:id`    | session | the record, with its author and organization, for its author or a member of its organization; `404` for anyone else, as for a media that does not exist                                                           |
 
 An upload is checked on its content, not on the type the client declares: `validateFile` reads the first bytes
@@ -76,6 +76,12 @@ Access follows the media's author and organization. An upload to an organization
 one of its members (any role). A media is read by its author or a member of its organization, and deleted by its
 author or an `owner` or `admin` of its organization; the organization is the one stored on the row, never one the
 request names. `GET /v1/media/file/*` stays public: the random key is what protects it.
+
+A media that another row points at cannot be deleted, and the database says so: a table of the project or of a module
+that references `medias.id` with a plain `references()` (no `onDelete`) blocks the delete, `cascade` or `set null` let
+it through, and that is the referencing table's choice. `deleteMedia` deletes the row first; a `FOREIGN KEY constraint
+failed` anywhere in the error chain (D1 and libsql word it that way) answers `409 MEDIA_IN_USE` and the file stays.
+The file is removed only after the row is gone.
 
 The routes are given the `auth` macro: `mediaModule` is built with `authMacro` from `{{SCOPE}}/auth`, and
 `mediaPlugin(resolveStorage, macro)` takes another, which is how the tests run the real routes behind a real
@@ -191,5 +197,3 @@ golden is where they run, with a floor on the count.
 - **`mediaFileParams`, `mediaResponse`, `errorResponse`** and their types in the legacy contract: nothing used them.
 - **A `dockerfile` variant.** The container has no bucket; a storage module for it (a volume, S3) is a new module
   with its own `peers.provider`.
-- **`checkMediaReferences`** still returns an empty list, as in the legacy service: it is the seam where a
-  resource that holds a media would block its deletion (`409 MEDIA_IN_USE`), and nothing holds one yet.

@@ -1,11 +1,30 @@
 import { existsSync } from "node:fs";
-import { readFile, readdir } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { eq } from "drizzle-orm";
+import { sqliteTable, text } from "drizzle-orm/sqlite-core";
+// `bonne-garde add` rewrites the scope in these lines, so the formatter cannot know how wide they are.
+// oxfmt-ignore
+import * as authSchema from "{{SCOPE}}/auth/schema";
+// oxfmt-ignore
+import { readLibsql } from "{{SCOPE}}/db/libsql";
+// oxfmt-ignore
+import { createTestDb } from "{{SCOPE}}/db/testing";
+import { createMediaService } from "./media.service";
+import * as storageSchema from "./schema";
 import { medias } from "./schema";
 import { extractKeyFromUrl } from "./storage";
 import { TEST_PUBLIC_URL, createTestStorage, startTestBucket } from "./testing";
+
+/** A table of a project that points at a media with a plain foreign key: no `onDelete`, so the media stays while a row holds it. */
+const attachments = sqliteTable("attachments", {
+  id: text("id").primaryKey(),
+  mediaId: text("media_id")
+    .notNull()
+    .references(() => medias.id),
+});
 
 const testBucket = await startTestBucket();
 const { bucket } = testBucket;
@@ -303,6 +322,45 @@ describe("the media routes", () => {
       expect(await filesUnder(testBucket.root)).toEqual([]);
     });
 
+    describe("a media that another table points at", () => {
+      /** A signed-in user's PNG, and the routes over a database that also has the `attachments` table. */
+      async function uploadWithReferrer() {
+        const withTable = await createTestStorage(bucket, { attachments });
+        const owner = await withTable.signUp("owner@example.com");
+        const client = withTable.client(owner.cookie);
+        const { data: uploaded } = await client.v1.media.post({ file: createPngFile("photo.png") });
+        if (!uploaded) throw new Error("Expected uploaded media");
+        return { withTable, client, uploaded };
+      }
+
+      it("answers 409 MEDIA_IN_USE and keeps the row and the file while a row points at it", async () => {
+        const { withTable, client, uploaded } = await uploadWithReferrer();
+        await withTable.db.insert(attachments).values({ id: "attachment-1", mediaId: uploaded.id });
+
+        const { data, error } = await client.v1.media({ id: uploaded.id }).delete();
+
+        expect(data).toBeNull();
+        expect(statusOf(error)).toBe(409);
+        expect(error?.value).toMatchObject({ code: "MEDIA_IN_USE" });
+        expect(
+          await withTable.db.select().from(medias).where(eq(medias.id, uploaded.id)),
+        ).toHaveLength(1);
+        expect(await filesUnder(testBucket.root)).toEqual([uploaded.key]);
+      });
+
+      it("deletes the row and the file once nothing points at it", async () => {
+        const { withTable, client, uploaded } = await uploadWithReferrer();
+
+        const { error } = await client.v1.media({ id: uploaded.id }).delete();
+
+        expect(error).toBeNull();
+        expect(await withTable.db.select().from(medias).where(eq(medias.id, uploaded.id))).toEqual(
+          [],
+        );
+        expect(await filesUnder(testBucket.root)).toEqual([]);
+      });
+    });
+
     it("answers 401 without a session, and deletes nothing", async () => {
       const { data: uploaded } = await api.v1.media.post({
         file: createImageFile("test-content", "test.jpg"),
@@ -367,5 +425,42 @@ describe("the media routes", () => {
       expect(statusOf((await otherApi.v1.media({ id: inOrg.id }).get()).error)).toBe(404);
       expect(statusOf((await otherApi.v1.media({ id: alone.id }).get()).error)).toBe(404);
     });
+  });
+});
+
+describe("deleting a media over a libsql file database", () => {
+  // The database `readLibsql()` opens for the dockerfile provider, not the in-memory one the routes are tested over.
+  it("refuses a media a row points at with MEDIA_IN_USE and deletes it once nothing does", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "storage-libsql-"));
+    try {
+      const client = await readLibsql({ DATA_DIR: dataDir, NODE_ENV: "test" });
+      const db = await createTestDb({ ...authSchema, ...storageSchema, attachments }, client);
+      await db
+        .insert(authSchema.user)
+        .values({ id: "user-1", name: "Ada", email: "ada@example.com" });
+      const service = createMediaService({ db, bucket, publicUrl: TEST_PUBLIC_URL });
+      const uploaded = await service.uploadMedia({
+        file: createPngFile("photo.png"),
+        folder: "uploads",
+        userId: "user-1",
+      });
+      await db.insert(attachments).values({ id: "attachment-1", mediaId: uploaded.id });
+
+      await expect(
+        service.deleteMedia({ id: uploaded.id, userId: "user-1" }),
+      ).rejects.toMatchObject({ code: "MEDIA_IN_USE" });
+      expect(await db.select().from(medias).where(eq(medias.id, uploaded.id))).toHaveLength(1);
+      expect(await filesUnder(testBucket.root)).toEqual([uploaded.key]);
+
+      await db.delete(attachments).where(eq(attachments.id, "attachment-1"));
+      await expect(service.deleteMedia({ id: uploaded.id, userId: "user-1" })).resolves.toEqual({
+        success: true,
+        id: uploaded.id,
+      });
+      expect(await db.select().from(medias).where(eq(medias.id, uploaded.id))).toEqual([]);
+      expect(await filesUnder(testBucket.root)).toEqual([]);
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
   });
 });

@@ -49,8 +49,10 @@ export async function startTestBucket() {
  * sign-in flow), and the bucket the test brings (or none). Nothing is mocked: the requests go
  * through the plugin `apps/api` mounts, and what it stores lands in the database the test reads back.
  */
-export async function createTestStorage(bucket: R2Bucket | undefined) {
-  const { auth, db, signIn } = await createTestAuth({}, storageSchema);
+export async function createTestStorage<
+  TTables extends Record<string, unknown> = Record<never, never>,
+>(bucket: R2Bucket | undefined, tables?: TTables) {
+  const { auth, db, signIn } = await createTestAuth({}, { ...storageSchema, ...tables });
   const app = new Elysia().use(
     mediaPlugin(
       async () => ({ db, bucket, publicUrl: TEST_PUBLIC_URL }),

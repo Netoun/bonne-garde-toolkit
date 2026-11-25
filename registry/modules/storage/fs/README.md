@@ -47,6 +47,12 @@ membership (`403 UNAUTHORIZED` otherwise), a media is read by its author or a me
 for anyone else), and deleted by its author or an `owner` or `admin` of the organization stored on the row. The
 file route stays public by its random key.
 
+A media that another row points at cannot be deleted, and the database says so: a table of the project or of a module
+that references `medias.id` with a plain `references()` (no `onDelete`) blocks the delete, `cascade` or `set null` let
+it through, and that is the referencing table's choice. `deleteMedia` deletes the row first; a `FOREIGN KEY constraint
+failed` anywhere in the error chain (D1 and libsql word it that way) answers `409 MEDIA_IN_USE` and the file stays.
+The file is removed only after the row is gone.
+
 ## Where the files are
 
 `<DATA_DIR>/media/<key>`, with `DATA_DIR` read as `db/libsql` reads it (`.data` by default, `/data` in the

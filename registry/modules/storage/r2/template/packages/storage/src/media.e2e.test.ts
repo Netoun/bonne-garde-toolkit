@@ -1,7 +1,7 @@
 /// <reference types="@cloudflare/workers-types" />
 import { afterAll, beforeEach, describe, expect, it } from "vite-plus/test";
 import { eq, getTableName, is, sql } from "drizzle-orm";
-import { SQLiteTable } from "drizzle-orm/sqlite-core";
+import { SQLiteTable, sqliteTable, text } from "drizzle-orm/sqlite-core";
 // `bonne-garde add` rewrites the scope in these lines, so the formatter cannot know how wide they are.
 // oxfmt-ignore
 import * as authSchema from "{{SCOPE}}/auth/schema";
@@ -11,6 +11,14 @@ import { deleteFromR2, extractKeyFromUrl, uploadToR2 } from "./r2";
 import * as storageSchema from "./schema";
 import { medias } from "./schema";
 import { TEST_PUBLIC_URL, createTestStorage, startTestBucket } from "./testing";
+
+/** A table of a project that points at a media with a plain foreign key: no `onDelete`, so the media stays while a row holds it. */
+const attachments = sqliteTable("attachments", {
+  id: text("id").primaryKey(),
+  mediaId: text("media_id")
+    .notNull()
+    .references(() => medias.id),
+});
 
 const testBucket = await startTestBucket();
 const { bucket } = testBucket;
@@ -317,6 +325,45 @@ describe("the media routes", () => {
       // Verify it's removed from database
       const mediaRecord = await test.db.select().from(medias).where(eq(medias.id, uploadData.id));
       expect(mediaRecord.length).toBe(0);
+    });
+
+    describe("a media that another table points at", () => {
+      /** A signed-in user's PNG, and the routes over a database that also has the `attachments` table. */
+      async function uploadWithReferrer() {
+        const withTable = await createTestStorage(bucket, { attachments });
+        const owner = await withTable.signUp("owner@example.com");
+        const client = withTable.client(owner.cookie);
+        const { data: uploaded } = await client.v1.media.post({ file: createPngFile("photo.png") });
+        if (!uploaded) throw new Error("Expected uploaded media");
+        return { withTable, client, uploaded };
+      }
+
+      it("answers 409 MEDIA_IN_USE and keeps the row and the file while a row points at it", async () => {
+        const { withTable, client, uploaded } = await uploadWithReferrer();
+        await withTable.db.insert(attachments).values({ id: "attachment-1", mediaId: uploaded.id });
+
+        const { data, error } = await client.v1.media({ id: uploaded.id }).delete();
+
+        expect(data).toBeNull();
+        expect(statusOf(error)).toBe(409);
+        expect(error?.value).toMatchObject({ code: "MEDIA_IN_USE" });
+        expect(
+          await withTable.db.select().from(medias).where(eq(medias.id, uploaded.id)),
+        ).toHaveLength(1);
+        expect(await bucket.head(uploaded.key)).not.toBeNull();
+      });
+
+      it("deletes the row and the file once nothing points at it", async () => {
+        const { withTable, client, uploaded } = await uploadWithReferrer();
+
+        const { error } = await client.v1.media({ id: uploaded.id }).delete();
+
+        expect(error).toBeNull();
+        expect(await withTable.db.select().from(medias).where(eq(medias.id, uploaded.id))).toEqual(
+          [],
+        );
+        expect(await bucket.head(uploaded.key)).toBeNull();
+      });
     });
 
     it("should return 404 for non-existent media", async () => {

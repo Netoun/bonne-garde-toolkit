@@ -42,11 +42,15 @@ export interface DeleteMediaInput {
   userId: string;
 }
 
-export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
-  const checkMediaReferences = async (_mediaId: string): Promise<unknown[]> => {
-    return [];
-  };
+/** Whether `error`, or anything in its `cause` chain, is a foreign key violation: D1 and libsql both word it so, under Drizzle's own wrapper. */
+function isForeignKeyViolation(error: unknown): boolean {
+  for (let current = error; current instanceof Error; current = current.cause) {
+    if (/FOREIGN KEY constraint failed/i.test(current.message)) return true;
+  }
+  return false;
+}
 
+export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
   /** The role of `userId` in the organization, or `undefined` when it is not a member. */
   const memberRole = async (userId: string, organizationId: string) => {
     const membership = await db.query.member.findFirst({
@@ -139,16 +143,18 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
       throw new R2Error("Unauthorized to delete this media", "UNAUTHORIZED");
     }
 
-    // Check if media is in use
-    const references = await checkMediaReferences(input.id);
-    if (references.length > 0) {
-      throw new R2Error(
-        `Media is in use by ${references.length} resource(s) and cannot be deleted`,
-        "MEDIA_IN_USE",
-      );
+    // The database decides whether the media is in use: a row of another table that points at it with a
+    // plain foreign key blocks the delete, and `cascade` or `set null` on that table lets it through.
+    try {
+      await db.delete(medias).where(eq(medias.id, input.id));
+    } catch (error) {
+      if (isForeignKeyViolation(error)) {
+        throw new R2Error("Media is in use and cannot be deleted", "MEDIA_IN_USE");
+      }
+      throw error;
     }
 
-    // Delete from R2 if bucket is available
+    // The file goes only once the row is gone, and only if the runtime has a bucket.
     if (bucket && media.key) {
       const deleteResult = await deleteFromR2(bucket, media.key);
       if (!deleteResult.success) {
@@ -157,9 +163,6 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
         void deleteResult.error;
       }
     }
-
-    // Delete from database
-    await db.delete(medias).where(eq(medias.id, input.id));
 
     return { success: true, id: input.id };
   };
@@ -217,7 +220,6 @@ export function createMediaService({ db, bucket, publicUrl }: StorageContext) {
     deleteMedia,
     getMediaById,
     getFileFromR2,
-    checkMediaReferences,
     verifyOwnership,
   };
 }
