@@ -4,19 +4,21 @@ import { expect, test } from "vite-plus/test";
 import { branding } from "{{SCOPE}}/config";
 import {
   createMemoryEmailProvider,
+  type EmailMessage,
   renderEmailTemplate,
   sendEmail,
   WelcomeTemplate,
 } from "./index";
 
 test("memory provider captures emails", async () => {
-  const sent: Array<{ to: string; subject: string; html: string }> = [];
+  const sent: EmailMessage[] = [];
   const provider = createMemoryEmailProvider(sent);
 
   await sendEmail(provider, {
     to: "test@example.com",
     subject: "Welcome",
     html: "<p>Hello</p>",
+    text: "Hello",
   });
 
   expect(sent.length).toBe(1);
@@ -24,7 +26,7 @@ test("memory provider captures emails", async () => {
 });
 
 test("react-email template renders html", async () => {
-  const html = await renderEmailTemplate(WelcomeTemplate, {
+  const { html } = await renderEmailTemplate(WelcomeTemplate, {
     appName: branding.displayName,
     userName: "Neto",
     ctaUrl: "https://example.com",

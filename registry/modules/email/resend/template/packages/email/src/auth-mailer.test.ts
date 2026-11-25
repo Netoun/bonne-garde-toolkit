@@ -18,6 +18,7 @@ describe("the mailer auth is wired to", () => {
     expect(sent[0]?.subject).toBe("Verify your email address");
     expect(sent[0]?.html).toContain("Hi Ada,");
     expect(sent[0]?.html).toContain(`href="${URL_WITH_TOKEN}"`);
+    expect(sent[0]?.text).toContain(URL_WITH_TOKEN);
   });
 
   test("renders the password reset email the same way", async () => {
@@ -77,6 +78,31 @@ describe("the mailer auth is wired to", () => {
       ]);
       expect(outbox[0]?.html).toContain("Ada invited you to join Analytical Engines");
       expect(outbox[0]?.html).toContain(`href="${url}"`);
+    });
+
+    test("every message it delivers carries a plain-text part with the link", async () => {
+      const verify = "http://spa.test/auth/verify-email?token=a";
+      const reset = "http://spa.test/auth/reset-password?token=b";
+      const invitation = "http://spa.test/invitations/c";
+
+      await emailMailer.sendVerificationEmail({ to: "a@example.com", name: "Ada", url: verify });
+      await emailMailer.sendPasswordReset({ to: "a@example.com", name: "Ada", url: reset });
+      await emailMailer.sendInvitation({
+        to: "g@example.com",
+        inviterName: "Ada",
+        organizationName: "Analytical Engines",
+        url: invitation,
+      });
+
+      expect(outbox).toHaveLength(3);
+      for (const message of outbox) {
+        expect(message.text.trim()).not.toBe("");
+      }
+      expect(outbox.map(({ text }) => text)).toEqual([
+        expect.stringContaining(verify),
+        expect.stringContaining(reset),
+        expect.stringContaining(invitation),
+      ]);
     });
   });
 });

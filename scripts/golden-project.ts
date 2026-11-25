@@ -1714,7 +1714,7 @@ export function hasEmail(configuration: Configuration): boolean {
 }
 
 /** How many tests the email package runs in the project; fewer means the root `test` stopped reaching it. */
-export const EMAIL_MIN_TESTS = 19;
+export const EMAIL_MIN_TESTS = 23;
 
 /** The file auth documents as the one place an email module wires itself in, and the proof golden adds beside it. */
 export const MAILER_FILE = "packages/auth/src/mailer.ts";

@@ -50,7 +50,12 @@ async function resend(answer: () => Response) {
   return { received, baseUrl: `http://127.0.0.1:${address.port}` };
 }
 
-const MESSAGE = { to: "ada@example.com", subject: "Hello", html: "<p>Hi Ada</p>" };
+const MESSAGE = {
+  to: "ada@example.com",
+  subject: "Hello",
+  html: "<p>Hi Ada</p>",
+  text: "Hi Ada",
+};
 
 describe("the Resend adapter", () => {
   test("posts the message to /emails as Resend's API takes it, with the key and a User-Agent", async () => {
@@ -76,6 +81,19 @@ describe("the Resend adapter", () => {
       to: "ada@example.com",
       subject: "Hello",
       html: "<p>Hi Ada</p>",
+      text: "Hi Ada",
+    });
+  });
+
+  test("posts the plain-text part beside the html one, as it was given", async () => {
+    const api = await resend(() => Response.json({ id: "x" }));
+    const provider = createResendEmailProvider({ apiKey: "re_secret", baseUrl: api.baseUrl });
+
+    await provider.send({ ...MESSAGE, text: "Hi Ada,\nOpen https://acme.dev/verify" });
+
+    expect(api.received[0]?.body).toMatchObject({
+      html: MESSAGE.html,
+      text: "Hi Ada,\nOpen https://acme.dev/verify",
     });
   });
 

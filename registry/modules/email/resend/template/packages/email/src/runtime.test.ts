@@ -2,7 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { createRuntimeProvider } from "./runtime";
 import type { EmailMessage } from "./types";
 
-const MESSAGE = { to: "ada@example.com", subject: "Hello", html: "<p>Hi</p>" };
+const MESSAGE = { to: "ada@example.com", subject: "Hello", html: "<p>Hi</p>", text: "Hi" };
 
 /** An environment read that counts how often it is asked. */
 function environment(source: Record<string, unknown>) {

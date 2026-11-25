@@ -1,7 +1,8 @@
 # email/resend
 
-Transactional email over the project's provider: the React templates auth needs (verification, password
-reset and organization invitations), a `memory` adapter for tests, and Resend over its HTTP API. It is the legacy
+Transactional email over the project's provider: a react-email kit themed from the project's branding, the
+templates auth needs (verification, password reset and organization invitations) rendered to html and
+plain text, a `memory` adapter for tests, and Resend over its HTTP API. It is the legacy
 `packages/emails` and `apps/api/src/lib/email.ts` extracted into `packages/email`.
 
 ```bash
@@ -33,27 +34,44 @@ and `bonne-garde doctor --strict` is green as it is.
 
 Everything in `packages/email`, from explicit paths:
 
-| File                                       | What it is                                                                                                         |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| `package.json`                             | `{{SCOPE}}/email`: the `.` and `./testing` exports, the scripts                                                    |
-| `src/types.ts`, `render.ts`, `send.ts`     | `EmailMessage`, `EmailProvider`, `renderEmailTemplate` and `sendEmail`, as `packages/emails` had them              |
-| `src/templates/*.template.ts`              | `VerifyEmailEmail`, `ResetPasswordEmail` and `WelcomeTemplate`, carried over as they were; `InvitationEmail` (new) |
-| `src/providers/memory.provider.ts`         | `createMemoryEmailProvider(store)`: keeps what it is asked to send, sends nothing                                  |
-| `src/providers/resend.provider.ts`         | `createResendEmailProvider({ apiKey, from?, baseUrl? })`: `POST /emails`, plain `fetch`                            |
-| `src/env.ts`                               | `resolveEmailEnv`: `RESEND_API_KEY`, read from `readRuntimeEnv()`                                                  |
-| `src/runtime.ts`                           | `emailProvider`: the adapter the runtime sends through, chosen at the first email                                  |
-| `src/auth-mailer.ts`                       | `createAuthMailer` and `emailMailer`: auth's two emails, rendered and sent                                         |
-| `src/testing.ts`                           | `outbox` and `clearOutbox`: what the memory adapter holds under test                                               |
-| `src/*.test.ts`, `src/providers/*.test.ts` | the tests that travel, and the new ones: no mock of `fetch`, no snapshot                                           |
+| File                                       | What it is                                                                                                                          |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `package.json`                             | `{{SCOPE}}/email`: the `.` and `./testing` exports, the scripts                                                                     |
+| `src/types.ts`, `render.ts`, `send.ts`     | `EmailMessage` (`to`, `subject`, `html`, `text`), `EmailProvider`, `renderEmailTemplate` (returns `{ html, text }`) and `sendEmail` |
+| `src/components/email-kit.tsx`             | `EmailLayout`, `EmailHeading`, `EmailText`, `EmailButton`: the frame and parts every template is built on, themed from `branding`   |
+| `src/templates/*.template.tsx`             | `VerifyEmailEmail`, `ResetPasswordEmail`, `InvitationEmail` and `WelcomeTemplate`, on the kit                                       |
+| `src/providers/memory.provider.ts`         | `createMemoryEmailProvider(store)`: keeps what it is asked to send, sends nothing                                                   |
+| `src/providers/resend.provider.ts`         | `createResendEmailProvider({ apiKey, from?, baseUrl? })`: `POST /emails`, plain `fetch`                                             |
+| `src/env.ts`                               | `resolveEmailEnv`: `RESEND_API_KEY`, read from `readRuntimeEnv()`                                                                   |
+| `src/runtime.ts`                           | `emailProvider`: the adapter the runtime sends through, chosen at the first email                                                   |
+| `src/auth-mailer.ts`                       | `createAuthMailer` and `emailMailer`: auth's two emails, rendered and sent                                                          |
+| `src/testing.ts`                           | `outbox` and `clearOutbox`: what the memory adapter holds under test                                                                |
+| `src/*.test.ts`, `src/providers/*.test.ts` | the tests that travel, and the new ones: no mock of `fetch`, no snapshot                                                            |
 
-Dependencies are exact: `@react-email/render`, `react` and `react-dom` (`react-dom` is a peer of the
-renderer), and the project's `api-runtime` and `config` as workspaces. `@types/react` is the dev one.
+Dependencies are exact: `@react-email/components` (it re-exports `render`, so the package pins one renderer),
+`react` and `react-dom` (`react-dom` is a peer of the renderer), and the project's `api-runtime` and
+`config` as workspaces. `@types/react` is the dev one.
+
+## The kit, and the theme
+
+`EmailLayout` is the `<html lang>`, head, preview text, body and a centred container, with the brand's
+name above the content and the support address under it. It reads `branding` from `{{SCOPE}}/config`:
+`displayName` in the header and footer, `themeColor` for the brand name, the button and the links,
+`backgroundColor` for the page, `supportEmail` in the footer, `lang` for `<html lang>`. A project
+restyles its emails by editing `branding.json`; the kit has no key of its own. Styles are inline (mail
+clients ignore classes and `<style>` unevenly), so there is no Tailwind in the package.
+
+A template is a function of its props returning an `EmailLayout`: `VerifyEmailEmail`,
+`ResetPasswordEmail`, `InvitationEmail` and `WelcomeTemplate` keep their names and props, and a new one
+sits beside them the same way. `renderEmailTemplate` renders it twice, to `html` and, with
+`plainText: true`, to `text`; the button's link is in both. Every `EmailMessage` carries both parts, and
+Resend gets them as `html` and `text` in one request.
 
 ## Resend, and why not the SDK
 
 The legacy API sent through the `resend` SDK with `react: <element>`, and the SDK renders it. This
 package renders to `html` itself (`@react-email/render`, as `packages/emails` already did) and posts
-`{ from, to, subject, html }` to `https://api.resend.com/emails` with `fetch`. That is the whole of
+`{ from, to, subject, html, text }` to `https://api.resend.com/emails` with `fetch`. That is the whole of
 what the project used, it has no SDK to bundle for Workers, and it can be tested against a real HTTP
 server: `resend.provider.test.ts` starts a `node:http` server that answers as Resend does and points
 `baseUrl` at it. A `User-Agent` is set explicitly, because Resend answers 403 without one and `fetch` on

@@ -41,7 +41,7 @@ async function reasonOf(response: Response): Promise<string> {
 
 /**
  * Resend over its HTTP API (`POST /emails`): plain `fetch`, so it runs the same on Workers and in a
- * container, with no SDK to bundle. A message goes as the `html` it was rendered to.
+ * container, with no SDK to bundle. A message goes as the `html` and `text` it was rendered to.
  */
 export function createResendEmailProvider(options: ResendProviderOptions): EmailProvider {
   const { apiKey, from = defaultFrom, baseUrl = RESEND_API_URL } = options;
@@ -59,6 +59,7 @@ export function createResendEmailProvider(options: ResendProviderOptions): Email
           to: message.to,
           subject: message.subject,
           html: message.html,
+          text: message.text,
         }),
       });
       if (!response.ok) {

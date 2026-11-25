@@ -38,19 +38,28 @@ export type AuthMailer = {
 export function createAuthMailer(resolveProvider: () => Promise<EmailProvider>): AuthMailer {
   return {
     async sendVerificationEmail({ to, name, url }) {
-      const html = await renderEmailTemplate(VerifyEmailEmail, { name, verificationUrl: url });
+      const { html, text } = await renderEmailTemplate(VerifyEmailEmail, {
+        name,
+        verificationUrl: url,
+      });
       await sendEmail(await resolveProvider(), {
         to,
         subject: "Verify your email address",
         html,
+        text,
       });
     },
     async sendPasswordReset({ to, name, url }) {
-      const html = await renderEmailTemplate(ResetPasswordEmail, { name, resetUrl: url });
-      await sendEmail(await resolveProvider(), { to, subject: "Reset your password", html });
+      const { html, text } = await renderEmailTemplate(ResetPasswordEmail, { name, resetUrl: url });
+      await sendEmail(await resolveProvider(), {
+        to,
+        subject: "Reset your password",
+        html,
+        text,
+      });
     },
     async sendInvitation({ to, inviterName, organizationName, url }) {
-      const html = await renderEmailTemplate(InvitationEmail, {
+      const { html, text } = await renderEmailTemplate(InvitationEmail, {
         inviterName,
         organizationName,
         acceptUrl: url,
@@ -59,6 +68,7 @@ export function createAuthMailer(resolveProvider: () => Promise<EmailProvider>):
         to,
         subject: `You're invited to join ${organizationName}`,
         html,
+        text,
       });
     },
   };
