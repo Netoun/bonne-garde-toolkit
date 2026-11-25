@@ -15,7 +15,7 @@
       "match": {},
       "workspace": { "name": "{{SCOPE}}/i18n", "path": "packages/i18n" },
       "dependencies": {
-        "i18next": "27.2.9"
+        "i18next": "27.2.5"
       },
       "copy": [
         "packages/i18n/package.json",
