@@ -130,7 +130,40 @@ The file is yours from now on: edit it as you like. The CLI records its checksum
 
 ## Add a module
 
-A module adds many files, so the dry run is worth reading:
+A module is added the same way as an item. Storage comes in two variants; this project runs on Cloudflare, so the one to add is `storage/r2`:
+
+```bash
+bunx bonne-garde add storage/r2
+```
+
+```text
+┌   bonne-garde add
+│
+◇  Planned storage/r2 (1 module)
+│
+◇  Wrote 20 files, applied 6 patchs
+│
+◇  Installed with bun in 0s
+│
+◆  storage/r2 (cloudflare)  20 files · 6 patchs applied · packages/storage
+│    packages/storage/package.json
+│    packages/storage/src/bucket.test.ts
+│    … 18 more under packages/storage
+│
+●  Installed: @cloudflare/workers-types, @elysiajs/eden, @my-app/api-runtime, @my-app/auth, @my-app/db, drizzle-orm, elysia, miniflare
+│
+●  New in .env.example: R2_PUBLIC_URL
+
+Checks to run
+  storage/r2
+    cd packages/storage && bunx vp run typecheck && bunx vp run test
+│
+└  Done.
+```
+
+The CLI does not run the checks it lists. Run them yourself.
+
+Email adds many files, so read its dry run first. It also shows what else a module can leave for you:
 
 ```bash
 bunx bonne-garde add email/resend --dry-run
@@ -168,7 +201,7 @@ bunx bonne-garde add email/resend
 │
 ◇  Wrote 21 files, applied 1 patch
 │
-◇  Installed with bun in 1s
+◇  Installed with bun in 0s
 │
 ◆  email/resend (better-auth)  21 files · 1 patch applied · packages/email
 │    packages/email/package.json
@@ -194,7 +227,31 @@ Checks, once the intentions are applied
 
 Two things are left for you. Set `RESEND_API_KEY` where the runtime reads its secrets (`apps/api/.dev.vars` locally).
 
-The **intention** is an edit the CLI could not make for you: here, telling auth to send its emails through the new package. `.bg/add/session.md` is a checklist for a coding agent, and `.bg/add/01-wire-email-into-auth.md` says what to change and when to skip it. Do it by hand or hand the file to an agent. In this case the change is in `packages/auth/src/mailer.ts`: import `emailMailer` from `@my-app/email` and export it as `mailer`. Then tell the CLI:
+The **intention** is an edit the CLI could not make for you: here, telling auth to send its emails through the new package. `.bg/add/session.md` is a checklist for a coding agent, and `.bg/add/01-wire-email-into-auth.md` says what to change and when to skip it. Do it by hand or hand the file to an agent. In this case the change is in `packages/auth/src/mailer.ts`: import `emailMailer` from `@my-app/email` and export it as `mailer`.
+
+## Check the project
+
+Run `doctor` after an add. Right after `email/resend`, with its intention still open:
+
+```bash
+bunx bonne-garde doctor
+```
+
+```text
+bonne-garde doctor
+
+✓ manifest    version 2, 12 modules, 9 items, 188 files
+✓ files       188 tracked: 180 intact, 8 checked by region
+✓ regions     49 regions in 10 files, 45 read
+✓ patches     25 applied, 0 skipped, 0 failed
+▲ intentions  0 applied, 0 skipped, 1 pending
+    .bg/add/01-wire-email-into-auth.md: intention pending: apply it, then run bonne-garde record
+✓ peers       12 modules checked, 0 not checked
+
+1 warning
+```
+
+A warning does not fail the command, but it is a job left undone. Once the intention is applied, tell the CLI:
 
 ```bash
 bunx bonne-garde record email/resend/wire-email-into-auth
@@ -206,38 +263,19 @@ recorded email/resend/wire-email-into-auth as applied in email/resend, and marke
 
 If you decide not to make the change, run the same command with `--skip "<reason>"`. Both answers are kept in `bg.json`. For how modules, patches and intentions fit together, read [Modules](../MODULES.md).
 
-Storage works the same way. This project runs on Cloudflare, so the Cloudflare variant is `storage/r2`:
+Run `doctor` again:
 
 ```bash
-bunx bonne-garde add storage/r2
+bunx bonne-garde doctor
 ```
 
 ```text
-┌   bonne-garde add
-│
-◇  Planned storage/r2 (1 module)
-│
-◇  Wrote 20 files, applied 6 patchs
-│
-◇  Installed with bun in 0s
-│
-◆  storage/r2 (cloudflare)  20 files · 6 patchs applied · packages/storage
-│    packages/storage/package.json
-│    packages/storage/src/bucket.test.ts
-│    … 18 more under packages/storage
-│
-●  Installed: @cloudflare/workers-types, @elysiajs/eden, @my-app/api-runtime, @my-app/auth, @my-app/db, drizzle-orm, elysia, miniflare
-│
-●  New in .env.example: R2_PUBLIC_URL
-
-Checks to run
-  storage/r2
-    cd packages/storage && bunx vp run typecheck && bunx vp run test
-│
-└  Done.
+✓ intentions  1 applied, 0 skipped, 0 pending
+…
+All good.
 ```
 
-The CLI does not run the checks it lists. Run them yourself.
+`doctor --strict` exits with an error on any warning, which suits a CI job.
 
 ## When an add is refused
 
@@ -283,38 +321,6 @@ bunx bonne-garde add storage/fs --dry-run
 ```
 
 Pick the variant that matches (`storage/r2` here). [Troubleshooting](./troubleshooting.md) lists the other refusals.
-
-## Check the project
-
-Run `doctor` after an add. Right after `email/resend`, with its intention still open:
-
-```bash
-bunx bonne-garde doctor
-```
-
-```text
-bonne-garde doctor
-
-✓ manifest    version 2, 12 modules, 9 items, 188 files
-✓ files       188 tracked: 180 intact, 8 checked by region
-✓ regions     49 regions in 10 files, 45 read
-✓ patches     25 applied, 0 skipped, 0 failed
-▲ intentions  0 applied, 0 skipped, 1 pending
-    .bg/add/01-wire-email-into-auth.md: intention pending: apply it, then run bonne-garde record
-✓ peers       12 modules checked, 0 not checked
-
-1 warning
-```
-
-A warning does not fail the command, but it is a job left undone. After `record`, the same command reads:
-
-```text
-✓ intentions  1 applied, 0 skipped, 0 pending
-…
-All good.
-```
-
-`doctor --strict` exits with an error on any warning, which suits a CI job.
 
 ## Where to go next
 
