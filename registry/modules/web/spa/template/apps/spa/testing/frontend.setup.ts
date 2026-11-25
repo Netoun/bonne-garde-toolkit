@@ -1,12 +1,8 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup } from "@testing-library/react";
-import { afterAll, afterEach, beforeAll, expect } from "vite-plus/test";
-import { server } from "../src/testing/server";
+import { afterEach, expect } from "vite-plus/test";
 
 expect.extend(matchers);
-beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
   cleanup();
-  server.resetHandlers();
 });
-afterAll(() => server.close());

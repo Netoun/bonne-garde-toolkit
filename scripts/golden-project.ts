@@ -1151,6 +1151,7 @@ export const PATCHED_ITEMS: Readonly<Record<string, Readonly<Record<string, read
         "dependencies.@tanstack/react-table",
         "dependencies.@tanstack/react-virtual",
         "devDependencies.@testing-library/user-event",
+        "devDependencies.msw",
       ],
     },
     dockerfile: {
@@ -1168,6 +1169,7 @@ export const PATCHED_ITEMS: Readonly<Record<string, Readonly<Record<string, read
         "dependencies.@tanstack/react-table",
         "dependencies.@tanstack/react-virtual",
         "devDependencies.@testing-library/user-event",
+        "devDependencies.msw",
       ],
     },
   };

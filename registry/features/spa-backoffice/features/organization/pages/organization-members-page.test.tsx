@@ -1,9 +1,12 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { server } from "@acme/spa/testing/server";
-import { organizationAuthHandlers, pendingInvitation } from "../lib/organization-msw-handlers";
-import { renderWithProviders } from "../lib/render-with-providers";
+import {
+  organizationAuthHandlers,
+  pendingInvitation,
+  server,
+} from "../lib/organization-msw-handlers.test";
+import { renderWithProviders } from "../lib/render-with-providers.test";
 import type { Route } from "./+types/organization-members-page";
 import OrganizationMembers from "./organization-members-page";
 

@@ -110,11 +110,15 @@
         "@tanstack/react-virtual@3.14.9",
         "lucide-react",
         "react",
-        "react-router",
-        "@testing-library/react",
-        "msw"
+        "react-router"
       ],
-      "devDependencies": ["@react-router/dev", "@testing-library/user-event@14.6.3", "vite-plus"],
+      "devDependencies": [
+        "@react-router/dev",
+        "@testing-library/react",
+        "@testing-library/user-event@14.6.3",
+        "msw@2.15.0",
+        "vite-plus"
+      ],
       "registryDependencies": [
         "spa-auth",
         "avatar",
@@ -277,14 +281,19 @@
           "target": "apps/spa/src/features/organization/pages/organization-settings-page.tsx"
         },
         {
-          "path": "spa-backoffice/features/organization/lib/organization-msw-handlers.ts",
-          "type": "registry:lib",
-          "target": "apps/spa/src/features/organization/lib/organization-msw-handlers.ts"
+          "path": "spa-backoffice/features/organization/lib/organization-msw-server.test.ts",
+          "type": "registry:file",
+          "target": "apps/spa/src/features/organization/lib/organization-msw-server.test.ts"
         },
         {
-          "path": "spa-backoffice/features/organization/lib/render-with-providers.tsx",
-          "type": "registry:lib",
-          "target": "apps/spa/src/features/organization/lib/render-with-providers.tsx"
+          "path": "spa-backoffice/features/organization/lib/organization-msw-handlers.test.ts",
+          "type": "registry:file",
+          "target": "apps/spa/src/features/organization/lib/organization-msw-handlers.test.ts"
+        },
+        {
+          "path": "spa-backoffice/features/organization/lib/render-with-providers.test.tsx",
+          "type": "registry:file",
+          "target": "apps/spa/src/features/organization/lib/render-with-providers.test.tsx"
         }
       ]
     }
