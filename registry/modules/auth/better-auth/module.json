@@ -46,6 +46,7 @@
         "packages/auth/src/auth.organization-delete.test.ts",
         "packages/auth/src/auth.organization.test.ts",
         "packages/auth/src/auth.permission.test.ts",
+        "packages/auth/src/auth.providers.test.ts",
         "packages/auth/src/auth.rate-limit.test.ts",
         "packages/auth/src/auth.schema.test.ts",
         "packages/auth/src/auth.seed.test.ts",
@@ -62,6 +63,8 @@
         "packages/auth/src/password.ts",
         "packages/auth/src/permission.macro.ts",
         "packages/auth/src/permissions.ts",
+        "packages/auth/src/providers.test.ts",
+        "packages/auth/src/providers.ts",
         "packages/auth/src/schema.ts",
         "packages/auth/src/seed.ts",
         "packages/auth/src/testing.ts",
@@ -72,6 +75,86 @@
         {
           "name": "BETTER_AUTH_SECRET",
           "required": true,
+          "example": ""
+        },
+        {
+          "name": "OIDC_PROVIDERS",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "GITHUB_CLIENT_ID",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "GITHUB_CLIENT_SECRET",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "GITHUB_AUTO_SIGNUP",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "GITLAB_CLIENT_ID",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "GITLAB_CLIENT_SECRET",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "GITLAB_AUTO_SIGNUP",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "DISCORD_CLIENT_ID",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "DISCORD_CLIENT_SECRET",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "DISCORD_AUTO_SIGNUP",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "GOOGLE_CLIENT_ID",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "GOOGLE_CLIENT_SECRET",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "GOOGLE_AUTO_SIGNUP",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "MICROSOFT_CLIENT_ID",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "MICROSOFT_CLIENT_SECRET",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "MICROSOFT_AUTO_SIGNUP",
+          "required": false,
           "example": ""
         }
       ],
@@ -156,6 +239,7 @@
         "packages/auth/src/auth.config.test.ts",
         "packages/auth/src/auth.config.ts",
         "packages/auth/src/auth.invitation.test.ts",
+        "packages/auth/src/auth.providers.test.ts",
         "packages/auth/src/auth.rate-limit.test.ts",
         "packages/auth/src/auth.schema.test.ts",
         "packages/auth/src/base-path.ts",
@@ -179,6 +263,8 @@
         "packages/auth/src/password.ts",
         "packages/auth/src/permission.macro.ts",
         "packages/auth/src/permissions.ts",
+        "packages/auth/src/providers.test.ts",
+        "packages/auth/src/providers.ts",
         "packages/auth/src/schema.ts",
         "packages/auth/src/testing.ts",
         "packages/auth/tsconfig.json",
@@ -188,6 +274,86 @@
         {
           "name": "BETTER_AUTH_SECRET",
           "required": true,
+          "example": ""
+        },
+        {
+          "name": "OIDC_PROVIDERS",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "GITHUB_CLIENT_ID",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "GITHUB_CLIENT_SECRET",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "GITHUB_AUTO_SIGNUP",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "GITLAB_CLIENT_ID",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "GITLAB_CLIENT_SECRET",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "GITLAB_AUTO_SIGNUP",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "DISCORD_CLIENT_ID",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "DISCORD_CLIENT_SECRET",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "DISCORD_AUTO_SIGNUP",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "GOOGLE_CLIENT_ID",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "GOOGLE_CLIENT_SECRET",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "GOOGLE_AUTO_SIGNUP",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "MICROSOFT_CLIENT_ID",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "MICROSOFT_CLIENT_SECRET",
+          "required": false,
+          "example": ""
+        },
+        {
+          "name": "MICROSOFT_AUTO_SIGNUP",
+          "required": false,
           "example": ""
         }
       ],

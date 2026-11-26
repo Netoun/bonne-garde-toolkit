@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
-import { hasPermission, organization } from "better-auth/plugins";
+import { genericOAuth, hasPermission, organization } from "better-auth/plugins";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { and, eq, isNull } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
@@ -9,6 +9,7 @@ import { acceptPendingInvitations } from "./invitations";
 import type { AuthMailer } from "./mailer";
 import { hashPassword, verifyPassword } from "./password";
 import { ac, roles } from "./permissions";
+import type { SignInProvider } from "./providers";
 import * as schema from "./schema";
 
 const { member, organization: orgTable } = schema;
@@ -42,6 +43,8 @@ export type AuthOptions = {
   clientIpHeaders: readonly string[];
   mailer: AuthMailer;
   logger: AuthLogger;
+  /** The sign-in providers the environment declares (`readProviders`); none by default. */
+  providers?: readonly SignInProvider[];
 };
 
 function generateSlug(name: string): string {
@@ -62,9 +65,36 @@ export function createAuth({
   clientIpHeaders,
   mailer,
   logger,
+  providers = [],
 }: AuthOptions) {
   // `https` in production, plain `http` on localhost, where a Secure cookie would be dropped.
   const secureCookies = baseURL.startsWith("https://");
+  // `disableSignUp` and not `disableImplicitSignUp`: the latter only asks the client to say
+  // `requestSignUp: true`, which any client can, while `disableSignUp` refuses to create a user at all.
+  // An account that already exists can still sign in.
+  const signUp = (provider: SignInProvider) => ({ disableSignUp: !provider.autoSignup });
+  const socialProviders = Object.fromEntries(
+    providers.flatMap((provider) =>
+      provider.kind === "social"
+        ? [[provider.id, { ...provider.options, ...signUp(provider) }]]
+        : [],
+    ),
+  );
+  const oidcProviders = providers.flatMap((provider) =>
+    provider.kind === "oidc"
+      ? [
+          {
+            providerId: provider.id,
+            discoveryUrl: `${provider.options.issuer.replace(/\/+$/, "")}/.well-known/openid-configuration`,
+            clientId: provider.options.clientId,
+            clientSecret: provider.options.clientSecret,
+            scopes: ["openid", "email", "profile"],
+            pkce: true,
+            ...signUp(provider),
+          },
+        ]
+      : [],
+  );
 
   return betterAuth({
     database: drizzleAdapter(db, {
@@ -100,6 +130,14 @@ export function createAuth({
     },
     session: {
       expiresIn: 60 * 60 * 24 * 7, // 7 days
+    },
+    socialProviders,
+    account: {
+      // An external account joins the account of the same email only when the provider says that email
+      // is verified, and the local account's email is verified too. There is no `trustedProviders`: no
+      // provider is believed on its name. Each value is Better Auth's default today, written out so that
+      // a change upstream cannot weaken it silently.
+      accountLinking: { enabled: true, requireLocalEmailVerified: true },
     },
     emailAndPassword: {
       enabled: true,
@@ -375,9 +413,14 @@ export function createAuth({
         // `/forget-password` until 1.6 renamed the endpoint, and a rule that matches nothing is silent.
         "/request-password-reset": { window: 60, max: 5 },
         "/reset-password": { window: 60, max: 5 },
+        "/sign-in/social": { window: 60, max: 10 },
+        "/sign-in/oauth2": { window: 60, max: 10 },
       },
     },
     plugins: [
+      // Always mounted, with no provider when `OIDC_PROVIDERS` is empty: `/sign-in/oauth2` then answers
+      // "provider not found" like `/sign-in/social`, and its rate-limit rule always names a served path.
+      genericOAuth({ config: oidcProviders }),
       organization({
         ac,
         roles,
