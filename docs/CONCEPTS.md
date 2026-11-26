@@ -51,6 +51,7 @@ The order is topological: a category comes after every category it may peer on, 
 | `payments`      | one         | package `packages/payments`      |                                                                                     |
 | `observability` | one         | package `packages/observability` | Error reporting; provider-matched                                                   |
 | `web`           | many        | app `apps/<id>`                  | SPA / SSR / static shells                                                           |
+| `pwa`           | many        | package `packages/pwa`           | Service worker and offline support of a web app                                     |
 | `testing`       | many        | app                              |                                                                                     |
 | `deploy`        | many        | repo                             | CI / deploy pipeline                                                                |
 | `dev`           | many        | repo                             | Local launchers (named HTTPS URLs); never on the runtime path                       |

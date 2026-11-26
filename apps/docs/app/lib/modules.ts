@@ -22,6 +22,7 @@ export const CATEGORY_HOME = {
   payments: "package packages/payments",
   observability: "package packages/observability",
   web: "app apps/<id>",
+  pwa: "package packages/pwa",
   testing: "app",
   deploy: "repo",
   dev: "repo",

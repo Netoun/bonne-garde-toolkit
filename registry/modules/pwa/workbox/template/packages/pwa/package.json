@@ -1,0 +1,17 @@
+{
+  "name": "{{SCOPE}}/pwa",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The project's PWA support: the service worker generated after the web app's build",
+  "bin": {
+    "pwa-build": "./src/pwa-build.ts"
+  },
+  "type": "module",
+  "exports": {
+    "./build": "./src/build-service-worker.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vp test"
+  }
+}

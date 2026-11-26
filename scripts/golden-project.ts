@@ -161,9 +161,9 @@ export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
 
 /** The modules `bonne-garde add` installs after what `create` produced for the set, in that order. */
 export const ADDED_AFTER_CREATE: Readonly<Record<string, readonly string[]>> = {
-  // `create` offers neither realtime nor observability: each provider's set adds its variants.
-  cloudflare: ["realtime/rooms", "observability/sentry"],
-  dockerfile: ["realtime/rooms", "observability/sentry"],
+  // `create` offers neither realtime, observability nor the PWA: each provider's set adds them.
+  cloudflare: ["realtime/rooms", "observability/sentry", "pwa/workbox"],
+  dockerfile: ["realtime/rooms", "observability/sentry", "pwa/workbox"],
   "dockerfile-postgres": ["db/postgres", "orm/drizzle"],
 };
 
@@ -1015,6 +1015,7 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "exports[@app/realtime/driver]",
       "migrations",
     ],
+    "pwa/workbox": ["dependencies.@app/pwa", "scripts.postbuild"],
     "web/spa": ["env.production.vars.API_URL", "scripts.deploy", "scripts.dev", "vars.API_URL"],
     "web/ssr": ["env.production.vars.API_URL", "scripts.deploy", "scripts.dev", "vars.API_URL"],
     "web/static": ["scripts.deploy", "scripts.dev"],
@@ -1074,6 +1075,7 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       'exports."./testing"',
       "exports[@app/realtime/driver]",
     ],
+    "pwa/workbox": ["dependencies.@app/pwa", "scripts.postbuild"],
     "storage/fs": [
       "dependencies.@app/storage",
       "dependencies.@app/storage",
