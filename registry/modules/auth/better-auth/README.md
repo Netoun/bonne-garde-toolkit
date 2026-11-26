@@ -98,7 +98,7 @@ else a missing one fails the first request that needs auth, naming the key.
 
 ## Email
 
-Auth does not send email. It asks an `AuthMailer` (`sendVerificationEmail`, `sendPasswordReset`, and the optional `sendInvitation`), and
+Auth does not send email. It asks an `AuthMailer` (`sendVerificationEmail`, `sendPasswordReset`, and the optional `sendInvitation` and `sendMagicLink`), and
 the `mailer` exported by `src/mailer.ts` is what `auth.module.ts` hands it. With no `email` module that
 is `unconfiguredMailer`: it sends nothing and logs a warning that names the user and never the link,
 which carries a one-time token. `requireEmailVerification` stays on, so **a user who signs up in a
@@ -254,6 +254,24 @@ transaction, so each step can run twice: a user who already is a member gets no 
 marked accepted. The membership is one `INSERT … WHERE NOT EXISTS` (`src/invitations.ts`), not a read then an insert:
 `member` has no unique index on user and organization, and two sign-ins at once would both have passed the read. The session's active organization is the one of the most recent invitation accepted at that sign-in,
 else the first live one. `auth.invitation.test.ts` pins each case, including the four that are refused.
+
+## Magic link
+
+`POST /sign-in/magic-link` with `{ email }` mails a link that signs the holder in: `createAuth` adds the `magicLink` plugin
+and hands `{ to, url }` to `mailer.sendMagicLink`. `url` is the API's `GET /magic-link/verify?token=…&callbackURL=…`; the
+client passes `callbackURL` (an origin in `trustedOrigins`) to land on a front-end page, and without it the endpoint answers
+JSON. The token is stored **hashed** (`storeToken: "hashed"`, SHA-256): the `verification` table never holds a value that
+opens a link. It expires after 5 minutes and opens once; a second open, or one after expiry, redirects to
+`callbackURL?error=INVALID_TOKEN` and sets no cookie.
+
+An unknown email creates the account, as password sign-up does: `emailVerified` is true (the inbox was proved) and the
+`user.create.after` hook gives it its "Personal" organization. A known but unverified email is marked verified.
+
+`sendMagicLink` is **optional** on `AuthMailer`, like `sendInvitation`. Without it (`unconfiguredMailer` has one that only
+logs) nothing is sent and auth logs a warning that never contains the link or the address; the request still answers 200,
+so it does not tell whether an address has an account. Rate limit, per client address: 5 a minute on `/sign-in/magic-link`,
+10 on `/magic-link/verify`. `createTestAuth` returns `magicLinks`, what the mailer was asked to send, so a test opens the
+link it received (`auth.magic-link.test.ts`).
 
 ## Organizations marked deleted
 

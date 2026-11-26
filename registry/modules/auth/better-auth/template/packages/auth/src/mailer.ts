@@ -12,6 +12,9 @@ export type AuthInvitationEmail = {
   url: string;
 };
 
+/** One magic link auth asks an email module to deliver. `url` opens the API's verify endpoint and carries the one-time token. */
+export type AuthMagicLinkEmail = { to: string; url: string };
+
 /** The seam between auth and whatever delivers its emails. Auth owns the interface and nothing past it. */
 export interface AuthMailer {
   sendVerificationEmail(email: AuthEmail): Promise<void>;
@@ -21,6 +24,11 @@ export interface AuthMailer {
    * invitation is stored and nothing is sent: auth logs that, and the invite does not fail.
    */
   sendInvitation?(email: AuthInvitationEmail): Promise<void>;
+  /**
+   * Optional for the same reason. Without it, a magic link is stored and nothing is sent: auth logs
+   * that, without the link, and the request does not fail.
+   */
+  sendMagicLink?(email: AuthMagicLinkEmail): Promise<void>;
 }
 
 /**
@@ -50,6 +58,13 @@ export function unconfiguredMailer(logger: Pick<AuthLogger, "warn">): AuthMailer
         scope: "auth",
         event: "email_not_sent",
         kind: "invitation",
+      });
+    },
+    async sendMagicLink() {
+      logger.warn("No email module is installed: the magic link email was not sent", {
+        scope: "auth",
+        event: "email_not_sent",
+        kind: "magic_link",
       });
     },
   };

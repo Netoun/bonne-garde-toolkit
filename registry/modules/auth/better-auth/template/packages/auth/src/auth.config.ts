@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
-import { hasPermission, organization } from "better-auth/plugins";
+import { hasPermission, magicLink, organization } from "better-auth/plugins";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { and, eq, isNull } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
@@ -15,6 +15,9 @@ const { member, organization: orgTable } = schema;
 
 /** How long an organization invitation can be accepted. */
 const INVITATION_EXPIRES_IN = 60 * 60 * 24 * 7; // 7 days, in seconds
+
+/** How long a magic link can be opened. */
+const MAGIC_LINK_EXPIRES_IN = 60 * 5; // 5 minutes, in seconds
 
 /** A Drizzle SQLite database, whichever driver is behind it: D1 in a Worker, `node:sqlite` in a test. */
 export type AuthDatabase = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;
@@ -375,9 +378,37 @@ export function createAuth({
         // `/forget-password` until 1.6 renamed the endpoint, and a rule that matches nothing is silent.
         "/request-password-reset": { window: 60, max: 5 },
         "/reset-password": { window: 60, max: 5 },
+        "/sign-in/magic-link": { window: 60, max: 5 },
+        "/magic-link/verify": { window: 60, max: 10 },
       },
     },
     plugins: [
+      magicLink({
+        expiresIn: MAGIC_LINK_EXPIRES_IN,
+        // The token is the sign-in: a database dump or a read replica must not hold a usable one.
+        storeToken: "hashed",
+        // `url` is the API's verify endpoint, and it carries the token. It is handed to the mailer
+        // and nowhere else: never to a log line.
+        sendMagicLink: async ({ email, url }) => {
+          if (mailer.sendMagicLink === undefined) {
+            logger.warn("The mailer has no sendMagicLink: the magic link email was not sent", {
+              scope: "auth",
+              event: "email_not_sent",
+              kind: "magic_link",
+            });
+            return;
+          }
+          try {
+            await mailer.sendMagicLink({ to: email, url });
+          } catch (error) {
+            logger.error("Failed to send magic link email", error, {
+              scope: "auth",
+              event: "send_magic_link_email",
+            });
+            throw error;
+          }
+        },
+      }),
       organization({
         ac,
         roles,

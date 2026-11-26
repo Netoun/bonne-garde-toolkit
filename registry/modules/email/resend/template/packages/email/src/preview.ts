@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { EMAIL_LOCALES, type EmailLocale } from "./messages";
 import { renderEmailTemplate, type EmailTemplate } from "./render";
 import { invitationPreviewProps, InvitationEmail } from "./templates/invitation.template";
+import { magicLinkPreviewProps, MagicLinkEmail } from "./templates/magic-link.template";
 import { resetPasswordPreviewProps, ResetPasswordEmail } from "./templates/reset-password.template";
 import { verifyEmailPreviewProps, VerifyEmailEmail } from "./templates/verify-email.template";
 import { welcomePreviewProps, WelcomeTemplate } from "./templates/welcome.template";
@@ -27,6 +28,7 @@ const PREVIEWS: PreviewEntry[] = [
   entry("verify-email", VerifyEmailEmail, verifyEmailPreviewProps),
   entry("reset-password", ResetPasswordEmail, resetPasswordPreviewProps),
   entry("invitation", InvitationEmail, invitationPreviewProps),
+  entry("magic-link", MagicLinkEmail, magicLinkPreviewProps),
   entry("welcome", WelcomeTemplate, welcomePreviewProps),
 ];
 

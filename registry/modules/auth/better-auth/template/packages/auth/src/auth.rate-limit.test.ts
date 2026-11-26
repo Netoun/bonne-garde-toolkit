@@ -68,4 +68,35 @@ describe("the custom rate-limit rules", () => {
 
     expect(statuses).toEqual([200, 200, 200, 200, 200, 429]);
   });
+
+  it("let a client ask for a magic link five times a minute, and not a sixth", async () => {
+    const { call } = await createTestAuth({ clientIpHeaders: ["cf-connecting-ip"] });
+    const statuses: number[] = [];
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const response = await call("/sign-in/magic-link", {
+        body: { email: "nobody@example.com" },
+        ip: "203.0.113.40",
+      });
+      statuses.push(response.status);
+    }
+
+    expect(statuses).toEqual([200, 200, 200, 200, 200, 429]);
+  });
+
+  // The plugin's own rule is five a minute: ten passing is the custom rule at work.
+  it("let a client open ten magic links a minute, and not an eleventh", async () => {
+    const { call } = await createTestAuth({ clientIpHeaders: ["cf-connecting-ip"] });
+    const statuses: number[] = [];
+
+    // A token that was never issued: each open is refused, and counts all the same.
+    for (let attempt = 0; attempt < 11; attempt += 1) {
+      const response = await call("/magic-link/verify?token=unknown&callbackURL=/", {
+        ip: "203.0.113.50",
+      });
+      statuses.push(response.status);
+    }
+
+    expect(statuses).toEqual([...Array.from({ length: 10 }, () => 302), 429]);
+  });
 });

@@ -25,6 +25,12 @@ export const fr: EmailMessages = {
     body: "Cliquez sur le lien ci-dessous pour accepter l'invitation. Elle expire dans 7 jours.",
     button: "Accepter l'invitation",
   },
+  magicLink: {
+    subject: "Votre lien de connexion",
+    heading: "Connectez-vous à votre compte",
+    body: "Cliquez sur le lien ci-dessous pour vous connecter. Il expire dans 5 minutes et ne sert qu'une fois. Si vous ne l'avez pas demandé, ignorez cet e-mail.",
+    button: "Se connecter",
+  },
   welcome: {
     heading: (appName) => `Bienvenue sur ${appName}`,
     body: (userName) => `Bonjour ${userName}, votre compte est prêt.`,

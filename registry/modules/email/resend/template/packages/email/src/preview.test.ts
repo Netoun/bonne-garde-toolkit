@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { writePreviews } from "./preview";
 
-const TEMPLATES = ["verify-email", "reset-password", "invitation", "welcome"];
+const TEMPLATES = ["verify-email", "reset-password", "invitation", "magic-link", "welcome"];
 const LOCALES = ["en", "fr"];
 
 let outDir: string;
