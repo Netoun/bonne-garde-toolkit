@@ -33,6 +33,7 @@ const SHARED_MODULES = [
   "web/spa",
   "web/ssr",
   "web/static",
+  "pwa/workbox",
   "deploy/cloudflare-actions",
   "email/resend",
 ];
@@ -53,6 +54,7 @@ const OTHER_PROVIDER_STACK = [
   "realtime/rooms",
   "observability/sentry",
   "web/spa",
+  "pwa/workbox",
 ];
 /**
  * The same stack on a Postgres: `db/postgres` is the one `db`, so it takes the place of `db/libsql` (and of the ORM, which has no postgres variant yet).

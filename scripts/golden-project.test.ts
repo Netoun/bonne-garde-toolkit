@@ -264,6 +264,7 @@ describe("the golden project", () => {
             "storage/fs",
             "realtime/rooms",
             "observability/sentry",
+            "pwa/workbox",
           ].includes(name),
       ),
     );
@@ -414,6 +415,7 @@ describe("the golden project and modules", () => {
       "deploy/cloudflare-actions",
       "realtime/rooms",
       "observability/sentry",
+      "pwa/workbox",
       "pm/bun",
       "provider/dockerfile",
       "db/libsql",
@@ -810,6 +812,7 @@ describe("the golden project and patches", () => {
           "exports[@app/realtime/driver]",
           "migrations",
         ],
+        "pwa/workbox": ["dependencies.@app/pwa", "scripts.postbuild"],
         "orm/drizzle": [
           "dependencies.@app/db",
           "dependencies.drizzle-orm",
@@ -884,6 +887,7 @@ describe("the golden project and patches", () => {
           'exports."./testing"',
           "exports[@app/realtime/driver]",
         ],
+        "pwa/workbox": ["dependencies.@app/pwa", "scripts.postbuild"],
         "storage/fs": [
           "dependencies.@app/storage",
           "dependencies.@app/storage",

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "workbox",
+  "category": "pwa",
+  "version": "0.1.0",
+  "title": "PWA (Workbox)",
+  "description": "A service worker for the SPA: Workbox precaches the build and answers navigations from it, so the app opens with no network. Static output, the same on both providers.",
+  "peers": {
+    "web": ["spa"]
+  },
+  "checks": ["cd packages/pwa && vp run typecheck && vp run test"],
+  "variants": [
+    {
+      "key": "default",
+      "match": {},
+      "workspace": {
+        "name": "{{SCOPE}}/pwa",
+        "path": "packages/pwa"
+      },
+      "dependencies": {
+        "tsx": "4.23.15",
+        "workbox-build": "7.4.1"
+      },
+      "copy": [
+        "packages/pwa/package.json",
+        "packages/pwa/src/build-service-worker.test.ts",
+        "packages/pwa/src/build-service-worker.ts",
+        "packages/pwa/src/pwa-build.ts",
+        "packages/pwa/tsconfig.json"
+      ],
+      "patch": [
+        {
+          "type": "package.dependencies",
+          "file": "apps/spa/package.json",
+          "dependencies": {
+            "{{SCOPE}}/pwa": "workspace:*"
+          },
+          "intent": "Declare the project's pwa package as a dependency of the SPA, which links its pwa-build bin."
+        },
+        {
+          "type": "scripts.merge",
+          "file": "apps/spa/package.json",
+          "scripts": {
+            "postbuild": "pwa-build build/client"
+          },
+          "intent": "Generate the service worker over the SPA's client build each time it is built."
+        }
+      ]
+    }
+  ]
+}

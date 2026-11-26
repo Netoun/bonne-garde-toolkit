@@ -26,6 +26,7 @@ export const MODULE_CATEGORIES = [
   "payments",
   "observability",
   "web",
+  "pwa",
   "testing",
   "deploy",
   "dev",

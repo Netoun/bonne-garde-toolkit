@@ -94,6 +94,7 @@
           "payments",
           "observability",
           "web",
+          "pwa",
           "testing",
           "deploy",
           "dev"
