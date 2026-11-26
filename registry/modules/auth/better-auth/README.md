@@ -44,6 +44,7 @@ Everything in `packages/auth`, from explicit paths:
 | `src/permission.macro.ts`           | the `{ permission: { ... } }` macro both modules mount                                                                          |
 | `src/schema.ts`                     | the Drizzle tables and relations, **generator output** (see below)                                                              |
 | `src/env.ts`                        | `resolveAuthEnv`: `BETTER_AUTH_SECRET`, read from `readRuntimeEnv()`                                                            |
+| `src/providers.ts`                  | `readProviders`: the social and OpenID Connect sign-in providers the environment declares (see below)                           |
 | `src/mailer.ts`                     | `AuthMailer`, and the `mailer` an `email` module replaces                                                                       |
 | `src/password.ts`                   | scrypt `hashPassword` / `verifyPassword`, shared with the seed                                                                  |
 | `src/seed.ts`                       | `db:seed`: `seedAdmin` (the admin, once), a SQL builder that is tested, and a thin `wrangler` runner; it deletes nothing        |
@@ -282,6 +283,49 @@ variants. The price is that the permission check is written twice (here and in t
 the request never reaches); it goes through Better Auth's own `hasPermission`, so roles stay the one in
 `permissions.ts`. Nothing restores or purges a deleted organization.
 
+## Sign-in providers
+
+Which providers exist is the environment's to say, read by `readProviders` (`src/providers.ts`) through
+`readRuntimeEnv()` with the secret. Nothing is set by default, and a key left empty is a key not set, so
+`.env.example` can list them all.
+
+| Provider                                                    | Keys                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `github`, `gitlab`, `discord`, `google`, `microsoft`        | `<ID>_CLIENT_ID` and `<ID>_CLIENT_SECRET` (`GOOGLE_CLIENT_ID`, ...); the provider is on when either is set                                                                                                                                             |
+| any OpenID Connect provider (Authelia, Keycloak, Okta, ...) | `OIDC_PROVIDERS=corp,my-idp` (ids `[a-z0-9-]+`, no duplicate, none a social id), then for each `OIDC_<ID>_ISSUER`, `_CLIENT_ID`, `_CLIENT_SECRET`, and optional `_NAME` (the label, the id by default); `<ID>` is the id upper-cased, `-` becoming `_` |
+
+`<ID>_AUTO_SIGNUP` and `OIDC_<ID>_AUTO_SIGNUP` are `true` or `false`, `false` by default. Anything else, a key
+missing from a provider that is half declared, or a bad id, fails the first request that needs auth with an
+error that names the key, as a missing `BETTER_AUTH_SECRET` does.
+
+**`autoSignup` decides who may sign in with a provider.** Off, only a person who already has an account can: a
+stranger is sent back to the front with `error=signup_disabled` and no user is created. On, a stranger gets an
+account (and the Personal organization). It is Better Auth's `disableSignUp` and not `disableImplicitSignUp`,
+which only asks the client to pass `requestSignUp: true`, which any client can.
+
+**Linking.** An external account joins the existing account of the same email only when the provider says the
+email is verified and the account's email is too; otherwise the sign-in is refused (`error=account_not_linked`).
+That holds for every provider: there is no `trustedProviders`, and `createAuth` writes the rule out so that a change
+of default upstream cannot weaken it.
+
+The callback to declare at the provider, with `API_URL` the API's origin:
+
+| Provider | Callback                                  |
+| -------- | ----------------------------------------- |
+| social   | `<API_URL>/api/auth/callback/<id>`        |
+| OIDC     | `<API_URL>/api/auth/oauth2/callback/<id>` |
+
+An OIDC provider is found from `<issuer>/.well-known/openid-configuration` and asked for `openid email profile`,
+with PKCE. From the front:
+
+```ts
+authClient.signIn.social({ provider: "google", callbackURL: "/" });
+authClient.signIn.oauth2({ providerId: "corp", callbackURL: "/" }); // `genericOAuthClient()` on the client
+```
+
+Both endpoints are limited to ten a minute per client. A provider that is not configured answers an error.
+`auth.providers.test.ts` runs the OIDC flow against a provider served on a local port.
+
 ## Rate limit and the client's address
 
 Better Auth limits by client address and, told nothing, reads `x-forwarded-for` alone. Workers do not
@@ -293,7 +337,7 @@ operator names), because with the port published `x-forwarded-for` is the client
 provider. `auth.rate-limit.test.ts` pins it: one client is throttled, another is not, and a forged
 `x-forwarded-for` does not pick a bucket.
 
-The custom rules are per client and per minute: ten on `/sign-in/email`, five each on `/sign-up/email`,
+The custom rules are per client and per minute: ten on `/sign-in/email`, `/sign-in/social` and `/sign-in/oauth2`, five each on `/sign-up/email`,
 `/request-password-reset` and `/reset-password`, a hundred on the rest. A rule is matched on the path
 Better Auth serves, relative to the base path, and one that matches nothing is ignored without a word:
 the legacy `/forget-password` rule matched nothing since 1.6 renamed the endpoint, so the built-in three a

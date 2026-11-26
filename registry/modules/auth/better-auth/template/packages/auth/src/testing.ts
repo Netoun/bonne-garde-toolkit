@@ -23,7 +23,7 @@ let instances = 0;
 export type SentEmail = AuthEmail & { kind: "verification" | "password_reset" };
 
 type TestAuthOverrides = Partial<
-  Pick<AuthOptions, "trustedOrigins" | "clientIpHeaders" | "logger"> & {
+  Pick<AuthOptions, "trustedOrigins" | "clientIpHeaders" | "logger" | "providers"> & {
     /**
      * Replaces the methods of the test mailer it names and keeps the others, so that a test can
      * swap `sendInvitation` and still sign its users in through the emails the test mailer keeps.

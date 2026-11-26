@@ -14,6 +14,7 @@ import { createAuth, type Auth, type AuthDatabase } from "./auth.config";
 import { resolveAuthEnv } from "./env";
 import { mailer } from "./mailer";
 import { permissionMacroPlugin } from "./permission.macro";
+import { readProviders } from "./providers";
 import { member, organization, session as sessionTable } from "./schema";
 
 /** An auth instance and the database it was built over. */
@@ -108,9 +109,10 @@ export function authPlugin(resolveAuth: ResolveAuth) {
 }
 
 async function buildContext(client: Awaited<ReturnType<typeof readLibsql>>): Promise<AuthContext> {
-  const { BETTER_AUTH_SECRET } = resolveAuthEnv(await readRuntimeEnv(), {
-    test: process.env.NODE_ENV === "test",
-  });
+  const env = await readRuntimeEnv();
+  const { BETTER_AUTH_SECRET } = resolveAuthEnv(env, { test: process.env.NODE_ENV === "test" });
+  // Read here, with the secret: a provider half-declared fails the first request that needs auth.
+  const providers = readProviders(env);
   const db = createDB(client);
   return {
     db,
@@ -123,6 +125,7 @@ async function buildContext(client: Awaited<ReturnType<typeof readLibsql>>): Pro
       clientIpHeaders,
       mailer,
       logger,
+      providers,
     }),
   };
 }
