@@ -35,6 +35,7 @@ const SHARED_MODULES = [
   "web/static",
   "deploy/cloudflare-actions",
   "email/resend",
+  "dev/agent-hooks",
 ];
 /**
  * The project on the other provider. `provider` admits one module, and the variant of `api/elysia`

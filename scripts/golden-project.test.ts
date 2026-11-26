@@ -264,6 +264,7 @@ describe("the golden project", () => {
             "storage/fs",
             "realtime/rooms",
             "observability/sentry",
+            "dev/agent-hooks",
           ].includes(name),
       ),
     );
@@ -414,6 +415,7 @@ describe("the golden project and modules", () => {
       "deploy/cloudflare-actions",
       "realtime/rooms",
       "observability/sentry",
+      "dev/agent-hooks",
       "pm/bun",
       "provider/dockerfile",
       "db/libsql",
