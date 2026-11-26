@@ -41,4 +41,21 @@ describe("the mailer an email module replaces", () => {
     expect(lines[0]).not.toContain("invitation-id");
     expect(lines[0]).not.toContain("a@example.com");
   });
+
+  it("does not send a magic link either, and never logs its link", async () => {
+    const lines: string[] = [];
+    const mailer = unconfiguredMailer({
+      warn: (message, context) => lines.push(JSON.stringify({ message, ...context })),
+    });
+
+    await mailer.sendMagicLink?.({
+      to: "a@example.com",
+      url: "http://api.test/api/auth/magic-link/verify?token=one-time-token",
+    });
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("the magic link email was not sent");
+    expect(lines[0]).not.toContain("one-time-token");
+    expect(lines[0]).not.toContain("a@example.com");
+  });
 });

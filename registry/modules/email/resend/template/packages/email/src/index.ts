@@ -17,6 +17,7 @@ export {
   createAuthMailer,
   emailMailer,
   type AuthEmailMessage,
+  type AuthMagicLinkMessage,
   type AuthMailer,
 } from "./auth-mailer";
 
@@ -26,5 +27,7 @@ export { VerifyEmailEmail } from "./templates/verify-email.template";
 export type { VerifyEmailTemplateProps } from "./templates/verify-email.template";
 export { ResetPasswordEmail } from "./templates/reset-password.template";
 export type { ResetPasswordTemplateProps } from "./templates/reset-password.template";
+export { MagicLinkEmail } from "./templates/magic-link.template";
+export type { MagicLinkTemplateProps } from "./templates/magic-link.template";
 export { InvitationEmail } from "./templates/invitation.template";
 export type { InvitationTemplateProps } from "./templates/invitation.template";

@@ -133,6 +133,31 @@ describe("the mailer auth is wired to", () => {
       expect(outbox[0]?.html).toContain(`href="${url}"`);
     });
 
+    test("sendMagicLink sends one email to that address, with the link and the 5-minute expiry", async () => {
+      const url = "http://api.test/api/auth/magic-link/verify?token=one-time-token&callbackURL=%2F";
+
+      await emailMailer.sendMagicLink({ to: "ada@example.com", url });
+
+      expect(outbox.map(({ to, subject }) => [to, subject])).toEqual([
+        ["ada@example.com", "Your sign-in link"],
+      ]);
+      expect(outbox[0]?.html).toContain(`href="${url.replaceAll("&", "&amp;")}"`);
+      expect(outbox[0]?.html).toContain("5 minutes");
+      expect(outbox[0]?.text).toContain(url);
+    });
+
+    test("sendMagicLink writes in French when asked for locale fr", async () => {
+      await emailMailer.sendMagicLink({
+        to: "ada@example.com",
+        url: URL_WITH_TOKEN,
+        locale: "fr",
+      });
+
+      expect(outbox.map(({ subject }) => subject)).toEqual([emailMessages("fr").magicLink.subject]);
+      expect(emailMessages("fr").magicLink.subject).not.toBe(emailMessages("en").magicLink.subject);
+      expect(outbox[0]?.html).toContain('lang="fr"');
+    });
+
     test("every message it delivers carries a plain-text part with the link", async () => {
       const verify = "http://spa.test/auth/verify-email?token=a";
       const reset = "http://spa.test/auth/reset-password?token=b";

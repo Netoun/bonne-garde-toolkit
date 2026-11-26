@@ -27,6 +27,12 @@ export const en = {
     body: "Click the link below to accept the invitation. It expires in 7 days.",
     button: "Accept invitation",
   },
+  magicLink: {
+    subject: "Your sign-in link",
+    heading: "Sign in to your account",
+    body: "Click the link below to sign in. It expires in 5 minutes and works once. If you did not ask for it, ignore this email.",
+    button: "Sign in",
+  },
   welcome: {
     heading: (appName: string) => `Welcome to ${appName}`,
     body: (userName: string) => `Hi ${userName}, your account is ready.`,

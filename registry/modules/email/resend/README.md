@@ -1,7 +1,7 @@
 # email/resend
 
 Transactional email over the project's provider: a react-email kit themed from the project's branding, the
-templates auth needs (verification, password reset and organization invitations) rendered to html and
+templates auth needs (verification, password reset, organization invitations and magic links) rendered to html and
 plain text in English and French, a `memory` adapter for tests, and a transport per provider: Resend over its HTTP API, and SMTP
 (nodemailer, Mailpit in development) on `dockerfile`. It is the legacy
 `packages/emails` and `apps/api/src/lib/email.ts` extracted into `packages/email`.
@@ -70,25 +70,25 @@ Read the mail at <http://localhost:8025>.
 
 Everything in `packages/email`, from explicit paths:
 
-| File                                       | What it is                                                                                                                          |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `package.json`                             | `{{SCOPE}}/email`: the `.`, `./testing` and `./transport` exports, the scripts                                                      |
-| `src/types.ts`, `render.ts`, `send.ts`     | `EmailMessage` (`to`, `subject`, `html`, `text`), `EmailProvider`, `renderEmailTemplate` (returns `{ html, text }`) and `sendEmail` |
-| `src/components/email-kit.tsx`             | `EmailLayout`, `EmailHeading`, `EmailText`, `EmailButton`: the frame and parts every template is built on, themed from `branding`   |
-| `src/templates/*.template.tsx`             | `VerifyEmailEmail`, `ResetPasswordEmail`, `InvitationEmail` and `WelcomeTemplate`, on the kit, each taking `locale?`                |
-| `src/messages/{en,fr,index}.ts`            | the strings of every email per locale, `EmailLocale`, `DEFAULT_EMAIL_LOCALE` and `emailMessages(locale)`                            |
-| `src/preview.ts`                           | `writePreviews(outDir?)`: every template × locale to static `html` and `txt` files and an `index.html`; the `preview` script        |
-| `.gitignore`                               | `.preview/`, where the preview script writes                                                                                        |
-| `src/providers/memory.provider.ts`         | `createMemoryEmailProvider(store)`: keeps what it is asked to send, sends nothing                                                   |
-| `src/providers/resend.provider.ts`         | `createResendEmailProvider({ apiKey, from?, baseUrl? })`: `POST /emails`, plain `fetch`                                             |
-| `src/providers/smtp.provider.ts`           | `dockerfile` only: `createSmtpEmailProvider({ url, from? })`, nodemailer, `html` and `text`                                         |
-| `src/env.ts`                               | `resolveEmailEnv`: `RESEND_API_KEY`, read from `readRuntimeEnv()`                                                                   |
-| `src/transport.ts`, `transport.node.ts`    | `createTransport(env)`: Resend (`cloudflare`), or SMTP then Resend (`dockerfile`); the `./transport` export is the variant's        |
-| `compose.mailpit.yaml`                     | `dockerfile` only: a `mailpit` service for development                                                                              |
-| `src/runtime.ts`                           | `emailProvider`: the adapter the runtime sends through, chosen at the first email                                                   |
-| `src/auth-mailer.ts`                       | `createAuthMailer` and `emailMailer`: auth's two emails, rendered and sent                                                          |
-| `src/testing.ts`                           | `outbox` and `clearOutbox`: what the memory adapter holds under test                                                                |
-| `src/*.test.ts`, `src/providers/*.test.ts` | the tests that travel, and the new ones: no mock of `fetch`, no snapshot                                                            |
+| File                                       | What it is                                                                                                                             |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `package.json`                             | `{{SCOPE}}/email`: the `.`, `./testing` and `./transport` exports, the scripts                                                         |
+| `src/types.ts`, `render.ts`, `send.ts`     | `EmailMessage` (`to`, `subject`, `html`, `text`), `EmailProvider`, `renderEmailTemplate` (returns `{ html, text }`) and `sendEmail`    |
+| `src/components/email-kit.tsx`             | `EmailLayout`, `EmailHeading`, `EmailText`, `EmailButton`: the frame and parts every template is built on, themed from `branding`      |
+| `src/templates/*.template.tsx`             | `VerifyEmailEmail`, `ResetPasswordEmail`, `InvitationEmail`, `MagicLinkEmail` and `WelcomeTemplate`, on the kit, each taking `locale?` |
+| `src/messages/{en,fr,index}.ts`            | the strings of every email per locale, `EmailLocale`, `DEFAULT_EMAIL_LOCALE` and `emailMessages(locale)`                               |
+| `src/preview.ts`                           | `writePreviews(outDir?)`: every template × locale to static `html` and `txt` files and an `index.html`; the `preview` script           |
+| `.gitignore`                               | `.preview/`, where the preview script writes                                                                                           |
+| `src/providers/memory.provider.ts`         | `createMemoryEmailProvider(store)`: keeps what it is asked to send, sends nothing                                                      |
+| `src/providers/resend.provider.ts`         | `createResendEmailProvider({ apiKey, from?, baseUrl? })`: `POST /emails`, plain `fetch`                                                |
+| `src/providers/smtp.provider.ts`           | `dockerfile` only: `createSmtpEmailProvider({ url, from? })`, nodemailer, `html` and `text`                                            |
+| `src/env.ts`                               | `resolveEmailEnv`: `RESEND_API_KEY`, read from `readRuntimeEnv()`                                                                      |
+| `src/transport.ts`, `transport.node.ts`    | `createTransport(env)`: Resend (`cloudflare`), or SMTP then Resend (`dockerfile`); the `./transport` export is the variant's           |
+| `compose.mailpit.yaml`                     | `dockerfile` only: a `mailpit` service for development                                                                                 |
+| `src/runtime.ts`                           | `emailProvider`: the adapter the runtime sends through, chosen at the first email                                                      |
+| `src/auth-mailer.ts`                       | `createAuthMailer` and `emailMailer`: auth's two emails, rendered and sent                                                             |
+| `src/testing.ts`                           | `outbox` and `clearOutbox`: what the memory adapter holds under test                                                                   |
+| `src/*.test.ts`, `src/providers/*.test.ts` | the tests that travel, and the new ones: no mock of `fetch`, no snapshot                                                               |
 
 Dependencies are exact: `@react-email/components` (it re-exports `render`, so the package pins one renderer),
 `react` and `react-dom` (`react-dom` is a peer of the renderer), and the project's `api-runtime` and
@@ -107,7 +107,7 @@ restyles its emails by editing `branding.json`; the kit has no key of its own. S
 clients ignore classes and `<style>` unevenly), so there is no Tailwind in the package.
 
 A template is a function of its props returning an `EmailLayout`: `VerifyEmailEmail`,
-`ResetPasswordEmail`, `InvitationEmail` and `WelcomeTemplate` keep their names and props, and a new one
+`ResetPasswordEmail`, `InvitationEmail`, `MagicLinkEmail` and `WelcomeTemplate` keep their names and props, and a new one
 sits beside them the same way. `renderEmailTemplate` renders it twice, to `html` and, with
 `plainText: true`, to `text`; the button's link is in both. Every `EmailMessage` carries both parts, and
 Resend gets them as `html` and `text` in one request.
@@ -121,7 +121,7 @@ type error, not an English line in a French email. There is no i18next and no pe
 module chose, so the API's resolved locale can be passed straight in later.
 
 Every template takes `locale?: EmailLocale` and so does each message auth hands the mailer
-(`AuthEmailMessage`, `AuthInvitationMessage`); absent means English. Auth passes none today: wiring the
+(`AuthEmailMessage`, `AuthInvitationMessage`, `AuthMagicLinkMessage`); absent means English. Auth passes none today: wiring the
 request's locale into it is not done here.
 
 ```ts

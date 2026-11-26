@@ -2,7 +2,7 @@ import { createTestDb } from "{{SCOPE}}/db/testing";
 import { createAuth, type AuthOptions } from "./auth.config";
 import { AUTH_BASE_PATH } from "./client";
 import { resolveAuthEnv } from "./env";
-import type { AuthEmail, AuthInvitationEmail, AuthMailer } from "./mailer";
+import type { AuthEmail, AuthInvitationEmail, AuthMagicLinkEmail, AuthMailer } from "./mailer";
 import * as schema from "./schema";
 
 /** The origins a test serves the API and the front-end on. */
@@ -19,7 +19,7 @@ export const TEST_CLIENT_IP_HEADER = "x-test-client-ip";
 
 let instances = 0;
 
-/** A verification or reset email the mailer was asked to send, in the order it was asked; invitations are kept apart. */
+/** A verification or reset email the mailer was asked to send, in the order it was asked; invitations and magic links are kept apart. */
 export type SentEmail = AuthEmail & { kind: "verification" | "password_reset" };
 
 type TestAuthOverrides = Partial<
@@ -70,6 +70,7 @@ async function startTestAuth<TSchema extends Record<string, unknown>>(
   const clientIp = `10.${Math.floor(instances / 250)}.${instances % 250}.1`;
   const sent: SentEmail[] = [];
   const invitations: AuthInvitationEmail[] = [];
+  const magicLinks: AuthMagicLinkEmail[] = [];
   const mailer: AuthMailer = {
     async sendVerificationEmail(email) {
       sent.push({ kind: "verification", ...email });
@@ -79,6 +80,9 @@ async function startTestAuth<TSchema extends Record<string, unknown>>(
     },
     async sendInvitation(email) {
       invitations.push(email);
+    },
+    async sendMagicLink(email) {
+      magicLinks.push(email);
     },
     ...overrides.mailer,
   };
@@ -152,5 +156,5 @@ async function startTestAuth<TSchema extends Record<string, unknown>>(
       .join("; ");
   }
 
-  return { auth, db, sent, invitations, call, signIn };
+  return { auth, db, sent, invitations, magicLinks, call, signIn };
 }

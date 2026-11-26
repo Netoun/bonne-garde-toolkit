@@ -3,6 +3,7 @@ import { renderEmailTemplate } from "./render";
 import { emailProvider } from "./runtime";
 import { sendEmail } from "./send";
 import { InvitationEmail } from "./templates/invitation.template";
+import { MagicLinkEmail } from "./templates/magic-link.template";
 import { ResetPasswordEmail } from "./templates/reset-password.template";
 import { VerifyEmailEmail } from "./templates/verify-email.template";
 import type { EmailProvider } from "./types";
@@ -26,11 +27,15 @@ export type AuthInvitationMessage = {
   locale?: EmailLocale;
 };
 
+/** What auth hands a mailer for one magic link: the recipient and the URL that signs them in. */
+export type AuthMagicLinkMessage = { to: string; url: string; locale?: EmailLocale };
+
 /** The messages auth asks for; auth's `AuthMailer` is assignable from it. */
 export type AuthMailer = {
   sendVerificationEmail(email: AuthEmailMessage): Promise<void>;
   sendPasswordReset(email: AuthEmailMessage): Promise<void>;
   sendInvitation(invitation: AuthInvitationMessage): Promise<void>;
+  sendMagicLink(email: AuthMagicLinkMessage): Promise<void>;
 };
 
 /**
@@ -75,6 +80,15 @@ export function createAuthMailer(resolveProvider: () => Promise<EmailProvider>):
       await sendEmail(await resolveProvider(), {
         to,
         subject: emailMessages(locale).invitation.subject(organizationName),
+        html,
+        text,
+      });
+    },
+    async sendMagicLink({ to, url, locale }) {
+      const { html, text } = await renderEmailTemplate(MagicLinkEmail, { signInUrl: url, locale });
+      await sendEmail(await resolveProvider(), {
+        to,
+        subject: emailMessages(locale).magicLink.subject,
         html,
         text,
       });
