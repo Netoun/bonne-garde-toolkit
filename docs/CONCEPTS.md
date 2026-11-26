@@ -43,6 +43,7 @@ The order is topological: a category comes after every category it may peer on, 
 | `db`            | one         | package `packages/db`            | Binding and client; provider-matched                                                |
 | `orm`           | one         | package `packages/db`            | Shares the `db` directory                                                           |
 | `auth`          | one         | package `packages/auth`          |                                                                                     |
+| `audit`         | one         | package `packages/audit`         | Append-only log of who changed what, written in the same batch as the change        |
 | `ui`            | one         | package `packages/ui`            | Host package for the UI items                                                       |
 | `email`         | one         | package `packages/email`         |                                                                                     |
 | `queue`         | one         | package `packages/queue`         |                                                                                     |

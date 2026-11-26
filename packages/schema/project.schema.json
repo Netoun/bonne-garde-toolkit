@@ -86,6 +86,7 @@
           "db",
           "orm",
           "auth",
+          "audit",
           "ui",
           "email",
           "queue",

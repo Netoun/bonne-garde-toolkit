@@ -14,6 +14,7 @@ export const CATEGORY_HOME = {
   db: "package packages/db",
   orm: "package packages/db",
   auth: "package packages/auth",
+  audit: "package packages/audit",
   ui: "package packages/ui",
   email: "package packages/email",
   queue: "package packages/queue",

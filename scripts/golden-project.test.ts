@@ -264,6 +264,7 @@ describe("the golden project", () => {
             "storage/fs",
             "realtime/rooms",
             "observability/sentry",
+            "audit/log",
           ].includes(name),
       ),
     );
@@ -414,6 +415,7 @@ describe("the golden project and modules", () => {
       "deploy/cloudflare-actions",
       "realtime/rooms",
       "observability/sentry",
+      "audit/log",
       "pm/bun",
       "provider/dockerfile",
       "db/libsql",
@@ -783,6 +785,7 @@ describe("the golden project and patches", () => {
           "scripts.db:migrate:local",
           "scripts.db:migrate:remote",
         ],
+        "audit/log": ["dependencies.@app/audit", "exports[@app/audit/schema]"],
         "auth/better-auth": [
           "dependencies.@app/auth",
           "dependencies.@app/auth",
@@ -861,6 +864,7 @@ describe("the golden project and patches", () => {
           "imports[@app/db]",
           "scripts.db:generate",
         ],
+        "audit/log": ["dependencies.@app/audit", "exports[@app/audit/schema]"],
         "auth/better-auth": [
           "dependencies.@app/auth",
           "dependencies.@app/auth",
@@ -2518,7 +2522,11 @@ describe("the storage phases", () => {
   });
 
   test("the migration has to create the table golden adds and the medias table", () => {
-    expect(MODULE_TABLES).toEqual({ "storage/r2": ["medias"], "storage/fs": ["medias"] });
+    expect(MODULE_TABLES).toEqual({
+      "audit/log": ["audit_log"],
+      "storage/r2": ["medias"],
+      "storage/fs": ["medias"],
+    });
     expect(expectedTables({ name: "a", modules: ["orm/drizzle"], items: false })).toEqual([
       GOLDEN_TABLE,
     ]);

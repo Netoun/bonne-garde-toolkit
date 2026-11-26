@@ -161,9 +161,9 @@ export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
 
 /** The modules `bonne-garde add` installs after what `create` produced for the set, in that order. */
 export const ADDED_AFTER_CREATE: Readonly<Record<string, readonly string[]>> = {
-  // `create` offers neither realtime nor observability: each provider's set adds its variants.
-  cloudflare: ["realtime/rooms", "observability/sentry"],
-  dockerfile: ["realtime/rooms", "observability/sentry"],
+  // `create` offers neither realtime, observability nor audit: each provider's set adds its variants.
+  cloudflare: ["realtime/rooms", "observability/sentry", "audit/log"],
+  dockerfile: ["realtime/rooms", "observability/sentry", "audit/log"],
   "dockerfile-postgres": ["db/postgres", "orm/drizzle"],
 };
 
@@ -760,6 +760,7 @@ export function goldenSchema(configuration: Configuration): string {
  * inserts into them.
  */
 export const MODULE_TABLES: Readonly<Record<string, readonly string[]>> = {
+  "audit/log": ["audit_log"],
   "storage/r2": ["medias"],
   "storage/fs": ["medias"],
 };
@@ -973,6 +974,7 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "scripts.db:migrate:local",
       "scripts.db:migrate:remote",
     ],
+    "audit/log": ["dependencies.@app/audit", "exports[@app/audit/schema]"],
     "auth/better-auth": [
       "dependencies.@app/auth",
       "dependencies.@app/auth",
@@ -1051,6 +1053,7 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       "imports[@app/db]",
       "scripts.db:generate",
     ],
+    "audit/log": ["dependencies.@app/audit", "exports[@app/audit/schema]"],
     "auth/better-auth": [
       "dependencies.@app/auth",
       "dependencies.@app/auth",

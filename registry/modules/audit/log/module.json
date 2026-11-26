@@ -1,0 +1,59 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "log",
+  "category": "audit",
+  "version": "0.1.0",
+  "title": "Audit log",
+  "description": "An append-only audit log: who did what, when, with the row before and after. The change and its entry are written in one batch, and triggers refuse UPDATE and DELETE on the table.",
+  "peers": {
+    "provider": [],
+    "api": ["elysia"],
+    "db": ["d1", "libsql"],
+    "orm": ["drizzle"],
+    "auth": ["better-auth"]
+  },
+  "checks": ["cd packages/audit && vp run typecheck && vp run test"],
+  "variants": [
+    {
+      "key": "default",
+      "match": {},
+      "workspace": {
+        "name": "{{SCOPE}}/audit",
+        "path": "packages/audit"
+      },
+      "dependencies": {
+        "drizzle-orm": "0.45.2",
+        "{{SCOPE}}/db": "workspace:*"
+      },
+      "copy": [
+        "packages/audit/package.json",
+        "packages/audit/src/index.ts",
+        "packages/audit/src/record.test.ts",
+        "packages/audit/src/record.ts",
+        "packages/audit/src/schema.ts",
+        "packages/audit/src/testing.ts",
+        "packages/audit/src/triggers.test.ts",
+        "packages/audit/src/triggers.ts",
+        "packages/audit/tsconfig.json",
+        "packages/audit/tsconfig.test.json"
+      ],
+      "patch": [
+        {
+          "type": "package.dependencies",
+          "file": "packages/db/package.json",
+          "dependencies": {
+            "{{SCOPE}}/audit": "workspace:*"
+          },
+          "intent": "Declare the project's audit package as a dependency of the db package, whose schema barrel re-exports its table."
+        },
+        {
+          "type": "ts.addNamedExport",
+          "file": "packages/db/src/schema/index.ts",
+          "moduleSpecifier": "{{SCOPE}}/audit/schema",
+          "exports": ["auditLog"],
+          "intent": "Re-export the audit_log table from the schema barrel, so db:generate and createDB see it."
+        }
+      ]
+    }
+  ]
+}

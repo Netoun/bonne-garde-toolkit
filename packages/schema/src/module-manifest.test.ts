@@ -26,6 +26,13 @@ describe("parseModuleManifest", () => {
     expect(manifest.variants).toHaveLength(1);
   });
 
+  it("accepts the audit category, which sits right after auth", () => {
+    const manifest = parseModuleManifest({ ...valid, id: "log", category: "audit" });
+
+    expect(manifest.category).toBe("audit");
+    expect(MODULE_CATEGORIES.indexOf("audit")).toBe(MODULE_CATEGORIES.indexOf("auth") + 1);
+  });
+
   it("rejects an unknown category and names the allowed ones", () => {
     expect(() => parseModuleManifest({ ...valid, category: "runtime" })).toThrow(
       /category must be one of .*provider.*got: runtime/s,
@@ -266,6 +273,7 @@ describe("the category table", () => {
     expect(categoryCardinality("config")).toBe("one");
     expect(categoryCardinality("observability")).toBe("one");
     expect(categoryCardinality("api")).toBe("one");
+    expect(categoryCardinality("audit")).toBe("one");
     expect(categoryCardinality("web")).toBe("many");
     expect(categoryCardinality("deploy")).toBe("many");
     expect(categoryCardinality("dev")).toBe("many");
@@ -281,6 +289,7 @@ describe("the category table", () => {
       "db",
       "orm",
       "auth",
+      "audit",
       "ui",
       "email",
       "queue",

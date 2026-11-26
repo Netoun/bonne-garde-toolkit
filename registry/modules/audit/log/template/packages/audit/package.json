@@ -1,0 +1,16 @@
+{
+  "name": "{{SCOPE}}/audit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The project's audit log: an append-only table written in the same batch as the change it records",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc --project tsconfig.test.json --noEmit",
+    "test": "vp test"
+  }
+}
