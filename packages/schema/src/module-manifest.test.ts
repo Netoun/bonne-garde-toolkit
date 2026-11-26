@@ -286,6 +286,7 @@ describe("the category table", () => {
       "queue",
       "storage",
       "realtime",
+      "scheduler",
       "payments",
       "observability",
       "web",

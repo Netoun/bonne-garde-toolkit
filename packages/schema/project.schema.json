@@ -91,6 +91,7 @@
           "queue",
           "storage",
           "realtime",
+          "scheduler",
           "payments",
           "observability",
           "web",

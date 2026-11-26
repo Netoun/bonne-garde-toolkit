@@ -48,6 +48,7 @@ The order is topological: a category comes after every category it may peer on, 
 | `queue`         | one         | package `packages/queue`         |                                                                                     |
 | `storage`       | one         | package `packages/storage`       |                                                                                     |
 | `realtime`      | one         | package `packages/realtime`      | Rooms over WebSocket, one variant per provider                                      |
+| `scheduler`     | one         | package `packages/scheduler`     | Cron schedules run once per tick; provider-matched                                  |
 | `payments`      | one         | package `packages/payments`      |                                                                                     |
 | `observability` | one         | package `packages/observability` | Error reporting; provider-matched                                                   |
 | `web`           | many        | app `apps/<id>`                  | SPA / SSR / static shells                                                           |
@@ -55,7 +56,7 @@ The order is topological: a category comes after every category it may peer on, 
 | `deploy`        | many        | repo                             | CI / deploy pipeline                                                                |
 | `dev`           | many        | repo                             | Local launchers (named HTTPS URLs); never on the runtime path                       |
 
-- `api`, `db`, `storage`, `realtime`, `observability`, `web` and `deploy` declare `peers.provider` and ship one variant per provider they support.
+- `api`, `db`, `storage`, `realtime`, `scheduler`, `observability`, `web` and `deploy` declare `peers.provider` and ship one variant per provider they support.
 - A category's note never names a provider's technology (`D1`, `R2`, `wrangler`): that belongs to the provider's modules.
 - `cardinality: one` means one module per category (per app for app-homed ones). A second is a conflict by construction.
 

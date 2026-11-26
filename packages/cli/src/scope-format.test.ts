@@ -51,6 +51,7 @@ const OTHER_PROVIDER_STACK = [
   "auth/better-auth",
   "storage/fs",
   "realtime/rooms",
+  "scheduler/cron",
   "observability/sentry",
   "web/spa",
 ];
@@ -65,12 +66,13 @@ const OTHER_PROVIDER_POSTGRES_STACK = OTHER_PROVIDER_STACK.flatMap((key) =>
       ? []
       : [key],
 );
-/** What needs that provider's tree: `db/libsql`, `db/postgres`, `storage/fs`, `realtime/rooms` and `observability/sentry` peer on `dockerfile`, so they are never installed alone. */
+/** What needs that provider's tree: `db/libsql`, `db/postgres`, `storage/fs`, `realtime/rooms`, `scheduler/cron` and `observability/sentry` peer on `dockerfile`, so they are never installed alone. */
 const OTHER_PROVIDER_ONLY = [
   "db/libsql",
   "db/postgres",
   "storage/fs",
   "realtime/rooms",
+  "scheduler/cron",
   "observability/sentry",
 ];
 
@@ -233,5 +235,5 @@ describe("scope rendering and the formatter", () => {
       return `${file} fails at scope lengths ${ranges(lengths)}; at ${first?.scope}, ${first?.change}`;
     });
     expect(report).toEqual([]);
-  }, 120_000);
+  }, 180_000);
 });

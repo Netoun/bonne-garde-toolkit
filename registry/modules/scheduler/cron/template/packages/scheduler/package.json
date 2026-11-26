@@ -1,0 +1,14 @@
+{
+  "name": "{{SCOPE}}/scheduler",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The project's cron schedules: defineSchedule, run once per minute slot",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vp test"
+  }
+}
