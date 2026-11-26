@@ -161,9 +161,10 @@ export const ANSWER_SETS: Readonly<Record<string, Choices>> = {
 
 /** The modules `bonne-garde add` installs after what `create` produced for the set, in that order. */
 export const ADDED_AFTER_CREATE: Readonly<Record<string, readonly string[]>> = {
-  // `create` offers neither realtime nor observability: each provider's set adds its variants.
+  // `create` offers neither realtime, scheduler nor observability: each provider's set adds its variants.
+  // `scheduler/cron` is dockerfile only until its cloudflare variant lands.
   cloudflare: ["realtime/rooms", "observability/sentry"],
-  dockerfile: ["realtime/rooms", "observability/sentry"],
+  dockerfile: ["realtime/rooms", "scheduler/cron", "observability/sentry"],
   "dockerfile-postgres": ["db/postgres", "orm/drizzle"],
 };
 
@@ -1073,6 +1074,11 @@ export const PATCHED: Readonly<Record<string, Readonly<Record<string, readonly s
       'exports."./driver"',
       'exports."./testing"',
       "exports[@app/realtime/driver]",
+    ],
+    "scheduler/cron": [
+      "dependencies.@app/scheduler",
+      'exports."./driver"',
+      "exports[@app/scheduler/driver]",
     ],
     "storage/fs": [
       "dependencies.@app/storage",

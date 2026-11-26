@@ -1,0 +1,70 @@
+{
+  "$schema": "https://bonne-garde.dev/schema/module.json",
+  "id": "cron",
+  "category": "scheduler",
+  "version": "0.1.0",
+  "title": "Cron schedules",
+  "description": "Cron schedules that run once per minute slot: defineSchedule(name, cron, handler), a claim in the database so a slot never runs twice, and a lease so a schedule never overlaps itself. Croner in the process on the dockerfile provider.",
+  "peers": {
+    "provider": ["dockerfile"],
+    "api": ["elysia"]
+  },
+  "checks": ["cd packages/scheduler && vp run typecheck && vp run test"],
+  "variants": [
+    {
+      "key": "dockerfile",
+      "match": {
+        "provider": "dockerfile"
+      },
+      "workspace": {
+        "name": "{{SCOPE}}/scheduler",
+        "path": "packages/scheduler"
+      },
+      "dependencies": {
+        "@libsql/client": "0.18.0",
+        "croner": "11.0.1",
+        "{{SCOPE}}/api-runtime": "workspace:*"
+      },
+      "copy": [
+        "packages/scheduler/package.json",
+        "packages/scheduler/src/claims.node.test.ts",
+        "packages/scheduler/src/claims.node.ts",
+        "packages/scheduler/src/dispatch.test.ts",
+        "packages/scheduler/src/dispatch.ts",
+        "packages/scheduler/src/driver.node.ts",
+        "packages/scheduler/src/exports.test.ts",
+        "packages/scheduler/src/index.ts",
+        "packages/scheduler/src/schedules.test.ts",
+        "packages/scheduler/src/schedules.ts",
+        "packages/scheduler/tsconfig.json"
+      ],
+      "patch": [
+        {
+          "type": "jsonc.merge",
+          "file": "packages/scheduler/package.json",
+          "value": {
+            "exports": {
+              "./driver": "./src/driver.node.ts"
+            }
+          },
+          "intent": "Point the package's ./driver export at the Node file, the one of the dockerfile provider."
+        },
+        {
+          "type": "package.dependencies",
+          "file": "apps/api/package.json",
+          "dependencies": {
+            "{{SCOPE}}/scheduler": "workspace:*"
+          },
+          "intent": "Declare the project's scheduler package as a dependency of the API app."
+        },
+        {
+          "type": "ts.addNamedExport",
+          "file": "apps/api/src/index.ts",
+          "moduleSpecifier": "{{SCOPE}}/scheduler/driver",
+          "exports": ["stopScheduler"],
+          "intent": "Import the scheduler driver from the API entry, which starts the per-minute tick; stopScheduler is its stop."
+        }
+      ]
+    }
+  ]
+}

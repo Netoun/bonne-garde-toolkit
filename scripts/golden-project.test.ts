@@ -263,6 +263,7 @@ describe("the golden project", () => {
             "auth/better-auth",
             "storage/fs",
             "realtime/rooms",
+            "scheduler/cron",
             "observability/sentry",
           ].includes(name),
       ),
@@ -418,6 +419,7 @@ describe("the golden project and modules", () => {
       "provider/dockerfile",
       "db/libsql",
       "storage/fs",
+      "scheduler/cron",
       "db/postgres",
     ]);
   });
@@ -883,6 +885,11 @@ describe("the golden project and patches", () => {
           'exports."./driver"',
           'exports."./testing"',
           "exports[@app/realtime/driver]",
+        ],
+        "scheduler/cron": [
+          "dependencies.@app/scheduler",
+          'exports."./driver"',
+          "exports[@app/scheduler/driver]",
         ],
         "storage/fs": [
           "dependencies.@app/storage",
